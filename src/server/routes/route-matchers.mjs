@@ -10,6 +10,18 @@ export function matchSessionUpdateRoute(pathname) {
   };
 }
 
+// POST /api/v1/sessions/:id/cancel cancels active agent turns. An optional
+// `target` body field resolves an agent id/name; omitted means all active runs.
+export function matchSessionCancelRoute(pathname) {
+  let match = /^\/api\/v1\/sessions\/([^/]+)\/cancel$/.exec(pathname);
+  if (!match)
+    return null;
+
+  return {
+    sessionID: decodeURIComponent(match[1]),
+  };
+}
+
 // DELETE /api/v1/sessions/:id soft-deletes a session (stamps deletedAt).
 export function matchSessionDeleteRoute(pathname) {
   let match = /^\/api\/v1\/sessions\/([^/]+)$/.exec(pathname);

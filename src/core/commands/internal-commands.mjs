@@ -1,5 +1,6 @@
 'use strict';
 
+import { CancelCommand } from './cancel-command.mjs';
 import { ClearCompactionBotCommand } from './clear-compaction-bot-command.mjs';
 import { ClearCoordinatorBotCommand } from './clear-coordinator-bot-command.mjs';
 import { CompactCommand } from './compact-command.mjs';
@@ -16,6 +17,7 @@ export function registerInternalCommands({ pluginRegistry, commandRegistry }) {
   if (!commandRegistry)
     throw new TypeError('registerInternalCommands() requires commandRegistry');
 
+  commandRegistry.registerCommand('cancel', CancelCommand, { aliases: CancelCommand.aliases });
   commandRegistry.registerCommand('compact', CompactCommand);
   commandRegistry.registerCommand('invite', InviteCommand);
   commandRegistry.registerCommand('set-coordinator-bot', SetCoordinatorBotCommand);

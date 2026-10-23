@@ -99,8 +99,12 @@ function createProcessID() {
   return `proc-${randomBytes(8).toString('hex')}`;
 }
 
-function isVisibleToAgent(record, agentID) {
-  return !agentID || !record.agentID || record.agentID === agentID;
+function isLiveProcessStatus(status) {
+  return status === 'running' || status === 'suspended';
+}
+
+function isVisibleToAgent(record, agentID, isCoordinator = false) {
+  return isCoordinator === true || !agentID || !record.agentID || record.agentID === agentID;
 }
 
 function encodeSegment(value) {
@@ -111,6 +115,7 @@ export {
   clampInteger,
   createProcessID,
   encodeSegment,
+  isLiveProcessStatus,
   isVisibleToAgent,
   normalizeNonNegativeInteger,
   normalizeOptionalString,

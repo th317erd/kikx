@@ -480,6 +480,186 @@ test('FrameRuntime waits for active agent runs during shutdown drain', async () 
   runtime.markAgentRunEnd('ses_1', 'agent_1');
 });
 
+test('FrameRuntime cancellation targets active agents and clears on run end', async () => {
+  let runtime = createRuntime({ ids: [ 'ses_1' ] });
+  await runtime.createSession({ title: 'Cancel' });
+  runtime.markAgentRunStart('ses_1', 'agent_1');
+  runtime.markAgentRunStart('ses_1', 'agent_2');
+
+  assert.deepEqual(runtime.cancelAgentRuns('ses_1', 'agent_1'), [ 'agent_1' ]);
+  assert.equal(runtime.hasAgentCancellation('ses_1', 'agent_1'), true);
+  assert.equal(runtime.hasAgentCancellation('ses_1', 'agent_2'), false);
+
+  runtime.markAgentRunEnd('ses_1', 'agent_1');
+  assert.equal(runtime.hasAgentCancellation('ses_1', 'agent_1'), false);
+
+  assert.deepEqual(runtime.cancelAgentRuns('ses_1'), [ 'agent_2' ]);
+  assert.equal(runtime.hasAgentCancellation('ses_1', 'agent_2'), true);
+});
+
+test('FrameRuntime suspension state suspends agents until explicitly resumed', async () => {
+  let runtime = createRuntime({ ids: [ 'ses_1' ] });
+  await runtime.createSession({ title: 'Suspend' });
+  runtime.suspendSession('ses_1', {
+    agentIDs: [ 'coordinator', 'worker' ],
+    coordinatorAgentID: 'coordinator',
+  });
+
+  assert.equal(runtime.isSessionSuspended('ses_1'), true);
+  assert.equal(runtime.isAgentSuspended('ses_1', 'coordinator'), true);
+  assert.equal(runtime.isAgentSuspended('ses_1', 'worker'), true);
+
+  let warning = runtime.consumeAgentSuspensionWarning('ses_1', 'coordinator', { isCoordinator: true });
+  assert.match(warning.message, /user just suspended this session/i);
+  assert.deepEqual(warning.suspendedAgentIDs, [ 'worker' ]);
+
+  runtime.resumeAgent('ses_1', 'coordinator');
+  assert.equal(runtime.isAgentSuspended('ses_1', 'coordinator'), false);
+  assert.equal(runtime.isAgentSuspended('ses_1', 'worker'), true);
+  assert.equal(runtime.isSessionSuspended('ses_1'), true);
+
+  runtime.resumeAgent('ses_1', 'worker');
+  assert.equal(runtime.isSessionSuspended('ses_1'), false);
+
+  // Resuming the last suspended agent clears the suspend, but that agent still
+  // needs the recovery warning on the turn that follows.
+  let pending = runtime.consumeAgentSuspensionWarning('ses_1', 'worker');
+  assert.match(pending.message, /explicitly resumed by the coordinator/i);
+  assert.equal(runtime.consumeAgentSuspensionWarning('ses_1', 'worker'), null);
+});
+
+test('FrameRuntime persists suspension and hidden resume frames across a restart', async () => {
+  let aeordb = createClient();
+  let runtime = createRuntime({
+    aeordb,
+    ids: [ 'ses_1', 'resume_1', 'resume_2' ],
+  });
+  await runtime.createSession({
+    title: 'Suspended',
+    participantAgentIDs: [ 'agent_1', 'agent_2' ],
+    coordinatorAgentID: 'agent_1',
+  });
+  runtime.suspendSession('ses_1', {
+    agentIDs: [ 'agent_1', 'agent_2' ],
+    coordinatorAgentID: 'agent_1',
+  });
+  await runtime.persistSessionSuspension('ses_1');
+
+  let resumeFrames = await runtime.recordAgentResumes('ses_1', [ 'agent_1' ], {
+    reason: 'human-message',
+    agentManager: {
+      async getAgent(agentID) {
+        return { id: agentID, name: agentID === 'agent_1' ? 'Coordinator' : 'Worker' };
+      },
+    },
+  });
+  assert.equal(resumeFrames.length, 1);
+  assert.equal(resumeFrames[0].hidden, true);
+  assert.equal(resumeFrames[0].authorID, 'internal:user-resume');
+  assert.equal(resumeFrames[0].content.kind, 'agent-resume');
+  assert.equal(runtime.isAgentSuspended('ses_1', 'agent_1'), false);
+  assert.equal(runtime.isAgentSuspended('ses_1', 'agent_2'), true);
+
+  let restarted = createRuntime({ aeordb, ids: [] });
+  await restarted.ensureSessionEntry('ses_1');
+  assert.equal(restarted.isSessionSuspended('ses_1'), true);
+  assert.equal(restarted.isAgentSuspended('ses_1', 'agent_1'), false);
+  assert.equal(restarted.isAgentSuspended('ses_1', 'agent_2'), true);
+
+  let pending = restarted.consumeAgentSuspensionWarning('ses_1', 'agent_1', { isCoordinator: true });
+  assert.match(pending.message, /user just suspended this session/i);
+  assert.match(pending.message, /server restarted while this session was suspended/i);
+  await restarted.persistSessionSuspension('ses_1');
+
+  await restarted.recordAgentResumes('ses_1', [ 'agent_2' ], {
+    reason: 'coordinator-resume',
+    agentName: 'Worker',
+  });
+  assert.equal(restarted.isSessionSuspended('ses_1'), false);
+
+  let afterLastResume = createRuntime({ aeordb, ids: [] });
+  await afterLastResume.ensureSessionEntry('ses_1');
+  assert.equal(afterLastResume.isSessionSuspended('ses_1'), false);
+  let workerWarning = afterLastResume.consumeAgentSuspensionWarning('ses_1', 'agent_2');
+  assert.match(workerWarning.message, /explicitly resumed by the coordinator/i);
+  await afterLastResume.persistSessionSuspension('ses_1');
+
+  let afterWarning = createRuntime({ aeordb, ids: [] });
+  await afterWarning.ensureSessionEntry('ses_1');
+  assert.equal(afterWarning.isSessionSuspended('ses_1'), false);
+  assert.equal(afterWarning.consumeAgentSuspensionWarning('ses_1', 'agent_2'), null);
+});
+
+test('legacy halt frames migrate using later user and agent activity', async () => {
+  let aeordb = createClient();
+  let runtime = createRuntime({ aeordb, ids: [ 'ses_1' ] });
+  await runtime.createSession({
+    title: 'Legacy suspension',
+    participantAgentIDs: [ 'agent_1', 'agent_2' ],
+    coordinatorAgentID: 'agent_1',
+  });
+  let entry = runtime.requireSessionEntry('ses_1');
+  entry.frameEngine.merge([
+    {
+      id: 'legacy_halt_1',
+      type: 'AgentMessage',
+      sessionID: 'ses_1',
+      interactionID: null,
+      parentID: null,
+      authorType: 'system',
+      authorID: 'internal:user-halt',
+      timestamp: 2000,
+      createdAt: 2000,
+      updatedAt: 2000,
+      hidden: false,
+      deleted: false,
+      content: {
+        text: 'User Halted the Session',
+        status: 'error',
+        haltedAgentIDs: [ 'agent_1', 'agent_2' ],
+      },
+    },
+    {
+      id: 'legacy_user_1',
+      type: 'UserMessage',
+      sessionID: 'ses_1',
+      interactionID: 'int_1',
+      parentID: null,
+      authorType: 'user',
+      authorID: 'usr_1',
+      timestamp: 3000,
+      createdAt: 3000,
+      updatedAt: 3000,
+      hidden: false,
+      deleted: false,
+      content: { text: 'what happened?' },
+    },
+    {
+      id: 'legacy_agent_1',
+      type: 'AgentMessage',
+      sessionID: 'ses_1',
+      interactionID: 'int_1',
+      parentID: 'legacy_user_1',
+      authorType: 'agent',
+      authorID: 'agent_2',
+      timestamp: 4000,
+      createdAt: 4000,
+      updatedAt: 4000,
+      hidden: false,
+      deleted: false,
+      content: { text: 'worker reply', status: 'complete' },
+    },
+  ], { authorType: 'system', authorID: 'internal:test' });
+  await runtime.frameStore.flush();
+  runtime.sessions.delete('ses_1');
+
+  let restarted = createRuntime({ aeordb, ids: [] });
+  await restarted.ensureSessionEntry('ses_1');
+  assert.equal(restarted.isSessionSuspended('ses_1'), false);
+  assert.equal(restarted.isAgentSuspended('ses_1', 'agent_1'), false);
+  assert.equal(restarted.isAgentSuspended('ses_1', 'agent_2'), false);
+});
+
 test('FrameRuntime appends user messages through FrameEngine and FrameStore', async () => {
   let aeordb = createClient();
   let runtime = createRuntime({ aeordb, ids: [ 'ses_1', 'int_1', 'msg_1', 'commit_1' ] });

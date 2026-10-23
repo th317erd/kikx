@@ -187,6 +187,7 @@ export class AgentInterface extends PluginInterface {
         selfAgentID: agentID,
       }),
       isCoordinator: params.isCoordinator ?? Boolean(agentID && coordinatorAgentID === agentID),
+      suspensionWarning: params.suspensionWarning || null,
     };
   }
 

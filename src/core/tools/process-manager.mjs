@@ -13,6 +13,7 @@ import {
 import {
   createProcessID,
   encodeSegment,
+  isLiveProcessStatus,
   isVisibleToAgent,
   normalizeNonNegativeInteger,
   normalizeOptionalString,
@@ -29,7 +30,10 @@ import {
   killProcess,
   listProcesses,
   readProcess,
+  resumeProcess,
   statusProcess,
+  suspendProcess,
+  suspendSessionProcesses,
 } from './process-manager-queries.mjs';
 import {
   forceCloseCaptureStreams,
@@ -94,6 +98,13 @@ export class ProcessManager {
     await fsp.mkdir(processDir, { recursive: true });
 
     let executionParams = await this.resolveExecutionParams(params, context);
+    let agentID = normalizeOptionalString(executionParams._agentID || context.agent?.id);
+    let sessionID = normalizeOptionalString(executionParams._sessionID || context.session?.id);
+    let frameID = normalizeOptionalString(executionParams._frameID || context.frame?.id);
+    let frameRuntime = this.resolveFrameRuntime();
+    if (frameRuntime?.isAgentSuspended?.(sessionID, agentID))
+      throw new Error('This session is suspended by the user; commands cannot start until it is resumed.');
+
     let handle = this.commandExecutor.startProcess(executionParams, {
       allowNoTimeout: true,
       defaultTimeoutMs: null,
@@ -103,9 +114,6 @@ export class ProcessManager {
     let stdoutStream = fs.createWriteStream(stdoutPath);
     let stderrStream = fs.createWriteStream(stderrPath);
     let now = this.clock();
-    let agentID = normalizeOptionalString(executionParams._agentID || context.agent?.id);
-    let sessionID = normalizeOptionalString(executionParams._sessionID || context.session?.id);
-    let frameID = normalizeOptionalString(executionParams._frameID || context.frame?.id);
 
     let record = {
       id: processID,
@@ -155,6 +163,23 @@ export class ProcessManager {
 
     this.processes.set(processID, record);
 
+    // A suspension can land between the pre-start check and registration. Re-check
+    // after the record is visible to suspendSession(), and stop the child
+    // immediately if the agent was suspended in that window.
+    if (frameRuntime?.isAgentSuspended?.(sessionID, agentID)) {
+      if (process.platform === 'win32') {
+        handle.kill('SIGTERM');
+        setTimeout(() => handle.kill('SIGKILL'), 1000).unref?.();
+        record.status = 'terminating';
+        record.suspensionAborted = true;
+      } else {
+        handle.kill('SIGSTOP');
+        record.status = 'suspended';
+        record.suspendedAt = now;
+      }
+      record.updatedAt = now;
+    }
+
     handle.child.stdout.on('data', (chunk) => {
       record.stdoutBytes += Buffer.byteLength(chunk);
       record.updatedAt = this.clock();
@@ -193,13 +218,13 @@ export class ProcessManager {
       if (completed)
         return await createCompletedExecResult(record);
 
-      if (record.status !== 'running')
+      if (!isLiveProcessStatus(record.status))
         return await createCompletedExecResult(record);
     }
 
     if (options.autoWake !== false) {
       this.setWake(record, executionParams, context, buildDefaultWakePrompt(record));
-      if (record.status !== 'running')
+      if (!isLiveProcessStatus(record.status))
         await this.scheduleWake(record);
     }
 
@@ -251,6 +276,18 @@ export class ProcessManager {
     return killProcess(this, params);
   }
 
+  suspend(params = {}) {
+    return suspendProcess(this, params);
+  }
+
+  resume(params = {}) {
+    return resumeProcess(this, params);
+  }
+
+  suspendSession(sessionID, options = {}) {
+    return suspendSessionProcesses(this, sessionID, options);
+  }
+
   async shutdown(options = {}) {
     let signal = normalizeSignal(options.signal || 'SIGTERM');
     let forceSignal = normalizeSignal(options.forceSignal || 'SIGKILL');
@@ -259,7 +296,7 @@ export class ProcessManager {
     // still shorten it explicitly in tests or specialized environments.
     let forceAfterMS = normalizeNonNegativeInteger(options.forceAfterMS, 30_000);
     let timeoutMS = normalizeNonNegativeInteger(options.timeoutMS, 35_000);
-    let running = Array.from(this.processes.values()).filter((record) => record.status === 'running');
+    let running = Array.from(this.processes.values()).filter((record) => isLiveProcessStatus(record.status));
     let shutdownAt = this.clock();
 
     for (let record of running) {
@@ -270,6 +307,8 @@ export class ProcessManager {
         reason: 'server-shutdown',
       };
       record.updatedAt = shutdownAt;
+      if (record.status === 'suspended' && signal !== 'SIGKILL')
+        record.handle.kill('SIGCONT');
       record.handle.kill(signal);
     }
 
@@ -450,14 +489,17 @@ export class ProcessManager {
     return resolveFrameRuntime(this);
   }
 
-  requireProcess(processID, agentID) {
+  requireProcess(processID, agentID, isCoordinator = false, sessionID = null) {
     let normalizedID = normalizeProcessID(processID);
     let record = this.processes.get(normalizedID);
     if (!record)
       throw new Error(`Unknown process: ${normalizedID}`);
 
     let normalizedAgentID = normalizeOptionalString(agentID);
-    if (!isVisibleToAgent(record, normalizedAgentID))
+    let normalizedSessionID = normalizeOptionalString(sessionID);
+    if (normalizedSessionID && record.sessionID && record.sessionID !== normalizedSessionID)
+      throw new Error(`Process ${normalizedID} is not in this session`);
+    if (!isVisibleToAgent(record, normalizedAgentID, isCoordinator === true))
       throw new Error(`Process ${normalizedID} is not owned by this agent`);
 
     return record;

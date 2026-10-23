@@ -125,6 +125,47 @@ test('ProcessManager shutdown force-kills only after the grace deadline', async 
   assert.equal(result.remaining, 0);
 });
 
+test('ProcessManager suspends, resumes, and kills a suspended command', async () => {
+  let child = createFakeChild();
+  let manager = createShutdownManager(child);
+  let started = await manager.start({ command: 'sleep 60' }, {
+    agent: { id: 'agent_1' },
+    session: { id: 'ses_1' },
+    frame: { id: 'frame_1' },
+  }, {
+    graceMs: 0,
+    autoWake: false,
+    returnCompletionIfReady: false,
+  });
+
+  let suspended = await manager.suspend({ processID: started.processID, _agentID: 'agent_1', _sessionID: 'ses_1' });
+  assert.equal(suspended.status, 'suspended');
+  assert.deepEqual(child.killSignals, [ 'SIGSTOP' ]);
+  assert.equal(manager.status({ processID: started.processID, _agentID: 'agent_1' }).status, 'suspended');
+
+  await manager.kill({ processID: started.processID, _agentID: 'agent_1' });
+  assert.deepEqual(child.killSignals, [ 'SIGSTOP', 'SIGCONT', 'SIGTERM' ]);
+});
+
+test('ProcessManager resumes a suspended command with SIGCONT', async () => {
+  let child = createFakeChild();
+  let manager = createShutdownManager(child);
+  let started = await manager.start({ command: 'sleep 60' }, {
+    agent: { id: 'agent_1' },
+    session: { id: 'ses_1' },
+    frame: { id: 'frame_1' },
+  }, {
+    graceMs: 0,
+    autoWake: false,
+    returnCompletionIfReady: false,
+  });
+
+  await manager.suspend({ processID: started.processID, _agentID: 'agent_1' });
+  let resumed = await manager.resume({ processID: started.processID, _agentID: 'agent_1' });
+  assert.equal(resumed.status, 'running');
+  assert.deepEqual(child.killSignals, [ 'SIGSTOP', 'SIGCONT' ]);
+});
+
 function createShutdownManager(child) {
   return new ProcessManager({
     commandExecutor: {
@@ -208,3 +249,58 @@ function createFakeChild() {
 
   return child;
 }
+
+test('ProcessManager refuses to start a command for a suspended agent', async () => {
+  let child = createFakeChild();
+  let manager = createShutdownManager(child);
+  let starts = 0;
+  manager.commandExecutor.startProcess = () => {
+    starts += 1;
+    return {
+      command: 'sleep 60',
+      shell: '/bin/bash',
+      cwd: '/tmp',
+      child,
+      timeoutMs: null,
+      startedAt: Date.now(),
+      get timedOut() { return false; },
+      clearTimeout() {},
+      kill(signal) { child.kill(signal); },
+    };
+  };
+  manager.frameRuntime = { isAgentSuspended() { return true; } };
+
+  await assert.rejects(
+    () => manager.start({ command: 'sleep 60' }, {
+      agent: { id: 'agent_1' },
+      session: { id: 'ses_1' },
+      frame: { id: 'frame_1' },
+    }, { autoWake: false }),
+    /session is suspended/,
+  );
+  assert.equal(starts, 0);
+});
+
+test('ProcessManager suspends a command that started during a suspension race', async () => {
+  let child = createFakeChild();
+  let manager = createShutdownManager(child);
+  let suspended = false;
+  manager.frameRuntime = {
+    isAgentSuspended() { return suspended; },
+  };
+  let originalStart = manager.commandExecutor.startProcess.bind(manager.commandExecutor);
+  manager.commandExecutor.startProcess = (...args) => {
+    let handle = originalStart(...args);
+    suspended = true;
+    return handle;
+  };
+
+  let started = await manager.start({ command: 'sleep 60' }, {
+    agent: { id: 'agent_1' },
+    session: { id: 'ses_1' },
+    frame: { id: 'frame_1' },
+  }, { autoWake: false, graceMs: 0 });
+
+  assert.equal(started.status, 'suspended');
+  assert.deepEqual(child.killSignals, [ 'SIGSTOP' ]);
+});

@@ -76,6 +76,22 @@ class StreamingAgentProvider extends AgentInterface {
   }
 }
 
+class SuspensionProbeAgentProvider extends AgentInterface {
+  static pluginID = 'suspension-probe-agent';
+
+  async *run(params = {}) {
+    params.services.calls.push({
+      method: 'suspension-probe',
+      agentID: params.agent.id,
+      suspensionWarning: params.suspensionWarning || null,
+    });
+    yield {
+      type: 'Done',
+      content: { status: 'null-response' },
+    };
+  }
+}
+
 class SteeringAgentProvider extends AgentInterface {
   static pluginID = 'steering-agent';
 
@@ -2229,9 +2245,104 @@ test('AgentRouteFramePlugin never leaves a dangling streaming placeholder when a
   assert.match(agentFrames[0].content.text, /without producing a response/);
 });
 
+test('a human message auto-resumes only the coordinator and carries the suspension warning', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Coordinator',
+        pluginID: 'suspension-probe-agent',
+        config: {},
+        secrets: { apiKey: 'sk-one' },
+        enabled: true,
+      } ],
+      [ 'agent_2', {
+        id: 'agent_2',
+        name: 'Worker',
+        pluginID: 'suspension-probe-agent',
+        config: {},
+        secrets: { apiKey: 'sk-two' },
+        enabled: true,
+      } ],
+      [ 'agent_3', {
+        id: 'agent_3',
+        name: 'Observer',
+        pluginID: 'suspension-probe-agent',
+        config: {},
+        secrets: { apiKey: 'sk-three' },
+        enabled: true,
+      } ],
+    ]),
+  });
+  runtime.services.frameRuntime = runtime;
+
+  await runtime.createSession({
+    title: 'Suspended',
+    participantAgentIDs: [ 'agent_1', 'agent_2', 'agent_3' ],
+    coordinatorAgentID: 'agent_1',
+  });
+  runtime.suspendSession('ses_1', {
+    agentIDs: [ 'agent_1', 'agent_2', 'agent_3' ],
+    coordinatorAgentID: 'agent_1',
+  });
+
+  await runtime.appendUserMessage('ses_1', { text: 'what happened?', userID: 'usr_1' });
+
+  let calls = runtime.services.calls.filter((call) => call.method === 'suspension-probe');
+  assert.deepEqual(calls.map((call) => call.agentID), [ 'agent_1' ]);
+  assert.match(calls[0].suspensionWarning, /user just suspended this session/i);
+  assert.equal(runtime.isAgentSuspended('ses_1', 'agent_1'), false);
+  assert.equal(runtime.isAgentSuspended('ses_1', 'agent_2'), true);
+  assert.equal(runtime.isAgentSuspended('ses_1', 'agent_3'), true);
+  assert.equal(runtime.isSessionSuspended('ses_1'), true);
+
+  // A user message explicitly targeting a suspended worker still wakes only the
+  // coordinator, so the user is never left with a silently ignored message.
+  let entry = runtime.requireSessionEntry('ses_1');
+  entry.frameEngine.merge([{
+    id: 'human_msg_2',
+    type: 'UserMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    authorType: 'user',
+    content: { text: 'worker, report now' },
+    targetAgentID: 'agent_2',
+    hidden: false,
+  }]);
+  await runtime.flush();
+
+  let targetedCalls = runtime.services.calls.filter((call) => call.method === 'suspension-probe');
+  assert.deepEqual(targetedCalls.map((call) => call.agentID), [ 'agent_1', 'agent_1' ]);
+
+  // The coordinator can resume one worker and route work to it while the rest
+  // of the team remains suspended. The coordinated pass is not a fresh human
+  // turn, so it must not collapse back to the coordinator-only target list.
+  runtime.resumeAgent('ses_1', 'agent_2');
+  entry = runtime.requireSessionEntry('ses_1');
+  entry.frameEngine.merge([{
+    id: 'coord_msg_1',
+    type: 'UserMessage',
+    sessionID: 'ses_1',
+    interactionID: 'int_1',
+    authorType: 'user',
+    content: { text: 'resume your check' },
+    coordinated: true,
+    targetAgentID: 'agent_2',
+    hidden: false,
+  }]);
+  await runtime.flush();
+
+  let workerCalls = runtime.services.calls.filter((call) => (
+    call.method === 'suspension-probe' && call.agentID === 'agent_2'
+  ));
+  assert.equal(workerCalls.length, 1);
+  assert.match(workerCalls[0].suspensionWarning, /explicitly resumed by the coordinator/i);
+});
+
 function createRuntime(options = {}) {
   let pluginRegistry = new PluginRegistry({ logger: quietLogger() });
   pluginRegistry.registerAgentProvider('streaming-agent', StreamingAgentProvider);
+  pluginRegistry.registerAgentProvider('suspension-probe-agent', SuspensionProbeAgentProvider);
   pluginRegistry.registerAgentProvider('steering-agent', SteeringAgentProvider);
   pluginRegistry.registerAgentProvider('forwarding-agent', ForwardingAgentProvider);
   pluginRegistry.registerAgentProvider('removing-forwarding-agent', RemovingForwardingAgentProvider);

@@ -119,6 +119,10 @@ export class FrameRuntime extends EventEmitter {
       activeRuns: 0,
       activeAgentRuns: new Map(),
       steeringAgents: new Set(),
+      cancelledAgents: new Set(),
+      sessionSuspension: null,
+      suspensionPendingWarnings: new Map(),
+      suspensionWarnedAgentIDs: new Set(),
     });
     this.evictOverflowSessionRuntimes();
 

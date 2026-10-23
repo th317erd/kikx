@@ -1,5 +1,7 @@
 'use strict';
 
+import { parseCommandTarget } from './command-target.mjs';
+
 export class InviteCommand {
   static description = 'Invite an actor or team into the current session.';
 
@@ -159,41 +161,12 @@ export class InviteCommand {
 }
 
 function normalizeInviteReference(args) {
-  if (typeof args !== 'string' || args.trim() === '')
-    throw new Error('Usage: /invite actor-or-team-name');
-
-  let reference = unquoteReference(args.trim());
-  let match = reference.match(/^(agent|team):([\s\S]*)$/i);
-  if (match) {
-    let value = unquoteReference(match[2].trim());
-    if (!value)
-      throw new Error(`Usage: /invite ${match[1].toLowerCase()}:name`);
-
-    return {
-      type: match[1].toLowerCase(),
-      reference: value,
-    };
-  }
-
-  return {
-    type: '',
-    reference,
-  };
-}
-
-function unquoteReference(reference) {
-  let quote = reference[0];
-  if ((quote === '"' || quote === "'") && reference.at(-1) === quote)
-    return unescapeQuotedReference(reference.slice(1, -1), quote);
-
-  if (quote === '"' || quote === "'")
-    throw new Error('Usage: /invite "actor or team name"');
-
-  return reference;
-}
-
-function unescapeQuotedReference(value, quote) {
-  return value.replaceAll(`\\${quote}`, quote).replaceAll('\\\\', '\\').trim();
+  return parseCommandTarget(args, {
+    command: '/invite',
+    usage: 'Usage: /invite actor-or-team-name',
+    quoteUsage: 'Usage: /invite "actor or team name"',
+    allowedTypes: [ 'agent', 'team' ],
+  });
 }
 
 async function settleNotFound(callback) {

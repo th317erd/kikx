@@ -56,6 +56,11 @@ export class ToolExecutionService {
 
 async function runTool({ executor, toolName, ToolClass, input, executionContext, existingToolCallFrame = null }) {
   let enrichedInput = enrichToolInput(input, executionContext);
+  let suspensionRuntime = resolveFrameRuntime(executionContext);
+  let suspensionSessionID = executionContext.session?.id || executionContext.frame?.sessionID || '';
+  let suspensionAgentID = executionContext.agent?.id || '';
+  if (suspensionRuntime?.isAgentSuspended?.(suspensionSessionID, suspensionAgentID))
+    throw new Error('This session is suspended by the user. Only the coordinator can resume tool work.');
   let tool = new ToolClass(executionContext);
   if (typeof tool.execute !== 'function')
     throw new TypeError(`${toolName} does not provide execute()`);
@@ -211,6 +216,7 @@ function enrichToolInput(input, context = {}) {
     _sessionID: targetSessionID || null,
     _sourceSessionID: context.crossSessionToolCall ? sourceSessionID || null : null,
     _frameID: context.frame?.id || null,
+    _isCoordinator: context.isCoordinator === true,
   };
 }
 

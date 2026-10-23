@@ -184,6 +184,56 @@ export class ExecKillTool extends PluginInterface {
   }
 }
 
+export class ExecSuspendTool extends PluginInterface {
+  static pluginID = 'internal:exec';
+  static featureName = 'suspend';
+  static displayName = 'Suspend exec task';
+  static description = 'Suspend an async exec task owned by this agent using SIGSTOP.';
+  static frameType = 'ExecSuspendToolFrame';
+  static clientComponent = builtInToolComponent('kikx-exec-kill-use');
+  static riskLevel = 'none';
+  static inputSchema = {
+    type: 'object',
+    properties: {
+      processID: {
+        type: 'string',
+      },
+    },
+    required: [ 'processID' ],
+    additionalProperties: false,
+  };
+  static help = 'Use exec-suspend to pause a running async exec process. Use exec-resume to continue it.';
+
+  async _execute(params = {}) {
+    return await resolveProcessManager(this.context).suspend(params);
+  }
+}
+
+export class ExecResumeTool extends PluginInterface {
+  static pluginID = 'internal:exec';
+  static featureName = 'resume';
+  static displayName = 'Resume exec task';
+  static description = 'Resume a suspended async exec task using SIGCONT.';
+  static frameType = 'ExecResumeToolFrame';
+  static clientComponent = builtInToolComponent('kikx-exec-kill-use');
+  static riskLevel = 'none';
+  static inputSchema = {
+    type: 'object',
+    properties: {
+      processID: {
+        type: 'string',
+      },
+    },
+    required: [ 'processID' ],
+    additionalProperties: false,
+  };
+  static help = 'Use exec-resume to continue a suspended async exec process.';
+
+  async _execute(params = {}) {
+    return await resolveProcessManager(this.context).resume(params);
+  }
+}
+
 function resolveProcessManager(context = {}) {
   let service = context.processManager || context.services?.processManager || resolveContextService(context, 'processManager');
   if (!service)

@@ -64,23 +64,51 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
         ? [ coordinatorAgentID ]
         : [];
 
+    let frameRouter = resolveService(services, 'frameRouter') || services?.frameRuntime?.frameRouter;
+    let sessionID = this.context.session?.id || frame?.sessionID || '';
+    let frameRuntime = resolveService(services, 'frameRuntime') || services?.frameRuntime;
     let initialTargets = filterRedundantRouteTargets({
       frame,
       routeTargets: initialRouteTargets,
       frameEngine: this.context.engine,
     });
+    let suspended = frameRuntime?.isSessionSuspended?.(sessionID) === true;
+    let precomputedSuspensionWarnings = new Map();
+    // Consume the coordinator warning before auto-resuming it for a human turn.
+    // Resuming the last suspended agent clears the suspension, and with it the warning.
+    if (suspended && frame?.authorType === 'user' && frame?.coordinated !== true) {
+      let warning = frameRuntime?.consumeAgentSuspensionWarning?.(sessionID, coordinatorAgentID, {
+        isCoordinator: true,
+      });
+      if (warning?.message)
+        precomputedSuspensionWarnings.set(coordinatorAgentID, warning.message);
+    }
+
+    if (suspended)
+      initialTargets = await this.filterSuspendedTargets({
+        targets: initialTargets,
+        frame,
+        sessionID,
+        coordinatorAgentID,
+        frameRuntime,
+        agentManager,
+        autoResumeCoordinator: true,
+      });
 
     if (initialTargets.length === 0) {
-      await next(this.context);
+      if (suspended)
+        done();
+      else
+        await next(this.context);
       return;
     }
 
-    let frameRouter = resolveService(services, 'frameRouter') || services?.frameRuntime?.frameRouter;
-    let sessionID = this.context.session?.id || frame?.sessionID || '';
-    let frameRuntime = resolveService(services, 'frameRuntime') || services?.frameRuntime;
-
     let dispatch = async () => {
       for (let agentID of initialTargets) {
+        let consumedWarning = frameRuntime?.consumeAgentSuspensionWarning?.(sessionID, agentID, {
+          isCoordinator: agentID === coordinatorAgentID,
+        })?.message || null;
+        let suspensionWarning = precomputedSuspensionWarnings.get(agentID) || consumedWarning;
         await this.routeAgent({
           agentID,
           coordinatorAgentID,
@@ -88,6 +116,7 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
           pluginRegistry,
           services,
           frame,
+          suspensionWarning,
         });
       }
 
@@ -105,8 +134,21 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
 
       let recipientTargets = resolveRouteTargets({ frame: currentFrame, participantAgentIDs, coordinatorAgentID })
         .filter((agentID) => agentID !== coordinatorAgentID);
+      if (frameRuntime?.isSessionSuspended?.(sessionID) === true)
+        recipientTargets = await this.filterSuspendedTargets({
+          targets: recipientTargets,
+          frame: currentFrame,
+          sessionID,
+          coordinatorAgentID,
+          frameRuntime,
+          agentManager,
+          autoResumeCoordinator: false,
+        });
 
       for (let agentID of recipientTargets) {
+        let suspensionWarning = frameRuntime?.consumeAgentSuspensionWarning?.(sessionID, agentID, {
+          isCoordinator: agentID === coordinatorAgentID,
+        })?.message || null;
         await this.routeAgent({
           agentID,
           coordinatorAgentID,
@@ -114,6 +156,7 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
           pluginRegistry,
           services,
           frame: currentFrame,
+          suspensionWarning,
         });
       }
     };
@@ -140,6 +183,40 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
     done();
   }
 
+  async filterSuspendedTargets({ targets = [], frame, sessionID, coordinatorAgentID, frameRuntime, agentManager = null, autoResumeCoordinator = false }) {
+    // A coordinated user frame is already the coordinator's routed pass; it must
+    // not be mistaken for a fresh human turn that only wakes the coordinator.
+    let human = frame?.authorType === 'user' && frame?.coordinated !== true;
+    if (human) {
+      if (autoResumeCoordinator && coordinatorAgentID) {
+        if (typeof frameRuntime?.recordAgentResumes === 'function') {
+          await frameRuntime.recordAgentResumes(sessionID, [ coordinatorAgentID ], {
+            reason: 'human-message',
+            agentManager,
+          });
+        } else {
+          frameRuntime?.resumeAgent?.(sessionID, coordinatorAgentID);
+        }
+        // A real user turn always wakes the coordinator, even when the user
+        // explicitly targeted a worker. The coordinator explains the suspension
+        // and decides whether to resume that worker.
+        return [ coordinatorAgentID ];
+      }
+      return targets.includes(coordinatorAgentID) ? [ coordinatorAgentID ] : [];
+    }
+
+    // Coordinator-authored routed work may reach agents that the coordinator has
+    // explicitly resumed. Scheduled/plugin/external messages never wake a
+    // suspended agent, and never wake the coordinator while suspension is active.
+    if (frame?.coordinated !== true)
+      return [];
+
+    return targets.filter((agentID) => (
+      agentID !== coordinatorAgentID
+      && !frameRuntime?.isAgentSuspended?.(sessionID, agentID)
+    ));
+  }
+
   // True when the pre-created response placeholder is still an unfinalized
   // hidden `streaming`/`pending` AgentMessage. A visible/complete frame, or a
   // deleted/cleanup-finalized placeholder, is not dangling.
@@ -155,7 +232,7 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
       || responseFrame.content?.status === 'pending';
   }
 
-  async routeAgent({ agentID, coordinatorAgentID, agentManager, pluginRegistry, services, frame }) {
+  async routeAgent({ agentID, coordinatorAgentID, agentManager, pluginRegistry, services, frame, suspensionWarning = null }) {
     let agent;
     let responseFrameID = null;
     let doneStatus = '';
@@ -237,7 +314,14 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
         responseFrame,
         coordinatorAgentID,
         isCoordinator: agent.id === coordinatorAgentID,
+        suspensionWarning,
       };
+
+      if (frameRuntime?.hasAgentCancellation?.(sessionID, agentID)) {
+        this.cleanupResponseFrame({ responseFrameID, responseFrame, agent, status: 'cancelled' });
+        await services?.frameRuntime?.frameStore?.flush?.();
+        return { status: 'cancelled' };
+      }
 
       if (frameRuntime?.hasAgentSteering?.(sessionID, agentID)) {
         this.cleanupResponseFrame({ responseFrameID, responseFrame, agent, status: 'steered' });
@@ -246,6 +330,12 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
       }
 
       for await (let output of provider.run(runParams)) {
+        if (frameRuntime?.hasAgentCancellation?.(sessionID, agentID)) {
+          this.cleanupResponseFrame({ responseFrameID, responseFrame, agent, status: 'cancelled' });
+          await services?.frameRuntime?.frameStore?.flush?.();
+          return { status: 'cancelled' };
+        }
+
         if (frameRuntime?.hasAgentSteering?.(sessionID, agentID)) {
           this.cleanupResponseFrame({ responseFrameID, responseFrame, agent, status: 'steered' });
           await services?.frameRuntime?.frameStore?.flush?.();

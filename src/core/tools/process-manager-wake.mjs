@@ -29,12 +29,12 @@ function setWake(manager, record, params = {}, context = {}, continuationPrompt 
 }
 
 async function wakeOnCompletion(manager, params = {}, context = {}) {
-  let record = manager.requireProcess(params.processID || params.id, params._agentID || context.agent?.id);
+  let record = manager.requireProcess(params.processID || params.id, params._agentID || context.agent?.id, params._isCoordinator === true || context.isCoordinator === true);
   let continuationPrompt = normalizeOptionalString(params.continuationPrompt || params.prompt)
     || `Process ${record.processID} has completed. Inspect its status and output, then continue the task.`;
   setWake(manager, record, params, context, continuationPrompt);
 
-  if (record.status !== 'running')
+  if (record.status !== 'running' && record.status !== 'suspended')
     await scheduleWake(manager, record);
 
   return {
@@ -43,7 +43,7 @@ async function wakeOnCompletion(manager, params = {}, context = {}) {
     wakeOnCompletion: true,
     wakeFrameID: record.wakeFrameID,
     continuationPrompt,
-    message: record.status === 'running'
+    message: record.status === 'running' || record.status === 'suspended'
       ? `Kikx will wake this agent when process ${record.processID} completes.`
       : `Process ${record.processID} is already ${record.status}; wake has been scheduled if runtime context is available.`,
   };

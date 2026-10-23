@@ -10,7 +10,9 @@ import {
   readJSON,
   writeJSON,
 } from '../http-helpers.mjs';
+import { suspendSessionAgents } from '../../core/agents/agent-cancellation.mjs';
 import {
+  matchSessionCancelRoute,
   matchSessionCompactionRetryRoute,
   matchSessionDeleteRoute,
   matchSessionRestoreRoute,
@@ -167,6 +169,24 @@ export async function handleSessionRoutes({ request, response, url, context }) {
         frame,
       },
     });
+    return true;
+  }
+
+  let cancelRoute = matchSessionCancelRoute(url.pathname);
+  if (cancelRoute && request.method === 'POST') {
+    let body = await readJSON(request);
+    let agentManager = context.require('agentManager');
+    let frameRuntime = context.require('frameRuntime');
+    let processManager = context.has?.('processManager') ? context.require('processManager') : null;
+    let result = await suspendSessionAgents({
+      sessionID: cancelRoute.sessionID,
+      target: typeof body.target === 'string' ? body.target : null,
+      frameRuntime,
+      agentManager,
+      processManager,
+    });
+
+    writeJSON(response, 200, { data: result });
     return true;
   }
 

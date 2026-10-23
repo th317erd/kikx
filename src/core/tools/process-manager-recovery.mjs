@@ -37,7 +37,7 @@ export async function rehydrate(manager, options = {}) {
 
     await restoreStdio(manager, record);
 
-    if (record.status === 'running') {
+    if (record.status === 'running' || record.status === 'suspended') {
       record.status = 'interrupted';
       record.interruptedAt = now;
       record.updatedAt = now;
@@ -66,7 +66,7 @@ export async function recoverPendingWakes(manager, options = {}) {
   let pendingProcessIDs = pendingWakeProcessIDs(options.frameRuntime);
   let recovered = 0;
   for (let record of manager.processes.values()) {
-    if (record.status === 'running' || record.wakeFrameID)
+    if (record.status === 'running' || record.status === 'suspended' || record.wakeFrameID)
       continue;
 
     let wake = record.wakeOnCompletion;

@@ -6,6 +6,7 @@ import {
 } from './process-manager-constants.mjs';
 import {
   clampInteger,
+  isLiveProcessStatus,
   isVisibleToAgent,
   normalizeOptionalString,
   normalizeReadRange,
@@ -30,11 +31,15 @@ function listProcesses(manager, params = {}) {
   let offset = clampInteger(params.offset, 0, 0, Number.MAX_SAFE_INTEGER);
   let records = [];
 
+  let sessionID = normalizeOptionalString(params._sessionID);
   for (let record of manager.processes.values()) {
-    if (!isVisibleToAgent(record, agentID))
+    if (sessionID && record.sessionID !== sessionID)
       continue;
 
-    if (!includeCompleted && record.status !== 'running')
+    if (!isVisibleToAgent(record, agentID, params._isCoordinator === true))
+      continue;
+
+    if (!includeCompleted && !isLiveProcessStatus(record.status))
       continue;
 
     if (statuses.length > 0 && !statuses.includes(record.status))
@@ -53,12 +58,12 @@ function listProcesses(manager, params = {}) {
 }
 
 function statusProcess(manager, params = {}) {
-  let record = manager.requireProcess(params.processID || params.id, params._agentID);
+  let record = manager.requireProcess(params.processID || params.id, params._agentID, params._isCoordinator === true, params._sessionID);
   return publicRecord(record, { includeInstructions: true });
 }
 
 async function readProcess(manager, params = {}) {
-  let record = manager.requireProcess(params.processID || params.id, params._agentID);
+  let record = manager.requireProcess(params.processID || params.id, params._agentID, params._isCoordinator === true, params._sessionID);
   let stream = normalizeStreamName(params.stream || 'combined');
   let full = params.full === true;
   let range = normalizeReadRange({
@@ -90,7 +95,7 @@ async function readProcess(manager, params = {}) {
 }
 
 async function grepProcess(manager, params = {}) {
-  let record = manager.requireProcess(params.processID || params.id, params._agentID);
+  let record = manager.requireProcess(params.processID || params.id, params._agentID, params._isCoordinator === true, params._sessionID);
   let stream = normalizeStreamName(params.stream || 'combined');
   let pattern = normalizeRequiredString(params.pattern || params.regexp || params.regex, 'pattern');
   let flags = normalizeRegexFlags(params.flags);
@@ -114,9 +119,9 @@ async function grepProcess(manager, params = {}) {
 }
 
 function killProcess(manager, params = {}) {
-  let record = manager.requireProcess(params.processID || params.id, params._agentID);
+  let record = manager.requireProcess(params.processID || params.id, params._agentID, params._isCoordinator === true, params._sessionID);
   let signal = normalizeSignal(params.signal || 'SIGTERM');
-  if (record.status !== 'running') {
+  if (!isLiveProcessStatus(record.status)) {
     return {
       processID: record.processID,
       status: record.status,
@@ -130,6 +135,8 @@ function killProcess(manager, params = {}) {
     agentID: normalizeOptionalString(params._agentID),
   };
   record.updatedAt = record.killRequested.requestedAt;
+  if (record.status === 'suspended' && signal !== 'SIGKILL')
+    record.handle.kill('SIGCONT');
   record.handle.kill(signal);
 
   return {
@@ -140,10 +147,87 @@ function killProcess(manager, params = {}) {
   };
 }
 
+async function suspendProcess(manager, params = {}) {
+  let record = manager.requireProcess(
+    params.processID || params.id,
+    params._agentID,
+    params._isCoordinator,
+    params._sessionID,
+  );
+  if (record.status === 'suspended')
+    return { processID: record.processID, status: record.status, message: `Process ${record.processID} is already suspended.` };
+  if (record.status !== 'running')
+    return { processID: record.processID, status: record.status, message: `Process ${record.processID} is not running.` };
+
+  if (process.platform === 'win32') {
+    record.handle.kill('SIGTERM');
+    setTimeout(() => record.handle.kill('SIGKILL'), 1000).unref?.();
+    record.status = 'terminating';
+    record.suspensionAborted = true;
+    record.updatedAt = manager.clock();
+    await manager.persist?.(record);
+    return { processID: record.processID, status: record.status, aborted: true, message: `Terminating process ${record.processID} (Windows cannot suspend).` };
+  }
+
+  record.handle.kill('SIGSTOP');
+  record.status = 'suspended';
+  record.suspendedAt = manager.clock();
+  record.updatedAt = record.suspendedAt;
+  await manager.persist?.(record);
+  return { processID: record.processID, status: record.status, message: `Suspended process ${record.processID}.` };
+}
+
+async function resumeProcess(manager, params = {}) {
+  let record = manager.requireProcess(
+    params.processID || params.id,
+    params._agentID,
+    params._isCoordinator,
+    params._sessionID,
+  );
+  if (record.status !== 'suspended')
+    return { processID: record.processID, status: record.status, message: `Process ${record.processID} is not suspended.` };
+
+  record.handle.kill('SIGCONT');
+  record.status = 'running';
+  record.resumedAt = manager.clock();
+  record.updatedAt = record.resumedAt;
+  await manager.persist?.(record);
+  return { processID: record.processID, status: record.status, message: `Resumed process ${record.processID}.` };
+}
+
+async function suspendSessionProcesses(manager, sessionID, options = {}) {
+  let agentID = normalizeOptionalString(options.agentID);
+  let suspended = [];
+  for (let record of manager.processes.values()) {
+    if (record.sessionID !== sessionID || record.status !== 'running')
+      continue;
+    if (agentID && record.agentID !== agentID)
+      continue;
+
+    if (process.platform === 'win32') {
+      record.handle.kill('SIGTERM');
+      setTimeout(() => record.handle.kill('SIGKILL'), 1000).unref?.();
+      record.status = 'terminating';
+      record.suspensionAborted = true;
+    } else {
+      record.handle.kill('SIGSTOP');
+      record.status = 'suspended';
+      record.suspendedAt = manager.clock();
+    }
+    record.updatedAt = manager.clock();
+    suspended.push(record.processID);
+    await manager.persist?.(record);
+  }
+  return suspended;
+}
+
 export {
   grepProcess,
   killProcess,
   listProcesses,
   readProcess,
   statusProcess,
+  suspendProcess,
+  resumeProcess,
+  suspendSessionProcesses,
 };

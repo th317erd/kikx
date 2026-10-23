@@ -108,7 +108,7 @@ export function createLoopTools(state, context) {
 }
 
 export function shouldExposeLoopTool(toolName, context = {}) {
-  if (toolName === 'route')
+  if (toolName === 'route' || toolName === 'session-control')
     return context.isCoordinator === true;
 
   return true;
@@ -173,7 +173,8 @@ export function createRegisteredToolHandlers(context = {}) {
   let toolExecutor = resolveToolExecutor(context);
   let handlers = {};
   for (let [toolName, ToolClass] of pluginRegistry.getTools()) {
-    if (!shouldExposeRegisteredTool(toolName, ToolClass, context))
+    if (!shouldExposeLoopTool(toolName, context)
+      || !shouldExposeRegisteredTool(toolName, ToolClass, context))
       continue;
 
     handlers[toolName] = async (input = {}) => {

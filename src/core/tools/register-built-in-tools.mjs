@@ -15,9 +15,12 @@ import {
   ExecKillTool,
   ExecListTool,
   ExecReadTool,
+  ExecResumeTool,
   ExecStatusTool,
+  ExecSuspendTool,
 } from './process-tools.mjs';
 import { ReadFileTool } from './read-file-tool.mjs';
+import { SessionControlTool } from './session-control-tool.mjs';
 import {
   AgentListTool,
   SessionCreateTool,
@@ -66,6 +69,9 @@ export const BUILT_IN_TOOLS = [
   [ 'exec-read', ExecReadTool ],
   [ 'exec-grep', ExecGrepTool ],
   [ 'exec-kill', ExecKillTool ],
+  [ 'exec-suspend', ExecSuspendTool ],
+  [ 'exec-resume', ExecResumeTool ],
+  [ 'session-control', SessionControlTool ],
   [ 'cwd-get', CwdGetTool ],
   [ 'cwd-set', CwdSetTool ],
   [ 'cwd-clear', CwdClearTool ],
