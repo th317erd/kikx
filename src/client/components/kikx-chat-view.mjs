@@ -110,6 +110,10 @@ export class KikxChatView extends HTMLElement {
     return this._windowStartFrameID;
   }
 
+  get windowEnd() {
+    return this._windowEnd;
+  }
+
   // Incremental update used by the app's frame-runtime flush path. Preserves
   // existing items and only updates touched/new frames, keeping the same DOM
   // contract the UI tests assert. Only the active render window is materialized;
@@ -200,11 +204,6 @@ export class KikxChatView extends HTMLElement {
     this._windowStart = window.start;
     this._windowEnd = window.end;
     this._windowStartFrameID = this._frames[window.start]?.id || null;
-
-    // If the user was pinned to the bottom, dropping the oldest items must not
-    // leave the viewport short of the new bottom.
-    if (wasAtBottom)
-      this._scrollToBottom();
 
     return { insertedNew };
   }
@@ -299,11 +298,6 @@ export class KikxChatView extends HTMLElement {
     } else {
       start = Math.max(0, frames.length - max);
     }
-
-    // While pinned to the bottom, always follow the newest window. This is the
-    // normal live-feed case; older DOM is discarded as new frames arrive.
-    if (!Number.isInteger(options.windowStart) && this._isAtBottom())
-      start = Math.max(0, frames.length - max);
 
     let end = Math.min(frames.length, start + max);
     return { start, end };

@@ -170,10 +170,21 @@ test('a suppressed anchor still fills a viewport that cannot scroll', () => {
 test('bottom-rest auto-pin engages in bottom mode without moving the viewport', () => {
   resetStorage();
   let list = { scrollTop: 940, scrollHeight: 1000, clientHeight: 600 };
+  let view = { windowEnd: 20 };
   let app = {
-    _state: { selectedSessionID: 's1', sessionPagingByID: {} },
+    _state: {
+      selectedSessionID: 's1',
+      sessionPagingByID: { s1: { hasMoreNewer: false } },
+      framesBySessionID: { s1: Array.from({ length: 20 }, (_value, index) => ({ id: `m${index}` })) },
+    },
     _frameListAnchoredToBottom: false,
-    querySelector(selector) { return selector === '.kikx-frame-list' ? list : null; },
+    querySelector(selector) {
+      if (selector === '.kikx-frame-list')
+        return list;
+      if (selector === '.kikx-thread__body kikx-chat-view')
+        return view;
+      return null;
+    },
   };
   setScrollLockedForSession(app, false, 's1');
 

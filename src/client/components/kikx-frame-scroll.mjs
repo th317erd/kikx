@@ -318,6 +318,11 @@ function syncFrameThreadBody(app, sessionID, options) {
       app._lockedPlacementSessionID = sessionID;
     app._frameListAnchoredToBottom = false;
     scheduleLatestMessageTop(app, { animate: !initialPlacement });
+  } else if (result.insertedNew && !locked && view.windowEnd < frames.length) {
+    // Unlocked mode must not scroll, but the new frame cannot be left outside
+    // the rendered window forever. Grow the window end below the viewport; the
+    // current frame stays fixed and the user can scroll down to the new content.
+    view.expandNewerFrames();
   }
 
   if (!locked)

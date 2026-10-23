@@ -269,6 +269,15 @@ export function armScrollLockRearm(app) {
     if (!frameList || !isNearBottom(frameList) || isScrollLockedForSession(app, sessionID))
       return;
 
+    // Only pin when the rendered window actually reaches the loaded tail and
+    // no newer page is waiting. Otherwise the bottom of an older window is not
+    // the bottom of the conversation, and switching windows here would jump.
+    let paging = getSessionPaging(app._state, sessionID);
+    let view = app.querySelector('.kikx-thread__body kikx-chat-view');
+    let loadedFrames = app._state.framesBySessionID?.[sessionID]?.length || 0;
+    if (paging.hasMoreNewer === true || !view || view.windowEnd < loadedFrames)
+      return;
+
     setScrollLockedForSession(app, true, sessionID);
     setScrollLockModeForSession(app, 'bottom', sessionID);
     paintScrollLockButton(app, sessionID, true);
