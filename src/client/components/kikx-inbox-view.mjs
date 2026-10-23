@@ -24,7 +24,7 @@ import {
   navigateInbox,
 } from '../state/kikx-state.mjs';
 import { announceAnswerStatus } from './answer-notice.mjs';
-import { buildInboxList, inboxHeader, syncInboxList } from './kikx-inbox-list.mjs';
+import { buildInboxList, inboxEmptyState, inboxHeader, syncInboxList } from './kikx-inbox-list.mjs';
 import {
   applyLocalAnswer,
   applyLocalDismiss,
@@ -33,12 +33,14 @@ import {
 import { answerDraftStore } from '../state/question-drafts.mjs';
 import {
   canSubmitAnswer,
+  expiredSettledQuestions,
   groupHeading,
   groupQuestions,
   NO_RESPONSE_ANSWER_TEXT,
   normalizeAnswerText,
   normalizeQuestionList,
   questionAge,
+  retireQuestion,
   unreadQuestionCount,
 } from '../state/questions-state.mjs';
 
@@ -94,6 +96,33 @@ export function buildInboxSidebarEntry(app) {
  * in-place repaint creates cards for questions that arrived after the original
  * render, and those cards need the same wiring or they render a dead box.
  */
+// How long a settled row stays on screen, counting down, before it leaves.
+// One constant, used both to drive the fuse and to decide expiry, so the two can
+// never disagree about when the receipt ends.
+export const SETTLE_WINDOW_MS = 60000;
+
+/**
+ * Drop every settled row whose receipt window has elapsed.
+ *
+ * Idempotent and cheap: it reads deadlines out of the data rather than relying
+ * on one timer per row, so it is safe to call from a repaint, an event or a
+ * tick. Expiry is therefore decided by the deadline, never by whether a timer
+ * happened to survive a rebuild.
+ */
+export function retireExpiredQuestionRows(app) {
+  let questionsState = getQuestionsState(app._state);
+  let expired = expiredSettledQuestions(questionsState.questions || []);
+  if (expired.length === 0)
+    return [];
+
+  let remaining = questionsState.questions || [];
+  for (let questionID of expired)
+    remaining = retireQuestion(remaining, questionID);
+
+  questionsState.questions = remaining;
+  return expired;
+}
+
 export function questionAnswerHandlers(app, overrides = {}) {
   return {
     onSubmit: (questionID, answerText) => app._submitQuestionAnswer?.(questionID, answerText),
@@ -101,6 +130,14 @@ export function questionAnswerHandlers(app, overrides = {}) {
     // The user declining to answer. Distinct from `onDismiss` above, which is the
     // asker withdrawing its own question.
     onDismissAnswer: (questionID) => app._dismissQuestionAnswer?.(questionID),
+    // The receipt's fuse ran out, or the user pressed it to close now. Either
+    // way the row has had its full window and leaves.
+    onSettleExpired: (questionID) => {
+      let questionsState = getQuestionsState(app._state);
+      questionsState.questions = retireQuestion(questionsState.questions || [], questionID);
+      if (!app._syncQuestionShell?.())
+        app._requestRender?.();
+    },
     onRead: (questionID) => app._markQuestionRead?.(questionID),
     // Typed-but-unsent answers, restored whenever a card is re-created. Held on
     // the app so every route that rebuilds the Inbox (shell render, view sync,
@@ -132,7 +169,7 @@ export function buildInboxView(app, options = {}) {
 
     return section.class('kikx-inbox')(
       inboxHeader(app),
-      questions.length === 0 ? buildInboxEmptyState() : body,
+      questions.length === 0 ? inboxEmptyState(app) : body,
     ).build(document);
   }, { surface: 'inbox' }) || section.class('kikx-inbox')(h2('Inbox')).build(document);
 }
@@ -263,6 +300,8 @@ export function syncQuestionShell(app) {
   // caller used to rebuild. `syncInboxList` preserves those drafts and reports
   // `false` when the shape changed in a way that genuinely needs a rebuild
   // (empty <-> non-empty).
+  retireExpiredQuestionRows(app);
+
   return syncInboxList(app, questionAnswerHandlers(app));
 }
 
@@ -294,7 +333,12 @@ export async function submitQuestionAnswer(app, questionID, answerText, options 
     // arrives. The closed id is also recorded so a `fetchQuestions` that was
     // already in flight cannot re-list the question as open.
     let questionsState = getQuestionsState(app._state);
-    applyLocalAnswer(questionsState, questionID, { answeredAt: payload?.answeredAt });
+    applyLocalAnswer(questionsState, questionID, {
+      answeredAt: payload?.answeredAt,
+      // Kept on screen, counting down, instead of vanishing: an answer that
+      // simply disappears gives the user no confirmation their click landed.
+      settleAfter: SETTLE_WINDOW_MS,
+    });
 
     // Repaint in place when possible; only fall back to a full render when the
     // list shape changed (a rebuild there is unavoidable, and by then this row
@@ -374,7 +418,12 @@ export async function dismissQuestionAnswer(app, questionID, options = {}) {
 
     let payload = result?.data || result || {};
     let questionsState = getQuestionsState(app._state);
-    applyLocalAnswer(questionsState, questionID, { answeredAt: payload?.answeredAt });
+    applyLocalAnswer(questionsState, questionID, {
+      answeredAt: payload?.answeredAt,
+      // Kept on screen, counting down, instead of vanishing: an answer that
+      // simply disappears gives the user no confirmation their click landed.
+      settleAfter: SETTLE_WINDOW_MS,
+    });
 
     if (!app._syncQuestionShell?.())
       app._requestRender?.();
@@ -430,7 +479,7 @@ export async function dismissQuestion(app, questionID, reason = '') {
   }
 
   let questionsState = getQuestionsState(app._state);
-  applyLocalDismiss(questionsState, questionID);
+  applyLocalDismiss(questionsState, questionID, { settleAfter: SETTLE_WINDOW_MS });
 
   if (!app._syncQuestionShell?.())
     app._requestRender?.();

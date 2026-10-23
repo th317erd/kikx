@@ -76,6 +76,12 @@ export function normalizeQuestionSummary(value) {
     readAt: value.readAt || null,
     contextRefs: normalizeContextRefs(value.contextRefs),
     deleted: value.deleted === true,
+    // When this tab settled the row (answered or dismissed). Absent for a
+    // terminal question learned about from the server, which never gets a
+    // retention window — only an action the user JUST took deserves a receipt.
+    closedAt: numberOr(value.closedAt, 0),
+    // How long this row lingers after closing. 0 means "no receipt".
+    settleAfter: numberOr(value.settleAfter, 0),
   };
 }
 
@@ -187,6 +193,88 @@ export function upsertQuestion(questions = [], update) {
     byID.delete(question.id);
 
   return sortQuestions([ ...byID.values() ]);
+}
+
+/**
+ * Keep a question the user just settled, marked terminal, so the Inbox can show
+ * a receipt for a moment instead of the row vanishing.
+ *
+ * This replaces the old "delete the row immediately" behaviour. The row must
+ * stay in the model to be rendered at all, so the settlement is expressed as
+ * state (a terminal status plus a deadline) rather than absence. `retireQuestion`
+ * is what finally removes it.
+ */
+export function settleQuestion(questions = [], questionID, options = {}) {
+  let id = stringOrNull(questionID);
+  if (!id)
+    return sortQuestions(normalizeQuestionList(questions));
+
+  let status = QUESTION_TERMINAL_STATUSES.includes(options.status) ? options.status : 'answered';
+  let answer = stringOrNull(options.answer);
+  let closedAt = numberOr(options.closedAt, Date.now());
+  let settleAfter = numberOr(options.settleAfter, 0);
+
+  // No window means no receipt: remove the row, exactly as closing used to.
+  // Retention is opt-in by the caller that actually renders a receipt, so a
+  // caller with nothing to show never leaves a terminal row in the model.
+  if (settleAfter <= 0)
+    return removeQuestion(questions, id);
+
+  return sortQuestions(normalizeQuestionList(questions).map((question) => (
+    question.id === id
+      ? { ...question, status, answer: answer ?? question.answer, closedAt, settleAfter }
+      : question
+  )));
+}
+
+/** Remove a settled row outright, once its receipt has run out. */
+export function retireQuestion(questions = [], questionID) {
+  return removeQuestion(questions, questionID);
+}
+
+/**
+ * Settled rows whose receipt window has elapsed, oldest deadline first.
+ *
+ * Pulled out as a pure predicate so the expiry rule is testable without a
+ * clock, a DOM or a timer: the caller passes `now`.
+ */
+export function expiredSettledQuestions(questions = [], now = Date.now()) {
+  let expired = [];
+  for (let question of normalizeQuestionList(questions)) {
+    if (!isTerminalQuestion(question))
+      continue;
+    if (!question.closedAt || !question.settleAfter)
+      continue;
+    if (now >= question.closedAt + question.settleAfter)
+      expired.push(question.id);
+  }
+
+  return expired;
+}
+
+/**
+ * A row that is settled but still inside its receipt window.
+ *
+ * Such a row is terminal AND visible — the one state the old model could not
+ * express, because closing a question deleted it outright. Retention is decided
+ * by the data (a deadline), not by a timer held in the view, so a repaint can
+ * never resurrect or lose a receipt.
+ */
+export function isSettledPendingRetirement(question) {
+  return isTerminalQuestion(question)
+    && numberOr(question?.closedAt, 0) > 0
+    && numberOr(question?.settleAfter, 0) > 0;
+}
+
+/** Should this row appear in the Inbox at all? */
+export function isVisibleInboxQuestion(question, now = Date.now()) {
+  if (isOpenQuestion(question))
+    return true;
+
+  if (!isSettledPendingRetirement(question))
+    return false;
+
+  return now < question.closedAt + question.settleAfter;
 }
 
 export function removeQuestion(questions = [], questionID) {

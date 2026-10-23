@@ -262,6 +262,45 @@
   font-style: italic;
 }
 
+/* --- Settled receipt ----------------------------------------------------
+
+   A row the user just answered or dismissed stays on screen for its window
+   instead of vanishing, so the click has a visible outcome. It is not open any
+   more: it is muted, it offers no box, and the accent is the Answer blue rather
+   than the dismiss orange because the interaction is finished, not pending.
+
+   The left rule is what makes it read as "already dealt with" against the
+   neighbouring cards that are still awaiting an answer. */
+.kikx-question-card[data-question-settled="true"] {
+  border-left: 3px solid #2f81f7;
+  opacity: 0.85;
+}
+
+.kikx-question-card[data-question-settled="true"][data-question-status="dismissed"] {
+  border-left-color: #f97316;
+}
+
+.kikx-question-card[data-question-settled="true"] .kikx-question-card__closed {
+  color: #2f81f7;
+  font-style: normal;
+}
+
+.kikx-question-card[data-question-settled="true"][data-question-status="dismissed"] .kikx-question-card__closed {
+  color: #f97316;
+}
+
+/* The countdown close. Same box as the dismiss close it replaces, so the row
+   does not shift when it settles — only the ring's meaning changes, from "hold
+   to dismiss" to "time remaining". */
+.kikx-question-card__dismiss-close--settle {
+  --apb-fill: #2f81f7;
+  --apb-icon: #6b7684;
+}
+
+.kikx-question-card[data-question-status="dismissed"] .kikx-question-card__dismiss-close--settle {
+  --apb-fill: #f97316;
+}
+
 /* --- Answer controls ---------------------------------------------------- */
 
 /* The three answer surfaces — the real Inbox card, the fallback Inbox card and

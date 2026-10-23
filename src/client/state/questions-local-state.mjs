@@ -16,7 +16,7 @@
 
 import {
   openQuestionCount,
-  removeQuestion,
+  settleQuestion,
   normalizeQuestionList,
   rememberClosedQuestionID,
 } from './questions-state.mjs';
@@ -45,7 +45,15 @@ export function applyLocalAnswer(state, questionID, options = {}) {
     return state;
 
   rememberClosedQuestionID(state, id);
-  state.questions = removeQuestion(state.questions || [], id);
+  // Kept, not deleted: the row stays on screen as a receipt and its close
+  // control runs a countdown. `openQuestionCount` ignores terminal rows, so the
+  // badge and header count drop immediately either way.
+  state.questions = settleQuestion(state.questions || [], id, {
+    status: 'answered',
+    answer: options.answer,
+    closedAt: Date.now(),
+    settleAfter: numberOr(options.settleAfter, 0),
+  });
   state.counts = { ...(state.counts || {}), open: openQuestionCount(state.questions) };
 
   let answeredAt = numberOr(options.answeredAt, 0);
@@ -56,7 +64,7 @@ export function applyLocalAnswer(state, questionID, options = {}) {
 }
 
 /** Drop a question this tab just dismissed and remember it as closed. */
-export function applyLocalDismiss(state, questionID) {
+export function applyLocalDismiss(state, questionID, options = {}) {
   if (!state || typeof state !== 'object')
     return state;
 
@@ -65,7 +73,11 @@ export function applyLocalDismiss(state, questionID) {
     return state;
 
   rememberClosedQuestionID(state, id);
-  state.questions = removeQuestion(state.questions || [], id);
+  state.questions = settleQuestion(state.questions || [], id, {
+    status: 'dismissed',
+    closedAt: Date.now(),
+    settleAfter: numberOr(options.settleAfter, 0),
+  });
   state.counts = { ...(state.counts || {}), open: openQuestionCount(state.questions) };
 
   return state;

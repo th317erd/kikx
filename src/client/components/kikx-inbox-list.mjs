@@ -15,7 +15,8 @@ import { elements } from '../lib/aeor-ui.mjs';
 import {
   groupHeading,
   groupQuestions,
-  isQuestionClosedLocally,
+  isOpenQuestion,
+  isVisibleInboxQuestion,
   normalizeQuestionList,
   openQuestionCount,
 } from '../state/questions-state.mjs';
@@ -148,7 +149,10 @@ export function buildInboxList(app, handlers = {}) {
   if (!ownerDocument)
     return null;
 
-  let questions = readQuestions(app);
+  // Settled rows stay on screen for their receipt window, so this is not
+  // "everything in the model" — it is the visibility rule, shared with the
+  // in-place reconciler below so a full render and a sync agree.
+  let questions = readQuestions(app).filter((question) => isVisibleInboxQuestion(question));
   if (questions.length === 0)
     return inboxEmptyState(app);
 
@@ -214,21 +218,57 @@ function setHeaderCount(app, count) {
  * intact, because untouched cards were never re-created.
  */
 export function syncInboxList(app, handlers = {}) {
-  let list = app.querySelector?.(`.${LIST_CLASS}`);
   let inbox = app.querySelector?.('.kikx-inbox');
-  if (!list || !inbox)
+  if (!inbox)
     return false;
 
-  let questionsState = readQuestionsState(app);
-  let questions = normalizeQuestionList(readQuestions(app)).filter((question) => (
-    !questionsState || !isQuestionClosedLocally(questionsState, question.id)
-  ));
+  let list = app.querySelector?.(`.${LIST_CLASS}`);
+  let empty = app.querySelector?.(`.${EMPTY_CLASS}`);
 
-  // Empty <-> non-empty changes the top-level node, which this function
-  // deliberately does not attempt: the caller rebuilds so the empty state and
-  // the list cannot both be present.
+  let questionsState = readQuestionsState(app);
+  // A settled row is terminal but must remain visible until its receipt window
+  // closes. Filtering on "locally closed" alone removed it the instant it was
+  // answered, which is exactly the vanish-without-feedback behaviour the receipt
+  // exists to prevent.
+  let questions = normalizeQuestionList(readQuestions(app))
+    .filter((question) => isVisibleInboxQuestion(question));
+
+  // Nothing open: swap the list for the empty state in place. This is the
+  // "answered the last question" case, and it used to return `false` so the
+  // caller rebuilt the whole shell -- replacing every node on screen, including
+  // the answer box and caret in a sibling card -- purely to show an empty state
+  // this module can render itself.
+  if (questions.length === 0) {
+    if (!list)
+      return true; // the empty state is already what is on screen
+
+    let replacement = inboxEmptyState(app);
+    if (!replacement || !list.parentNode)
+      return false;
+
+    list.parentNode.replaceChild(replacement, list);
+    setHeaderCount(app, 0);
+    return true;
+  }
+
+  // Questions to show, but the previous render drew the empty state: build the
+  // list and swap it in. This is "the first question arrives while the Inbox is
+  // open", which used to force a full rebuild for the same reason.
+  if (!list) {
+    if (!empty || !empty.parentNode)
+      return false;
+
+    let fresh = buildInboxList(app, handlers);
+    if (!fresh)
+      return false;
+
+    empty.parentNode.replaceChild(fresh, empty);
+    setHeaderCount(app, questions.length);
+    return true;
+  }
+
   let rendered = [ ...list.querySelectorAll(`.${CARD_CLASS}`) ];
-  if (questions.length === 0 || rendered.length === 0)
+  if (rendered.length === 0)
     return false;
 
   let wanted = new Set(questions.map((question) => question.id));
@@ -252,6 +292,51 @@ export function syncInboxList(app, handlers = {}) {
       .map((card) => card.getAttribute('data-question-id'))
       .filter(Boolean),
   );
+
+  // Repaint a card whose OWN state changed, without touching its neighbours.
+  //
+  // This is what makes the receipt appear: the row was rendered while the
+  // question was open, and the answer form has to become "You replied." plus a
+  // countdown. Rebuilding the whole card is safe here precisely because the row
+  // is no longer interactive — a card still awaiting an answer keeps its node (and
+  // therefore its caret and its draft), and its state only changes when it stops
+  // being interactive.
+  let byID = new Map(questions.map((question) => [ question.id, question ]));
+  for (let card of [ ...list.querySelectorAll(`.${CARD_CLASS}`) ]) {
+    let questionID = card.getAttribute('data-question-id');
+    let question = questionID ? byID.get(questionID) : null;
+    if (!question)
+      continue;
+
+    let renderedStatus = card.getAttribute('data-question-status') || '';
+    let renderingStatus = question.status || '';
+    let renderedSettled = card.getAttribute('data-question-settled') === 'true';
+    let renderingSettled = isVisibleInboxQuestion(question) && !isOpenQuestion(question);
+
+    // Comparing the STATUS specifically: an answered row and a dismissed row are
+    // both terminal but must not be mistaken for each other, and an open row that
+    // merely got a new readAt must NOT be rebuilt (that would eat the caret).
+    if (renderedStatus === renderingStatus && renderedSettled === renderingSettled)
+      continue;
+    if (!renderingSettled)
+      continue;
+
+    let fresh = renderQuestionCard(app, question, { now: Date.now(), groupCount: questions.length });
+    if (!fresh)
+      continue;
+
+    bindAnswerForm(fresh, handlers);
+
+    let row = card;
+    while (row && row.parentNode && !row.classList?.contains(ROW_CLASS))
+      row = row.parentNode;
+
+    let replacement = row && row !== card
+      ? li.class(ROW_CLASS)(fresh).build(resolveDocument(app))
+      : fresh;
+
+    (row?.parentNode || list).replaceChild(replacement, row || card);
+  }
 
   // Append rows that appeared after this list was rendered. Ordering is not
   // repaired here: new questions carry the newest `askedAt`, so appending is
