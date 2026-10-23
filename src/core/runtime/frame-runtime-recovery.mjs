@@ -99,7 +99,7 @@ function truncateCommand(command, limit) {
 export function createRecoveredAgentResponseFrame(frame, options = {}) {
   let now = options.clock?.() || Date.now();
   let text = options.message
-    || 'Kikx recovered this agent response after a server restart or interrupted provider stream. The original response did not complete. The working tree may contain uncommitted changes from your interrupted turn; inspect the current state before repeating work.';
+    || 'Kikx recovered this agent response after a server restart or interrupted provider stream. The original response did not complete. Some in-flight tools may not have completed fully. Please double-check what you think you know before repeating work.';
   return {
     ...frame,
     hidden: false,

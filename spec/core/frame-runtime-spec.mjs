@@ -364,7 +364,9 @@ test('FrameRuntime recovers stale streaming agent responses and running tool cal
   assert.equal(agentFrame.content.status, 'error');
   assert.equal(agentFrame.content.error.recovered, true);
   assert.match(agentFrame.content.text, /recovered this agent response/);
-  assert.match(agentFrame.content.text, /uncommitted changes from your interrupted turn/);
+  assert.match(agentFrame.content.text, /Some in-flight tools may not have completed fully/);
+  assert.match(agentFrame.content.text, /double-check what you think you know/);
+  assert.doesNotMatch(agentFrame.content.text, /uncommitted|working tree|HEAD|dirty paths/i);
   assert.equal(toolFrame.content.status, 'failed');
   assert.equal(toolFrame.state.status, 'failed');
   assert.equal(toolFrame.content.error.recovered, true);
