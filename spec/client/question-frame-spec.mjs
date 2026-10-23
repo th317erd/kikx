@@ -419,3 +419,95 @@ test('a frame send that throws is reported rather than swallowed', async () => {
   let hint = byClass(el, 'kikx-question-frame__hint')[0];
   assert.match(textOf(hint), /network down/);
 });
+
+// --- the answer block appears exactly once ---------------------------------
+//
+// Reported from a screenshot: after answering, the same answer was rendered
+// TWICE inside one question card, both labelled "Your answer", with identical
+// text.
+//
+// The card has two independent ways to paint an answer block, and until now
+// they were not aware of each other:
+//
+//   _render()   paints one through `_answeredBlock()` as soon as
+//               `question.status !== 'open'`;
+//   _showSent() appends one when the POST resolves, removing the box and the
+//               actions first but NOT any block that was already there.
+//
+// The two are ordered by two different clocks — the socket and the request — so
+// whichever lands second wins the race to be the duplicate. When the
+// `question.updated` event arrives while the POST is still in flight, the
+// re-render paints the block, and then `_showSent()` appends a second copy of
+// the same sentence underneath it. Both orderings are pinned below, because
+// fixing only the one that was photographed would leave the mirror image of the
+// bug in place.
+
+test('an answer block painted by a re-render is not duplicated when the send resolves', async () => {
+  let release;
+  let el = mount(frameWith(), {
+    app: {
+      _submitQuestionAnswer() {
+        return new Promise((resolve) => { release = resolve; });
+      },
+    },
+  });
+
+  typeInto(el, 'Both! A strange breed of person.');
+  clickSubmit(el);
+
+  // The socket wins: the question is answered out from under the in-flight POST.
+  el.updateFrame(frameWith({ status: 'answered', answer: 'Both! A strange breed of person.' }), {});
+  assert.equal(
+    byClass(el, 'kikx-question-frame__answer-text').length,
+    1,
+    'the re-render paints exactly one answer block',
+  );
+
+  // ...and then the POST resolves, which is what appended the second copy.
+  release({ ok: true, delivered: true });
+  for (let i = 0; i < 8; i += 1)
+    await Promise.resolve();
+
+  assert.equal(
+    byClass(el, 'kikx-question-frame__answer-text').length,
+    1,
+    'the resolved send must not add a second answer block to one already on screen',
+  );
+  assert.equal(
+    byClass(el, 'kikx-question-frame__answer-label').length,
+    1,
+    'one "Your answer" label, not two',
+  );
+  assert.equal(
+    textOf(byClass(el, 'kikx-question-frame__answer-text')[0]),
+    'Both! A strange breed of person.',
+    'the surviving block holds the text the user typed',
+  );
+});
+
+test('a send that resolves before the re-render is not duplicated by that re-render', async () => {
+  let el = mount(frameWith(), { app: appSpy().app });
+
+  typeInto(el, 'Use PostgreSQL');
+  clickSubmit(el);
+
+  for (let i = 0; i < 8; i += 1)
+    await Promise.resolve();
+  assert.equal(
+    byClass(el, 'kikx-question-frame__answer-text').length,
+    1,
+    'the send paints the answer once',
+  );
+
+  // The other ordering: the socket arrives after the send already settled the
+  // row. The full re-render must replace what is there, not add to it.
+  el.updateFrame(frameWith({ status: 'answered', answer: 'Use PostgreSQL' }), {});
+
+  assert.equal(byClass(el, 'kikx-question-frame__card').length, 1, 'still exactly one card');
+  assert.equal(
+    byClass(el, 'kikx-question-frame__answer-text').length,
+    1,
+    'one answer block whichever clock lands first',
+  );
+  assert.equal(textOf(byClass(el, 'kikx-question-frame__answer-text')[0]), 'Use PostgreSQL');
+});

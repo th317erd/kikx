@@ -78,10 +78,7 @@ export class KikxQuestionFrame extends HTMLElement {
       return p.class('kikx-question-frame__answered')(note);
     }
 
-    return div.class('kikx-question-frame__answer-given')(
-      span.class('kikx-question-frame__answer-label')('Your answer'),
-      div.class('kikx-question-frame__answer-text')(answer),
-    );
+    return this._buildAnswerBlock(answer);
   }
 
   _render() {
@@ -225,6 +222,15 @@ export class KikxQuestionFrame extends HTMLElement {
   // Leaving an enabled "Answer sent" button next to a live textarea invited the
   // user to answer a question twice.
   _showSent(answerText) {
+    // A full re-render already paints the answer block as soon as the question
+    // reaches a terminal status, and the socket can deliver that status before
+    // this promise settles. When it does, appending here put a SECOND, identical
+    // "Your answer" block under the first one — the screenshot that prompted
+    // this fix. The render path always shows the answer the question document
+    // holds, so when a block is already on screen there is nothing left to add.
+    if (this._answeredBlockNode())
+      return;
+
     let card = this.querySelector?.('.kikx-question-frame__card');
     if (!card)
       return;
@@ -236,12 +242,25 @@ export class KikxQuestionFrame extends HTMLElement {
         stale.parentNode.removeChild(stale);
     }
 
-    let block = div.class('kikx-question-frame__answer-given')(
+    card.appendChild(this._buildAnswerBlock(answerText));
+  }
+
+  // The answer block is built in two places — `_answeredBlock()` for a question
+  // that is already terminal, and `_showSent()` for one this tab just sent — so
+  // it is built once and shared. Two hand-rolled copies is how the same sentence
+  // ended up painted twice.
+  _buildAnswerBlock(answerText) {
+    return div.class('kikx-question-frame__answer-given')(
       span.class('kikx-question-frame__answer-label')('Your answer'),
       div.class('kikx-question-frame__answer-text')(answerText),
     ).build(document);
+  }
 
-    card.appendChild(block);
+  // Whether this frame is already showing an answer block. Scoped to its own
+  // subtree: one frame is one question, and a neighbouring card must never make
+  // this one believe it is already answered.
+  _answeredBlockNode() {
+    return this.querySelector?.('.kikx-question-frame__answer-text') || null;
   }
 
   // One phase setter for three states: idle, busy, error/sent. The attribute is
