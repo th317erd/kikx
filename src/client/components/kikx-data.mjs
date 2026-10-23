@@ -405,6 +405,23 @@ export async function loadNewerFrames(app, sessionID = app._state.selectedSessio
   }
 }
 
+export async function cancelAgents(app, target = null) {
+  let sessionID = app?._state?.selectedSessionID;
+  if (!sessionID)
+    return null;
+
+  let result = await postJSON(app, `/api/v1/sessions/${encodeURIComponent(sessionID)}/cancel`, {
+    target: typeof target === 'string' && target.trim() !== '' ? target.trim() : null,
+  });
+  let count = result?.data?.count || 0;
+  app._state.status = count > 0
+    ? `Cancellation requested for ${count} active agent${count === 1 ? '' : 's'}`
+    : 'No active agent runs';
+  app._state.statusKind = count > 0 ? 'pending' : 'ready';
+  app._requestRender?.();
+  return result?.data || null;
+}
+
 export async function loadTokenUsage(app) {
   try {
     let result = await getJSON(app, '/api/v1/tokens');

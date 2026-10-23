@@ -1,7 +1,8 @@
 'use strict';
 
-import { getSelectedFrames, upsertSession } from '../state/kikx-state.mjs';
+import { getSelectedFrames, upsertFrame, upsertSession } from '../state/kikx-state.mjs';
 import { shouldSubmitComposerKey } from './composer-keyboard.mjs';
+import { ensureAutoScrollAfterSend } from './kikx-frame-scroll-lock.mjs';
 import {
   composerCaretAllowsHistory,
   composerHistoryEntriesFromFrames,
@@ -35,15 +36,21 @@ export async function onSubmit(app, event) {
   clearComposerDraft(app);
 
   try {
-    let result = await app._postJSON(`/api/v1/sessions/${encodeURIComponent(app._state.selectedSessionID)}/messages`, {
+    let sessionID = app._state.selectedSessionID;
+    let result = await app._postJSON(`/api/v1/sessions/${encodeURIComponent(sessionID)}/messages`, {
       text: draft,
       authorDisplayName: app._state.account?.name || null,
     });
     upsertSession(result.data.session, app._state);
+    // Do not wait for the reload window or the SSE echo to discover our own
+    // message. Put it into state now so the render can include it immediately.
+    if (result.data.frame?.id)
+      upsertFrame(sessionID, result.data.frame, app._state);
+    ensureAutoScrollAfterSend(app);
     recordComposerHistoryEntry(app._composerHistory, draft);
     app._forceScrollToBottomAfterRender = true;
     app._focusComposerAfterRender = true;
-    await app._loadFrames(app._state.selectedSessionID, { render: false, merge: true });
+    await app._loadFrames(sessionID, { render: false, merge: true });
     app._state.status = 'Message committed';
     app._state.statusKind = 'ready';
     app._render();

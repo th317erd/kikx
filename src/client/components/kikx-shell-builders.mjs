@@ -491,17 +491,32 @@ export function buildThreadSection(app, sessionID) {
     div.class('kikx-thread__body')(
       buildFrameThread(app),
     ),
-    thinkingRack,
+    div.class('kikx-thinking-dock')(
+      thinkingRack,
+    ),
     form.class('kikx-composer').onSubmit(app._onSubmit)(
       label.class('kikx-composer__label')('Message'),
-      textarea
-        .name('message')
-        .placeholder(hasSelectedSession ? 'Send a message' : 'Create or select a session first')
-        .disabled(!hasSelectedSession)
-        .onKeydown(app._onComposerKeydown)
-        .onInput(app._syncDraft)(app._state.draft),
-      div.class('kikx-composer__actions')(
-        button.type('submit').class('kikx-send-button').disabled(!hasSelectedSession)('Send'),
+      div.class('kikx-composer__input-row')(
+        textarea
+          .name('message')
+          .placeholder(hasSelectedSession ? 'Send a message' : 'Create or select a session first')
+          .disabled(!hasSelectedSession)
+          .onKeydown(app._onComposerKeydown)
+          .onInput(app._syncDraft)(app._state.draft),
+        div.class('kikx-composer__actions')(
+          button
+            .type('submit')
+            .class('kikx-send-button')
+            .title('Send message (Enter). Shift+Enter inserts a new line.')
+            .ariaLabel('Send message')
+            .disabled(!hasSelectedSession)('Send (Enter)'),
+          button
+            .type('button')
+            .class('kikx-stop-button')
+            .title('Cancel all active agents in this session')
+            .ariaLabel('Stop all active agents')
+            .onClick(() => app._cancelAgents?.())( 'STOP'),
+        ),
       ),
     ),
   );

@@ -321,6 +321,10 @@ kikx-app {
   background: #12161a;
 }
 
+.kikx-thread {
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+}
+
 .kikx-thread__body {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
@@ -333,11 +337,19 @@ kikx-app {
   padding: 0 18px 18px;
 }
 
+.kikx-composer__input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 10px;
+}
+
 .kikx-composer__actions {
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 8px;
 }
 
 .kikx-icon-button,
@@ -379,6 +391,34 @@ kikx-app {
 .kikx-composer textarea:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.kikx-composer__actions .kikx-send-button,
+.kikx-stop-button {
+  min-width: 88px;
+}
+
+.kikx-stop-button {
+  min-height: 44px;
+  border: 2px solid #7f1d1d;
+  border-radius: 6px;
+  background: #b91c1c;
+  color: #fff;
+  font: inherit;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.kikx-stop-button:hover,
+.kikx-stop-button:focus-visible {
+  border-color: #ff6b6b;
+  background: #dc2626;
+  outline: none;
+}
+
+.kikx-stop-button:active {
+  background: #991b1b;
 }
 
 .kikx-thread__empty {
@@ -1648,7 +1688,7 @@ kikx-typing-indicator {
 }
 
 .kikx-composer textarea {
-  min-height: 96px;
+  min-height: 80px;
   resize: vertical;
   border: 1px solid #3b434b;
   border-radius: 6px;
@@ -2537,6 +2577,20 @@ button.kikx-window__title:focus-visible {
 /* --- Pinned per-agent thinking rack (lower-left participant space) ---
    Replaces the old inline thinking/streaming bubble: a brain icon per thinking
    agent that giggles while it thinks and reveals the live thinking text on hover. */
+/* Permanent thinking dock: its height is reserved even when no agent is
+   thinking, so a brain appearing/disappearing never resizes the thread. */
+.kikx-thinking-dock {
+  display: flex;
+  min-height: 54px;
+  padding: 0 18px 8px;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.kikx-thinking-dock kikx-thinking-rack {
+  padding: 0;
+}
+
 kikx-thinking-rack {
   display: flex;
   flex-direction: row;

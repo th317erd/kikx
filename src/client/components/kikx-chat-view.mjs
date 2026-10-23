@@ -249,24 +249,28 @@ export class KikxChatView extends HTMLElement {
     if (this._windowEnd >= this._frames.length)
       return false;
 
-    let currentLength = Math.max(0, this._windowEnd - this._windowStart);
-    let maxRendered = Math.min(MAX_TOTAL_RENDERED_FRAMES, currentLength + amount);
-    if (maxRendered <= currentLength)
+    let stream = this.frameStream;
+    if (!stream) {
+      this._render();
+      return false;
+    }
+
+    let nextEnd = Math.min(
+      this._frames.length,
+      this._windowEnd + amount,
+      this._windowStart + MAX_TOTAL_RENDERED_FRAMES,
+    );
+    if (nextEnd <= this._windowEnd)
       return false;
 
-    let list = this.frameList;
-    let anchor = captureFrameListAnchor(list);
-    // Keep the start fixed: append newer frames below the current viewport. No
-    // scrollTop correction and no visual shift are needed.
-    this.syncFrames(this._frames, this._appState, {
-      windowStart: this._windowStart,
-      maxRendered,
-      animate: false,
-    });
-    if (list) {
-      this._markProgrammaticScroll();
-      restoreFrameListAnchor(list, anchor);
-    }
+    // Append only the newly revealed frames. Do NOT re-render the existing
+    // window: an unrelated off-screen message finishing its Markdown can change
+    // height above the viewport, and re-rendering it here forced a multi-thousand
+    // pixel scrollTop correction (the recorded jump-back).
+    for (let frame of this._frames.slice(this._windowEnd, nextEnd))
+      stream.appendChild(this._createFrameItem(frame));
+
+    this._windowEnd = nextEnd;
     return true;
   }
 

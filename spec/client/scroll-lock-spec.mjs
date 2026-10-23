@@ -30,7 +30,7 @@ const {
   setScrollLockedForSession,
   setScrollLockModeForSession,
 } = await import('../../src/client/components/kikx-scroll-lock.mjs');
-const { armScrollLockRearm, scrollToLatestMessageTop } = await import('../../src/client/components/kikx-frame-scroll-lock.mjs');
+const { armScrollLockRearm, ensureAutoScrollAfterSend, scrollToLatestMessageTop } = await import('../../src/client/components/kikx-frame-scroll-lock.mjs');
 const { maybeLoadOlderFrames } = await import('../../src/client/components/kikx-frame-scroll.mjs');
 const { setAnimationFrameScheduler } = await import('../../src/client/components/kikx-app-helpers.mjs');
 
@@ -209,4 +209,21 @@ test('bottom-rest auto-pin engages in bottom mode without moving the viewport', 
   assert.equal(isScrollLockedForSession(app, 's1'), true);
   assert.equal(getScrollLockModeForSession(app, 's1'), 'bottom');
   assert.equal(app._frameListAnchoredToBottom, true);
+});
+
+test('sending while unlocked re-engages bottom follow without overriding a pin mode', () => {
+  resetStorage();
+  let app = {
+    _state: { selectedSessionID: 's1' },
+    querySelector() { return null; },
+  };
+
+  setScrollLockedForSession(app, false, 's1');
+  assert.equal(ensureAutoScrollAfterSend(app), true);
+  assert.equal(isScrollLockedForSession(app, 's1'), true);
+  assert.equal(getScrollLockModeForSession(app, 's1'), 'bottom');
+
+  setScrollLockModeForSession(app, 'top', 's1');
+  assert.equal(ensureAutoScrollAfterSend(app), false);
+  assert.equal(getScrollLockModeForSession(app, 's1'), 'top');
 });

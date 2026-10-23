@@ -97,12 +97,12 @@ export function renderMarkdownToElement(ownerDocument, input, options = {}) {
 }
 
 function renderBotContentFragment(ownerDocument, input) {
-  let template = ownerDocument.createElement('template');
-  template.innerHTML = String(input ?? '');
-  sanitizeRenderedNode(template.content);
-  renderMarkdownTextNodes(ownerDocument, template.content);
-  sanitizeRenderedNode(template.content);
-  return template.content.cloneNode(true);
+  // Parse the message as MARKDOWN, not as HTML first. A valid code span such as
+  // `<code>` used to be consumed by the browser's HTML parser as a real element,
+  // splitting the paragraph and leaving the remaining backticks raw. Markdown
+  // handles safe inline HTML itself; the resulting fragment is still sanitized
+  // by parseHTMLFragment().
+  return parseHTMLFragment(ownerDocument, markdownToHTML(String(input ?? '')));
 }
 
 function parseHTMLFragment(ownerDocument, html) {

@@ -486,6 +486,12 @@ function toolDescription(toolName, input, status = 'running', frame = null) {
       return processID ? `Search exec output ${processID}` : 'Search exec output';
     case 'exec-kill':
       return processID ? `Kill exec task ${processID}` : 'Kill exec task';
+    case 'exec-suspend':
+      return processID ? `Suspend exec task ${processID}` : 'Suspend exec task';
+    case 'exec-resume':
+      return processID ? `Resume exec task ${processID}` : 'Resume exec task';
+    case 'session-control':
+      return 'Session control';
     case 'database-search':
       return query ? `Search database for ${query}` : 'Search database';
     case 'database-fetch':

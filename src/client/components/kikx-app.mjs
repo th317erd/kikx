@@ -58,6 +58,7 @@ import {
 } from './kikx-modals.mjs';
 import {
   apiHeaders,
+  cancelAgents,
   deleteJSON,
   deleteSession,
   getJSON,
@@ -289,6 +290,7 @@ export class KikxApp extends HTMLElement {
     this._loadAgents = async () => loadAgents(this);
     this._loadTeams = async () => loadTeams(this);
     this._loadClientComponents = async () => loadClientComponents(this);
+    this._cancelAgents = (target = null) => cancelAgents(this, target);
     this._loadFrames = async (sessionID, options = {}) => loadFrames(this, sessionID, options);
     this._loadFramesAtMessage = async (sessionID, frameID, options = {}) => loadFramesAtMessage(this, sessionID, frameID, options);
     this._loadOlderFrames = async (sessionID = this._state.selectedSessionID) => loadOlderFrames(this, sessionID);

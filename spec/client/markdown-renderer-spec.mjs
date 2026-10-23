@@ -3,7 +3,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { markdownToHTML } from '../../src/client/lib/markdown-renderer.mjs';
+import { installDom } from './support/mini-dom.mjs';
+
+import { markdownToHTML, renderMarkdownToElement } from '../../src/client/lib/markdown-renderer.mjs';
+
+const { document } = installDom();
 
 test('markdownToHTML renders plain text without paragraph tags', () => {
   let html = markdownToHTML('Hello **world**\nSecond line\n\nNext block');
@@ -74,4 +78,22 @@ test('markdownToHTML strips paragraph tags and escapes dangerous html', () => {
   assert.match(html, /<div class="kikx-markdown__text">Hello &lt;script&gt;alert\("x"\)&lt;\/script&gt;<\/div>/);
   assert.equal(html.includes('<p>'), false);
   assert.equal(html.includes('<script>'), false);
+});
+
+test('renderMarkdownToElement keeps html-looking text inside inline code as code', () => {
+  let element = renderMarkdownToElement(
+    document,
+    '`renderDescription` only builds a `<code>` when `codeText` is truthy; `codeText` is `data.code || \'\'`.',
+  );
+
+  let codes = [ ...element.querySelectorAll('code') ];
+  assert.deepEqual(codes.map((code) => code.textContent), [
+    'renderDescription',
+    '<code>',
+    'codeText',
+    'codeText',
+    'data.code || \'\'',
+  ]);
+  assert.equal(element.textContent.includes('`'), false);
+  assert.equal(element.querySelector('strong'), null);
 });

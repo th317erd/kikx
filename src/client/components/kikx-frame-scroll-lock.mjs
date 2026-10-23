@@ -254,6 +254,21 @@ export function breakScrollLockFromUser(app) {
   cancelScrollLockRearm(app);
 }
 
+// Sending your own message is an explicit intent to stay with the conversation
+// tail. If the user was already pinned, keep their mode; if unlocked, re-engage
+// bottom follow so the message and its reply do not drift out of view.
+export function ensureAutoScrollAfterSend(app) {
+  let sessionID = app._state.selectedSessionID;
+  if (!sessionID || isScrollLockedForSession(app, sessionID))
+    return false;
+
+  setScrollLockedForSession(app, true, sessionID);
+  setScrollLockModeForSession(app, 'bottom', sessionID);
+  paintScrollLockButton(app, sessionID, true);
+  cancelScrollLockRearm(app);
+  return true;
+}
+
 // Re-enable pinning only after the user deliberately rests at the bottom. This
 // engages in BOTTOM mode: it must not move the viewport (especially not to the
 // top of the newest message) at the moment the lock turns on.
