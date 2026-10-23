@@ -491,6 +491,38 @@ export class ReadFileUse extends ToolUse {
   }
 }
 
+// `question-list` is the read half of `ask-user`: it reports the questions
+// already pending in the session tree plus the `openDigest` that `ask-user`
+// requires before it will write. It was originally aliased onto `ReadFileUse`
+// so it would render *something*, but that is a lie in the UI (a question list
+// shown as "Reading file: undefined") — and, worse, `customElements.define()`
+// refuses to bind one constructor to two tag names, so the alias threw during
+// module evaluation and took every other frame component down with it.
+export class QuestionListUse extends ToolUse {
+  static toolName = 'question-list';
+
+  displayName() {
+    return 'List questions';
+  }
+
+  callSummary() {
+    let status = this.input.status || 'open';
+    return `Listing ${status} questions...`;
+  }
+
+  resultSummary() {
+    if (this.status === 'error')
+      return 'Listing questions failed.';
+
+    let result = this.content.result;
+    let count = Array.isArray(result?.questions) ? result.questions.length : null;
+    if (count === null)
+      return 'Listed questions.';
+
+    return count === 1 ? 'Listed 1 question.' : `Listed ${count} questions.`;
+  }
+}
+
 export class WriteFileUse extends ToolUse {
   static toolName = 'write-file';
 
