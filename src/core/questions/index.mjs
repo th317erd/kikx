@@ -39,7 +39,22 @@ export {
   recordDeliveryFailure,
 } from './question-maintenance.mjs';
 
-export { QuestionMaintenanceService } from './question-maintenance-service.mjs';
+export {
+  QUESTION_DEADLINE_KIND,
+  QUESTION_RETRY_KIND,
+  QUESTION_SCHEDULE_KINDS,
+  armQuestionDeadline,
+  armQuestionRetry,
+  armQuestionSchedule,
+  buildQuestionScheduleFrame,
+  cancelQuestionSchedule,
+  toScheduledAt,
+} from './question-deadline-schedule.mjs';
+
+export {
+  QuestionScheduleFramePlugin,
+  registerQuestionScheduleRouting,
+} from './question-schedule-plugin.mjs';
 
 export {
   QuestionAnswerService,

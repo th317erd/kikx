@@ -21,6 +21,7 @@
 // scheduling.
 
 import { patchQuestionFrameContent } from './question-frame-patch.mjs';
+import { cancelQuestionSchedule } from './question-deadline-schedule.mjs';
 import { isWakeSuppressed } from './question-fields.mjs';
 
 const ANSWER_AUTHOR_FALLBACK = 'user';
@@ -83,6 +84,21 @@ export class QuestionAnswerService {
     // this the stored `Question` frame stays frozen at `status:'open'` with no
     // answer, so every re-render of the thread put the empty form and its
     // Submit button back on a question that was already answered.
+    // The question is answered, so its pending default-answer deadline must die
+    // with it. Cancelling here is the primary guard against "the timer fired but
+    // the question was already answered": the queue re-reads the frame on
+    // dispatch and drops anything that is no longer `pending`. The fire-time
+    // plugin re-checks the status as well, because dispatch() awaits between
+    // choosing an entry and acting on it.
+    try {
+      await cancelQuestionSchedule({
+        frameRuntime: this.frameRuntime,
+        questionID: answered.id,
+      });
+    } catch (error) {
+      this.logger?.warn?.('ask-user: could not cancel the default-answer deadline', error?.message || error);
+    }
+
     await patchQuestionFrameContent({ frameRuntime: this.frameRuntime }, answered, {
       frameRuntime: this.frameRuntime,
     });

@@ -5,14 +5,17 @@ import test from 'node:test';
 
 import {
   DELIVERY_RETRY_DELAYS_MS,
-  QuestionMaintenanceService,
   QuestionsStore,
   applyDefaultAnswer,
+  armQuestionDeadline,
   buildAnswerPromptText,
+  buildQuestionScheduleFrame,
+  cancelQuestionSchedule,
   findDueDefaults,
   findRetryableDeliveries,
   markRedelivered,
   recordDeliveryFailure,
+  toScheduledAt,
 } from '../../../src/core/questions/index.mjs';
 
 const OPEN_INDEX = '/kikx/questions/index/open.json';
@@ -275,126 +278,219 @@ test('markRedelivered clears the retry schedule and restores answered', async ()
   assert.equal(again.redelivered, false, 'not redeliverable twice');
 });
 
-test('QuestionMaintenanceService applies due defaults and delivers them', async () => {
-  let db = createDB();
-  let store = createStore(db, [ 'group_1', 'q_1' ]);
-  let delivered = [];
 
-  let id = await askWithDefault(store, { timeoutSeconds: 60 });
+// --- Scheduled-frame deadline (replaces the deleted poller) ------------------
+//
+// The poller scanned every open question on an interval. These tests pin the
+// two properties that made it the wrong design, and the one conversion that
+// fails silently: `scheduledAt` is microseconds, `defaultDueAt` is milliseconds.
 
-  let service = new QuestionMaintenanceService({
-    questionsStore: store,
-    questionAnswerService: {
-      async deliverAnswer(question) {
-        delivered.push(question.id);
-        return { delivered: true, frameID: 'f_1' };
-      },
-    },
-    clock: () => T0 + 60_000,
-  });
+test('toScheduledAt converts milliseconds to the microseconds scheduledAt uses', () => {
+  let dueAt = 1_792_731_203_907;
 
-  let summary = await service.runOnce();
-
-  assert.deepEqual(summary.defaults.applied, [ id ]);
-  assert.deepEqual(delivered, [ id ], 'the default was delivered to the asking agent');
-});
-
-test('QuestionMaintenanceService retries an undeliverable answer and marks it redelivered', async () => {
-  let db = createDB();
-  let store = createStore(db, [ 'group_1', 'q_1' ]);
-
-  let id = await askWithDefault(store, { timeoutSeconds: 60 });
-  await store.answerQuestion(id, { answer: 'Postgres', userID: 'user_1' });
-  await recordDeliveryFailure(store, id, { reason: 'agent-unavailable', now: T0 });
-
-  let attempts = 0;
-  let service = new QuestionMaintenanceService({
-    questionsStore: store,
-    questionAnswerService: {
-      async deliverAnswer() {
-        attempts++;
-        return { delivered: true, frameID: 'f_2' };
-      },
-    },
-    clock: () => T0 + DELIVERY_RETRY_DELAYS_MS[0],
-  });
-
-  let summary = await service.runOnce();
-
-  assert.equal(attempts, 1);
-  assert.deepEqual(summary.retries.retried, [ id ]);
-  assert.equal((await store.getQuestion(id)).status, 'answered', 'delivered answers stop retrying');
-});
-
-test('QuestionMaintenanceService extends the backoff when delivery fails again', async () => {
-  let db = createDB();
-  let store = createStore(db, [ 'group_1', 'q_1' ]);
-
-  let id = await askWithDefault(store, { timeoutSeconds: 60 });
-  await store.answerQuestion(id, { answer: 'Postgres', userID: 'user_1' });
-  await recordDeliveryFailure(store, id, { reason: 'agent-unavailable', now: T0 });
-
-  let now = T0 + DELIVERY_RETRY_DELAYS_MS[0];
-  let service = new QuestionMaintenanceService({
-    questionsStore: store,
-    questionAnswerService: {
-      async deliverAnswer() {
-        return { delivered: false, reason: 'still-gone' };
-      },
-    },
-    clock: () => now,
-  });
-
-  let summary = await service.runOnce();
-
-  assert.deepEqual(summary.retries.failed, [ id ]);
-  let question = await store.getQuestion(id);
-  assert.equal(question.deliveryAttempts, 2, 'the attempt was counted');
   assert.equal(
-    question.nextDeliveryAt,
-    now + DELIVERY_RETRY_DELAYS_MS[1],
-    'the next attempt is scheduled further out',
+    toScheduledAt(dueAt),
+    dueAt * 1000,
+    'a millisecond deadline becomes microseconds, not the year 57,000',
+  );
+  // Guard the guard: the whole class of bug this function exists to prevent.
+  assert.ok(toScheduledAt(dueAt) > 1e15, 'the result is a genuine microsecond epoch');
+});
+
+test('toScheduledAt refuses to schedule nonsense instead of silently never firing', () => {
+  assert.equal(toScheduledAt(null), null);
+  assert.equal(toScheduledAt(undefined), null);
+  assert.equal(toScheduledAt(0), null, 'epoch 0 is not a deadline');
+  assert.equal(toScheduledAt(''), null);
+  assert.equal(toScheduledAt('not-a-date'), null);
+  assert.equal(toScheduledAt(-1), null);
+});
+
+test('toScheduledAt does not multiply an already-microsecond value', () => {
+  let micros = 1_792_731_203_907_000;
+
+  assert.equal(toScheduledAt(micros), micros, 'double conversion would overflow the schedule');
+});
+
+test('a question with a deadline arms exactly one hidden scheduled frame', async () => {
+  let db = createDB();
+  let store = createStore(db, [ 'group_1', 'q_1' ]);
+  let id = await askWithDefault(store, { timeoutSeconds: 60 });
+  let question = await store.getQuestion(id);
+
+  let runtime = createFakeRuntime();
+  let frame = await armQuestionDeadline({ frameRuntime: runtime, question });
+
+  assert.ok(frame, 'a frame was armed');
+  assert.equal(frame.hidden, true, 'the deadline frame must not appear in the transcript');
+  assert.equal(frame.continuation.kind, 'question-deadline');
+  assert.equal(frame.continuation.questionID, id);
+  assert.equal(frame.targetAgentID, 'agent_1', 'the queue only dispatches frames that name a target');
+  assert.equal(
+    frame.scheduledAt,
+    question.defaultDueAt * 1000,
+    'the deadline rides the queue in the queue\'s own units',
+  );
+  assert.equal(runtime.entries().length, 1);
+});
+
+test('a question without a deadline arms nothing at all', async () => {
+  let db = createDB();
+  let store = createStore(db, [ 'group_1', 'q_1' ]);
+  let result = await store.createQuestions({
+    questions: [ { text: 'No default here' } ],
+    mode: 'wait',
+    sessionID: 'session_1',
+    agentID: 'agent_1',
+  });
+
+  let runtime = createFakeRuntime();
+  let frame = await armQuestionDeadline({
+    frameRuntime: runtime,
+    question: await store.getQuestion(result.questionIDs[0]),
+  });
+
+  assert.equal(frame, null);
+  assert.equal(runtime.entries().length, 0, 'no timer for a question that can wait forever');
+});
+
+// This is the edge case: the timer fires, but the question was already answered.
+// Answering cancels the schedule, so the queue drops the entry and never routes
+// it. Without this, an agent gets woken with its own default for a question the
+// user already answered in person.
+test('answering cancels the pending deadline so the fired frame cannot route', async () => {
+  let db = createDB();
+  let store = createStore(db, [ 'group_1', 'q_1' ]);
+  let id = await askWithDefault(store, { timeoutSeconds: 60 });
+  let question = await store.getQuestion(id);
+
+  let runtime = createFakeRuntime();
+  let frame = await armQuestionDeadline({ frameRuntime: runtime, question });
+  assert.equal(runtime.entries().length, 1);
+
+  let cancelled = await cancelQuestionSchedule({ frameRuntime: runtime, questionID: id });
+
+  assert.equal(cancelled, 1);
+  assert.equal(runtime.entries().length, 0, 'the queue no longer considers it due');
+  assert.equal(
+    runtime.store.get(frame.id).scheduledStatus,
+    'cancelled',
+    'the persisted frame is cancelled, which is what dispatch() checks',
   );
 });
 
-test('QuestionMaintenanceService start/stop is safe and never keeps the process alive', async () => {
+test('cancelling an already-answered question is a no-op rather than an error', async () => {
   let db = createDB();
   let store = createStore(db, [ 'group_1', 'q_1' ]);
+  let id = await askWithDefault(store, { timeoutSeconds: 60 });
 
-  let service = new QuestionMaintenanceService({ questionsStore: store, intervalMs: 5_000 });
+  let runtime = createFakeRuntime();
 
-  assert.equal(service.start(), true);
-  assert.equal(service.start(), false, 'starting twice is a no-op');
-  assert.equal(service.stop(), true);
-  assert.equal(service.stop(), false, 'stopping twice is a no-op');
-
-  let disabled = new QuestionMaintenanceService({ questionsStore: store, intervalMs: 0 });
-  assert.equal(disabled.start(), false, 'interval 0 disables the tick');
+  assert.equal(
+    await cancelQuestionSchedule({ frameRuntime: runtime, questionID: id }),
+    0,
+    'nothing armed, nothing to cancel',
+  );
 });
 
-test('a run that is already in progress is skipped rather than overlapped', async () => {
+test('re-arming replaces the pending deadline instead of stacking a second one', async () => {
   let db = createDB();
   let store = createStore(db, [ 'group_1', 'q_1' ]);
+  let id = await askWithDefault(store, { timeoutSeconds: 60 });
+  let question = await store.getQuestion(id);
 
-  let release = null;
-  let gate = new Promise((resolve) => { release = resolve; });
+  let runtime = createFakeRuntime();
+  await armQuestionDeadline({ frameRuntime: runtime, question });
+  await armQuestionDeadline({ frameRuntime: runtime, question });
 
-  let service = new QuestionMaintenanceService({
-    questionsStore: store,
-    questionAnswerService: {
-      async deliverAnswer() {
-        await gate;
-        return { delivered: true, frameID: 'f_3' };
-      },
+  assert.equal(
+    runtime.entries().length,
+    1,
+    'a double arm must not fire two defaults',
+  );
+});
+
+test('the deadline frame is well-formed even when the parent question has no frame yet', () => {
+  let frame = buildQuestionScheduleFrame({
+    runtime: { idGenerator: () => 'sched_1' },
+    question: {
+      id: 'q_1',
+      sessionID: 'session_1',
+      agentID: 'agent_1',
+      groupID: 'group_1',
+      frameID: null,
+      defaultDueAt: 1_000,
     },
+    kind: 'question-deadline',
+    dueAt: 1_000,
+    now: 0,
   });
 
-  await askWithDefault(store, { timeoutSeconds: 0 });
-
-  let first = service.runOnce({ now: T0 + 1 });
-  let second = await service.runOnce({ now: T0 + 1 });
-  assert.deepEqual(second, { skipped: 'already-running' });
-
-  release();
-  await first;
+  assert.equal(frame.parentID, null);
+  assert.equal(frame.scheduledStatus, 'pending');
+  assert.equal(frame.authorType, 'system');
 });
+
+/**
+ * Minimal stand-in for the parts of FrameRuntime the scheduler touches: an
+ * entry with a real frame engine (so `merge()` is exercised, not mocked away),
+ * a scheduled-frame queue map, and the flush the queue relies on. The engine is
+ * deliberately the real one — a fake merge would let a broken frame shape pass.
+ */
+function createFakeRuntime() {
+  let store = new Map();
+  let entries = new Map();
+  let seq = 0;
+  // Declared before `frameEngine` so the engine's merge() can reach the queue;
+  // assigned at the end of this function.
+  let runtime = null;
+
+  let frameEngine = {
+    get(id) {
+      return store.get(id) || null;
+    },
+    merge(frames = []) {
+      let merged = [];
+      for (let frame of frames) {
+        let next = { ...frame, order: ++seq };
+        store.set(frame.id, next);
+        merged.push(next);
+      }
+      // Production tracks scheduled frames from the engine's commit handler
+      // (frame-runtime.mjs `connectFrameEngine` -> `scheduledFrames.trackFrames`).
+      // Mirror that link here so the queue is populated the same way, rather
+      // than by reaching into the scheduler's internals from the test.
+      for (let frame of merged)
+        runtime.scheduledFrames.trackFrame(frame);
+      return merged;
+    },
+    hydrate() {},
+    getLatestCommit() {
+      return { order: seq };
+    },
+    toArray() {
+      return [ ...store.values() ];
+    },
+  };
+
+  runtime = {
+    store,
+    clock: () => T0,
+    idGenerator: () => `sched_${++seq}`,
+    scheduledFrames: {
+      entries,
+      trackFrame(frame) {
+        entries.set(frame.id, { frame, frameID: frame.id, sessionID: frame.sessionID, scheduledAt: frame.scheduledAt });
+      },
+    },
+    async ensureSessionEntry(sessionID) {
+      return { session: { id: sessionID, participantAgentIDs: [ 'agent_1' ] }, frameEngine };
+    },
+    frameStore: { async flush() {} },
+    entries() {
+      return [ ...entries.values() ];
+    },
+  };
+
+  return runtime;
+}

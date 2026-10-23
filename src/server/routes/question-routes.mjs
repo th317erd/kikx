@@ -1,5 +1,7 @@
 'use strict';
 
+import { cancelQuestionSchedule } from '../../core/questions/question-deadline-schedule.mjs';
+
 import {
   getRequestAccount,
   httpError,
@@ -147,6 +149,20 @@ export async function handleQuestionRoutes({ request, response, url, context }) 
     let question = await questionsStore.dismissQuestion(dismissRoute.questionID, {
       reason: body.reason,
     });
+
+    // Dismissing is terminal, so a pending default-answer deadline must not
+    // survive it. Same primary guard as answering: cancel the scheduled frame
+    // so the queue drops it instead of waking the asker about a default for a
+    // question the user explicitly closed.
+    let frameRuntime = context.has('frameRuntime') ? context.require('frameRuntime') : null;
+    if (frameRuntime) {
+      try {
+        await cancelQuestionSchedule({ frameRuntime, questionID: question.id });
+      } catch (_error) {
+        // A failed cancel is not worth failing the dismiss: the fire-time
+        // plugin re-checks `status === 'open'` and will no-op.
+      }
+    }
 
     writeJSON(response, 200, {
       data: {
