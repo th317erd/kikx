@@ -5,7 +5,6 @@ import { scheduleAnimationFrame } from './kikx-app-helpers.mjs';
 import {
   ANCHOR_THRESHOLD,
   SCROLL_ANIMATION_MS,
-  SCROLL_LOCK_REARM_MS,
 } from './frame-scroll-constants.mjs';
 import {
   getScrollLockModeForSession,
@@ -43,7 +42,6 @@ export function lockScrollToLatest(app) {
   setScrollLockedForSession(app, true, sessionID);
   setScrollLockModeForSession(app, 'top', sessionID);
   paintScrollLockButton(app, sessionID, true);
-  cancelScrollLockRearm(app);
   return scrollToLatestMessageTop(app, { animate: false });
 }
 
@@ -57,7 +55,6 @@ export function toggleScrollLock(app) {
   paintScrollLockButton(app, sessionID, next);
   if (next) {
     setScrollLockModeForSession(app, 'top', sessionID);
-    cancelScrollLockRearm(app);
     scrollToLatestMessageTop(app, { animate: true });
   } else {
     app._ignoreFrameScrollUntil = 0;
@@ -248,10 +245,10 @@ export function breakScrollLockFromUser(app) {
     return;
 
   app._ignoreFrameScrollUntil = 0;
+  app._bottomLockIntent = false;
   cancelFrameListScrollAnimation(app);
   setScrollLockedForSession(app, false, sessionID);
   paintScrollLockButton(app, sessionID, false);
-  cancelScrollLockRearm(app);
 }
 
 // Sending your own message is an explicit intent to stay with the conversation
@@ -265,47 +262,52 @@ export function ensureAutoScrollAfterSend(app) {
   setScrollLockedForSession(app, true, sessionID);
   setScrollLockModeForSession(app, 'bottom', sessionID);
   paintScrollLockButton(app, sessionID, true);
-  cancelScrollLockRearm(app);
   return true;
 }
 
-// Re-enable pinning only after the user deliberately rests at the bottom. This
-// engages in BOTTOM mode: it must not move the viewport (especially not to the
-// top of the newest message) at the moment the lock turns on.
-export function armScrollLockRearm(app) {
-  cancelScrollLockRearm(app);
+// Lock immediately when the user reaches the bottom. No dwell timer: reaching
+// the bottom is the intent. Loaded-but-unrendered frames are revealed first so
+// the lock is attached to the true conversation tail, not the edge of an older
+// render window.
+export function lockScrollAtBottom(app) {
   let sessionID = app._state.selectedSessionID;
   if (!sessionID || isScrollLockedForSession(app, sessionID))
-    return;
+    return false;
 
-  app._scrollLockRearmTimer = setTimeout(() => {
-    app._scrollLockRearmTimer = null;
-    let frameList = app.querySelector('.kikx-frame-list');
-    if (!frameList || !isNearBottom(frameList) || isScrollLockedForSession(app, sessionID))
-      return;
+  let frameList = app.querySelector('.kikx-frame-list');
+  if (!frameList || !isNearBottom(frameList))
+    return false;
 
-    // Only pin when the rendered window actually reaches the loaded tail and
-    // no newer page is waiting. Otherwise the bottom of an older window is not
-    // the bottom of the conversation, and switching windows here would jump.
-    let paging = getSessionPaging(app._state, sessionID);
-    let view = app.querySelector('.kikx-thread__body kikx-chat-view');
-    let loadedFrames = app._state.framesBySessionID?.[sessionID]?.length || 0;
-    if (paging.hasMoreNewer === true || !view || view.windowEnd < loadedFrames)
-      return;
-
-    setScrollLockedForSession(app, true, sessionID);
-    setScrollLockModeForSession(app, 'bottom', sessionID);
-    paintScrollLockButton(app, sessionID, true);
-    app._frameListAnchoredToBottom = true;
-  }, SCROLL_LOCK_REARM_MS);
-  app._scrollLockRearmTimer.unref?.();
-}
-
-export function cancelScrollLockRearm(app) {
-  if (app._scrollLockRearmTimer) {
-    clearTimeout(app._scrollLockRearmTimer);
-    app._scrollLockRearmTimer = null;
+  let view = app.querySelector('.kikx-thread__body kikx-chat-view');
+  // Compare against the frames actually present in the thread projection. The
+  // raw state array may include a hidden/phantom tail entry that the chat view
+  // will never render, which made the old tail guard fail forever.
+  let loadedFrames = Array.isArray(view?.frames)
+    ? view.frames.length
+    : (app._state.framesBySessionID?.[sessionID]?.length || 0);
+  let expanded = false;
+  if (view?.expandNewerFrames) {
+    for (let step = 0; step < 20 && view.windowEnd < loadedFrames; step++) {
+      if (!view.expandNewerFrames())
+        break;
+      expanded = true;
+    }
   }
+  if (view && view.windowEnd < loadedFrames)
+    return false;
+
+  let paging = getSessionPaging(app._state, sessionID);
+  if (paging.hasMoreNewer === true)
+    return false;
+
+  setScrollLockedForSession(app, true, sessionID);
+  setScrollLockModeForSession(app, 'bottom', sessionID);
+  paintScrollLockButton(app, sessionID, true);
+  app._frameListAnchoredToBottom = true;
+  app._bottomLockIntent = false;
+  if (expanded)
+    app._scrollFramesToBottomImmediate?.();
+  return true;
 }
 
 export function animateFrameListScroll(app, frameList, resolveTarget, options = {}) {

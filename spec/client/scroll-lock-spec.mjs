@@ -30,8 +30,13 @@ const {
   setScrollLockedForSession,
   setScrollLockModeForSession,
 } = await import('../../src/client/components/kikx-scroll-lock.mjs');
-const { armScrollLockRearm, ensureAutoScrollAfterSend, scrollToLatestMessageTop } = await import('../../src/client/components/kikx-frame-scroll-lock.mjs');
-const { afterRender, maybeLoadOlderFrames } = await import('../../src/client/components/kikx-frame-scroll.mjs');
+const {
+  breakScrollLockFromUser,
+  ensureAutoScrollAfterSend,
+  lockScrollAtBottom,
+  scrollToLatestMessageTop,
+} = await import('../../src/client/components/kikx-frame-scroll-lock.mjs');
+const { afterRender, maybeLoadOlderFrames, onFrameContentResize } = await import('../../src/client/components/kikx-frame-scroll.mjs');
 const { setAnimationFrameScheduler } = await import('../../src/client/components/kikx-app-helpers.mjs');
 
 function resetStorage() {
@@ -140,50 +145,35 @@ test('animated latest-message scrolling passes through intermediate positions', 
   }
 });
 
-test('a locked bottom render is not canceled by reconnecting the scroll observer', () => {
+test('a locked bottom render lands at the true bottom immediately', () => {
   resetStorage();
-  let queue = [];
-  setAnimationFrameScheduler((callback) => queue.push(callback));
-  try {
-    let app = document.createElement('div');
-    app._state = { selectedSessionID: 's1' };
-    app._lockedPlacementSessionID = 's1';
-    app._onFrameListScroll = () => {};
-    let frameList = document.createElement('div');
-    frameList.className = 'kikx-frame-list';
-    let stream = document.createElement('div');
-    stream.className = 'kikx-frame-stream';
-    Object.defineProperty(frameList, 'scrollHeight', { configurable: true, value: 1000 });
-    Object.defineProperty(frameList, 'clientHeight', { configurable: true, value: 400 });
-    frameList.scrollTop = 0;
-    frameList.getBoundingClientRect = () => ({ top: 0 });
-    frameList.appendChild(stream);
-    app.appendChild(frameList);
-    setScrollLockedForSession(app, true, 's1');
-    setScrollLockModeForSession(app, 'bottom', 's1');
+  let app = document.createElement('div');
+  app._state = { selectedSessionID: 's1' };
+  app._lockedPlacementSessionID = 's1';
+  app._onFrameListScroll = () => {};
+  let frameList = document.createElement('div');
+  frameList.className = 'kikx-frame-list';
+  let stream = document.createElement('div');
+  stream.className = 'kikx-frame-stream';
+  Object.defineProperty(frameList, 'scrollHeight', { configurable: true, value: 1000 });
+  Object.defineProperty(frameList, 'clientHeight', { configurable: true, value: 400 });
+  frameList.scrollTop = 0;
+  frameList.getBoundingClientRect = () => ({ top: 0 });
+  frameList.appendChild(stream);
+  app.appendChild(frameList);
+  setScrollLockedForSession(app, true, 's1');
+  setScrollLockModeForSession(app, 'bottom', 's1');
 
-    afterRender(app, {
-      selectedSessionID: 's1',
-      frameListPresent: true,
-      frameListNearBottom: true,
-      frameListScrollTop: 0,
-      frameListAnchor: null,
-    });
+  afterRender(app, {
+    selectedSessionID: 's1',
+    frameListPresent: true,
+    frameListNearBottom: true,
+    frameListScrollTop: 0,
+    frameListAnchor: null,
+  });
 
-    // Reproduces the full-render path: start a bottom follow, then reconnect the
-    // observer. Reconnecting must tear down the old observer before the follow
-    // animation starts, not cancel the animation that was just scheduled.
-    assert.ok(queue.length > 0, 'bottom follow should schedule an animation frame');
-    let timestamp = 0;
-    while (queue.length > 0) {
-      let callback = queue.shift();
-      callback(timestamp);
-      timestamp += 400;
-    }
-    assert.equal(frameList.scrollTop, 600);
-  } finally {
-    setAnimationFrameScheduler(null);
-  }
+  assert.equal(frameList.scrollTop, 600);
+  assert.equal(app._frameListScrollAnimation, null);
 });
 
 test('a suppressed anchor still fills a viewport that cannot scroll', () => {
@@ -213,15 +203,17 @@ test('a suppressed anchor still fills a viewport that cannot scroll', () => {
   assert.equal(loads, 1);
 });
 
-test('bottom-rest auto-pin engages in bottom mode without moving the viewport', () => {
+test('reaching the bottom locks instantly in bottom mode without moving the viewport', () => {
   resetStorage();
   let list = { scrollTop: 940, scrollHeight: 1000, clientHeight: 600 };
-  let view = { windowEnd: 20 };
+  // The raw state carries one hidden/phantom tail frame that the thread will
+  // never render. Tail detection must use the view's projected frame count.
+  let view = { windowEnd: 20, frames: Array.from({ length: 20 }, (_value, index) => ({ id: `m${index}` })) };
   let app = {
     _state: {
       selectedSessionID: 's1',
       sessionPagingByID: { s1: { hasMoreNewer: false } },
-      framesBySessionID: { s1: Array.from({ length: 20 }, (_value, index) => ({ id: `m${index}` })) },
+      framesBySessionID: { s1: Array.from({ length: 21 }, (_value, index) => ({ id: `m${index}` })) },
     },
     _frameListAnchoredToBottom: false,
     querySelector(selector) {
@@ -234,27 +226,55 @@ test('bottom-rest auto-pin engages in bottom mode without moving the viewport', 
   };
   setScrollLockedForSession(app, false, 's1');
 
-  let originalSetTimeout = globalThis.setTimeout;
-  let callback = null;
-  let delay = null;
-  globalThis.setTimeout = (fn, ms) => {
-    callback = fn;
-    delay = ms;
-    return { unref() {} };
-  };
-  try {
-    armScrollLockRearm(app);
-    assert.equal(delay, 3000);
-    assert.ok(callback);
-    callback();
-  } finally {
-    globalThis.setTimeout = originalSetTimeout;
-  }
-
-  assert.equal(list.scrollTop, 940, 'engaging the lock must not scroll');
+  assert.equal(lockScrollAtBottom(app), true);
+  assert.equal(list.scrollTop, 940, 'engaging the lock must not move the viewport');
   assert.equal(isScrollLockedForSession(app, 's1'), true);
   assert.equal(getScrollLockModeForSession(app, 's1'), 'bottom');
   assert.equal(app._frameListAnchoredToBottom, true);
+});
+
+test('a user scroll attempt unlocks instantly', () => {
+  resetStorage();
+  let app = { _state: { selectedSessionID: 's1' } };
+  setScrollLockedForSession(app, true, 's1');
+  setScrollLockModeForSession(app, 'bottom', 's1');
+
+  breakScrollLockFromUser(app);
+  assert.equal(isScrollLockedForSession(app, 's1'), false);
+});
+
+test('content growth re-pins the viewport when bottom-locked', () => {
+  resetStorage();
+  let queue = [];
+  setAnimationFrameScheduler((callback) => queue.push(callback));
+  try {
+    let frameList = {
+      scrollTop: 0,
+      scrollHeight: 1000,
+      clientHeight: 400,
+      getBoundingClientRect: () => ({ top: 0 }),
+      querySelectorAll: () => [],
+    };
+    let app = {
+      _state: { selectedSessionID: 's1' },
+      querySelector(selector) {
+        return selector === '.kikx-frame-list' ? frameList : null;
+      },
+    };
+    setScrollLockedForSession(app, true, 's1');
+    setScrollLockModeForSession(app, 'bottom', 's1');
+
+    onFrameContentResize(app);
+    assert.equal(queue.length, 1);
+    queue.shift()(0);
+    assert.equal(frameList.scrollTop, 600);
+
+    setScrollLockedForSession(app, false, 's1');
+    onFrameContentResize(app);
+    assert.equal(queue.length, 0, 'unlocked content growth must not move the viewport');
+  } finally {
+    setAnimationFrameScheduler(null);
+  }
 });
 
 test('sending while unlocked re-engages bottom follow without overriding a pin mode', () => {

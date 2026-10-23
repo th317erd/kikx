@@ -12,10 +12,9 @@ import { ANCHOR_THRESHOLD } from './frame-scroll-constants.mjs';
 import { captureFrameListAnchor, restoreFrameListAnchor } from './frame-scroll-anchor.mjs';
 import {
   animateFrameListScroll,
-  armScrollLockRearm,
   breakScrollLockFromUser,
   cancelFrameListScrollAnimation,
-  cancelScrollLockRearm,
+  lockScrollAtBottom,
   lastFrameItemID,
   maybeRestoreMessageHash,
   messageHashID,
@@ -108,17 +107,16 @@ export function afterRender(app, snapshot = {}) {
     }
     if (getScrollLockModeForSession(app, sessionID) === 'bottom') {
       app._frameListAnchoredToBottom = true;
-      if (initialPlacement)
-        scrollFramesToBottomImmediate(app);
-      else
-        scrollFramesToBottom(app);
+      // Content settles after a full render. Bottom follow must be immediate or
+      // the newest message can sit visibly clipped while an animation catches up.
+      scrollFramesToBottomImmediate(app);
     } else {
       app._frameListAnchoredToBottom = false;
       scheduleLatestMessageTop(app, { animate: !initialPlacement });
     }
   } else if (shouldScrollToBottom) {
     app._frameListAnchoredToBottom = true;
-    scrollFramesToBottom(app);
+    scrollFramesToBottomImmediate(app);
   } else if (shouldRestoreFrameScroll) {
     restoreFrameListScroll(app, snapshot);
   } else if (sessionChanged || !snapshot.frameListPresent) {
@@ -263,10 +261,7 @@ function syncFrameThreadBody(app, sessionID, options) {
         app._lockedPlacementSessionID = sessionID;
       if (getScrollLockModeForSession(app, sessionID) === 'bottom') {
         app._frameListAnchoredToBottom = true;
-        if (initialPlacement)
-          scrollFramesToBottomImmediate(app);
-        else
-          scheduleAnimationFrame(() => scrollFramesToBottom(app));
+        scrollFramesToBottomImmediate(app);
       } else {
         app._frameListAnchoredToBottom = false;
         scheduleLatestMessageTop(app, { animate: !initialPlacement });
@@ -304,19 +299,10 @@ function syncFrameThreadBody(app, sessionID, options) {
     if (initialPlacement)
       app._lockedPlacementSessionID = sessionID;
     app._frameListAnchoredToBottom = true;
-    if (initialPlacement) {
-      scrollFramesToBottomImmediate(app);
-    } else {
-      scheduleAnimationFrame(() => scrollFramesToBottom(app));
-      // Frame enter animation and markdown layout can grow the last item after
-      // the first animation frame. Re-target once it has settled; this is a
-      // bottom follow, never a jump to the top.
-      setTimeout(() => {
-        if (isScrollLockedForSession(app, sessionID)
-          && getScrollLockModeForSession(app, sessionID) === 'bottom')
-          scrollFramesToBottom(app);
-      }, 320);
-    }
+    // Keep the true tail attached immediately. ResizeObserver re-pins again when
+    // markdown or content height settles, so there is no 320ms gap and no
+    // animation that can leave the newest message visibly clipped.
+    scrollFramesToBottomImmediate(app);
   } else if (result.insertedNew && locked) {
     let initialPlacement = app._lockedPlacementSessionID !== sessionID;
     if (initialPlacement)
@@ -346,6 +332,7 @@ export function connectFrameListObserver(app) {
     return;
 
   app._observedFrameList = frameList;
+  app._lastObservedFrameScrollTop = frameList.scrollTop;
   frameList.addEventListener('scroll', app._onFrameListScroll);
   app._onFrameListUserInterrupt = () => {
     app._frameListUserGestureUntil = Date.now() + 2000;
@@ -355,10 +342,6 @@ export function connectFrameListObserver(app) {
     // our own animation and no longer breaks the pin.
     app._ignoreFrameScrollUntil = 0;
     cancelFrameListScrollAnimation(app);
-    if (!isScrollLockedForSession(app, app._state.selectedSessionID))
-      return;
-    breakScrollLockFromUser(app);
-    cancelScrollLockRearm(app);
   };
   app._onFrameListPointerDown = (event) => {
     // Only a pointer in the scrollbar gutter is an unambiguous scroll intent.
@@ -381,7 +364,6 @@ export function connectFrameListObserver(app) {
     app._sentinelSuppressed = false;
     app._ignoreFrameScrollUntil = 0;
     cancelFrameListScrollAnimation(app);
-    breakScrollLockFromUser(app);
   };
   frameList.addEventListener('wheel', app._onFrameListUserInterrupt, { passive: true });
   frameList.addEventListener('touchmove', app._onFrameListUserInterrupt, { passive: true });
@@ -453,7 +435,6 @@ export function disconnectFrameListObserver(app) {
   app._onFrameListPointerDown = null;
   app._onFrameListKeydown = null;
   cancelFrameListScrollAnimation(app);
-  cancelScrollLockRearm(app);
 
   app._frameLoadIntersectionObserver?.disconnect?.();
   app._frameLoadIntersectionObserver = null;
@@ -511,9 +492,25 @@ export function restoreFrameListScroll(app, snapshot = {}) {
 }
 
 export function onFrameContentResize(app) {
-  // Pinned mode follows by aligning the newest message's top, not by chasing
-  // the scrollHeight. Unlocked mode must never be moved by content changes:
-  // that is exactly the takeover the lock toggle exists to suspend.
+  let sessionID = app._state.selectedSessionID;
+  if (!sessionID
+    || !isScrollLockedForSession(app, sessionID)
+    || getScrollLockModeForSession(app, sessionID) !== 'bottom')
+    return;
+
+  if (app._frameContentResizeScheduled === true)
+    return;
+  app._frameContentResizeScheduled = true;
+  scheduleAnimationFrame(() => {
+    app._frameContentResizeScheduled = false;
+    if (!isScrollLockedForSession(app, sessionID)
+      || getScrollLockModeForSession(app, sessionID) !== 'bottom')
+      return;
+
+    let frameList = app.querySelector('.kikx-frame-list');
+    if (frameList)
+      scrollFramesToBottomImmediate(app, frameList);
+  });
 }
 
 export function onFrameListScroll(app, event) {
@@ -523,27 +520,38 @@ export function onFrameListScroll(app, event) {
   let nearBottom = isFrameListNearBottom(app, frameList);
 
   let userGesture = Date.now() < (app._frameListUserGestureUntil || 0);
+  let brokeLock = false;
+  let previousScrollTop = app._lastObservedFrameScrollTop;
+  app._lastObservedFrameScrollTop = frameList.scrollTop;
   if (!programmatic) {
     // Layout changes can move scrollTop without any user action. Break the pin
-    // only when there was a real input gesture (wheel, touch, scrollbar
-    // pointer, or a scroll key), otherwise a frame resizing under the viewport
-    // would silently switch pinning off.
-    if (userGesture) {
+    // only when a real gesture actually moved the viewport away from where the
+    // lock had placed it. Wheel momentum at the bottom produces no delta and
+    // must not turn the lock straight back off.
+    let delta = previousScrollTop == null ? 0 : frameList.scrollTop - previousScrollTop;
+    let lockMode = getScrollLockModeForSession(app, sessionID);
+    let movedAway = lockMode === 'bottom' ? delta < -0.5 : Math.abs(delta) > 0.5;
+    if (userGesture && isScrollLockedForSession(app, sessionID) && movedAway) {
+      brokeLock = true;
       app._sentinelSuppressed = false;
       cancelFrameListScrollAnimation(app);
       breakScrollLockFromUser(app);
     }
     updateMessageHashFromScroll(app, frameList);
-    if (!isScrollLockedForSession(app, sessionID) && nearBottom && userGesture)
-      armScrollLockRearm(app);
-    else if (!nearBottom)
-      cancelScrollLockRearm(app);
+    if (!nearBottom)
+      app._bottomLockIntent = false;
   }
 
   app._frameListAnchoredToBottom = !isScrollLockedForSession(app, sessionID) && nearBottom;
   maybeLoadOlderFrames(app, frameList);
 
   if (!isScrollLockedForSession(app, sessionID) && nearBottom) {
+    if (userGesture && !brokeLock) {
+      app._bottomLockIntent = true;
+      if (lockScrollAtBottom(app))
+        return;
+    }
+
     // If the user has been reading an older render window, extend it forward
     // in small chunks while keeping the current frame under the viewport. The
     // old showLatestFrames() swap replaced the whole window and jumped several
