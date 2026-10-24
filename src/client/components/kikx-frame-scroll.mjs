@@ -11,7 +11,6 @@ import { getScrollLockModeForSession, isScrollLockedForSession } from './kikx-sc
 import { ANCHOR_THRESHOLD } from './frame-scroll-constants.mjs';
 import { captureFrameListAnchor, restoreFrameListAnchor } from './frame-scroll-anchor.mjs';
 import {
-  animateFrameListScroll,
   breakScrollLockFromUser,
   cancelFrameListScrollAnimation,
   clearBottomHashMarker,
@@ -116,9 +115,12 @@ export function afterRender(app, snapshot = {}) {
     }
     if (getScrollLockModeForSession(app, sessionID) === 'bottom') {
       app._frameListAnchoredToBottom = true;
-      // Content settles after a full render. Bottom follow must be immediate or
-      // the newest message can sit visibly clipped while an animation catches up.
-      scrollFramesToBottomImmediate(app);
+      // A send is an explicit "show me the tail now" action: place immediately,
+      // then let later streaming growth use the eased follow loop.
+      if (initialPlacement || snapshot.forceScrollToBottom === true)
+        scrollFramesToBottomImmediate(app);
+      else
+        scrollFramesToBottom(app);
     } else {
       app._frameListAnchoredToBottom = false;
       scheduleLatestMessageTop(app, { animate: !initialPlacement });
@@ -270,7 +272,10 @@ function syncFrameThreadBody(app, sessionID, options) {
         app._lockedPlacementSessionID = sessionID;
       if (getScrollLockModeForSession(app, sessionID) === 'bottom') {
         app._frameListAnchoredToBottom = true;
-        scrollFramesToBottomImmediate(app);
+        if (initialPlacement)
+          scrollFramesToBottomImmediate(app);
+        else
+          scrollFramesToBottom(app);
       } else {
         app._frameListAnchoredToBottom = false;
         scheduleLatestMessageTop(app, { animate: !initialPlacement });
@@ -315,10 +320,12 @@ function syncFrameThreadBody(app, sessionID, options) {
     if (initialPlacement)
       app._lockedPlacementSessionID = sessionID;
     app._frameListAnchoredToBottom = true;
-    // Keep the true tail attached immediately. ResizeObserver re-pins again when
-    // markdown or content height settles, so there is no 320ms gap and no
-    // animation that can leave the newest message visibly clipped.
-    scrollFramesToBottomImmediate(app);
+    // Keep the tail attached, but ease toward it. Re-targeting each frame lets
+    // streamed markdown grow without the viewport snapping in visible steps.
+    if (initialPlacement)
+      scrollFramesToBottomImmediate(app);
+    else
+      scrollFramesToBottom(app);
   } else if (result.insertedNew && locked) {
     let initialPlacement = app._lockedPlacementSessionID !== sessionID;
     if (initialPlacement)
@@ -479,9 +486,51 @@ export function scrollFramesToBottom(app) {
   if (!frameList)
     return;
 
-  animateFrameListScroll(app, frameList, () => frameList.scrollHeight - frameList.clientHeight, {
-    onComplete: () => updateMessageHashFromScroll(app, frameList),
-  });
+  followFrameListToBottom(app, frameList);
+}
+
+// A bottom-follow loop rather than a fixed-duration animation. Content can keep
+// growing (markdown streaming, tool cards expanding), so the target is
+// recomputed every frame and the viewport eases toward it instead of jumping.
+function followFrameListToBottom(app, frameList) {
+  cancelFrameListScrollAnimation(app);
+  let token = Symbol('frame-bottom-follow');
+  let lastTimestamp = null;
+  app._frameListScrollAnimation = token;
+  app._ignoreFrameScrollUntil = Date.now() + 220;
+
+  let step = (timestamp) => {
+    if (app._frameListScrollAnimation !== token)
+      return;
+
+    let now = Number.isFinite(timestamp)
+      ? timestamp
+      : (globalThis.performance?.now?.() ?? Date.now());
+    let elapsed = lastTimestamp == null ? 16 : Math.min(48, Math.max(1, now - lastTimestamp));
+    lastTimestamp = now;
+
+    let target = Math.max(0, frameList.scrollHeight - frameList.clientHeight);
+    let current = frameList.scrollTop;
+    let distance = target - current;
+    if (Math.abs(distance) <= 0.5) {
+      frameList.scrollTop = target;
+      app._frameListScrollAnimation = null;
+      updateMessageHashFromScroll(app, frameList);
+      return;
+    }
+
+    // Time-based exponential easing: independent of frame rate, and still
+    // stable when a ResizeObserver restarts the follow loop mid-flight.
+    let factor = 1 - Math.exp(-elapsed / 95);
+    let delta = distance * factor;
+    if (Math.abs(delta) < 0.5)
+      delta = Math.sign(distance) * 0.5;
+    frameList.scrollTop = current + delta;
+    app._ignoreFrameScrollUntil = Date.now() + 220;
+    scheduleAnimationFrame(step);
+  };
+
+  scheduleAnimationFrame(step);
 }
 
 export function scrollFramesToBottomImmediate(app, frameList = app.querySelector('.kikx-frame-list')) {
@@ -525,7 +574,7 @@ export function onFrameContentResize(app) {
 
     let frameList = app.querySelector('.kikx-frame-list');
     if (frameList)
-      scrollFramesToBottomImmediate(app, frameList);
+      scrollFramesToBottom(app);
   });
 }
 

@@ -271,11 +271,11 @@ export function breakScrollLockFromUser(app) {
 }
 
 // Sending your own message is an explicit intent to stay with the conversation
-// tail. If the user was already pinned, keep their mode; if unlocked, re-engage
-// bottom follow so the message and its reply do not drift out of view.
+// tail. It overrides a manual top pin: the new message must be visible now,
+// not after an animation from the top of the thread.
 export function ensureAutoScrollAfterSend(app) {
   let sessionID = app._state.selectedSessionID;
-  if (!sessionID || isScrollLockedForSession(app, sessionID))
+  if (!sessionID)
     return false;
 
   setScrollLockedForSession(app, true, sessionID);

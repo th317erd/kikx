@@ -314,6 +314,10 @@ export async function handleSessionRoutes({ request, response, url, context }) {
       let messageInput = {
         text: body.text,
         userID: account?.id || body.userID || body.authorID || null,
+        // The frame is committed and flushed before this point. Do not make
+        // the HTTP response wait for the agent router to pick it up; the client
+        // already has the durable frame and SSE will deliver the agent output.
+        flushRouter: false,
       };
       let authorDisplayName = account?.name || body.authorDisplayName || '';
       if (authorDisplayName)

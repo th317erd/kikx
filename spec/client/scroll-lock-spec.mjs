@@ -156,7 +156,6 @@ test('a locked bottom render lands at the true bottom immediately', () => {
   resetStorage();
   let app = document.createElement('div');
   app._state = { selectedSessionID: 's1' };
-  app._lockedPlacementSessionID = 's1';
   app._onFrameListScroll = () => {};
   let frameList = document.createElement('div');
   frameList.className = 'kikx-frame-list';
@@ -377,7 +376,17 @@ test('content growth re-pins the viewport when bottom-locked', () => {
     onFrameContentResize(app);
     assert.equal(queue.length, 1);
     queue.shift()(0);
+    assert.equal(queue.length, 1, 'the resize callback starts the follow loop');
+    queue.shift()(16);
+    assert.ok(frameList.scrollTop > 0 && frameList.scrollTop < 600, `first follow step was ${frameList.scrollTop}`);
+
+    // Drain the follow loop. It must converge without a snap.
+    for (let timestamp = 32; queue.length > 0 && timestamp < 2000; timestamp += 16) {
+      queue.shift()(timestamp);
+      assert.ok(frameList.scrollTop <= 600);
+    }
     assert.equal(frameList.scrollTop, 600);
+    assert.equal(app._frameListScrollAnimation, null);
 
     setScrollLockedForSession(app, false, 's1');
     onFrameContentResize(app);
@@ -387,7 +396,7 @@ test('content growth re-pins the viewport when bottom-locked', () => {
   }
 });
 
-test('sending while unlocked re-engages bottom follow without overriding a pin mode', () => {
+test('sending always re-engages immediate bottom follow', () => {
   resetStorage();
   let app = {
     _state: { selectedSessionID: 's1' },
@@ -400,6 +409,83 @@ test('sending while unlocked re-engages bottom follow without overriding a pin m
   assert.equal(getScrollLockModeForSession(app, 's1'), 'bottom');
 
   setScrollLockModeForSession(app, 'top', 's1');
-  assert.equal(ensureAutoScrollAfterSend(app), false);
-  assert.equal(getScrollLockModeForSession(app, 's1'), 'top');
+  assert.equal(ensureAutoScrollAfterSend(app), true);
+  assert.equal(getScrollLockModeForSession(app, 's1'), 'bottom', 'a send overrides a manual top pin');
+});
+
+
+test('an explicit send snaps to the tail even after initial placement', () => {
+  resetStorage();
+  let app = document.createElement('div');
+  app._state = { selectedSessionID: 's1' };
+  app._lockedPlacementSessionID = 's1';
+  app._onFrameListScroll = () => {};
+  let frameList = document.createElement('div');
+  frameList.className = 'kikx-frame-list';
+  let stream = document.createElement('div');
+  stream.className = 'kikx-frame-stream';
+  Object.defineProperty(frameList, 'scrollHeight', { configurable: true, value: 1200 });
+  Object.defineProperty(frameList, 'clientHeight', { configurable: true, value: 400 });
+  frameList.scrollTop = 0;
+  frameList.getBoundingClientRect = () => ({ top: 0 });
+  frameList.appendChild(stream);
+  app.appendChild(frameList);
+  setScrollLockedForSession(app, true, 's1');
+  setScrollLockModeForSession(app, 'bottom', 's1');
+
+  afterRender(app, {
+    selectedSessionID: 's1',
+    frameListPresent: true,
+    frameListNearBottom: false,
+    frameListScrollTop: 0,
+    frameListAnchor: null,
+    forceScrollToBottom: true,
+  });
+
+  assert.equal(frameList.scrollTop, 800);
+  assert.equal(app._frameListScrollAnimation, null);
+});
+
+
+test('bottom follow re-targets smoothly when streaming content grows', () => {
+  resetStorage();
+  let queue = [];
+  setAnimationFrameScheduler((callback) => queue.push(callback));
+  try {
+    let frameList = {
+      scrollTop: 0,
+      scrollHeight: 1000,
+      clientHeight: 400,
+      getBoundingClientRect: () => ({ top: 0 }),
+      querySelectorAll: () => [],
+    };
+    let app = {
+      _state: { selectedSessionID: 's1' },
+      querySelector(selector) {
+        return selector === '.kikx-frame-list' ? frameList : null;
+      },
+    };
+    setScrollLockedForSession(app, true, 's1');
+    setScrollLockModeForSession(app, 'bottom', 's1');
+
+    onFrameContentResize(app);
+    queue.shift()(0);
+    queue.shift()(16);
+    assert.ok(frameList.scrollTop > 0 && frameList.scrollTop < 600);
+
+    // Markdown arrives while the follow loop is in flight.
+    frameList.scrollHeight = 1600;
+    let previous = frameList.scrollTop;
+    let maxStep = 0;
+    for (let timestamp = 32; queue.length > 0 && timestamp < 3000; timestamp += 16) {
+      queue.shift()(timestamp);
+      maxStep = Math.max(maxStep, Math.abs(frameList.scrollTop - previous));
+      previous = frameList.scrollTop;
+    }
+
+    assert.equal(frameList.scrollTop, 1200);
+    assert.ok(maxStep < 600, `follow snapped by ${maxStep}px`);
+  } finally {
+    setAnimationFrameScheduler(null);
+  }
 });

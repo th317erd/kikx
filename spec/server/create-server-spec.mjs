@@ -806,6 +806,7 @@ test('POST /api/v1/sessions/:sessionID/messages appends a user message', async (
       input: {
         text: 'hello',
         userID: 'usr_1',
+        flushRouter: false,
       },
     });
     assert.deepEqual(body.data.commit, { id: 'commit_1', order: 1 });
@@ -857,6 +858,7 @@ test('POST /api/v1/sessions/:sessionID/messages stamps account author metadata w
         text: 'hello',
         userID: 'usr_1',
         authorDisplayName: 'Wyatt Greenway',
+        flushRouter: false,
       },
     });
     assert.deepEqual(body.data.commit, { id: 'commit_1', order: 1 });

@@ -4,8 +4,8 @@ import { upsertFrame, upsertSession } from '../state/kikx-state.mjs';
 import { shouldSubmitComposerKey } from './composer-keyboard.mjs';
 import { ensureAutoScrollAfterSend } from './kikx-frame-scroll-lock.mjs';
 import {
+  cancelComposerDraftSave,
   clearComposerDraftWithServer,
-  flushComposerDraft,
   replaceComposerText,
   syncComposerDraft,
 } from './composer-drafts.mjs';
@@ -34,7 +34,13 @@ export async function onSubmit(app, event) {
   app._state.status = 'Committing message...';
   app._state.statusKind = 'pending';
   let sessionID = app._state.selectedSessionID;
-  await flushComposerDraft(app, sessionID).catch(() => false);
+  // The draft is being replaced by a committed message. Cancel its debounce and
+  // delete it in the background; waiting for the draft round-trip before the
+  // POST made a send feel like it took seconds. `clearComposerDraftWithServer`
+  // updates controller state synchronously, so a new draft typed after send is
+  // safe from the old delete completing later.
+  cancelComposerDraftSave(app, sessionID);
+  let draftCleanup = clearComposerDraftWithServer(app, sessionID);
   clearComposerDraft(app);
 
   try {
@@ -48,13 +54,17 @@ export async function onSubmit(app, event) {
     if (result.data.frame?.id)
       upsertFrame(sessionID, result.data.frame, app._state);
     ensureAutoScrollAfterSend(app);
-    await clearComposerDraftWithServer(app, sessionID);
     app._forceScrollToBottomAfterRender = true;
     app._focusComposerAfterRender = true;
-    await app._loadFrames(sessionID, { render: false, merge: true });
     app._state.status = 'Message committed';
     app._state.statusKind = 'ready';
     app._render();
+
+    // Draft cleanup continues in the background. Do not refetch the frame
+    // window after a send: the durable frame is already in state and a second
+    // render would replace the list after the immediate tail placement, briefly
+    // resetting scrollTop to zero. SSE delivers any later frames.
+    Promise.resolve(draftCleanup).catch(() => null);
   } catch (error) {
     restoreComposerDraftOnFailure(app, submittedDraft);
     app._state.status = error.message;

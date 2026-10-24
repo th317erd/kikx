@@ -242,18 +242,29 @@ export async function replaceComposerText(app, text, { draftID = null, savedText
   return true;
 }
 
+export function cancelComposerDraftSave(app, sessionID = app._state.selectedSessionID) {
+  let controller = getComposerDraftController(app, sessionID);
+  if (!controller)
+    return;
+  clearTimeout(controller.timer);
+  controller.timer = null;
+}
+
 export async function clearComposerDraftWithServer(app, sessionID = app._state.selectedSessionID) {
   if (!sessionID)
     return;
   let controller = getComposerDraftController(app, sessionID);
   let draftID = controller?.draftID;
+  cancelComposerDraftSave(app, sessionID);
   controller.text = '';
   controller.savedText = '';
   removeLocalComposerDraft(sessionID);
   if (draftID) {
     await app._deleteJSON(`/api/v1/sessions/${encodeURIComponent(sessionID)}/composer/drafts/${encodeURIComponent(draftID)}`).catch(() => null);
   }
-  controller.draftID = null;
+  // Another draft may have started while the delete was in flight.
+  if (controller.draftID === draftID && controller.text.trim() === '')
+    controller.draftID = null;
 }
 
 export async function deleteComposerHistoryEntry(app, entry) {

@@ -384,7 +384,9 @@ export class FrameRuntime extends EventEmitter {
       // runs inside FrameRouter.routeCommit(); awaiting router.flush() there
       // waits on the very pass that is making the call, deadlocking the session
       // and every later user message behind it. Internal scheduled deliveries
-      // opt out explicitly; ordinary HTTP messages keep the persistence wait.
+      // opt out explicitly. HTTP message routes also opt out so the durable
+      // message returns to the UI immediately instead of waiting for agent
+      // routing; the router still processes the commit asynchronously.
       if (input.flushRouter !== false)
         await this.frameRouter?.flush?.(steering ? { background: false } : undefined);
 
