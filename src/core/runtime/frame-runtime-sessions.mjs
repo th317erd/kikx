@@ -530,6 +530,25 @@ const sessionMethods = {
     entry.session.updatedAt = input.updatedAt || input.invitedAt || stamp.at;
     entry.session.updatedClock = input.updatedClock || input.invitedClock || stamp.clock;
 
+    // A suspended session freezes whoever is in it, so whoever joins it joins
+    // the freeze. Without this, a bot invited after the user pressed STOP was
+    // live inside the halted session and a single wake would run it there: the
+    // invite path was the only gate that never consulted sessionSuspension,
+    // while tool execution (tool-execution-service.mjs), process spawn
+    // (process-manager.mjs) and routing (agent-route-frame-plugin.mjs) all do.
+    //
+    // This is the inverse of an un-halt: only resumeAgent clears a suspension,
+    // so re-inviting an already-frozen member cannot release it either.
+    if (entry.sessionSuspension?.active) {
+      entry.sessionSuspension.suspendedAgentIDs.add(agentID);
+      entry.sessionSuspension.warnedAgentIDs.delete(agentID);
+      // Clear the "already warned" mark: the recovery warning is delivered on
+      // the agent's next turn, and a stale mark would suppress it.
+      entry.suspensionWarnedAgentIDs?.delete(agentID);
+      entry.cancelledAgents?.add(agentID);
+      this.syncSessionSuspensionSnapshot(entry);
+    }
+
     await this.frameStore.saveSessionManifest(entry.session);
     this.emitRuntimeEvent('session.saved', { sessionID, session: entry.session });
 
