@@ -74,6 +74,17 @@ export async function patchQuestionFrameContent(context = {}, question = null, o
         status: question.status,
         answer: question.answer ?? null,
         answeredAt: question.answeredAt ?? null,
+        // Provenance has to travel with the answer, not just live in the store.
+        // This frame is what the inline component renders, and without these
+        // three fields the client cannot tell "a default fired" from "a person
+        // replied" — so it cannot offer the one affordance that depends on the
+        // difference (replacing a default that spoke for nobody).
+        answerSource: question.answerSource ?? null,
+        answeredByDefaultAt: question.answeredByDefaultAt ?? null,
+        // Set only once a person has taken the answer over, so the renderer can
+        // still say what the default was after it has been replaced.
+        supersededDefaultAnswer: question.supersededDefaultAnswer ?? null,
+        revisedAt: question.revisedAt ?? null,
       },
     } ], {
       authorType: 'system',

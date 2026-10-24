@@ -14,9 +14,12 @@
 import { elements } from '../lib/aeor-ui.mjs';
 import {
   canSubmitAnswer,
+  DEFAULT_ANSWER_SOURCE,
+  isRevisableDefaultAnswer,
   normalizeAnswerText,
   normalizeQuestionSummary,
   questionAge,
+  USER_ANSWER_SOURCE,
 } from '../state/questions-state.mjs';
 import {
   answerDraftStore,
@@ -28,6 +31,16 @@ import { bindDismissControl, buildDismissControl } from './kikx-question-card.mj
 import { describeQuestionOrigin } from '../state/question-attribution.mjs';
 
 const { div, span, p, form, textarea, button } = elements;
+
+// Labels. A default answer must never be presented as if the user said it: the
+// agent was told "declined to say" on the user's behalf, and the receipt is the
+// only place that fact is visible.
+const USER_ANSWER_LABEL = 'Your answer';
+const DEFAULT_ANSWER_LABEL = 'Default answer \u2014 applied automatically';
+const DEFAULT_ANSWER_PLACEHOLDER = 'Write a different answer\u2026';
+const DEFAULT_ANSWER_SUBMIT = 'Send different answer';
+const DEFAULT_ANSWER_NOTE = 'Nobody answered in time, so this answer was applied for you. You can replace it below.';
+const REVISED_BY_USER_NOTE = 'Sent after the default above.';
 
 export class KikxQuestionFrame extends HTMLElement {
   constructor() {
@@ -80,7 +93,43 @@ export class KikxQuestionFrame extends HTMLElement {
       return p.class('kikx-question-frame__answered')(note);
     }
 
-    return this._buildAnswerBlock(answer);
+    let superseded = typeof question.supersededDefaultAnswer === 'string'
+      ? question.supersededDefaultAnswer.trim()
+      : '';
+
+    // A revision happened: a default was delivered and a person later replaced
+    // it. Both answers are shown, oldest first, because the agent was told the
+    // default and may have acted on it — a receipt that only shows the new
+    // answer would hide the correction entirely.
+    if (superseded !== '') {
+      return div.class('kikx-question-frame__answers')(
+        this._buildAnswerBlock(superseded, {
+          label: DEFAULT_ANSWER_LABEL,
+          source: DEFAULT_ANSWER_SOURCE,
+        }),
+        this._buildAnswerBlock(answer, {
+          label: USER_ANSWER_LABEL,
+          source: USER_ANSWER_SOURCE,
+          note: REVISED_BY_USER_NOTE,
+        }),
+      ).build(document);
+    }
+
+    // Still the agent's own fallback. Say so, and say that it can be replaced —
+    // unless it cannot, in which case the note would be a promise the server
+    // does not keep.
+    if (question.answerSource === DEFAULT_ANSWER_SOURCE) {
+      return this._buildAnswerBlock(answer, {
+        label: DEFAULT_ANSWER_LABEL,
+        source: DEFAULT_ANSWER_SOURCE,
+        note: isRevisableDefaultAnswer(question) ? DEFAULT_ANSWER_NOTE : '',
+      });
+    }
+
+    // A real human answer is labelled as one; an answer of unknown provenance
+    // (written before provenance existed) carries no source marker at all
+    // rather than a guess.
+    return this._buildAnswerBlock(answer, { source: question.answerSource || undefined });
   }
 
   _render() {
@@ -133,17 +182,30 @@ export class KikxQuestionFrame extends HTMLElement {
       });
     }
 
+    // A default answer that no person has taken over is NOT a closed row.
+    // The agent's fallback fired because nobody replied, so the person it spoke
+    // for is entitled to replace it. Every other terminal row stays read-only:
+    // offering a box the server would refuse with a 409 is worse than showing
+    // what was answered.
+    let answered = question.status !== 'open';
+    let revisable = isRevisableDefaultAnswer(question);
+    let editable = !answered || revisable;
+    let submitLabel = revisable ? DEFAULT_ANSWER_SUBMIT : 'Answer';
+    this._submitLabel = submitLabel;
+
+    if (revisable && answerInput.setAttribute)
+      answerInput.setAttribute('placeholder', DEFAULT_ANSWER_PLACEHOLDER);
+
     let submit = button
       .type('button')
       .class('kikx-question-frame__submit')
-      .onClick(() => this._submit(question.id, answerInput))('Answer');
+      .onClick(() => this._submit(question.id, answerInput))(submitLabel);
 
     // The frame used to offer only Answer, which meant a question asked inline
     // in a session could not be dismissed without opening the Inbox. The owner's
     // screenshot made the inconsistency plain: "there is no reason a question
     // frame shouldn't have a Dismiss and X close button." Both are the same
     // hold-to-confirm controls the Inbox card renders, built by the same code.
-    let answered = question.status !== 'open';
     let ownerDocument = this.ownerDocument || (typeof document === 'undefined' ? null : document);
     let closeControl = answered || !ownerDocument ? null : buildDismissControl(ownerDocument, 'close').node;
     let dismissControl = answered || !ownerDocument ? null : buildDismissControl(ownerDocument, 'text').node;
@@ -159,6 +221,9 @@ export class KikxQuestionFrame extends HTMLElement {
 
     // A terminal question is shown read-only: the answer already exists, and
     // offering a box that would 409 is worse than showing what was said.
+    //
+    // The ONE exception is `editable` above: an answer that only a DEFAULT
+    // supplied has nobody behind it, so its question stays open to correction.
     let node = form.class('kikx-question-frame__card')
       .onSubmit((event) => {
         event.preventDefault?.();
@@ -177,10 +242,9 @@ export class KikxQuestionFrame extends HTMLElement {
           closeControl,
         ),
         p.class('kikx-question-frame__text')(question.text),
-        answered
-          ? this._answeredBlock(question)
-          : answerInput,
-        answered ? null : div.class('kikx-question-frame__actions')(submit, dismissControl, hint.hidden(true).ariaLive('polite')()),
+        answered ? this._answeredBlock(question) : null,
+        editable ? answerInput : null,
+        editable ? div.class('kikx-question-frame__actions')(submit, dismissControl, hint.hidden(true).ariaLive('polite')()) : null,
       ).build(document);
 
     this._submitNode = node.querySelector('.kikx-question-frame__submit');
@@ -289,6 +353,24 @@ export class KikxQuestionFrame extends HTMLElement {
   // Leaving an enabled "Answer sent" button next to a live textarea invited the
   // user to answer a question twice.
   _showSent(answerText) {
+    let card = this.querySelector?.('.kikx-question-frame__card');
+    if (!card)
+      return;
+
+    // A revision of a delivered default: the green receipt already on screen
+    // must STAY. The user is entitled to see what was delivered on their
+    // behalf as well as what they replaced it with, so the new answer is
+    // appended under the default rather than painted over it.
+    if (this._defaultReceiptNode()) {
+      this._removeAnswerForm(card);
+      card.appendChild(this._buildAnswerBlock(answerText, {
+        label: USER_ANSWER_LABEL,
+        source: USER_ANSWER_SOURCE,
+        note: REVISED_BY_USER_NOTE,
+      }));
+      return;
+    }
+
     // A full re-render already paints the answer block as soon as the question
     // reaches a terminal status, and the socket can deliver that status before
     // this promise settles. When it does, appending here put a SECOND, identical
@@ -298,29 +380,50 @@ export class KikxQuestionFrame extends HTMLElement {
     if (this._answeredBlockNode())
       return;
 
-    let card = this.querySelector?.('.kikx-question-frame__card');
-    if (!card)
-      return;
-
-    for (let selector of [ '.kikx-question-frame__answer', '.kikx-question-frame__actions' ]) {
-      let stale = card.querySelector?.(`.${selector.replace('.', '')}`)
-        || this.querySelector?.(selector);
-      if (stale?.parentNode)
-        stale.parentNode.removeChild(stale);
-    }
-
+    this._removeAnswerForm(card);
     card.appendChild(this._buildAnswerBlock(answerText));
+  }
+
+  // Drop the answer box and its control row from a card. Used once a send
+  // succeeds: the row is a record from then on, and leaving a live textarea
+  // beside it invites a second submission into a 409.
+  _removeAnswerForm(card) {
+    for (let selector of [ '.kikx-question-frame__answer', '.kikx-question-frame__actions' ]) {
+      for (let stale of [ ...(card.querySelectorAll?.(selector) || []) ]) {
+        if (stale?.parentNode)
+          stale.parentNode.removeChild(stale);
+      }
+    }
   }
 
   // The answer block is built in two places — `_answeredBlock()` for a question
   // that is already terminal, and `_showSent()` for one this tab just sent — so
   // it is built once and shared. Two hand-rolled copies is how the same sentence
   // ended up painted twice.
-  _buildAnswerBlock(answerText) {
-    return div.class('kikx-question-frame__answer-given')(
-      span.class('kikx-question-frame__answer-label')('Your answer'),
+  _buildAnswerBlock(answerText, options = {}) {
+    let label = options.label || USER_ANSWER_LABEL;
+    let children = [
+      span.class('kikx-question-frame__answer-label')(label),
       div.class('kikx-question-frame__answer-text')(answerText),
-    ).build(document);
+    ];
+
+    if (typeof options.note === 'string' && options.note !== '')
+      children.push(p.class('kikx-question-frame__answer-note')(options.note));
+
+    let node = div.class('kikx-question-frame__answer-given')(...children).build(document);
+
+    // Machine-readable provenance, so the stylesheet and the specs can tell a
+    // delivered default from a human reply without matching on prose that is
+    // meant to be reworded.
+    //
+    // Written ONLY when a source was actually supplied. Defaulting to "user"
+    // here branded every legacy answer (answerSource: null) as a human reply,
+    // which is the same class of lie as labelling a default "Your answer". An
+    // unknown source stays absent.
+    if (node.setAttribute && options.source)
+      node.setAttribute('data-answer-source', options.source);
+
+    return node;
   }
 
   // Whether this frame is already showing an answer block. Scoped to its own
@@ -328,6 +431,13 @@ export class KikxQuestionFrame extends HTMLElement {
   // this one believe it is already answered.
   _answeredBlockNode() {
     return this.querySelector?.('.kikx-question-frame__answer-text') || null;
+  }
+
+  // Whether this frame is showing a receipt for a default answer. Scoped the
+  // same way, and distinct from _answeredBlockNode so _showSent can keep the
+  // default visible while still replacing the form.
+  _defaultReceiptNode() {
+    return this.querySelector?.('[data-answer-source="default"]') || null;
   }
 
   // One phase setter for three states: idle, busy, error/sent. The attribute is
@@ -340,7 +450,7 @@ export class KikxQuestionFrame extends HTMLElement {
     // A sent row has no control left to describe: the form is replaced by the
     // answer. Only the busy and error phases still have a button to relabel.
     if (submitNode && phase !== 'sent') {
-      submitNode.textContent = phase === 'busy' ? 'Sending\u2026' : 'Answer';
+      submitNode.textContent = phase === 'busy' ? 'Sending\u2026' : (this._submitLabel || 'Answer');
       if (phase === 'busy')
         submitNode.setAttribute?.('disabled', '');
       else
