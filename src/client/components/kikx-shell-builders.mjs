@@ -2,7 +2,7 @@
 
 import { elements, $ } from '../lib/aeor-ui.mjs';
 import { createIcon } from '../lib/icons.mjs';
-import { buildScrollLockToolbar } from './kikx-scroll-lock.mjs';
+import { buildScrollLockFloatingButton, buildScrollLockToolbar } from './kikx-scroll-lock.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { createErrorSurfaceElement } from './kikx-error-surface.mjs';
 import { reattachAnswerNotice } from './answer-notice.mjs';
@@ -490,6 +490,7 @@ export function buildThreadSection(app, sessionID) {
     }),
     div.class('kikx-thread__body')(
       buildFrameThread(app),
+      sessionID ? buildScrollLockFloatingButton(app, sessionID) : null,
     ),
     div.class('kikx-thinking-dock')(
       thinkingRack,

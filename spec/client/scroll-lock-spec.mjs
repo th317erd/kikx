@@ -24,6 +24,7 @@ globalThis.localStorage = {
 };
 
 const {
+  buildScrollLockFloatingButton,
   buildScrollLockToolbar,
   getScrollLockModeForSession,
   isScrollLockedForSession,
@@ -56,16 +57,20 @@ test('scroll lock defaults on, persists off, and is per session', () => {
   assert.equal(getScrollLockModeForSession({ _state: { selectedSessionID: 's1' } }, 's1'), 'bottom');
 });
 
-test('the header lock button reflects and toggles the session state', () => {
+test('the floating lock button reflects and toggles the session state', () => {
   resetStorage();
   let app = document.createElement('div');
   app._state = { selectedSessionID: 's1' };
   app._toggleCalls = 0;
   app._toggleScrollLock = () => { app._toggleCalls += 1; };
   let toolbar = buildScrollLockToolbar(app, 's1');
+  assert.equal(toolbar.className, 'kikx-session-toolbar', 'the header toolbar remains reserved');
+  assert.equal(toolbar.querySelector('.kikx-session-toolbar__button--lock'), null);
+  let floating = buildScrollLockFloatingButton(app, 's1');
   app.appendChild(toolbar);
+  app.appendChild(floating);
 
-  let button = app.querySelector('.kikx-session-toolbar__button--lock');
+  let button = app.querySelector('.kikx-scroll-lock-floating.kikx-session-toolbar__button--lock');
   assert.ok(button);
   assert.equal(button.getAttribute('aria-pressed'), 'true');
   assert.equal(button.dataset.icon, 'lock-locked');

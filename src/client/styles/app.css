@@ -326,6 +326,7 @@ kikx-app {
 }
 
 .kikx-thread__body {
+  position: relative;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   min-height: 0;
@@ -2034,6 +2035,16 @@ kikx-typing-indicator {
 .kikx-session-toolbar__button svg {
   width: 1.05em;
   height: 1.05em;
+}
+
+/* The lock floats over the thread viewport, just inside the scrollbar's bottom
+   corner. The header toolbar remains reserved for future session controls. */
+.kikx-scroll-lock-floating {
+  position: absolute;
+  right: 28px;
+  bottom: 24px;
+  z-index: 2;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.38);
 }
 
 /* --- Session workspace: centered search + eye, relocated name --- */

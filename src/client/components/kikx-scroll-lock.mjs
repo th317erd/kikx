@@ -74,15 +74,21 @@ export function toggleScrollLockForSession(app, sessionID = app?._state?.selecte
   return setScrollLockedForSession(app, !isScrollLockedForSession(app, sessionID), sessionID);
 }
 
-export function buildScrollLockToolbar(app, sessionID) {
+// Reserved session toolbar in the window header. The scroll-lock control now
+// floats over the thread viewport, but the header slot stays in place for the
+// next session-level tools.
+export function buildScrollLockToolbar(_app, _sessionID) {
   let toolbar = document.createElement('div');
   toolbar.className = 'kikx-session-toolbar';
+  return toolbar;
+}
 
+export function buildScrollLockFloatingButton(app, sessionID) {
   let locked = isScrollLockedForSession(app, sessionID);
   let mode = getScrollLockModeForSession(app, sessionID);
   let button = document.createElement('button');
   button.type = 'button';
-  button.className = 'kikx-session-toolbar__button kikx-session-toolbar__button--lock';
+  button.className = 'kikx-session-toolbar__button kikx-session-toolbar__button--lock kikx-scroll-lock-floating';
   button.setAttribute('aria-pressed', locked ? 'true' : 'false');
   button.title = scrollLockTitle(locked, mode);
   button.setAttribute('aria-label', button.title);
@@ -91,8 +97,7 @@ export function buildScrollLockToolbar(app, sessionID) {
     event.stopPropagation();
     app._toggleScrollLock?.();
   });
-  toolbar.appendChild(button);
-  return toolbar;
+  return button;
 }
 
 export function paintScrollLockButton(app, sessionID = app?._state?.selectedSessionID, locked = null) {
