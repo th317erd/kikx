@@ -692,9 +692,11 @@ function toolDescription(toolName, input, status = 'running', frame = null) {
     case 'exec':
       return status === 'success' ? 'Command completed' : status === 'error' ? 'Command failed' : 'Running command';
     case 'exec-script': {
+      let start = inputField(input, 'start');
       let entry = inputField(input, 'entry')
         || (isPlainObject(input.packageJson) ? text(input.packageJson.main) : '');
-      return entry ? `Run script ${entry}` : 'Run script';
+      let target = start || entry;
+      return target ? `Run script ${target}` : 'Run script';
     }
     case 'web-search':
       return query ? `Search for ${query}` : 'Search the web';

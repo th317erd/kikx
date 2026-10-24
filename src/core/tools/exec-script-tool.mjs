@@ -13,24 +13,20 @@ export class ExecScriptTool extends PluginInterface {
   static pluginID = 'internal:command';
   static featureName = 'exec-script';
   static displayName = 'Execute script';
-  static description = 'Run a temporary Node.js script with its own package.json, optional supporting files, and installed dependencies.';
+  static description = 'Run a temporary one-shot program from arbitrary files plus a start command, or from a Node script shorthand, with optional npm dependencies.';
   static frameType = 'ScriptToolFrame';
   static clientComponent = builtInToolComponent('kikx-script-tool-use');
   static riskLevel = 'none';
   static inputSchema = {
     type: 'object',
     properties: {
-      script: {
+      start: {
         type: 'string',
-        description: 'JavaScript source for the entry script. It is written to entry (default: package.json main, or index.mjs).',
-      },
-      packageJson: {
-        type: 'object',
-        description: 'package.json contents as a JSON object. Use files if you prefer to provide package.json as a file. Defaults to a private ESM package.',
+        description: 'Shell command that invokes the program after files are written, for example python3 main.py, bash run.sh, or node index.mjs. Runs with the temporary workspace as cwd.',
       },
       files: {
         type: 'array',
-        description: 'Optional supporting files to write beside the entry script. Paths must be relative and may not escape the temporary workspace.',
+        description: 'Files to create in the temporary run workspace. Paths must be relative and may not escape it. Any language or file type is allowed.',
         items: {
           type: 'object',
           properties: {
@@ -52,14 +48,22 @@ export class ExecScriptTool extends PluginInterface {
           additionalProperties: false,
         },
       },
+      script: {
+        type: 'string',
+        description: 'Legacy convenience: Node.js source for the entry script. Use start plus files for other languages. It is written to entry (default: package.json main, or index.mjs) and invoked with the server Node binary.',
+      },
+      packageJson: {
+        type: 'object',
+        description: 'Optional package.json contents as a JSON object. Use files if you prefer to provide package.json as a file. Only needed for npm dependencies.',
+      },
       entry: {
         type: 'string',
-        description: 'Optional relative entry path. Defaults to packageJson.main, then index.mjs.',
+        description: 'Legacy Node shorthand only: relative entry path. Defaults to packageJson.main, then index.mjs.',
       },
       args: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Optional arguments passed to the script as process.argv[2..].',
+        description: 'Legacy Node shorthand only: arguments passed to the script as process.argv[2..].',
       },
       env: {
         type: 'object',
@@ -84,15 +88,14 @@ export class ExecScriptTool extends PluginInterface {
         description: 'Set true to keep the temporary script workspace after completion for debugging. The process result cwd is the workspace path. Defaults to false and deletes it on exit.',
       },
     },
-    required: [ 'script' ],
     additionalProperties: false,
   };
   static help = [
-    'Use exec-script when a task needs a real program rather than a long chain of shell commands:',
-    'one JavaScript entry script, an optional package.json, optional supporting files, dependency installation, and a single exit code/stdout/stderr result.',
-    'It writes everything to a fresh temporary directory, runs npm install when dependencies or an npm lockfile are present, then invokes the entry with the same Node binary as the Kikx server.',
-    'The script runs with the temporary workspace as its cwd. The KIKX_SESSION_CWD environment variable points at the session workspace; use that or absolute paths when you need the workspace.',
-    'Pass multiple files through files[]; the main source is script and is written to entry (packageJson.main by default).',
+    'Use exec-script when a task needs a real program rather than a long chain of shell commands.',
+    'Provide files[] containing any files to create, then start: a shell command that invokes them in the temporary workspace, for example python3 main.py, bash run.sh, or node index.mjs.',
+    'Any local interpreter works. The files are written first; start runs with the temporary workspace as cwd, and the KIKX_SESSION_CWD environment variable points at the session workspace.',
+    'For a quick Node program you may use the legacy script (plus optional entry/args) shorthand instead of files plus start.',
+    'Package.json is optional. When it declares dependencies or an npm lockfile is present, exec-script runs npm install (or npm ci) before start. Use install:true to force it, or install:false to skip it.',
     'The process is managed exactly like exec: it can return immediately for fast scripts or an async process ID with automatic completion wake for longer installs/runs. Use exec-status, exec-read, exec-grep, and exec-kill to manage it.',
     'Set keepTempDir when you need to inspect the generated files after failure. Otherwise the temporary workspace is removed when the process exits.',
   ].join(' ');
@@ -107,8 +110,7 @@ export class ExecScriptTool extends PluginInterface {
       return await processManager.start({
         command: buildScriptShellCommand({
           dir: workspace.dir,
-          entry: workspace.entry,
-          args: params.args,
+          startCommand: workspace.startCommand,
           installCommand: workspace.installCommand,
           keepTempDir,
         }),
@@ -116,7 +118,8 @@ export class ExecScriptTool extends PluginInterface {
         env: {
           ...normalizeEnvironment(params.env),
           KIKX_SCRIPT_DIR: workspace.dir,
-          KIKX_SCRIPT_ENTRY: workspace.entry,
+          KIKX_SCRIPT_START: workspace.startCommand,
+          ...(workspace.entry ? { KIKX_SCRIPT_ENTRY: workspace.entry } : {}),
           ...(sessionCwd ? { KIKX_SESSION_CWD: sessionCwd } : {}),
         },
         stdin: params.stdin,

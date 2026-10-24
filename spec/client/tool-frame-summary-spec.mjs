@@ -141,6 +141,13 @@ test('exec-script uses a script header and keeps the entry in the body', () => {
   assert.deepEqual(compactFrameHeader(frame), { label: 'Script', icon: 'terminal' });
   assert.equal(compactFrameBodyDescription(frame), 'Run script src/main.mjs');
   assert.equal(compactFrameSummary(frame).icon, 'terminal');
+
+  let arbitrary = {
+    id: 'script-2',
+    type: 'ScriptToolFrame',
+    content: { toolName: 'exec-script', status: 'running', input: { start: 'python3 main.py' } },
+  };
+  assert.equal(compactFrameBodyDescription(arbitrary), 'Run script python3 main.py');
 });
 
 test('a completed exec result says completed instead of Running', () => {

@@ -394,12 +394,20 @@ export class ScriptToolUse extends ShellToolUse {
   }
 
   callSummary() {
-    return this.input.entry ? `Running script: ${this.input.entry}...` : 'Running script...';
+    let target = this.scriptTarget();
+    return target ? `Running script: ${target}...` : 'Running script...';
   }
 
   resultSummary() {
     let outcome = this.status === 'error' ? 'failed' : 'completed';
-    return this.input.entry ? `Script ${outcome}: ${this.input.entry}` : `Script ${outcome}.`;
+    let target = this.scriptTarget();
+    return target ? `Script ${outcome}: ${target}` : `Script ${outcome}.`;
+  }
+
+  scriptTarget() {
+    if (typeof this.input.start === 'string' && this.input.start.trim() !== '')
+      return this.input.start.trim();
+    return this.input.entry || '';
   }
 
   renderArgumentsDetails() {

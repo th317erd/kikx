@@ -93,6 +93,36 @@ test('ExecScriptTool supports multiple files, args, stdin, env, and a kept works
   }
 });
 
+test('ExecScriptTool runs arbitrary files through an explicit start command', async () => {
+  let harness = await createHarness({ graceMs: 2000 });
+  let tool = new ExecScriptTool({
+    ...harness.context,
+    services: { processManager: harness.processManager },
+  });
+
+  try {
+    let result = await tool.execute({
+      files: [
+        {
+          path: 'run.sh',
+          content: 'printf "bash:%s\\n" "$1"\ncat data.txt\n',
+        },
+        { path: 'data.txt', content: 'payload\n' },
+      ],
+      start: 'bash run.sh started',
+      keepTempDir: true,
+    });
+
+    assert.equal(result.result.exitCode, 0);
+    assert.equal(result.result.stdout, 'bash:started\npayload\n');
+    assert.equal(await fs.readFile(path.join(result.cwd, 'data.txt'), 'utf8'), 'payload\n');
+    await assert.rejects(() => fs.stat(path.join(result.cwd, 'index.mjs')), /ENOENT/);
+    await fs.rm(result.cwd, { recursive: true, force: true });
+  } finally {
+    await fs.rm(harness.dir, { recursive: true, force: true });
+  }
+});
+
 test('ExecScriptTool accepts packageJson as a JSON string', async () => {
   let harness = await createHarness({ graceMs: 2000 });
   let tool = new ExecScriptTool({
@@ -179,6 +209,18 @@ test('ExecScriptTool rejects unsafe or conflicting workspace paths', async () =>
       /files cannot contain package.json/,
     );
     await assert.rejects(
+      () => tool.execute({ start: 'bash run.sh', script: 'console.log(1)' }),
+      /either start or script/,
+    );
+    await assert.rejects(
+      () => tool.execute({ files: [ { path: 'run.sh', content: 'echo hi' } ] }),
+      /requires start .* or script/,
+    );
+    await assert.rejects(
+      () => tool.execute({ start: 'bash run.sh', entry: 'run.sh' }),
+      /entry is only valid with the legacy script shorthand/,
+    );
+    await assert.rejects(
       () => tool.execute({
         script: 'console.log(1)',
         files: [
@@ -239,6 +281,7 @@ test('ExecScriptTool installs only when dependencies or an npm lockfile require 
     assert.doesNotMatch(captured[3].command, /npm (?:ci|install)/);
 
     assert.equal(captured[0].env.KIKX_SCRIPT_ENTRY, 'index.mjs');
+    assert.equal(captured[0].env.KIKX_SCRIPT_START, captured[0].command.split('\n').at(-1));
     assert.equal(captured[0].env.KIKX_SCRIPT_DIR, captured[0].cwd);
   } finally {
     for (let params of captured) {

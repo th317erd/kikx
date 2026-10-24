@@ -89,6 +89,8 @@ export const TURN_ENDING_LINES = [
   'Stay aligned with the task the user gave you — vision → mission → current todos. If what you\'re doing isn\'t the user-assigned work, stop.',
 ];
 
+export const EXEC_SCRIPT_REMINDER_LINE = 'Don\'t forget that you have `exec-script` to write and execute a one-shot script in a single maneuver. Provide the files and a start command; it can run Python, Bash, Node, or another local interpreter. This is often better than running a whole slew of separate shell commands.';
+
 function buildMessageBriefAnswerLine(_context = {}) {
   return TURN_ENDING_LINES.join('\n');
 }
@@ -204,6 +206,8 @@ export function buildMessageBrief(context = {}) {
       ...COMMUNICATION_CONTRACT_LINES,
       '',
       buildMessageBriefAnswerLine(context),
+      '',
+      EXEC_SCRIPT_REMINDER_LINE,
     ].join('\n'),
   };
 }

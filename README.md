@@ -162,7 +162,7 @@ The built-in tool execution service stores every tool result in the configured d
 
 Long-running shell work is managed by the async process system. `exec` starts managed processes, waits briefly for very short commands, stores output, exposes process inspection/kill/read/grep tools, and wakes the agent when long work completes.
 
-`exec-script` uses that same managed process pipeline for temporary Node.js programs. It writes the entry script, `package.json`, and optional supporting files to a fresh directory under the system temp root, installs dependencies with npm when declared, runs the entry with the server's Node binary, and returns the usual exit code/stdout/stderr. This replaces long chains of `exec` calls when a task needs real control flow or several files; set `keepTempDir` when you need to inspect the generated workspace after failure.
+`exec-script` uses that same managed process pipeline for temporary one-shot programs. It writes arbitrary `files[]` to a fresh directory under the system temp root, then runs the supplied `start` shell command in that directory, so the agent can use Python, Bash, Node, or any other local interpreter. A legacy Node shorthand (`script`, `entry`, `args`) is also supported. An optional `package.json` triggers npm dependency installation when declared; the result has the usual exit code/stdout/stderr. This replaces long chains of `exec` calls when a task needs real control flow or several files; set `keepTempDir` when you need to inspect the generated workspace after failure.
 
 ## Agentic Script
 

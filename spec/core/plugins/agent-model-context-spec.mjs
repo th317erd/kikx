@@ -546,6 +546,8 @@ test('Brief B carries the dual-verb turn-ending phrase', () => {
   assert.match(brief, /Communication — MANDATORY when you are actively working a turn:/);
   assert.match(brief, /Before a long-running, destructive, or externally visible action, explain it first\./);
   assert.match(brief, /A one-line status\s+is not enough in details\./);
+  assert.match(brief, /Don't forget that you have `exec-script` to write and execute a one-shot script in a single maneuver\./);
+  assert.match(brief, /Provide the files and a start command; it can run Python, Bash, Node, or another local interpreter\./);
 });
 
 test('Brief B shows an autonomous-run clue only on self-triggered turns', () => {

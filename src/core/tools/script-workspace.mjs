@@ -13,14 +13,13 @@ const DEFAULT_PACKAGE_JSON = {
 const NPM_LOCKFILES = new Set([ 'package-lock.json', 'npm-shrinkwrap.json' ]);
 
 export async function prepareScriptWorkspace(params = {}) {
-  let script = normalizeScriptSource(params.script);
   let files = normalizeFiles(params.files);
   let packageInput = resolvePackageInput(params, files);
   let packageData = parsePackageJson(packageInput.value, packageInput.source);
-  let entry = normalizeEntryPath(params.entry || packageMain(packageData) || DEFAULT_SCRIPT_ENTRY);
+  let execution = resolveExecutionMode(params, packageData);
 
-  if (files.has(entry))
-    throw new Error(`files cannot also contain the entry script: ${entry}`);
+  if (execution.entry && files.has(execution.entry))
+    throw new Error(`files cannot also contain the entry script: ${execution.entry}`);
 
   let packageFile = packageInput.value == null
     ? { content: `${JSON.stringify(DEFAULT_PACKAGE_JSON, null, 2)}\n`, encoding: 'utf8' }
@@ -34,7 +33,8 @@ export async function prepareScriptWorkspace(params = {}) {
       };
 
   files.set('package.json', packageFile);
-  files.set(entry, { content: script, encoding: 'utf8' });
+  if (execution.entry)
+    files.set(execution.entry, { content: execution.script, encoding: 'utf8' });
 
   let dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'kikx-script-'));
   try {
@@ -53,7 +53,8 @@ export async function prepareScriptWorkspace(params = {}) {
 
     return {
       dir,
-      entry,
+      entry: execution.entry,
+      startCommand: execution.startCommand,
       files: [ ...files.keys() ],
       installCommand,
       keepTempDir: params.keepTempDir === true,
@@ -65,7 +66,10 @@ export async function prepareScriptWorkspace(params = {}) {
   }
 }
 
-export function buildScriptShellCommand({ dir, entry, args = [], installCommand = null, keepTempDir = false } = {}) {
+export function buildScriptShellCommand({ dir, startCommand, installCommand = null, keepTempDir = false } = {}) {
+  if (typeof startCommand !== 'string' || startCommand.trim() === '')
+    throw new TypeError('startCommand must be a non-empty string');
+
   let lines = [ 'set -e' ];
 
   if (!keepTempDir) {
@@ -84,7 +88,7 @@ export function buildScriptShellCommand({ dir, entry, args = [], installCommand 
   lines.push(`cd ${shellQuote(dir)}`);
   if (installCommand)
     lines.push(installCommand);
-  lines.push([ shellQuote(process.execPath), shellQuote(entry), ...normalizeArgs(args).map(shellQuote) ].join(' '));
+  lines.push(startCommand);
   return lines.join('\n');
 }
 
@@ -110,6 +114,33 @@ export function normalizeScriptPath(value, fieldName = 'path') {
     throw new Error(`${fieldName} must stay inside the temporary script workspace: ${value}`);
 
   return normalized;
+}
+
+function resolveExecutionMode(params, packageData) {
+  let hasStart = params.start != null;
+  let hasScript = params.script != null;
+  if (hasStart && hasScript)
+    throw new Error('provide either start or script, not both');
+  if (!hasStart && !hasScript)
+    throw new Error('exec-script requires start (a shell command) or script (a Node shorthand)');
+
+  if (hasStart) {
+    if (params.entry != null)
+      throw new Error('entry is only valid with the legacy script shorthand; put the entry in the start command instead');
+    if (params.args != null)
+      throw new Error('args is only valid with the legacy script shorthand; put arguments in the start command instead');
+    if (typeof params.start !== 'string' || params.start.trim() === '')
+      throw new TypeError('start must be a non-empty shell command string');
+    return { entry: null, script: null, startCommand: params.start };
+  }
+
+  let script = normalizeScriptSource(params.script);
+  let entry = normalizeEntryPath(params.entry || packageMain(packageData) || DEFAULT_SCRIPT_ENTRY);
+  return {
+    entry,
+    script,
+    startCommand: [ shellQuote(process.execPath), shellQuote(entry), ...normalizeArgs(params.args).map(shellQuote) ].join(' '),
+  };
 }
 
 function normalizeScriptSource(value) {
