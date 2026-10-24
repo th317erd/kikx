@@ -378,7 +378,14 @@ export class FrameRuntime extends EventEmitter {
       // A steering message is already queued for the active run; waiting on
       // background agent work here would block the HTTP response until that
       // turn ends, which is exactly the latency steering is meant to avoid.
-      await this.frameRouter?.flush?.(steering ? { background: false } : undefined);
+      //
+      // Question default answers are appended by a scheduled-frame plugin that
+      // runs inside FrameRouter.routeCommit(); awaiting router.flush() there
+      // waits on the very pass that is making the call, deadlocking the session
+      // and every later user message behind it. Internal scheduled deliveries
+      // opt out explicitly; ordinary HTTP messages keep the persistence wait.
+      if (input.flushRouter !== false)
+        await this.frameRouter?.flush?.(steering ? { background: false } : undefined);
 
       return {
         session: entry.session,

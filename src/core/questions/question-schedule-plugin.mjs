@@ -158,6 +158,7 @@ export class QuestionScheduleFramePlugin extends BaseFramePlugin {
     try {
       delivery = await answerService.deliverAnswer(result.question, {
         authorDisplayName: DEFAULT_ANSWER_AUTHOR,
+        flushRouter: false,
       });
     } catch (error) {
       this.context.services?.logger?.error?.('ask-user: default answer delivery threw', error);
@@ -188,7 +189,7 @@ export class QuestionScheduleFramePlugin extends BaseFramePlugin {
 
     let delivery = null;
     try {
-      delivery = await answerService.deliverAnswer(question);
+      delivery = await answerService.deliverAnswer(question, { flushRouter: false });
     } catch (error) {
       this.context.services?.logger?.error?.('ask-user: scheduled delivery retry threw', error);
     }

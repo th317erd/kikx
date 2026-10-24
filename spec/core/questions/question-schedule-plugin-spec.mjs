@@ -210,6 +210,7 @@ test('a fired deadline for an open question applies the default and delivers it'
 
   assert.equal(ctx.calls.delivered.length, 1, 'the default is delivered exactly once');
   assert.equal(ctx.calls.delivered[0].opts.authorDisplayName, 'Default answer');
+  assert.equal(ctx.calls.delivered[0].opts.flushRouter, false, 'a scheduled delivery must not wait on the routing pass that invoked it');
   assert.equal(ctx.calls.next, 0, 'the plugin owns this frame; agent routing must not also run');
 });
 

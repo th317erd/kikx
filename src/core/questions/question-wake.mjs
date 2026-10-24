@@ -283,6 +283,7 @@ export class QuestionAnswerService {
         createdAt: now,
       },
       timestamp: now,
+      flushRouter: input.flushRouter !== false,
     });
 
     // Stored answer must be durable before we report success: otherwise a crash
@@ -298,10 +299,12 @@ export class QuestionAnswerService {
     // The store-only fallback keeps older runtimes working; a store flush alone
     // can leave the answer persisted but never routed, which is the gap this
     // service exists to close.
-    if (typeof this.frameRuntime.flush === 'function')
-      await this.frameRuntime.flush({ background: false });
-    else
-      await this.frameRuntime.frameStore?.flush?.();
+    if (input.flushRouter !== false) {
+      if (typeof this.frameRuntime.flush === 'function')
+        await this.frameRuntime.flush({ background: false });
+      else
+        await this.frameRuntime.frameStore?.flush?.();
+    }
 
     return {
       delivered: true,

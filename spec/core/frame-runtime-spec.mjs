@@ -1800,3 +1800,25 @@ test('FrameRuntime persists composer drafts and searches user message history', 
   assert.equal(redactedFrame.deleted, true);
   assert.match(redactedFrame.content.text, /^<REDACTED BY usr_1 AT /);
 });
+
+test('appendUserMessage never waits for the router from inside a routing pass', async () => {
+  let aeordb = createClient();
+  let runtime = createRuntime({
+    aeordb,
+    ids: [ 'ses_1', ...Array.from({ length: 20 }, (_value, index) => `id_${index}`) ],
+  });
+  await runtime.createSession({ title: 'Scheduled delivery deadlock' });
+  let flushCalls = 0;
+  runtime.frameRouter = {
+    async flush() { flushCalls += 1; },
+  };
+
+  let result = await runtime.appendUserMessage('ses_1', {
+    text: 'default answer delivered from a scheduled frame',
+    userID: 'usr_1',
+    flushRouter: false,
+  });
+
+  assert.equal(result.frame.type, 'UserMessage');
+  assert.equal(flushCalls, 0, 'waiting on the current routing pass would deadlock the session');
+});
