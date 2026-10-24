@@ -635,9 +635,19 @@
    The Inbox branch keys on `.kikx-question-frame--inbox`, NOT on the row's
    `<article>`: the frame sits between the article and the form, so `:has(> …)`
    off the article matches nothing at all. */
+/* Three sides only. `border-color` is a shorthand that resets all four,
+   including the left accent this file declares as the frame's identity — so
+   writing `border-color` here silently deleted the hot-pink edge on the one
+   state a user actually sees (an answerable question), and the frame stopped
+   looking like a Question frame at all. Measured in Chromium before this
+   change: borderLeftColor rgb(48,54,61) on BOTH surfaces, with the 3px width
+   still intact — the stripe kept its geometry and lost its colour. */
 .kikx-question-frame:has(.kikx-question-frame__answer) .kikx-question-frame__card,
 .kikx-question-frame--inbox:has(.kikx-question-card__answer) .kikx-question-card__answer {
-  border-color: #30363d;
+  border-top-color: #30363d;
+  border-right-color: #30363d;
+  border-bottom-color: #30363d;
+  border-left-color: #ff4fa3;
 }
 
 /* --- Answer notice ------------------------------------------------------ */

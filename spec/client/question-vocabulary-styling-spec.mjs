@@ -126,7 +126,11 @@ function blockFor(selector) {
 function declarations(selector, property) {
   const block = blockFor(selector);
   if (!block) return [];
+  // Strip comments before splitting: a `;` inside a comment would otherwise end
+  // a declaration mid-sentence and silently hide the real one, which is how this
+  // helper reported "no border-top-color" for a rule that plainly had one.
   return block
+    .replace(/\/\*[\s\S]*?\*\//g, '')
     .split(';')
     .map((line) => line.trim())
     .filter((line) => line.startsWith(`${property}:`))
@@ -228,10 +232,15 @@ test('the row box does not keep the neutral card colours the frame replaced', ()
 });
 
 test('the answerable-state border override covers both surfaces', () => {
-  // This rule sets `border-color`, a shorthand over all four edges, so it
-  // repaints a left accent grey while the question is still answerable. It wins
-  // on specificity against the shared box rule — (0,3,0) against (0,1,0) — even
-  // though it appears earlier in the file.
+  // This rule mutes three edges while the question is still answerable, and it
+  // wins on specificity against the shared box rule — (0,3,0) against (0,1,0).
+  //
+  // It once wrote `border-color: #30363d`, a shorthand over all four edges, so it
+  // also repainted the LEFT accent grey. That is the frame's identity, so an
+  // answerable question — the only state a user normally sees — stopped looking
+  // like a Question frame at all. Measured in Chromium: borderLeftColor
+  // rgb(48,54,61) with the 3px width intact, on both surfaces. The rule must
+  // therefore name the three edges individually and leave the accent alone.
   //
   // It used to speak only the thread's vocabulary. The frame's textarea is
   // `kikx-question-frame__answer`; in the Inbox row `kikx-question-card__answer`
@@ -246,16 +255,29 @@ test('the answerable-state border override covers both surfaces', () => {
   // have. The Inbox branch keys on `.kikx-question-frame--inbox`, NOT on the
   // row's <article>: the frame sits between the article and the form, so
   // `:has(> …)` off the article matches nothing at all — measured, not assumed.
+  let bothSurfaces = [
+    `.${FRAME_ROOT_CLASS}:has(.${FRAME_ROOT_CLASS}__answer) .${FRAME_ROOT_CLASS}__card`,
+    `.${FRAME_ROOT_CLASS}--inbox:has(.${INBOX_ROOT_CLASS}__answer) .${INBOX_ROOT_CLASS}__answer`,
+  ].join(', ');
+
   assert.deepEqual(
-    declarations(
-      [
-        `.${FRAME_ROOT_CLASS}:has(.${FRAME_ROOT_CLASS}__answer) .${FRAME_ROOT_CLASS}__card`,
-        `.${FRAME_ROOT_CLASS}--inbox:has(.${INBOX_ROOT_CLASS}__answer) .${INBOX_ROOT_CLASS}__answer`,
-      ].join(', '),
-      'border-color',
-    ),
-    ['#30363d'],
-    'this override must cover both surfaces; decide why before changing it',
+    declarations(bothSurfaces, 'border-color'),
+    [],
+    'the four-edge shorthand resets the left accent; name the three muted edges instead',
+  );
+
+  for (let edge of ['top', 'right', 'bottom']) {
+    assert.deepEqual(
+      declarations(bothSurfaces, `border-${edge}-color`),
+      ['#30363d'],
+      `this override must mute the ${edge} edge on both surfaces; decide why before changing it`,
+    );
+  }
+
+  assert.deepEqual(
+    declarations(bothSurfaces, 'border-left-color'),
+    ['#ff4fa3'],
+    'and it must keep the hot-pink left accent, on both surfaces',
   );
 
   // And both branches must name an element that really exists: the frame's
