@@ -85,6 +85,9 @@ export async function patchQuestionFrameContent(context = {}, question = null, o
         // still say what the default was after it has been replaced.
         supersededDefaultAnswer: question.supersededDefaultAnswer ?? null,
         revisedAt: question.revisedAt ?? null,
+        // The client needs to know a person confirmed the default, so it can
+        // say so instead of showing a box that the server would now refuse.
+        acknowledgedAt: question.acknowledgedAt ?? null,
       },
     } ], {
       authorType: 'system',

@@ -126,6 +126,11 @@ export function normalizeQuestionDoc(value) {
     supersededDefaultAnswer: normalizeOptionalString(value.supersededDefaultAnswer) || null,
     supersededDefaultAt: value.supersededDefaultAt == null ? null : Number(value.supersededDefaultAt),
     revisedAt: value.revisedAt == null ? null : Number(value.revisedAt),
+    // Set when a person confirmed a delivered default instead of replacing it.
+    // It MUST round-trip: it is what makes the question settled, so a normalizer
+    // that dropped it would quietly reopen an acknowledged question on the next
+    // read-modify-write and offer the box again.
+    acknowledgedAt: value.acknowledgedAt == null ? null : Number(value.acknowledgedAt),
     wakeSuppressed: normalizeWakeSuppressed(value.wakeSuppressed),
     answeredAt: value.answeredAt || null,
     answeredClock: value.answeredClock || null,

@@ -130,8 +130,11 @@ function appSpy(result = { ok: true, delivered: true }) {
   return {
     calls,
     app: {
-      _submitQuestionAnswer(questionID, text) {
-        calls.push({ questionID, text });
+      // `options` is recorded, not dropped. Dropping it is how this file ended up
+      // unable to tell a confirmation from a replacement: both arrived as
+      // { questionID, text } and every assertion passed either way.
+      _submitQuestionAnswer(questionID, text, options) {
+        calls.push({ questionID, text, options });
         return Promise.resolve(result);
       },
     },
@@ -143,6 +146,13 @@ function clickSubmit(el) {
   assert.ok(submit, 'the frame must have a submit control');
   submit.dispatchEvent({ type: 'click', preventDefault() {} });
   return submit;
+}
+
+function clickConfirm(el) {
+  let confirm = byClass(el, 'kikx-question-frame__confirm')[0];
+  assert.ok(confirm, 'the frame must offer the acknowledgement control');
+  confirm.dispatchEvent({ type: 'click', preventDefault() {} });
+  return confirm;
 }
 
 function typeInto(el, text) {
@@ -169,6 +179,18 @@ test('isRevisableDefaultAnswer accepts only an answered question of default prov
   // shown to have come from a default, so it is treated as somebody's answer
   // rather than being offered up for editing.
   assert.equal(isRevisableDefaultAnswer({ status: 'answered', answerSource: null }), false);
+
+  // A CONFIRMED default stays revisable on the client too. The server gate
+  // (question-answer-revision.mjs) and this one must agree exactly: if the
+  // client closed here, the box would vanish on "That's right" while the server
+  // still accepted a replacement — a misclick would become unfixable in the UI
+  // even though the data layer could take the fix. If the client opened where
+  // the server refused, the form would 409.
+  assert.equal(isRevisableDefaultAnswer({
+    status: 'answered',
+    answerSource: DEFAULT_ANSWER_SOURCE,
+    acknowledgedAt: 1_700_000_000_000,
+  }), true);
 
   // A deleted question is not editable no matter what it says.
   assert.equal(isRevisableDefaultAnswer({
@@ -415,4 +437,114 @@ test('an open question renders no answer receipt at all', () => {
   assert.equal(bySource(el, DEFAULT_ANSWER_SOURCE).length, 0);
   assert.equal(bySource(el, USER_ANSWER_SOURCE).length, 0);
   assert.equal(byTag(el, 'textarea').length, 1);
+});
+
+// --- the acknowledgement control -------------------------------------------
+//
+// "That's right" exists because the ONLY way to agree with a default used to be
+// to retype it, and retyping is indistinguishable from a correction. The server
+// reads the declared intent, so the control's entire job is to declare the right
+// one and to carry no text.
+
+test('the frame offers a confirm control beside the replacement box, and they are different controls', () => {
+  let el = mount(frameWith({
+    status: 'answered',
+    answer: DEFAULT_TEXT,
+    answerSource: DEFAULT_ANSWER_SOURCE,
+  }));
+
+  let confirm = byClass(el, 'kikx-question-frame__confirm');
+  let submit = byClass(el, 'kikx-question-frame__submit');
+
+  assert.equal(confirm.length, 1, 'exactly one acknowledgement control');
+  assert.equal(submit.length, 1, 'and exactly one replacement control');
+  assert.notEqual(confirm[0], submit[0], 'two distinct controls, not one button relabelled');
+  assert.match(textOf(confirm[0]), /right/i, 'the label says what agreeing means');
+});
+
+test('clicking confirm reports the confirm intent and NO text', async () => {
+  let { calls, app } = appSpy({ ok: true, acknowledged: true, delivered: false });
+  let el = mount(frameWith({
+    status: 'answered',
+    answer: DEFAULT_TEXT,
+    answerSource: DEFAULT_ANSWER_SOURCE,
+  }), { app });
+
+  clickConfirm(el);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(calls.length, 1, 'the click must reach the app layer, not be swallowed');
+  assert.equal(calls[0].options?.intent, 'confirm', 'the intent is what decides whether the agent is woken');
+  assert.equal(calls[0].text, '', 'a confirmation carries no text: the default already said it');
+});
+
+test('typing a replacement still declares change, not confirm', async () => {
+  let { calls, app } = appSpy();
+  let el = mount(frameWith({
+    status: 'answered',
+    answer: DEFAULT_TEXT,
+    answerSource: DEFAULT_ANSWER_SOURCE,
+  }), { app });
+
+  typeInto(el, REAL_TEXT);
+  clickSubmit(el);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].text, REAL_TEXT);
+  assert.notEqual(calls[0].options?.intent, 'confirm',
+    'a correction must wake the agent; only an affirmation is silent');
+});
+
+test('a confirmation paints no answer block: the person wrote nothing', async () => {
+  // The phase setter used to append a "Your answer" block holding the empty
+  // string, i.e. it invented a receipt for words nobody typed.
+  let el = mount(frameWith({
+    status: 'answered',
+    answer: DEFAULT_TEXT,
+    answerSource: DEFAULT_ANSWER_SOURCE,
+  }), { app: appSpy({ ok: true, acknowledged: true }).app });
+
+  let before = bySource(el, USER_ANSWER_SOURCE).length;
+
+  clickConfirm(el);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(bySource(el, USER_ANSWER_SOURCE).length, before,
+    'confirming must not add a user-answer block');
+  let defaults = bySource(el, DEFAULT_ANSWER_SOURCE);
+  assert.equal(defaults.length, 1, 'the default receipt stays');
+  assert.match(textOf(defaults[0]), /declined to say/);
+});
+
+test('an already-confirmed default shows the confirmation and drops the confirm button', () => {
+  let el = mount(frameWith({
+    status: 'answered',
+    answer: DEFAULT_TEXT,
+    answerSource: DEFAULT_ANSWER_SOURCE,
+    acknowledgedAt: 1792800000000,
+  }));
+
+  assert.equal(byClass(el, 'kikx-question-frame__confirm').length, 0,
+    'there is nothing left to confirm');
+
+  let receipt = bySource(el, DEFAULT_ANSWER_SOURCE);
+  assert.equal(receipt.length, 1);
+  assert.match(textOf(receipt[0]), /confirmed/i, 'the receipt records that somebody affirmed it');
+
+  // And the correction path is still open, which is what makes the promise in
+  // that note ("you can still replace it below") true.
+  assert.equal(byTag(el, 'textarea').length, 1);
+  assert.equal(byClass(el, 'kikx-question-frame__submit').length, 1);
+});
+
+test('a real human answer offers no acknowledgement control', () => {
+  let el = mount(frameWith({
+    status: 'answered',
+    answer: REAL_TEXT,
+    answerSource: USER_ANSWER_SOURCE,
+  }));
+
+  assert.equal(byClass(el, 'kikx-question-frame__confirm').length, 0,
+    'there is no default to affirm');
 });

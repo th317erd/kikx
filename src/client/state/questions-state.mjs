@@ -50,6 +50,21 @@ export function isRevisableDefaultAnswer(question) {
   return question?.deleted !== true
     && question?.status === 'answered'
     && question?.answerSource === DEFAULT_ANSWER_SOURCE;
+// Deliberately NOT narrowed by `acknowledgedAt`. Mirrors the server gate in
+// question-answer-revision.mjs, and for the same reason: confirming wakes
+// nobody, so if "That's right" also closed the box, one misclick would leave
+// the agent holding a wrong answer with no way left to fix it. The box stays,
+// and the receipt says the person can still replace it.
+}
+
+/**
+ * Did a person confirm the default that was applied on their behalf?
+ *
+ * This is what lets the receipt say "you confirmed this" instead of leaving a
+ * silent default that looks like nobody ever saw it.
+ */
+export function isAcknowledgedDefaultAnswer(question) {
+  return Number(question?.acknowledgedAt) > 0;
 }
 
 function stringOrNull(value) {
@@ -104,6 +119,10 @@ export function normalizeQuestionSummary(value) {
     // the transcript can still show what the agent was originally told.
     supersededDefaultAnswer: stringOrNull(value.supersededDefaultAnswer),
     revisedAt: numberOr(value.revisedAt, 0),
+    // When a person confirmed the delivered default instead of replacing it.
+    // Kept beside the answer so a confirmed row reads as settled rather than
+    // offering a box the server would refuse.
+    acknowledgedAt: numberOr(value.acknowledgedAt, 0),
     priority: value.priority === 'low' || value.priority === 'high' ? value.priority : 'normal',
     askedAt: numberOr(value.askedAt, 0),
     askedClock: stringOrNull(value.askedClock),

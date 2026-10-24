@@ -17,6 +17,7 @@ import test from 'node:test';
 import { AppContext } from '../../src/core/app/app-context.mjs';
 import { QuestionsStore } from '../../src/core/questions/questions-store.mjs';
 import { QuestionAnswerService } from '../../src/core/questions/question-wake.mjs';
+import { applyDefaultAnswer } from '../../src/core/questions/question-maintenance.mjs';
 import { createServer } from '../../src/server/create-server.mjs';
 import {
   matchQuestionAnswerRoute,
@@ -343,6 +344,166 @@ test('POST answer rejects an empty answer and a non-JSON body', async () => {
     assert.equal(garbage.status, 400);
 
     // Still open: a rejected request must not consume the question.
+    let stored = await stores.questionsStore.getQuestion('q_1');
+    assert.equal(stored.status, 'open');
+  } finally {
+    await close(stores.server);
+  }
+});
+
+// --- confirming a delivered default ----------------------------------------
+//
+// "That's right" is the one answer that carries NO TEXT. Three separate layers
+// used to refuse it, each with its own reason to think that was right:
+//
+//   1. the client wrapper returned { ok:false, reason:'empty' } before it ever
+//      read the intent, so the click posted nothing;
+//   2. the route required a non-empty `answer` before it reached the revision
+//      branch, so a confirmation died as a 400 even if it was sent;
+//   3. the store was already correct and simply never got asked.
+//
+// Every one of those passed a mock-based test. These run against the real store
+// and the real answer service, so the contract is the one the browser meets.
+
+async function seedFiredDefault(stores, defaultAnswer = 'declined to say') {
+  await seedQuestion(stores, {
+    questions: [ { text: 'What did you copy?', defaultAnswer, timeoutSeconds: 30 } ],
+  });
+
+  // Fire the default the way the deadline plugin does, through the store.
+  // Past the deadline the store computed at creation (clock 1000 + 30s), not
+  // merely past some arbitrary "later" number.
+  let fired = await applyDefaultAnswer(stores.questionsStore, 'q_1', { now: 60_000 });
+  assert.equal(fired.applied, true, 'the seeded default must actually fire');
+
+  // The default's own delivery wake is not what this test is about.
+  stores.frameRuntime.calls.appendUserMessage.length = 0;
+  return fired.question;
+}
+
+function answerRequest(baseURL, body) {
+  return fetch(`${baseURL}/api/v1/questions/q_1/answer`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+test('a confirmation is a 200 with acknowledged:true and wakes nobody', async () => {
+  let stores = await startServer({ ids: [ 'group_1', 'q_1' ] });
+
+  try {
+    await seedFiredDefault(stores);
+
+    let response = await answerRequest(stores.baseURL, { answer: '', intent: 'confirm' });
+    let body = await response.json();
+
+    assert.equal(response.status, 200,
+      'an empty answer is legal when it is a confirmation, and only then');
+    assert.equal(body.data.acknowledged, true);
+    assert.equal(body.data.revised, true);
+    assert.equal(body.data.delivered, false, 'a confirmation delivers nothing');
+
+    let stored = await stores.questionsStore.getQuestion('q_1');
+    assert.equal(stored.answer, 'declined to say',
+      'the answer text is untouched: the person affirmed words they did not write');
+    assert.equal(stored.answerSource, 'default', 'still the default, now seen');
+    assert.ok(stored.acknowledgedAt > 0, 'the confirmation is recorded');
+
+    // The whole point of the split: an affirmation carries no new information,
+    // so it must not start a turn.
+    assert.equal(stores.frameRuntime.calls.appendUserMessage.length, 0,
+      'a confirmation wakes nobody');
+  } finally {
+    await close(stores.server);
+  }
+});
+
+test('a confirmation cannot close the correction path', async () => {
+  // Confirming is one click and wakes nobody. If it were terminal, a misclick on
+  // a WRONG default would leave the agent believing it with no way to fix it —
+  // the exact failure the revision path exists to remove.
+  let stores = await startServer({ ids: [ 'group_1', 'q_1' ] });
+
+  try {
+    await seedFiredDefault(stores);
+
+    assert.equal((await answerRequest(stores.baseURL, { answer: '', intent: 'confirm' })).status, 200);
+
+    // And a real correction still lands afterwards, waking the agent once.
+    let corrected = await answerRequest(stores.baseURL, {
+      answer: 'a stack trace',
+      intent: 'change',
+    });
+    let body = await corrected.json();
+
+    assert.equal(corrected.status, 200);
+    assert.equal(body.data.acknowledged, false);
+    assert.equal(body.data.delivered, true, 'a changed answer is a correction and does wake');
+
+    let stored = await stores.questionsStore.getQuestion('q_1');
+    assert.equal(stored.answer, 'a stack trace');
+    assert.equal(stored.answerSource, 'user');
+    assert.equal(stored.acknowledgedAt, null,
+      'the acknowledgement belonged to the answer it affirmed, not to the question');
+    assert.equal(stored.supersededDefaultAnswer, 'declined to say');
+  } finally {
+    await close(stores.server);
+  }
+});
+
+test('a confirmation of a real human answer is a 409, not a silent no-op', async () => {
+  // The relaxation above is exactly as narrow as the provenance gate. Anything
+  // else stays the original "already answered".
+  let stores = await startServer({ ids: [ 'group_1', 'q_1' ] });
+
+  try {
+    await seedQuestion(stores);
+    assert.equal((await answerRequest(stores.baseURL, { answer: 'Postgres 16' })).status, 200);
+
+    let response = await answerRequest(stores.baseURL, { answer: '', intent: 'confirm' });
+
+    assert.equal(response.status, 409, 'there is no default here to confirm');
+
+    let stored = await stores.questionsStore.getQuestion('q_1');
+    assert.equal(stored.acknowledgedAt ?? null, null, 'and nothing is recorded');
+  } finally {
+    await close(stores.server);
+  }
+});
+
+test('a confirmation on a still-open question is a 409 and leaves it open', async () => {
+  let stores = await startServer({ ids: [ 'group_1', 'q_1' ] });
+
+  try {
+    await seedQuestion(stores);
+
+    let response = await answerRequest(stores.baseURL, { answer: '', intent: 'confirm' });
+    assert.equal(response.status, 409);
+
+    let stored = await stores.questionsStore.getQuestion('q_1');
+    assert.equal(stored.status, 'open', 'a confirmation must not answer anything');
+    assert.equal(stored.answer, null);
+  } finally {
+    await close(stores.server);
+  }
+});
+
+test('an empty answer with no intent is still a 400', async () => {
+  // The relaxation must be keyed on the declared intent, not on emptiness alone,
+  // or a client could store a blank answer on an open question.
+  let stores = await startServer({ ids: [ 'group_1', 'q_1' ] });
+
+  try {
+    await seedQuestion(stores);
+
+    assert.equal((await answerRequest(stores.baseURL, { answer: '' })).status, 400);
+    assert.equal((await answerRequest(stores.baseURL, { answer: '  ' })).status, 400);
+    assert.equal((await answerRequest(stores.baseURL, { answer: '', intent: 'change' })).status, 400,
+      'a "change" that carries no text is a client bug, not a confirmation');
+    assert.equal((await answerRequest(stores.baseURL, { answer: '', intent: 'nonsense' })).status, 400,
+      'an unrecognized intent never silently becomes a confirmation');
+
     let stored = await stores.questionsStore.getQuestion('q_1');
     assert.equal(stored.status, 'open');
   } finally {

@@ -17,6 +17,7 @@ import {
 } from './route-matchers.mjs';
 import {
   NO_RESPONSE_ANSWER_TEXT,
+  REVISION_INTENT_CONFIRM,
   normalizeWakeSuppressed,
 } from '../../core/questions/question-fields.mjs';
 
@@ -77,7 +78,14 @@ export async function handleQuestionRoutes({ request, response, url, context }) 
 
     let silent = normalizeWakeSuppressed(body.silent);
 
-    if (!silent && (typeof body.answer !== 'string' || body.answer.trim() === ''))
+    // A CONFIRMATION carries no text on purpose: it affirms the default answer
+    // the server already holds. It must NOT be waved through to `submitAnswer`
+    // though — that would store an empty answer on a question that is still
+    // open — so the check is relaxed only far enough to reach the revision path
+    // below, which succeeds solely against a `default`-provenance answer.
+    let declaringConfirmation = !silent && body.intent === REVISION_INTENT_CONFIRM;
+
+    if (!declaringConfirmation && !silent && (typeof body.answer !== 'string' || body.answer.trim() === ''))
       throw httpError(400, 'answer must be a non-empty string');
 
     // Identity is optional, matching POST /api/v1/sessions/:id/messages: the
@@ -98,9 +106,37 @@ export async function handleQuestionRoutes({ request, response, url, context }) 
 
       return await answerService.reviseDefaultAnswer(answerRoute.questionID, {
         answer: silent ? NO_RESPONSE_ANSWER_TEXT : body.answer,
+        // Declared by the client, never inferred from the text: "ok" and
+        // "Postgres 16" are both strings, and only the caller knows whether the
+        // default was affirmed or corrected. An absent/garbage value normalizes
+        // to 'change', the branch that wakes the agent.
+        intent: body.intent,
         userID: account?.id || body.userID || null,
       });
     };
+
+    // A confirmation never travels through `submitAnswer`: there is nothing to
+    // write until the revision does it, and an open question has no default to
+    // affirm.
+    if (declaringConfirmation) {
+      let confirmed = await revise();
+
+      if (!confirmed?.revised)
+        throw httpError(409, 'No delivered default answer to confirm');
+
+      writeJSON(response, 200, {
+        data: {
+          question: confirmed.question,
+          delivered: false,
+          pending: false,
+          suppressed: false,
+          revised: true,
+          acknowledged: true,
+          frameID: null,
+        },
+      });
+      return true;
+    }
 
     let result;
     try {
@@ -126,6 +162,10 @@ export async function handleQuestionRoutes({ request, response, url, context }) 
             pending: false,
             suppressed: false,
             revised: true,
+            // Reported so the client can say "confirmed, nothing sent to the
+            // agent" rather than "Answer sent", which would be a lie: an
+            // acknowledgement deliberately wakes nobody.
+            acknowledged: revised.acknowledged === true,
             frameID: revised.frameID ?? null,
           },
         });

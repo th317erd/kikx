@@ -239,3 +239,102 @@ test('a failed dismissal reopens the row too', async () => {
   assert.equal(stateOf(app).closedQuestionIDs.has('q_1'), false,
     'and its id is un-remembered');
 });
+
+// --- confirming a delivered default ----------------------------------------
+//
+// The acknowledgement button sends NO TEXT. That is the whole reason it exists,
+// and it also used to be the reason it did nothing: the guard that refuses a
+// blank answer ran before `options.intent` was ever read, so the click returned
+// `{ ok: false, reason: 'empty' }` and posted nothing at all. No mock-based test
+// could see that, because every one of them passed text.
+
+function defaultAnsweredQuestion(overrides = {}) {
+  return openQuestion({
+    status: 'answered',
+    answer: 'declined to say',
+    answerSource: 'default',
+    defaultAnswer: 'declined to say',
+    ...overrides,
+  });
+}
+
+test('a confirmation posts an empty answer with the confirm intent', async () => {
+  let calls = [];
+  let app = fakeApp([ defaultAnsweredQuestion() ]);
+
+  let result = await submitQuestionAnswer(app, 'q_1', '', {
+    intent: 'confirm',
+    postJSON: async (url, body) => {
+      calls.push({ url, body });
+      return { data: { acknowledged: true, revised: true, delivered: false, pending: false } };
+    },
+    announce: () => {},
+  });
+
+  assert.equal(calls.length, 1, 'the confirmation must actually leave the client');
+  assert.equal(calls[0].url, '/api/v1/questions/q_1/answer');
+  assert.equal(calls[0].body.intent, 'confirm', 'the intent is the only thing that decides the wake');
+  assert.equal(calls[0].body.answer, '', 'and it carries no text');
+  assert.equal(result?.acknowledged, true);
+});
+
+test('a confirmation does not schedule the receipt for retirement', async () => {
+  // The row is ALREADY terminal: a default only fires on an answered question,
+  // so there is nothing left for an optimistic close to close.
+  //
+  // Running the close anyway did not blank the text — `settleQuestion` falls back
+  // to the existing answer when the new one is empty, which is why the first
+  // version of this assertion passed against the bug too. What it actually did
+  // was stamp `closedAt` + `settleAfter`, i.e. start a fuse on a receipt nobody
+  // had asked to remove. `evictRetiredRows` then deletes it when the fuse
+  // expires, so a confirmation made the default answer disappear from the Inbox
+  // a few seconds later.
+  let app = fakeApp([ defaultAnsweredQuestion() ]);
+
+  await submitQuestionAnswer(app, 'q_1', '', {
+    intent: 'confirm',
+    postJSON: async () => ({ data: { acknowledged: true, revised: true } }),
+    announce: () => {},
+  });
+
+  let row = stateOf(app).questions[0];
+  assert.equal(row.answer, 'declined to say',
+    'the default answer must still be readable after confirming it');
+  assert.equal(row.answerSource, 'default', 'confirming does not change provenance');
+
+  // Nothing about a close is written either — no `closedAt`, no `settleAfter`.
+  // A confirmation removes nothing and settles nothing, so recording either
+  // would be a fabricated local fact. (`settleQuestion` keeps the existing answer
+  // text when the new one is empty, so the TEXT was never at risk here; what was
+  // at risk was writing a close that never happened.)
+  assert.equal(row.closedAt ?? null, null, 'a confirmation is not a close');
+  assert.equal(row.settleAfter ?? null, null, 'and it starts no retirement fuse');
+});
+
+test('a confirmation never claims the agent was sent anything', async () => {
+  let notices = [];
+  let app = fakeApp([ defaultAnsweredQuestion() ]);
+
+  await submitQuestionAnswer(app, 'q_1', '', {
+    intent: 'confirm',
+    postJSON: async () => ({ data: { acknowledged: true, revised: true, delivered: false } }),
+    announce: (message) => notices.push(message),
+  });
+
+  assert.equal(notices.length, 1, 'exactly one notice');
+  assert.match(notices[0], /not notified|not sent/i,
+    'a confirmation must not say "Answer sent": it deliberately wakes nobody');
+});
+
+test('an empty answer with no intent is still refused locally', async () => {
+  let calls = [];
+  let app = fakeApp([ openQuestion() ]);
+
+  let result = await submitQuestionAnswer(app, 'q_1', '', {
+    postJSON: async (url, body) => { calls.push({ url, body }); return { ok: true }; },
+    announce: () => {},
+  });
+
+  assert.equal(result?.reason, 'empty');
+  assert.equal(calls.length, 0, 'no request without text and without an intent');
+});

@@ -322,8 +322,22 @@ export function syncQuestionShell(app) {
 // Answer submission lives here, not on the app class, so the app keeps only a
 // one-line delegate and the network shape stays next to the view that uses it.
 export async function submitQuestionAnswer(app, questionID, answerText, options = {}) {
+  // A CONFIRMATION carries no text on purpose: it affirms the default answer the
+  // server already holds, and retyping that default is exactly what made an
+  // agreement indistinguishable from a correction — the client could not say
+  // which one it meant, so the server had to guess, and a one-word "yes" woke the
+  // agent to be told nothing new.
+  //
+  // This guard used to run BEFORE `options.intent` was ever read, so the
+  // acknowledgement button returned `{ ok: false, reason: 'empty' }` and posted
+  // nothing at all. Only a declared `confirm` intent skips it; an ordinary
+  // answer with no text is still refused, so nothing can smuggle an empty answer
+  // in by simply leaving the intent out.
+  let intent = options.intent === 'confirm' || options.intent === 'change' ? options.intent : undefined;
+  let confirming = intent === 'confirm';
   let text = normalizeAnswerText(answerText);
-  if (!canSubmitAnswer(text))
+
+  if (!confirming && !canSubmitAnswer(text))
     return { ok: false, reason: 'empty', message: '' };
 
   // Injectable so a failing POST is testable without a network, and so a caller
@@ -350,19 +364,35 @@ export async function submitQuestionAnswer(app, questionID, answerText, options 
   // Safe only because it is reversible: `revertLocalSettlement` below puts the
   // row back if the write is rejected, and `closedAt` is held as the token that
   // proves the rollback is undoing THIS settlement.
-  let closedAt = Date.now();
-  applyLocalAnswer(questionsState, questionID, {
-    answer: text,
-    closedAt,
-    // Kept on screen, counting down, instead of vanishing: an answer that
-    // simply disappears gives the user no confirmation their click landed.
-    settleAfter: SETTLE_WINDOW_MS,
-  });
-  repaintQuestionShell(app);
+  // A confirmation settles nothing: the row is already terminal (a default only
+  // fires on an already-answered question), so there is no open row to close.
+  //
+  // Running the optimistic close anyway is not merely redundant, it FABRICATES a
+  // local fact: `closedAt` and `settleAfter` record a close that never happened,
+  // which is what makes the Inbox treat the row as a receipt on a fuse. The answer
+  // TEXT was never at risk — `settleQuestion` falls back to the existing answer
+  // when the new one is empty. An earlier draft of this comment claimed the text
+  // was blanked, and the test written from that claim passed against the bug; the
+  // mutation run is what caught it.
+  let closedAt = confirming ? 0 : Date.now();
+  if (!confirming) {
+    applyLocalAnswer(questionsState, questionID, {
+      answer: text,
+      closedAt,
+      // Kept on screen, counting down, instead of vanishing: an answer that
+      // simply disappears gives the user no confirmation their click landed.
+      settleAfter: SETTLE_WINDOW_MS,
+    });
+    repaintQuestionShell(app);
+  }
 
   try {
     let result = await postJSON(`/api/v1/questions/${encodeURIComponent(questionID)}/answer`, {
       answer: text,
+      // Undefined for an ordinary answer (JSON drops the key), so nothing on
+      // the normal answer path changes. Sent only when the caller is replacing
+      // a delivered default or acknowledging one.
+      intent,
     });
 
     let payload = result?.data || result || {};
@@ -379,6 +409,13 @@ export async function submitQuestionAnswer(app, questionID, answerText, options 
     // Three outcomes, not two. `pending` is the common one: the wake is queued
     // and the agent will pick it up as its turn starts. It used to be reported
     // as `delivered: false`, which read as "the agent did not get it".
+    // A confirmation is the one outcome that must never say "Answer sent": it
+    // deliberately wakes nobody, because the agent already holds this answer.
+    if (confirming && payload.acknowledged === true) {
+      announce('Confirmed. The agent was not notified.', { tone: 'success' });
+      return { ok: true, acknowledged: true, delivered: false, payload };
+    }
+
     let pending = payload.pending === true;
     let delivered = !pending && payload.delivered !== false;
     announce(

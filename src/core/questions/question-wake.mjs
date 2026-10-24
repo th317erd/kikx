@@ -215,6 +215,7 @@ export class QuestionAnswerService {
   async reviseDefaultAnswer(questionID, input = {}) {
     let result = await reviseAnswer(this.questionsStore, questionID, {
       answer: input.answer,
+      intent: input.intent,
       userID: input.userID,
       answerFrameID: input.answerFrameID,
       now: input.now,
@@ -233,6 +234,44 @@ export class QuestionAnswerService {
       frameRuntime: this.frameRuntime,
     });
 
+    // SPLIT WAKE SEMANTICS (owner's ruling).
+    //
+    //   changed answer  -> wake once, labelled as a correction to the default
+    //   acknowledgement -> record and show it, wake nobody
+    //
+    // An acknowledgement says the default was right, and the agent already has
+    // that answer; a wake would deliver no information and start a turn anyway.
+    // A changed answer is the opposite: the agent may have acted on a default
+    // that was wrong, and leaving it with that assumption is the failure this
+    // whole path exists to fix.
+    //
+    // The return sits BEFORE `deliverAnswer` on purpose, matching the dismissal
+    // path in `submitAnswer`: the wake lives in that one call, so skipping it
+    // makes "will not wake" structural instead of a promise. `question.answered`
+    // is still emitted — it carries no wake, only the runtime event the client
+    // model listens to, so another tab's Inbox updates too.
+    if (result.acknowledged) {
+      this.emit('question.answered', {
+        sessionID: revised.sessionID,
+        question: revised,
+        frameID: null,
+        wakeFrameID: null,
+      });
+
+      return {
+        revised: true,
+        acknowledged: true,
+        question: revised,
+        delivered: false,
+        pending: false,
+        suppressed: false,
+        reason: 'acknowledged',
+        frameID: null,
+        sessionID: revised.sessionID,
+        agentID: revised.agentID,
+      };
+    }
+
     let delivery = await this.deliverAnswer(revised, input);
 
     if (!delivery.delivered) {
@@ -249,6 +288,7 @@ export class QuestionAnswerService {
 
       return {
         revised: true,
+        acknowledged: false,
         question: revised,
         delivered: false,
         pending: false,
@@ -269,6 +309,7 @@ export class QuestionAnswerService {
 
     return {
       revised: true,
+      acknowledged: false,
       question: delivery.question || revised,
       delivered: true,
       pending: false,
