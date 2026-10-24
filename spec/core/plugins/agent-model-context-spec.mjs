@@ -119,6 +119,7 @@ test('Brief A carries the version banner, precepts, tools, and behavior', () => 
   assert.match(text, /Proof: never claim done/i);
   assert.match(text, /continue-turn/);
   assert.match(text, /Delegation: agent-list/);
+  assert.match(text, /File reads: for a large file/);
   assert.match(text, /Behavior — MANDATORY:/);
   assert.match(text, /Communication — MANDATORY when you are actively working a turn:/);
   assert.match(text, /end the turn with a short summary of the goals completed/);

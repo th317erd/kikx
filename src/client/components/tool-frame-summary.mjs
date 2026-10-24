@@ -411,6 +411,40 @@ function inputField(input, field) {
   }
 }
 
+export function readFileRangeLabel(input = {}) {
+  let startLine = positiveInteger(input.startLine);
+  let endLine = positiveInteger(input.endLine);
+  if (startLine != null || endLine != null) {
+    if (startLine != null && endLine != null)
+      return `lines ${startLine}-${endLine}`;
+    if (startLine != null)
+      return `from line ${startLine}`;
+    return `through line ${endLine}`;
+  }
+
+  let startCharacter = nonNegativeInteger(input.startCharacter);
+  let endCharacter = nonNegativeInteger(input.endCharacter);
+  if (startCharacter != null || endCharacter != null) {
+    if (startCharacter != null && endCharacter != null)
+      return `characters ${startCharacter}-${endCharacter}`;
+    if (startCharacter != null)
+      return `from character ${startCharacter}`;
+    return `through character ${endCharacter}`;
+  }
+
+  return '';
+}
+
+function positiveInteger(value) {
+  let number = Number(value);
+  return Number.isInteger(number) && number >= 1 ? number : null;
+}
+
+function nonNegativeInteger(value) {
+  let number = Number(value);
+  return Number.isInteger(number) && number >= 0 ? number : null;
+}
+
 function toolDescription(toolName, input, status = 'running', frame = null) {
   if (toolName.startsWith('todo-'))
     return todoDescription(toolName, input, frame);
@@ -425,8 +459,10 @@ function toolDescription(toolName, input, status = 'running', frame = null) {
   let id = inputField(input, 'id');
 
   switch (toolName) {
-    case 'read-file':
-      return path ? `<- Read file ${path}` : '<- Read file';
+    case 'read-file': {
+      let range = readFileRangeLabel(input);
+      return path ? `<- Read file ${path}${range ? ` (${range})` : ''}` : '<- Read file';
+    }
     case 'write-file':
       return path ? `-> Write file ${path}` : '-> Write file';
     case 'exec':

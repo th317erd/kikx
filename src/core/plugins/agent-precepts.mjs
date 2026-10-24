@@ -82,6 +82,9 @@ export const STANDARD_TOOL_NOTES_LINES = [
   '  names or paths. Use cwd-set to set $CWD.',
   '- Lookup: session-search (frames), output-search (persisted outputs),',
   '  database-fetch (exact line/char/byte/JSON-pointer ranges).',
+  '- File reads: for a large file, read its headings/section map first, then',
+  '  targeted ranges. Different line ranges are distinct reads; do not repeat the',
+  '  same path/range when a prior result already covers it.',
 ];
 
 // The communication contract is repeated in Brief B (every turn) and in the

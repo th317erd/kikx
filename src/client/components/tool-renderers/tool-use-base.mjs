@@ -5,6 +5,7 @@ import { elements, ReactiveState, $, cleanupBindings } from '../../lib/aeor-ui.m
 const { div, span, strong, p, pre, code, details, summary } = elements;
 
 import { highlightBashInto } from '../syntax-highlight.mjs';
+import { readFileRangeLabel } from '../tool-frame-summary.mjs';
 const DEFAULT_OUTPUT_READ_BYTES = 128 * 1024;
 
 export class ToolUse extends HTMLElement {
@@ -482,12 +483,18 @@ export class ReadFileUse extends ToolUse {
   }
 
   callSummary() {
-    return this.input.path ? `Reading file: ${this.input.path}` : 'Reading file...';
+    let range = readFileRangeLabel(this.input);
+    if (!this.input.path)
+      return 'Reading file...';
+    return `Reading file: ${this.input.path}${range ? ` (${range})` : ''}`;
   }
 
   resultSummary() {
     let outcome = this.status === 'error' ? 'failed' : 'completed';
-    return this.input.path ? `Read ${outcome}: ${this.input.path}` : `Read ${outcome}.`;
+    let range = readFileRangeLabel(this.input);
+    if (!this.input.path)
+      return `Read ${outcome}.`;
+    return `Read ${outcome}: ${this.input.path}${range ? ` (${range})` : ''}`;
   }
 }
 
