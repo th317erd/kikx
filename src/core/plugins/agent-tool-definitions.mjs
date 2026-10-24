@@ -8,24 +8,31 @@ import { MAX_CHARACTER_COMPRESSED_LENGTH } from '../agents/character-limits.mjs'
 export const AGENT_TOOL_DEFINITIONS = [
   {
     name: 'end-turn',
-    description: 'End this turn. After doing work, include a substantive report of what you did, what changed, the evidence/proof, and what remains. Omit text only when ending silently with no new work to report.',
+    description: 'End this turn with a REQUIRED short summary of what you did. Put longer evidence, tables, logs, and detail in details; the summary is the visible collapsed line.',
     help: [
-      'Use end-turn with a substantive report when the request is satisfied, or when you are pausing/waiting after work: outcome, what changed, evidence/proof, failures/risks, and remaining/next. Report what you did and what you are waiting on; a one-line status is not a report.',
-      'Omit text only when you did no visible work and have nothing new to report; the completion or reply will wake you.',
+      'Use end-turn when the request is satisfied, or when you are pausing/waiting after work.',
+      'summary is REQUIRED and must be short: one or two sentences, outcome first. Do not paste tables, logs, or a full report into summary.',
+      'details is optional for evidence, proof, failures/risks, and remaining work. The user can expand the collapsed end-turn frame to read it.',
+      'Omit both only when you did no visible work and have nothing new to report; the completion or reply will wake you.',
       'If you have actionable work you can do right now, use continue-turn instead and name the next step.',
     ].join(' '),
     parameters: {
       type: 'object',
       properties: {
-        text: {
+        summary: {
           type: 'string',
-          description: 'Substantive visible report: outcome, changes, evidence/proof, failures/risks, remaining/next. Required after doing work; omit only to end silently with no new work to report.',
+          description: 'REQUIRED short summary: one or two sentences. This is the collapsed visible line; do not paste a full report here.',
+        },
+        details: {
+          type: 'string',
+          description: 'Optional longer report: evidence/proof, failures/risks, remaining/next. Shown when the user expands the end-turn frame.',
         },
         reason: {
           type: 'string',
           description: 'Optional short internal note; not shown to the user.',
         },
       },
+      required: [ 'summary' ],
       additionalProperties: false,
     },
   },

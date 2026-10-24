@@ -46,6 +46,16 @@ export function createLoopTools(state, context) {
     state.finalized = true;
     state.continuation = null;
     let normalized = normalizeToolResponseContent(content);
+    let summary = normalizeShortSummary(content?.summary);
+    let details = normalizeReportDetails(content?.details);
+    if (summary !== '') {
+      normalized = {
+        ...normalized,
+        text: details || summary,
+        summary,
+        turnReport: true,
+      };
+    }
     let hasText = typeof normalized.text === 'string' && normalized.text.trim() !== '';
     state.finalFrame = hasText
       ? { type: 'AgentMessage', content: normalized }
@@ -442,6 +452,14 @@ export async function recordAgentProgress(input, context = {}) {
       frameID: progressFrame.id,
     },
   };
+}
+
+function normalizeShortSummary(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeReportDetails(value) {
+  return typeof value === 'string' && value.trim() !== '' ? value : '';
 }
 
 export function resolveFrameEngine(context = {}) {

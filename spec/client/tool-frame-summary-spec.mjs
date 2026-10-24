@@ -221,7 +221,7 @@ test('todo result summaries recover a title from a truncated preview', () => {
   assert.equal(summary.description, 'Update todo: Recovered title');
 });
 
-test('communication frames are never compact', () => {
+test('ordinary communication frames are never compact', () => {
   for (let type of [ 'UserMessage', 'AgentMessage', 'AgentMessageDelta', 'AgentProgress', 'AgentThinking', 'BeginTyping', 'EndTyping' ])
     assert.equal(isCompactFrame({ id: type, type }), false, `${type} must stay a normal frame`);
 });
@@ -318,4 +318,23 @@ test('recovers the file path from a truncated input preview', () => {
 
   assert.equal(summary.description, 'Write file /tmp/a.txt ->');
   assert.equal(summary.icon, 'quill');
+});
+
+test('end-turn report messages compact while ordinary AgentMessages stay expanded', () => {
+  let report = {
+    id: 'turn-1',
+    type: 'AgentMessage',
+    content: {
+      status: 'complete',
+      summary: 'Synced the branch and ran the focused spec.',
+      text: 'Full evidence table and logs.',
+      turnReport: true,
+    },
+  };
+  assert.equal(isCompactFrame(report), true);
+  assert.equal(compactFrameSummary(report).description, 'Synced the branch and ran the focused spec.');
+  assert.deepEqual(compactFrameHeader(report), { label: 'Message', icon: 'chat' });
+
+  let ordinary = { id: 'msg-1', type: 'AgentMessage', content: { text: 'A normal reply.' } };
+  assert.equal(isCompactFrame(ordinary), false);
 });

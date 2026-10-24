@@ -28,9 +28,31 @@ test('model-facing tool descriptions carry the communication contract', () => {
 
   assert.match(descriptions.get('progress'), /before a new phase or related batch/);
   assert.match(descriptions.get('progress'), /after a meaningful result/);
-  assert.match(descriptions.get('end-turn'), /substantive report/);
-  assert.match(descriptions.get('end-turn'), /what you did, what changed, the evidence\/proof/);
+  assert.match(descriptions.get('end-turn'), /REQUIRED short summary/);
+  assert.match(descriptions.get('end-turn'), /detail/);
   assert.match(descriptions.get('continue-turn'), /visible progress report/);
+});
+
+test('end-turn requires a short summary and keeps long details expandable', () => {
+  let state = createLoopState();
+  let tools = createLoopTools(state, { isCoordinator: false });
+  let control = tools['end-turn']({
+    summary: 'Synced the branch and ran the focused spec.',
+    details: 'Full evidence:\n\n| Step | Result |\n| --- | --- |\n| fetch | 0 0 |',
+  });
+
+  assert.equal(control.type, 'LoopControl');
+  assert.equal(control.action, 'finalize');
+  assert.equal(state.finalFrame.type, 'AgentMessage');
+  assert.equal(state.finalFrame.content.summary, 'Synced the branch and ran the focused spec.');
+  assert.match(state.finalFrame.content.text, /Full evidence/);
+  assert.equal(state.finalFrame.content.turnReport, true);
+
+  let definition = AGENT_TOOL_DEFINITIONS.find((entry) => entry.name === 'end-turn');
+  assert.deepEqual(definition.parameters.required, [ 'summary' ]);
+  assert.ok(definition.parameters.properties.summary);
+  assert.ok(definition.parameters.properties.details);
+  assert.equal(definition.parameters.properties.text, undefined);
 });
 
 test('progress and continue-turn require a mood score', () => {
@@ -70,7 +92,7 @@ test('the help tool returns the full help for a single named tool', () => {
   assert.equal(described.content.tool, 'end-turn');
   assert.match(described.content.help, /when the request is satisfied/);
   assert.equal(described.content.parameters.type, 'object');
-  assert.deepEqual(described.content.parameters.required, undefined);
+  assert.deepEqual(described.content.parameters.required, [ 'summary' ]);
 });
 
 test('the help tool fails loud for an unknown tool name', () => {

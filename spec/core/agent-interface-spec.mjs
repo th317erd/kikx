@@ -1026,7 +1026,7 @@ test('AgentInterface offers no silence tool below 3 parties; the dual-verb turn 
   assert.doesNotMatch(askCall.startBrief, /agent-null-response/);
   assert.doesNotMatch(askCall.messageBrief, /agent-null-response/);
   assert.match(askCall.messageBrief, /End every turn one of two ways:/);
-  assert.match(askCall.messageBrief, /- end-turn — with a substantive report/);
+  assert.match(askCall.messageBrief, /- end-turn — with a REQUIRED short summary/);
 });
 
 test('AgentInterface exposes agent-owned self-configuration tools', async () => {

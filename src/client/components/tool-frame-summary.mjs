@@ -85,6 +85,9 @@ export function isCompactFrame(frame) {
   if (isToolFrame(frame))
     return true;
 
+  if (frame.type === 'AgentMessage' && frame.content?.turnReport === true)
+    return true;
+
   return COMPACT_FRAME_TYPES.has(frame.type);
 }
 
@@ -133,6 +136,9 @@ const COMPACT_HEADER_LABELS = new Map([
 // Long descriptions (usually file paths) stay in the body instead.
 export function compactFrameHeader(frame) {
   let summary = compactFrameSummary(frame);
+  if (frame?.type === 'AgentMessage')
+    return { label: 'Message', icon: 'chat' };
+
   let toolName = String(frame?.content?.toolName || '');
   let input = isPlainObject(frame?.content?.input) ? frame.content.input : {};
   let label = COMPACT_HEADER_LABELS.get(toolName);
@@ -654,6 +660,12 @@ function toolIcon(toolName) {
 
 function systemFrameSummary(frame, status) {
   switch (frame.type) {
+    case 'AgentMessage':
+      return {
+        description: text(frame.content?.summary) || text(frame.content?.text) || 'Turn report',
+        icon: 'chat',
+        status,
+      };
     case 'CompactionFrame':
       return compactionFrameSummary(frame, status);
     case 'AgentError':

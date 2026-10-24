@@ -256,6 +256,33 @@ test('communication frames keep the normal meta and content layout', () => {
   assert.match(item.textContent, /hello/);
 });
 
+test('an end-turn report collapses to its short summary and expands to details', () => {
+  let item = frameItem();
+  item.updateFrame({
+    id: 'turn-report-1',
+    type: 'AgentMessage',
+    authorType: 'agent',
+    authorID: 'agent_1',
+    content: {
+      status: 'complete',
+      summary: 'Synced the branch and ran the focused spec.',
+      text: 'Full evidence:\n\n| Step | Result |\n| --- | --- |\n| fetch | clean |',
+      turnReport: true,
+    },
+  }, {});
+
+  assert.equal(item.classList.contains('kikx-frame--compact'), true);
+  assert.equal(summaryDescription(item), 'Synced the branch and ran the focused spec.');
+  assert.equal(headerStatus(item), 'Message');
+  let details = compactDetails(item);
+  assert.ok(details);
+  assert.equal(details.querySelector('.kikx-frame__compact-body').textContent, '', 'collapsed reports must not build the long body');
+
+  expandCompact(item);
+  assert.match(details.querySelector('.kikx-frame__compact-body').textContent, /Full evidence/);
+  assert.match(details.querySelector('.kikx-frame__compact-body').textContent, /fetch/);
+});
+
 test('a tool result with a session reference keeps the sub-session card intact', () => {
   let item = frameItem();
   let frame = {
