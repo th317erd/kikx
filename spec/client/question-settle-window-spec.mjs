@@ -19,10 +19,12 @@ import assert from 'node:assert/strict';
 
 import {
   createQuestionsState,
+  applyQuestionEvent,
   applyQuestionsFetch,
   expiredSettledQuestions,
   isSettledPendingRetirement,
   isVisibleInboxQuestion,
+  normalizeQuestionSummary,
   retireQuestion,
   settleQuestion,
 } from '../../src/client/state/questions-state.mjs';
@@ -162,4 +164,44 @@ test('settleQuestion keeps a terminal row terminal', () => {
   rows = settleQuestion(rows, 'q_1', { status: 'dismissed', settleAfter: WINDOW });
   assert.equal(rows[0].status, 'dismissed');
   assert.equal(isVisibleInboxQuestion(rows[0], rows[0].closedAt + 1), true);
+});
+
+test('a server answered_at timestamp drives the same 60-second reload receipt', () => {
+  let terminal = normalizeQuestionSummary({
+    id: 'q_reload',
+    text: 'Which database?',
+    status: 'answered',
+    answer: 'Postgres.',
+    answeredAt: 5000,
+    settledAt: 5000,
+    settleAfter: WINDOW,
+  });
+
+  assert.equal(terminal.closedAt, 5000);
+  assert.equal(terminal.settledAt, 5000);
+  assert.equal(terminal.settleAfter, WINDOW);
+  assert.equal(isVisibleInboxQuestion(terminal, 5000 + WINDOW - 1), true);
+  assert.equal(isVisibleInboxQuestion(terminal, 5000 + WINDOW), false);
+});
+
+test('a live terminal event keeps the receipt row instead of deleting it', () => {
+  let state = createQuestionsState();
+  state.questions = [ question() ];
+
+  applyQuestionEvent(state, {
+    type: 'question.answered',
+    payload: {
+      question: {
+        ...question(),
+        status: 'answered',
+        answer: 'Postgres.',
+        answeredAt: 5000,
+        settledAt: 5000,
+        settleAfter: WINDOW,
+      },
+    },
+  });
+
+  assert.equal(state.questions.length, 1);
+  assert.equal(state.questions[0].closedAt, 5000);
 });

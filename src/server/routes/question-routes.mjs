@@ -1,6 +1,7 @@
 'use strict';
 
 import { cancelQuestionSchedule } from '../../core/questions/question-deadline-schedule.mjs';
+import { listRecentlySettledQuestions } from '../../core/questions/question-query.mjs';
 
 import {
   getRequestAccount,
@@ -22,8 +23,9 @@ import {
 } from '../../core/questions/question-fields.mjs';
 
 // Ask-user questions: the read side the Inbox renders, plus the answer loop's
-// write side. The list route reads the store's open index (`listOpen`) and never
-// scans the per-question docs — history must not make the inbox slower.
+// write side. The default list reads the open index only. `includeSettling=1`
+// additionally scans terminal docs for the server-owned receipt window, so an
+// answered row survives a reload for exactly the remainder of its 60 seconds.
 export async function handleQuestionRoutes({ request, response, url, context }) {
   if (request.method === 'GET' && url.pathname === '/api/v1/questions') {
     let limit = parsePositiveInteger(url.searchParams.get('limit'), 50);
@@ -47,17 +49,38 @@ export async function handleQuestionRoutes({ request, response, url, context }) 
 
     let questions = Array.isArray(open.summaries) ? open.summaries : [];
 
-    // The index only holds `open` questions, so `status` filters the summaries
-    // rather than the store: `status=answered` correctly returns nothing instead
-    // of implying the index carries history.
     if (status)
       questions = questions.filter((summary) => summary.status === status);
 
     // Counts describe the matching set, not the page, so they are computed
-    // before limit/offset slice it.
+    // before limit/offset slice it. Open-only because settled receipts are not
+    // work waiting on the user.
     let counts = {
       open: questions.filter((summary) => summary.status === 'open').length,
     };
+
+    // The Inbox asks for recently settled rows so an answer receipt survives a
+    // reload. The server owns the 60-second window and measures it from the
+    // terminal timestamp; the client only renders the countdown.
+    let includeSettling = url.searchParams.get('includeSettling') === '1';
+    if (includeSettling && !status) {
+      let settleWindowMs = Number(url.searchParams.get('settleWindowSeconds')) > 0
+        ? Number(url.searchParams.get('settleWindowSeconds')) * 1000
+        : 60_000;
+      let settled = await listRecentlySettledQuestions(questionsStore, {
+        rootSessionID: includeDescendants ? (rootSessionID || sessionID) : null,
+        sessionID,
+        includeDescendants,
+        settleWindowMs,
+      });
+      let byID = new Map(questions.map((question) => [ question.id, question ]));
+      for (let question of settled)
+        byID.set(question.id, question);
+      questions = [ ...byID.values() ].sort((left, right) => (
+        Number(left.askedAt || 0) - Number(right.askedAt || 0)
+        || String(left.id).localeCompare(String(right.id))
+      ));
+    }
 
     writeJSON(response, 200, {
       data: {

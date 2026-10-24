@@ -174,3 +174,40 @@ function normalizeOffset(value) {
   let number = Number(value);
   return Number.isInteger(number) && number >= 0 ? number : 0;
 }
+
+/**
+ * Terminal questions still inside the Inbox receipt window. The window is
+ * measured from the server's terminal timestamp (`answeredAt`, falling back to
+ * `updatedAt`), so a reload cannot restart or lose the countdown.
+ */
+export async function listRecentlySettledQuestions(store, filters = {}) {
+  let now = Number(filters.now) || Date.now();
+  let windowMs = normalizeWindowMs(filters.settleWindowMs);
+  let since = now - windowMs;
+  let rootSessionID = normalizeString(filters.rootSessionID || filters.root_session_id || filters.sessionID || filters.session_id);
+  let includeDescendants = filters.includeDescendants !== false;
+  let sessions = await store.listSessionTree();
+  let sessionIDs = rootSessionID
+    ? resolveVisibleSessionIDs(rootSessionID, sessions)
+    : uniqueSessions(sessions);
+  if (rootSessionID && !includeDescendants)
+    sessionIDs = [ rootSessionID ];
+
+  let questions = await store.listQuestionsInSessions(sessionIDs);
+  return questions
+    .filter((question) => [ 'answered', 'dismissed', 'undeliverable' ].includes(question.status))
+    .map((question) => ({
+      ...question,
+      settledAt: Number(question.answeredAt || question.updatedAt || 0) || 0,
+      settleAfter: windowMs,
+    }))
+    .filter((question) => question.settledAt > 0 && question.settledAt > since)
+    .sort(compareSummaries);
+}
+
+function normalizeWindowMs(value) {
+  let number = Number(value);
+  if (!Number.isFinite(number) || number <= 0)
+    return 60_000;
+  return Math.min(Math.max(Math.trunc(number), 1000), 3_600_000);
+}

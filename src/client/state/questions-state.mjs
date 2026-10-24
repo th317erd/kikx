@@ -98,6 +98,10 @@ export function normalizeQuestionSummary(value) {
 
   let status = QUESTION_STATUSES.includes(value.status) ? value.status : 'open';
 
+  let terminal = QUESTION_TERMINAL_STATUSES.includes(status);
+  let settledAt = numberOr(value.settledAt, 0) || numberOr(value.answeredAt, 0);
+  let settleAfter = numberOr(value.settleAfter, 0) || (terminal && settledAt > 0 ? 60_000 : 0);
+
   return {
     id,
     groupID: stringOrNull(value.groupID),
@@ -131,12 +135,12 @@ export function normalizeQuestionSummary(value) {
     readAt: value.readAt || null,
     contextRefs: normalizeContextRefs(value.contextRefs),
     deleted: value.deleted === true,
-    // When this tab settled the row (answered or dismissed). Absent for a
-    // terminal question learned about from the server, which never gets a
-    // retention window — only an action the user JUST took deserves a receipt.
-    closedAt: numberOr(value.closedAt, 0),
-    // How long this row lingers after closing. 0 means "no receipt".
-    settleAfter: numberOr(value.settleAfter, 0),
+    // A server-fetched terminal row carries its terminal timestamp and window;
+    // a locally settled row carries closedAt/settleAfter from the optimistic
+    // close. Both feed the same receipt countdown.
+    settledAt,
+    closedAt: numberOr(value.closedAt, 0) || settledAt,
+    settleAfter,
   };
 }
 
@@ -240,9 +244,12 @@ export function upsertQuestion(questions = [], update) {
   for (let existing of normalizeQuestionList(questions))
     byID.set(existing.id, existing);
 
-  // A terminal status removes the row from the open set; the Inbox only lists
-  // what is still awaiting an answer.
+  // Open rows join the waiting list. A terminal row is retained only while it
+  // is inside its receipt window, so a live answer shows the same 60-second
+  // receipt a reload would.
   if (question.status === 'open' && question.deleted !== true)
+    byID.set(question.id, question);
+  else if (isSettledPendingRetirement(question))
     byID.set(question.id, question);
   else
     byID.delete(question.id);

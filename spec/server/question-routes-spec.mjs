@@ -638,3 +638,29 @@ test('GET /api/v1/questions rootSessionID scopes to the session tree', async () 
     await close(stores.server);
   }
 });
+
+
+test('GET /api/v1/questions includes recently settled questions for reload receipts', async () => {
+  let now = Date.now();
+  let stores = await startServer({ ids: [ 'g1', 'q_1' ], now });
+
+  try {
+    stores.questionsStore.listSessionTree = async () => [ { id: 'session_1', parentSessionID: null } ];
+    await seedQuestion(stores);
+    await stores.questionsStore.answerQuestion('q_1', { answer: 'Postgres.', userID: 'usr_1' });
+
+    let response = await fetch(`${stores.baseURL}/api/v1/questions?includeSettling=1&settleWindowSeconds=60`);
+    let body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.data.questions.length, 1);
+    assert.equal(body.data.questions[0].id, 'q_1');
+    assert.equal(body.data.questions[0].status, 'answered');
+    assert.equal(body.data.questions[0].answer, 'Postgres.');
+    assert.equal(body.data.questions[0].settledAt, now);
+    assert.equal(body.data.questions[0].settleAfter, 60_000);
+    assert.equal(body.data.counts.open, 0);
+  } finally {
+    await close(stores.server);
+  }
+});

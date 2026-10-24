@@ -416,6 +416,20 @@ export async function submitQuestionAnswer(app, questionID, answerText, options 
       return { ok: true, acknowledged: true, delivered: false, payload };
     }
 
+    // Align the receipt countdown with the server's terminal timestamp. The
+    // optimistic close used the click time; reloads use answeredAt, and these
+    // two paths must not disagree about when the 60-second window ends.
+    let answeredAt = Number(payload.question?.answeredAt) || 0;
+    if (!confirming && answeredAt > 0) {
+      applyLocalAnswer(questionsState, questionID, {
+        answer: text,
+        closedAt: answeredAt,
+        settleAfter: SETTLE_WINDOW_MS,
+        answerSource: payload.question?.answerSource,
+      });
+      repaintQuestionShell(app);
+    }
+
     let pending = payload.pending === true;
     let delivered = !pending && payload.delivered !== false;
     announce(
@@ -510,6 +524,14 @@ export async function dismissQuestionAnswer(app, questionID, options = {}) {
     });
 
     let payload = result?.data || result || {};
+    let answeredAt = Number(payload.question?.answeredAt || payload.question?.updatedAt) || 0;
+    if (answeredAt > 0) {
+      applyLocalDismiss(questionsState, questionID, {
+        closedAt: answeredAt,
+        settleAfter: SETTLE_WINDOW_MS,
+      });
+      repaintQuestionShell(app);
+    }
     // Said plainly, because a dismissal is silent BY DESIGN and the absence of
     // any feedback would otherwise be indistinguishable from a failed click.
     announce('Dismissed. The agent was not woken.', { tone: 'success' });

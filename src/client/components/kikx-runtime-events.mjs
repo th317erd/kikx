@@ -459,7 +459,11 @@ async function fetchQuestionsNow(app, options = {}) {
   state.questionsState.loading = true;
 
   try {
-    let params = new URLSearchParams({ limit: String(limit) });
+    let params = new URLSearchParams({
+      limit: String(limit),
+      includeSettling: '1',
+      settleWindowSeconds: '60',
+    });
     if (rootSessionID)
       params.set('rootSessionID', rootSessionID);
     let result = await app._getJSON(`/api/v1/questions?${params}`);
