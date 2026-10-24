@@ -306,6 +306,30 @@ async function markToolCallFinished({ toolCallFrame, context = {}, finishedAt = 
   return merged[0] || frameEngine.get?.(toolCallFrame.id) || { ...toolCallFrame, finishedProcessingAt: now };
 }
 
+// Tools whose invocation is plumbing rather than conversation.
+//
+// `ask-user` is here because the request IS the question. The tool call frame
+// renders an expandable "ask-user({...})" with the question's raw JSON in it,
+// and the real question appears separately, as a Question frame the user can
+// actually answer. Showing both means every question arrives twice: once as a
+// form, once as a blob of the agent's arguments. Owner's ruling: the request
+// should not show up in the UI at all.
+//
+// Only these two frame types are hidden. The Question frame is the asking —
+// hiding that would hide the question itself, which is the surface this whole
+// feature exists to render.
+const HIDDEN_TOOL_CALL_TOOLS = new Set([ 'ask-user' ]);
+
+// A hidden frame is stored and replayable but not rendered, so the request stays
+// auditable without taking up the thread.
+export function hidesToolCallFrames(toolName, ToolClass = null) {
+  let name = typeof toolName === 'string' && toolName !== ''
+    ? toolName
+    : (ToolClass?.featureName || ToolClass?.toolName || '');
+
+  return HIDDEN_TOOL_CALL_TOOLS.has(name);
+}
+
 async function recordToolCallFrame({ toolName, ToolClass = null, input, context = {} } = {}) {
   let frameEngine = await resolveFrameEngine(context);
   let sessionID = context.session?.id || input?._sessionID;
@@ -328,7 +352,7 @@ async function recordToolCallFrame({ toolName, ToolClass = null, input, context 
     updatedAt: now,
     startedProcessingAt: null,
     finishedProcessingAt: null,
-    hidden: false,
+    hidden: hidesToolCallFrames(toolName, ToolClass),
     deleted: false,
     content: {
       toolName,
@@ -395,7 +419,7 @@ async function recordToolResultFrame({
     updatedAt: now,
     startedProcessingAt: now,
     finishedProcessingAt: now,
-    hidden: false,
+    hidden: hidesToolCallFrames(toolName, ToolClass),
     deleted: false,
     content,
     state: {
