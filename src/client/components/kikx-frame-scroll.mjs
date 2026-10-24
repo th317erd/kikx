@@ -115,9 +115,19 @@ export function afterRender(app, snapshot = {}) {
     }
     if (getScrollLockModeForSession(app, sessionID) === 'bottom') {
       app._frameListAnchoredToBottom = true;
+      let frameList = app.querySelector('.kikx-frame-list');
+      let beforeTop = Number(snapshot.frameListScrollTop) || 0;
+      // A full shell rebuild can replace the frame list and reset scrollTop to
+      // zero even though the user was at the bottom. Starting the eased follow
+      // loop there creates a multi-thousand-pixel animated jump. Detect that
+      // reset and place immediately instead.
+      let resetToTop = snapshot.frameListNearBottom === true
+        && beforeTop > 100
+        && frameList
+        && frameList.scrollTop < Math.min(100, beforeTop - 100);
       // A send is an explicit "show me the tail now" action: place immediately,
       // then let later streaming growth use the eased follow loop.
-      if (initialPlacement || snapshot.forceScrollToBottom === true)
+      if (initialPlacement || snapshot.forceScrollToBottom === true || resetToTop)
         scrollFramesToBottomImmediate(app);
       else
         scrollFramesToBottom(app);
@@ -140,7 +150,7 @@ export function afterRender(app, snapshot = {}) {
       if (!nextComposer)
         return;
 
-      nextComposer.focus();
+      nextComposer.focus({ preventScroll: true });
       if (Number.isInteger(snapshot.composerSelectionStart) && Number.isInteger(snapshot.composerSelectionEnd)) {
         let max = nextComposer.value.length;
         nextComposer.setSelectionRange(
@@ -309,6 +319,7 @@ function syncFrameThreadBody(app, sessionID, options) {
   let previousFrames = Array.isArray(view.frames) ? view.frames : [];
   let previousFrameCount = previousFrames.length;
   let previousLastFrameID = previousFrames.at(-1)?.id || '';
+  let beforeScrollTop = view.frameList?.scrollTop ?? 0;
   let result = view.syncFrames(frames, app._state, locked ? { ...options, followLatest: true } : options);
   if (previousLastFrameID
     && frames.length > previousFrameCount
@@ -320,9 +331,12 @@ function syncFrameThreadBody(app, sessionID, options) {
     if (initialPlacement)
       app._lockedPlacementSessionID = sessionID;
     app._frameListAnchoredToBottom = true;
+    let afterScrollTop = view.frameList?.scrollTop ?? 0;
+    let resetToTop = beforeScrollTop > 100 && afterScrollTop < Math.min(100, beforeScrollTop - 100);
     // Keep the tail attached, but ease toward it. Re-targeting each frame lets
     // streamed markdown grow without the viewport snapping in visible steps.
-    if (initialPlacement)
+    // A rebuilt/shrunk window resets scrollTop; snap that case immediately.
+    if (initialPlacement || resetToTop)
       scrollFramesToBottomImmediate(app);
     else
       scrollFramesToBottom(app);

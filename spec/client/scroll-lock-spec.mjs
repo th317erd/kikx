@@ -489,3 +489,36 @@ test('bottom follow re-targets smoothly when streaming content grows', () => {
     setAnimationFrameScheduler(null);
   }
 });
+
+
+test('a rebuilt bottom-locked frame list snaps instead of animating from zero', () => {
+  resetStorage();
+  let app = document.createElement('div');
+  app._state = { selectedSessionID: 's1' };
+  app._lockedPlacementSessionID = 's1';
+  app._onFrameListScroll = () => {};
+  let frameList = document.createElement('div');
+  frameList.className = 'kikx-frame-list';
+  let stream = document.createElement('div');
+  stream.className = 'kikx-frame-stream';
+  Object.defineProperty(frameList, 'scrollHeight', { configurable: true, value: 1200 });
+  Object.defineProperty(frameList, 'clientHeight', { configurable: true, value: 400 });
+  frameList.scrollTop = 0;
+  frameList.getBoundingClientRect = () => ({ top: 0 });
+  frameList.appendChild(stream);
+  app.appendChild(frameList);
+  setScrollLockedForSession(app, true, 's1');
+  setScrollLockModeForSession(app, 'bottom', 's1');
+
+  afterRender(app, {
+    selectedSessionID: 's1',
+    frameListPresent: true,
+    frameListNearBottom: true,
+    frameListScrollTop: 800,
+    frameListScrollHeight: 1200,
+    frameListAnchor: null,
+  });
+
+  assert.equal(frameList.scrollTop, 800, 'the rebuilt list lands on the tail immediately');
+  assert.equal(app._frameListScrollAnimation, null, 'no follow animation starts from the reset top');
+});
