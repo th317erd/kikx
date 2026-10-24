@@ -120,7 +120,8 @@ test('Brief A carries the version banner, precepts, tools, and behavior', () => 
   assert.match(text, /Delegation: agent-list/);
   assert.match(text, /Behavior — MANDATORY:/);
   assert.match(text, /Communication — MANDATORY when you are actively working a turn:/);
-  assert.match(text, /end the turn with a short bulleted summary: 2-5 bullets/);
+  assert.match(text, /end the turn with a short summary of the goals completed/);
+  assert.match(text, /then a short bulleted list of steps taken: 2-5 bullets/);
   assert.match(text, /When the user provides a new message, please immediately respond to acknowledge the user's message, and then continue with your work\./);
   // 2-party session (1 agent + 1 user): no coordinator preamble.
   assert.doesNotMatch(text, /COORDINATOR PREAMBLE/);
@@ -273,14 +274,15 @@ test('Brief B carries sender, message, and compact dynamic state', () => {
   assert.match(text, /parties: .*agent_1.* - Coordinator/);
   assert.match(text, /usr_1/);
   assert.match(text, /End every turn one of two ways:/);
-  assert.match(text, /- end-turn — with a REQUIRED short bulleted summary and optional details — when the request is satisfied, or when you are pausing\/waiting after work\./);
+  assert.match(text, /- end-turn — with a REQUIRED short summary of goals completed \(one or two sentences\) followed by a short bulleted list of steps taken, plus optional details/);
   assert.match(text, /- continue-turn — with a visible progress update, .*next concrete step — only when you have actionable work you can do right now\./);
 });
 
 test('the system prompt carries the communication contract', () => {
   assert.match(SESSION_SYSTEM_PROMPT, /Communication — MANDATORY when you are actively working a turn:/);
   assert.match(SESSION_SYSTEM_PROMPT, /Progress cadence:/);
-  assert.match(SESSION_SYSTEM_PROMPT, /short bulleted summary: 2-5 bullets/);
+  assert.match(SESSION_SYSTEM_PROMPT, /short summary of the goals completed/);
+  assert.match(SESSION_SYSTEM_PROMPT, /short bulleted list of steps taken: 2-5 bullets/);
   assert.match(SESSION_SYSTEM_PROMPT, /A one-line status\s+is not enough in details\./);
   assert.match(SESSION_SYSTEM_PROMPT, /If you are not the active responder in a multi-party session, stay silent/);
   assert.match(SESSION_SYSTEM_PROMPT, /When history has been compacted/);
@@ -535,7 +537,7 @@ test('Brief B carries the dual-verb turn-ending phrase', () => {
 
   assert.match(brief, /When the user provides a new message, please immediately respond to acknowledge the user's message, and then continue with your work\./);
   assert.match(brief, /End every turn one of two ways:/);
-  assert.match(brief, /end-turn — with a REQUIRED short bulleted summary and optional details — when the request is satisfied, or when you are pausing\/waiting after work\./);
+  assert.match(brief, /end-turn — with a REQUIRED short summary of goals completed \(one or two sentences\) followed by a short bulleted list of steps taken, plus optional details/);
   assert.match(brief, /continue-turn — with a visible progress update, .*next concrete step — only when you have actionable work you can do right now\./);
   assert.match(brief, /Waiting is not working: never poll or loop to await a process, the user, or another agent — a completion or a reply will wake you\./);
   assert.match(brief, /Communication — MANDATORY when you are actively working a turn:/);

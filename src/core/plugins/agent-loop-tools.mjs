@@ -459,12 +459,28 @@ function normalizeBulletedSummary(value) {
   if (text === '')
     return '';
 
-  return text
+  let lines = text
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => /^[-*•]\s+/.test(line) ? line : `- ${line}`)
-    .join('\n');
+    .filter(Boolean);
+  let firstBullet = lines.findIndex(isBulletLine);
+  if (firstBullet === -1)
+    return lines.map((line) => `- ${line}`).join('\n');
+
+  // Keep the goals-completed paragraph as prose; only the steps after it form
+  // the bulleted list. Legacy bullet-only summaries remain unchanged.
+  let intro = lines.slice(0, firstBullet);
+  let steps = lines
+    .slice(firstBullet)
+    .map((line) => isBulletLine(line) ? line : `- ${line}`);
+
+  return intro.length > 0
+    ? `${intro.join('\n')}\n\n${steps.join('\n')}`
+    : steps.join('\n');
+}
+
+function isBulletLine(line) {
+  return /^[-*•]\s+/.test(line);
 }
 
 function normalizeReportDetails(value) {
