@@ -144,8 +144,15 @@ export class FrameStorePreviewBase extends FrameStoreScheduledBase {
     if (total === 0 || windowPaths.length === 0)
       return { ...emptyFrameWindow(), total };
 
+    let frameTypes = Array.isArray(options.frameTypes)
+      ? new Set(options.frameTypes.filter((type) => typeof type === 'string' && type.trim() !== ''))
+      : null;
+    let readPaths = frameTypes
+      ? windowPaths.filter((path) => [ ...frameTypes ].some((type) => path.includes(`-${type}-`)))
+      : windowPaths;
+
     let frames = [];
-    let reads = await readJSONFiles(this.aeordb, windowPaths, {
+    let reads = await readJSONFiles(this.aeordb, readPaths, {
       fallbackOnBatchError: true,
       continueOnError: true,
     });

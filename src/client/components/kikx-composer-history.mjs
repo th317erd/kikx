@@ -21,6 +21,7 @@ export class KikxComposerHistory extends HTMLElement {
     this._query = '';
     this._selectedIndex = -1;
     this._searchTimer = null;
+    this._authRetries = 0;
     this._outsideHandler = null;
   }
 
@@ -59,6 +60,7 @@ export class KikxComposerHistory extends HTMLElement {
       this._app._composerHistoryOpen = true;
     this._query = '';
     this._before = null;
+    this._authRetries = 0;
     this._entries = [];
     this._selectedIndex = -1;
     this._hasMoreOlder = true;
@@ -113,7 +115,7 @@ export class KikxComposerHistory extends HTMLElement {
     this._list.setAttribute('role', 'listbox');
     this._list.addEventListener('scroll', () => this._onListScroll());
 
-    this.replaceChildren(searchWrap, this._status, this._list);
+    this.replaceChildren(this._list, this._status, searchWrap);
   }
 
   _installOutsideHandler() {
@@ -211,7 +213,17 @@ export class KikxComposerHistory extends HTMLElement {
       }
       this._setStatus(this._entries.length === 0 ? 'No matching messages.' : '', this._entries.length === 0);
     } catch (error) {
-      this._setStatus(error.message || 'History unavailable.', true);
+      let message = error?.message || 'History unavailable.';
+      if (/Authentication required/i.test(message) && this._authRetries < 3) {
+        this._authRetries += 1;
+        this._setStatus('Connecting...', true);
+        setTimeout(() => {
+          if (this.isOpen)
+            this._load({ reset });
+        }, 400);
+      } else {
+        this._setStatus(message, true);
+      }
     } finally {
       this._loading = false;
     }

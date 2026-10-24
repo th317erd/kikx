@@ -1783,7 +1783,7 @@ kikx-typing-indicator {
   left: 0;
   z-index: 20;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto auto;
   max-height: min(420px, 65dvh);
   overflow: hidden;
   border: 1px solid #3b4652;
@@ -1798,7 +1798,7 @@ kikx-typing-indicator {
 
 .kikx-composer-history__search-wrap {
   padding: 9px;
-  border-bottom: 1px solid #29323a;
+  border-top: 1px solid #29323a;
 }
 
 .kikx-composer-history__search {

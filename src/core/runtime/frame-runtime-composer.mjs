@@ -4,7 +4,7 @@ import { installRuntimeMethods } from './frame-runtime-mixins.mjs';
 
 const DEFAULT_HISTORY_LIMIT = 30;
 const MAX_HISTORY_LIMIT = 100;
-const HISTORY_SCAN_PAGE_SIZE = 500;
+const HISTORY_SCAN_PAGE_SIZE = 2000;
 const MAX_HISTORY_SCAN_PAGES = 100;
 
 const composerMethods = {
@@ -136,6 +136,7 @@ async function collectComposerHistory(runtime, sessionID, options = {}) {
     let window = await runtime.frameStore.listFrameWindow(sessionID, {
       limit: HISTORY_SCAN_PAGE_SIZE,
       raw: true,
+      frameTypes: [ 'UserMessage', 'UserDraft' ],
       ...(cursor != null ? { before: cursor } : {}),
     });
     let frames = Array.isArray(window?.frames) ? window.frames : [];
