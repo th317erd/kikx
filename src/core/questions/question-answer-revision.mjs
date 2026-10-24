@@ -41,9 +41,11 @@
 
 import {
   DEFAULT_ANSWER_SOURCE,
+  REVISION_INTENT_CONFIRM,
   USER_ANSWER_SOURCE,
   normalizeAnswerText,
   normalizeOptionalString,
+  normalizeRevisionIntent,
 } from './question-fields.mjs';
 import { normalizeRequiredString } from './question-doc.mjs';
 
@@ -55,10 +57,34 @@ import { normalizeRequiredString } from './question-doc.mjs';
  * second POST, and the client deciding whether to render an editable box or a
  * closed receipt.
  */
+// A confirmed default STAYS revisable, deliberately.
+//
+// The tempting rule is "confirmation settles it, close the box". It is wrong in
+// exactly the case that matters: "That's right" is one click, sitting beside the
+// form, and confirming also wakes nobody. If confirmation were terminal, a
+// misclick on a wrong default would leave the agent believing a wrong answer
+// with no path left to correct it — the precise failure this feature exists to
+// fix, made permanent. So acknowledgement records that the default was seen and
+// affirmed, and the correction path stays open underneath it.
+//
+// This is safe because `applyDefaultAnswer` refuses anything whose status is not
+// 'open', so re-opening the path can never let a default re-apply over the
+// person's answer.
 export function isRevisableDefaultAnswer(question) {
   return question?.deleted !== true
     && question?.status === 'answered'
     && question?.answerSource === DEFAULT_ANSWER_SOURCE;
+}
+
+/**
+ * Did a person explicitly confirm the default that was applied?
+ *
+ * Distinct from "answered with default provenance": every default answer has
+ * that, including one nobody has ever looked at. This is the recorded fact that
+ * somebody SAW it and affirmed it, which is why it can be stored without a wake.
+ */
+export function isAcknowledgedDefaultAnswer(question) {
+  return question?.acknowledgedAt != null;
 }
 
 /**
@@ -76,15 +102,56 @@ export function isRevisableDefaultAnswer(question) {
  */
 export async function reviseAnswer(store, questionID, input = {}) {
   let id = normalizeRequiredString(questionID, 'questionID');
-  let answer = normalizeAnswerText(input.answer);
+  let intent = normalizeRevisionIntent(input.intent);
+  let confirming = intent === REVISION_INTENT_CONFIRM;
+
+  // An acknowledgement carries no text of its own — the whole point is that the
+  // default already said it. Normalizing here unconditionally made every
+  // confirmation throw "answer must be a non-empty string", i.e. the one action
+  // with no text was the one that required text.
+  let answer = confirming ? null : normalizeAnswerText(input.answer);
 
   return await store.withLock(id, async () => {
     let question = await store.getQuestion(id);
 
     if (!isRevisableDefaultAnswer(question))
-      return { revised: false, reason: `not-a-default:${question.status}:${question.answerSource ?? 'null'}`, question };
+      return { revised: false, acknowledged: false, reason: `not-a-default:${question.status}:${question.answerSource ?? 'null'}`, question };
 
     let now = Number(input.now ?? store.clock());
+
+    if (confirming) {
+      // A double-click (or a second tab) must not rewrite who confirmed and
+      // when, and must not surface an error: the intent was already satisfied
+      // the first time. Answering with the document unchanged is the honest
+      // report — nothing moved.
+      if (question.acknowledgedAt != null)
+        return { revised: true, acknowledged: true, reason: 'already-acknowledged', question };
+
+      let confirmed = {
+        ...question,
+        // The answer TEXT does not change. The person affirmed the words the
+        // agent already has; rewriting them into something a human never typed
+        // would make the record claim they said it.
+        answerSource: DEFAULT_ANSWER_SOURCE,
+        answeredByUserID: normalizeOptionalString(input.userID || input.user_id)
+          || question.answeredByUserID
+          || null,
+        answerFrameID: normalizeOptionalString(input.answerFrameID || input.answer_frame_id) || null,
+        acknowledgedAt: now,
+        // A confirmation is an explicit human act, never a suppressed
+        // non-response and never a correction.
+        supersededDefaultAnswer: null,
+        supersededDefaultAt: null,
+        revisedAt: null,
+        wakeSuppressed: false,
+        updatedAt: now,
+      };
+
+      await store.aeordb.putFile(store.questionPath(id), confirmed);
+      await store.writeIndexes([ id ], [ question.agentID ]);
+
+      return { revised: true, acknowledged: true, question: confirmed };
+    }
     let revised = {
       ...question,
       status: 'answered',
@@ -96,6 +163,7 @@ export async function reviseAnswer(store, questionID, input = {}) {
       supersededDefaultAnswer: question.answer,
       supersededDefaultAt: question.answeredByDefaultAt ?? question.answeredAt ?? null,
       revisedAt: now,
+      acknowledgedAt: null,
       // A person answered, so this can never be a suppressed non-response and
       // must not inherit a dismissal marker from anywhere.
       wakeSuppressed: false,
@@ -105,7 +173,7 @@ export async function reviseAnswer(store, questionID, input = {}) {
     await store.aeordb.putFile(store.questionPath(id), revised);
     await store.writeIndexes([ id ], [ question.agentID ]);
 
-    return { revised: true, question: revised };
+    return { revised: true, acknowledged: false, question: revised };
   });
 }
 

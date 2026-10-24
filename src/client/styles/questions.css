@@ -434,6 +434,36 @@
   gap: 10px;
 }
 
+/* "That's right" — the acknowledgement, sitting beside "Send different answer".
+
+   Deliberately the quieter of the two: a secondary, outlined control rather
+   than the filled primary. Confirming a default is the cheap path; replacing it
+   is the deliberate one, and the styling should say so before the label is read.
+   Matches the outline treatment the dismiss control already uses. */
+.kikx-question-frame__confirm {
+  justify-self: start;
+  padding: 7px 16px;
+  border: 1px solid #3d6cff;
+  border-radius: 7px;
+  background: transparent;
+  color: #7fa0ff;
+  font: inherit;
+  font-size: calc(13px * 1.25);
+  cursor: pointer;
+}
+
+.kikx-question-frame__confirm:hover {
+  border-color: #5b84ff;
+  background: rgba(61, 108, 255, 0.12);
+  color: #a8bdff;
+}
+
+.kikx-question-frame__confirm[disabled] {
+  cursor: progress;
+  border-color: #2b4aad;
+  color: #5a6b9e;
+}
+
 /* A sent (or previously answered) question shows the answer where the form was.
    Deliberately not button-shaped: it must not read as something to press. The
    row is a record now, not a control. */

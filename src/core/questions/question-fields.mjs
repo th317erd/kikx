@@ -16,6 +16,42 @@
 export const DEFAULT_ANSWER_SOURCE = 'default';
 export const USER_ANSWER_SOURCE = 'user';
 
+// --- Revision intent -------------------------------------------------------
+
+/**
+ * What a second submission against a fired default MEANS.
+ *
+ * `change` is the obvious one: the default was wrong, and this text replaces it.
+ * The asking agent must be told, because it may already have acted on the
+ * default.
+ *
+ * `confirm` is the acknowledgement: "the default you applied was right". That
+ * carries no new information — the agent already has that answer — so it is
+ * recorded and shown without waking anybody.
+ *
+ * The caller DECLARES which one it is, rather than the server inferring it from
+ * the text, because text cannot distinguish them: "ok", "that's right" and
+ * "declined to say" are all just strings. Guessing wrong is expensive in both
+ * directions — read an acknowledgement as a change and the agent is woken to be
+ * told nothing, read a change as an acknowledgement and the agent keeps a wrong
+ * assumption forever.
+ */
+export const REVISION_INTENT_CHANGE = 'change';
+export const REVISION_INTENT_CONFIRM = 'confirm';
+export const REVISION_INTENTS = [ REVISION_INTENT_CHANGE, REVISION_INTENT_CONFIRM ];
+
+/**
+ * Coerce a declared intent.
+ *
+ * Anything missing, empty, or unrecognized means `change` — the branch that
+ * wakes. A malformed request must never be able to suppress a real correction
+ * by failing to say what it meant.
+ */
+export function normalizeRevisionIntent(value) {
+  let intent = normalizeOptionalString(value).toLowerCase();
+  return REVISION_INTENTS.includes(intent) ? intent : REVISION_INTENT_CHANGE;
+}
+
 /**
  * Coerce a timeout to whole milliseconds, or null when unset.
  *

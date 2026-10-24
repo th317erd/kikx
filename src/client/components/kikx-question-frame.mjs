@@ -15,6 +15,7 @@ import { elements } from '../lib/aeor-ui.mjs';
 import {
   canSubmitAnswer,
   DEFAULT_ANSWER_SOURCE,
+  isAcknowledgedDefaultAnswer,
   isRevisableDefaultAnswer,
   normalizeAnswerText,
   normalizeQuestionSummary,
@@ -41,6 +42,12 @@ const DEFAULT_ANSWER_PLACEHOLDER = 'Write a different answer\u2026';
 const DEFAULT_ANSWER_SUBMIT = 'Send different answer';
 const DEFAULT_ANSWER_NOTE = 'Nobody answered in time, so this answer was applied for you. You can replace it below.';
 const REVISED_BY_USER_NOTE = 'Sent after the default above.';
+// The acknowledgement control. Its whole job is to be the cheaper, obviously
+// different choice from typing a replacement: "that's right" is one click, and
+// it must not look like it sends anything to the agent (it does not).
+const DEFAULT_ANSWER_CONFIRM = 'That\u2019s right';
+const ACKNOWLEDGED_BY_USER_NOTE = 'You confirmed this was right, so nobody was notified. You can still replace it below.';
+const ACKNOWLEDGED_BY_USER_PLACEHOLDER = 'Confirmed by you \u2014 replace it below if that was wrong.';
 
 export class KikxQuestionFrame extends HTMLElement {
   constructor() {
@@ -113,6 +120,20 @@ export class KikxQuestionFrame extends HTMLElement {
           note: REVISED_BY_USER_NOTE,
         }),
       ).build(document);
+    }
+
+    // A default this person already confirmed. The answer needs no correction,
+    // so the receipt says they confirmed it — and says outright that nobody was
+    // notified, because "confirmed" must not read as "the agent has been told".
+    if (isAcknowledgedDefaultAnswer(question) && this._buildAnswerBlock) {
+      return this._buildAnswerBlock(answer, {
+        label: DEFAULT_ANSWER_LABEL,
+        source: DEFAULT_ANSWER_SOURCE,
+        // Deliberately promises the correction path, because the gate above
+        // keeps it open. A note that said "settled" here would be a lie the UI
+        // then contradicts by rendering an editable box underneath it.
+        note: ACKNOWLEDGED_BY_USER_NOTE,
+      });
     }
 
     // Still the agent's own fallback. Say so, and say that it can be replaced —
@@ -193,13 +214,32 @@ export class KikxQuestionFrame extends HTMLElement {
     let submitLabel = revisable ? DEFAULT_ANSWER_SUBMIT : 'Answer';
     this._submitLabel = submitLabel;
 
-    if (revisable && answerInput.setAttribute)
-      answerInput.setAttribute('placeholder', DEFAULT_ANSWER_PLACEHOLDER);
+    // A confirmed row keeps its box only so a mistake stays fixable, and it says
+    // so: "replace it below if that was wrong" is the true statement, whereas the
+    // plain "write a different answer" placeholder would imply the default is
+    // still unconfirmed.
+    if (revisable && answerInput.setAttribute) {
+      answerInput.setAttribute('placeholder', isAcknowledgedDefaultAnswer(question)
+        ? ACKNOWLEDGED_BY_USER_PLACEHOLDER
+        : DEFAULT_ANSWER_PLACEHOLDER);
+    }
 
     let submit = button
       .type('button')
       .class('kikx-question-frame__submit')
       .onClick(() => this._submit(question.id, answerInput))(submitLabel);
+
+    // The acknowledgement. Separate control, separate intent: no text is read
+    // from the box, because the answer it affirms already exists. Without this
+    // the only way to say "the default was right" was to retype the default,
+    // which the server cannot tell apart from a correction — so a one-word
+    // agreement woke the agent to be told nothing new.
+    let confirm = (revisable && !isAcknowledgedDefaultAnswer(question))
+      ? button
+        .type('button')
+        .class('kikx-question-frame__confirm')
+        .onClick(() => this._confirm(question.id))(DEFAULT_ANSWER_CONFIRM)
+      : null;
 
     // The frame used to offer only Answer, which meant a question asked inline
     // in a session could not be dismissed without opening the Inbox. The owner's
@@ -244,7 +284,7 @@ export class KikxQuestionFrame extends HTMLElement {
         p.class('kikx-question-frame__text')(question.text),
         answered ? this._answeredBlock(question) : null,
         editable ? answerInput : null,
-        editable ? div.class('kikx-question-frame__actions')(submit, dismissControl, hint.hidden(true).ariaLive('polite')()) : null,
+        editable ? div.class('kikx-question-frame__actions')(submit, confirm, dismissControl, hint.hidden(true).ariaLive('polite')()) : null,
       ).build(document);
 
     this._submitNode = node.querySelector('.kikx-question-frame__submit');
@@ -268,7 +308,36 @@ export class KikxQuestionFrame extends HTMLElement {
     return answerDraftStore(app || this);
   }
 
-  _submit(questionID, answerInput) {
+  // "The default was right." Carries no text: the answer being affirmed is
+  // already stored, and retyping it is what made this indistinguishable from a
+  // correction. Sends the declared intent, which is the only thing that decides
+  // whether the asking agent is woken.
+  _confirm(questionID) {
+    let app = this._appState?.app || this.closest?.('kikx-app');
+    let pending = app?._submitQuestionAnswer?.(questionID, '', { intent: 'confirm' });
+
+    if (!pending || typeof pending.then !== 'function')
+      return;
+
+    this._setPhase('busy');
+    pending.then(
+      (result) => {
+        if (result && result.ok === false) {
+          this._setPhase('error', result.message || 'Could not confirm the answer.');
+          return;
+        }
+
+        // Painted WITHOUT an answer block: a confirmation changes no text, so
+        // appending one would invent a "Your answer" line holding the empty
+        // string. The receipt is what changes, and it changes by re-reading the
+        // question — never by printing words the person did not write.
+        this._setPhase('sent', result?.message || '', '', { paintAnswer: false });
+      },
+      () => this._setPhase('error', 'Could not confirm the answer.'),
+    );
+  }
+
+  _submit(questionID, answerInput, options = {}) {
     let text = normalizeAnswerText(answerInput?.value);
     if (!canSubmitAnswer(text))
       return;
@@ -277,7 +346,13 @@ export class KikxQuestionFrame extends HTMLElement {
     // no app (a frame rendered standalone in a spec), do nothing rather than
     // throwing inside an event handler.
     let app = this._appState?.app || this.closest?.('kikx-app');
-    let pending = app?._submitQuestionAnswer?.(questionID, text);
+    // A revision of a delivered default is a CHANGE: the user typed text that
+    // differs from what was applied, so the asking agent has to learn its
+    // default was wrong. An ordinary first answer carries no intent at all and
+    // goes through the unchanged path.
+    // `options.intent` stays undefined for an ordinary answer, so JSON drops the
+    // key and the normal path is byte-for-byte what it was.
+    let pending = app?._submitQuestionAnswer?.(questionID, text, options.intent ? { intent: options.intent } : undefined);
 
     // The frame used to drop this promise on the floor: no busy state, no
     // confirmation, and a failure looked exactly like a send. It now owns the
@@ -443,7 +518,7 @@ export class KikxQuestionFrame extends HTMLElement {
   // One phase setter for three states: idle, busy, error/sent. The attribute is
   // what the stylesheet and the specs hook into; the label is the part a user
   // reads.
-  _setPhase(phase, message = '', answerText = '') {
+  _setPhase(phase, message = '', answerText = '', options = {}) {
     let submitNode = this._submitNode;
     let inputNode = this._inputNode;
 
@@ -464,7 +539,7 @@ export class KikxQuestionFrame extends HTMLElement {
         inputNode.removeAttribute?.('readonly');
     }
 
-    if (phase === 'sent')
+    if (phase === 'sent' && options.paintAnswer !== false)
       this._showSent(answerText);
 
     this.setAttribute('data-answer-state', phase);
