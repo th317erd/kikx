@@ -144,6 +144,7 @@ import {
   clearComposerDraft,
   onComposerKeydown,
   onSubmit,
+  quoteFrameIntoComposer,
   restoreComposerDraftOnFailure,
   syncDraft,
 } from './kikx-composer.mjs';
@@ -516,6 +517,11 @@ export class KikxApp extends HTMLElement {
         this._openSessionFromCard(event.detail.sessionID);
     };
     this.addEventListener('kikx-session-enter', this._onSessionEnter);
+    this._onQuoteFrame = (event) => {
+      if (event.detail?.frameID)
+        quoteFrameIntoComposer(this, event.detail);
+    };
+    this.addEventListener('kikx-quote-frame', this._onQuoteFrame);
     // Browser back/forward navigates the window stack.
     this._onPopState = () => this._syncFromURL();
     (globalThis.window || globalThis).addEventListener?.('popstate', this._onPopState);
@@ -573,6 +579,8 @@ export class KikxApp extends HTMLElement {
     this._appListenersInstalled = false;
     if (this._onSessionEnter)
       this.removeEventListener('kikx-session-enter', this._onSessionEnter);
+    if (this._onQuoteFrame)
+      this.removeEventListener('kikx-quote-frame', this._onQuoteFrame);
     if (this._onPopState)
       (globalThis.window || globalThis).removeEventListener?.('popstate', this._onPopState);
     if (this._onAppKeydown)
@@ -580,6 +588,7 @@ export class KikxApp extends HTMLElement {
     if (this._onPageHide)
       (globalThis.window || globalThis).removeEventListener?.('pagehide', this._onPageHide);
     this._onSessionEnter = null;
+    this._onQuoteFrame = null;
     this._onPopState = null;
     this._onAppKeydown = null;
     this._onPageHide = null;

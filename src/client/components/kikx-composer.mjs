@@ -6,6 +6,7 @@ import { ensureAutoScrollAfterSend } from './kikx-frame-scroll-lock.mjs';
 import {
   clearComposerDraftWithServer,
   flushComposerDraft,
+  replaceComposerText,
   syncComposerDraft,
 } from './composer-drafts.mjs';
 
@@ -91,4 +92,46 @@ export function restoreComposerDraftOnFailure(app, submittedDraft) {
   let composer = app.querySelector('textarea[name="message"]');
   if (composer && composer.value === '')
     composer.value = submittedDraft;
+}
+
+export function quoteFrameIntoComposer(app, detail = {}) {
+  let frameID = typeof detail.frameID === 'string' ? detail.frameID.trim() : '';
+  if (!frameID)
+    return Promise.resolve(false);
+
+  // Serialize quote operations. A second click can arrive while the first
+  // draft flush is in flight; by the time it runs, the dedupe check sees the
+  // marker already in the composer and leaves the text alone.
+  let previous = app._quoteFrameQueue || Promise.resolve(true);
+  app._quoteFrameQueue = previous
+    .catch(() => false)
+    .then(() => prefixQuoteBlock(app, frameID, detail.text));
+  return app._quoteFrameQueue;
+}
+
+async function prefixQuoteBlock(app, frameID, frameText) {
+  let sessionID = app?._state?.selectedSessionID;
+  if (!sessionID)
+    return false;
+
+  let marker = `User is asking about and referring to frame id[${frameID}]:`;
+  let composer = app.querySelector?.('textarea[name="message"]');
+  let current = typeof app._state.draft === 'string' ? app._state.draft : '';
+  if (composer && typeof composer.value === 'string')
+    current = composer.value;
+
+  if (current.includes(marker)) {
+    composer?.focus?.();
+    return false;
+  }
+
+  let quotedText = typeof frameText === 'string' ? frameText.trim() : '';
+  let block = quotedText ? `${marker}\n${quotedText}` : marker;
+  let next = current.trim() !== '' ? `${block}\n\n${current}` : block;
+  let replaced = await replaceComposerText(app, next);
+  if (replaced) {
+    composer = app.querySelector?.('textarea[name="message"]');
+    composer?.focus?.();
+  }
+  return replaced;
 }

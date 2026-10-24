@@ -517,8 +517,10 @@ kikx-app {
   margin: 0;
   /* One pixel of breathing room below the last card. ScrollTop is clamped to an
      integer while layout can end on a fractional pixel; without this the last
-     card's bottom border can be shaved by the scroll container. */
-  padding: 0 0 1px;
+     card's bottom border can be shaved by the scroll container. The right gutter
+     keeps a right-aligned UserMessage from pushing its quick-action rail under
+     the scrollbar/clip edge. */
+  padding: 0 52px 1px 0;
   list-style: none;
 }
 
@@ -649,12 +651,78 @@ kikx-app {
   font-size: calc(12px * 1.25);
 }
 
+.kikx-frame__hover-target {
+  position: absolute;
+  inset: -6px -52px -6px -6px;
+  z-index: -1;
+  border-radius: calc(var(--kikx-frame-radius) + 6px);
+  pointer-events: auto;
+}
+
+/* Quick actions float just outside the frame surface; the invisible hover
+   target above extends the frame's hover region so moving toward the actions
+   does not close them. */
+.kikx-frame__quick-actions {
+  position: absolute;
+  top: 8px;
+  right: -44px;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateX(-4px);
+  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
+}
+
+.kikx-frame:hover .kikx-frame__quick-actions,
+.kikx-frame:focus-within .kikx-frame__quick-actions {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.kikx-frame--minimized .kikx-frame__quick-actions {
+  display: none;
+}
+
+.kikx-frame__quick-action {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid #33404a;
+  border-radius: 7px;
+  background: #151b20;
+  color: #a9b7c3;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.32);
+}
+
+.kikx-frame__quick-action:hover,
+.kikx-frame__quick-action:focus-visible {
+  border-color: #587183;
+  background: #1c2630;
+  color: #e4f3ff;
+  outline: none;
+}
+
+.kikx-frame__quick-action svg {
+  width: 17px;
+  height: 17px;
+}
+
 /* Keep full messages visually separated from surrounding minimized headers. */
 .kikx-frame:not(.kikx-frame--minimized) {
   margin-block: 1em;
 }
 
 .kikx-frame {
+  position: relative;
   display: grid;
   gap: 8px;
   /* Participants (agents, tools, etc.) sit on the left; the operator sits on the right. */

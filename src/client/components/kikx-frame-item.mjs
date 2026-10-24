@@ -1,6 +1,7 @@
 'use strict';
 
 import './kikx-user-message-frame.mjs';
+import { buildFrameQuickActions } from './kikx-frame-quick-actions.mjs';
 import { elements, $, cleanupBindings } from '../lib/aeor-ui.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { renderMarkdownToElement } from '../lib/markdown-renderer.mjs';
@@ -175,6 +176,7 @@ export class KikxFrameItem extends HTMLElement {
     this._minimized = false;
     this._compactView = null;
     this._contentParent = null;
+    this._quickActions = null;
   }
 
   updateFrame(frame, appState = {}, options = {}) {
@@ -203,6 +205,9 @@ export class KikxFrameItem extends HTMLElement {
       this._render();
     else
       this._reconcile();
+
+    if (this._quickActions)
+      this._quickActions._frame = nextFrame;
   }
 
   connectedCallback() {
@@ -315,6 +320,7 @@ export class KikxFrameItem extends HTMLElement {
 
       cleanupBindings(this);
       $(this).empty();
+      this._appendHoverTarget();
       this._metaElement = meta;
       this._contentElement = content;
       this._compact = compact;
@@ -354,6 +360,9 @@ export class KikxFrameItem extends HTMLElement {
           this.appendChild(content);
       }
 
+      this._quickActions = buildFrameQuickActions(frame, document);
+      this.appendChild(this._quickActions);
+
       return true;
     }, { frameID: frame.id, frameType: frame.type });
 
@@ -362,6 +371,13 @@ export class KikxFrameItem extends HTMLElement {
       this._contentTag = previous.contentTag;
       this._lastMarkdownText = previous.lastMarkdownText;
     }
+  }
+
+  _appendHoverTarget() {
+    let target = document.createElement('div');
+    target.className = 'kikx-frame__hover-target';
+    target.setAttribute('aria-hidden', 'true');
+    this.appendChild(target);
   }
 
   _applyFrameState(frame, compact) {

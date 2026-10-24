@@ -408,3 +408,15 @@ test('identical markdown keeps its rendered children while changed text rebuilds
   assert.notEqual(content.firstChild, child, 'changed markdown must rebuild its children');
   assert.match(content.textContent, /changed world/);
 });
+
+
+test('every frame carries an invisible hover target and the quote quick action', () => {
+  let item = frameItem();
+  item.updateFrame({ id: 'quote-frame', type: 'UserMessage', content: { text: 'quote me' } }, {});
+
+  assert.ok(item.querySelector('.kikx-frame__hover-target'));
+  let quote = item.querySelector('.kikx-frame__quick-action--quote');
+  assert.ok(quote);
+  assert.equal(quote.getAttribute('aria-label'), 'Quote frame');
+  assert.ok(quote.querySelector('svg'));
+});
