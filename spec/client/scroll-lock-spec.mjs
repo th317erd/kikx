@@ -33,8 +33,10 @@ const {
 } = await import('../../src/client/components/kikx-scroll-lock.mjs');
 const {
   breakScrollLockFromUser,
+  clearBottomHashMarker,
   ensureAutoScrollAfterSend,
   lockScrollAtBottom,
+  maybeRestoreMessageHash,
   scrollToLatestMessageTop,
 } = await import('../../src/client/components/kikx-frame-scroll-lock.mjs');
 const { afterRender, maybeLoadOlderFrames, onFrameContentResize } = await import('../../src/client/components/kikx-frame-scroll.mjs');
@@ -208,7 +210,7 @@ test('a suppressed anchor still fills a viewport that cannot scroll', () => {
   assert.equal(loads, 1);
 });
 
-test('reaching the bottom locks instantly in bottom mode without moving the viewport', () => {
+test('reaching the bottom locks instantly in top mode without moving the viewport', () => {
   resetStorage();
   let list = { scrollTop: 940, scrollHeight: 1000, clientHeight: 600 };
   // The raw state carries one hidden/phantom tail frame that the thread will
@@ -234,8 +236,86 @@ test('reaching the bottom locks instantly in bottom mode without moving the view
   assert.equal(lockScrollAtBottom(app), true);
   assert.equal(list.scrollTop, 940, 'engaging the lock must not move the viewport');
   assert.equal(isScrollLockedForSession(app, 's1'), true);
-  assert.equal(getScrollLockModeForSession(app, 's1'), 'bottom');
-  assert.equal(app._frameListAnchoredToBottom, true);
+  assert.equal(getScrollLockModeForSession(app, 's1'), 'top');
+  assert.equal(app._frameListAnchoredToBottom, false);
+});
+
+test('a new bottom message clears a stale bottom URL marker', () => {
+  resetStorage();
+  let items = [
+    { dataset: { frameId: 'old' } },
+    { dataset: { frameId: 'new' } },
+  ];
+  let list = { querySelectorAll: () => items };
+  let app = {
+    _state: { selectedSessionID: 's1' },
+    querySelector(selector) {
+      return selector === '.kikx-frame-list' ? list : null;
+    },
+  };
+  let originalLocation = globalThis.location;
+  let originalHistory = globalThis.history;
+  globalThis.location = { pathname: '/', search: '?session=s1', hash: '#message=old&bottom=1' };
+  globalThis.history = {
+    replaceState(_state, _title, url) {
+      let index = String(url).indexOf('#');
+      globalThis.location.hash = index >= 0 ? String(url).slice(index) : '';
+    },
+  };
+  try {
+    assert.equal(clearBottomHashMarker(app), true);
+    assert.equal(globalThis.location.hash, '#message=old');
+    assert.equal(app._hashRestoredSessionID, 's1:old:');
+    assert.equal(clearBottomHashMarker(app), false, 'the marker is only cleared once');
+  } finally {
+    globalThis.location = originalLocation;
+    globalThis.history = originalHistory;
+  }
+});
+
+test('a stale bottom marker restores the old message top instead of the bottom', async () => {
+  resetStorage();
+  let stream = { offsetTop: 0 };
+  let items = [
+    { dataset: { frameId: 'old' }, offsetTop: 200, offsetParent: stream, getBoundingClientRect: () => ({ top: 300 }) },
+    { dataset: { frameId: 'new' }, offsetTop: 800, offsetParent: stream, getBoundingClientRect: () => ({ top: 900 }) },
+  ];
+  let list = {
+    scrollTop: 0,
+    scrollHeight: 1000,
+    clientHeight: 400,
+    getBoundingClientRect: () => ({ top: 100 }),
+    querySelector(selector) {
+      if (selector === '.kikx-frame-stream') return stream;
+      if (selector === 'kikx-frame-item') return items[0];
+      return null;
+    },
+    querySelectorAll: () => items,
+  };
+  let app = {
+    _state: { selectedSessionID: 's1' },
+    querySelector(selector) {
+      return selector === '.kikx-frame-list' ? list : null;
+    },
+  };
+  setScrollLockedForSession(app, false, 's1');
+  let originalLocation = globalThis.location;
+  let originalHistory = globalThis.history;
+  globalThis.location = { pathname: '/', search: '?session=s1', hash: '#message=old&bottom=1' };
+  globalThis.history = {
+    replaceState(_state, _title, url) {
+      let index = String(url).indexOf('#');
+      globalThis.location.hash = index >= 0 ? String(url).slice(index) : '';
+    },
+  };
+  try {
+    assert.equal(await maybeRestoreMessageHash(app), true);
+    assert.equal(list.scrollTop, 200, 'the old message top wins over the stale bottom marker');
+    assert.equal(globalThis.location.hash, '#message=old');
+  } finally {
+    globalThis.location = originalLocation;
+    globalThis.history = originalHistory;
+  }
 });
 
 test('a user scroll attempt unlocks instantly', () => {

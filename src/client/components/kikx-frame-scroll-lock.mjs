@@ -108,6 +108,21 @@ export function updateMessageHashFromScroll(app, frameList = app.querySelector('
   updateMessageHash(app, topVisibleFrameID(app, frameList), { atBottom: isNearBottom(frameList) });
 }
 
+// A bottom marker is only meaningful while the anchored message is still the
+// last message. Once a new frame is appended at the bottom, keep the ordinary
+// message anchor but drop the stale bottom instruction.
+export function clearBottomHashMarker(app) {
+  if (messageHashAtBottom() !== true)
+    return false;
+
+  let frameID = messageHashID();
+  if (!frameID)
+    return false;
+
+  updateMessageHash(app, frameID, { atBottom: false });
+  return true;
+}
+
 export function messageHashID() {
   let hash = globalThis.location?.hash || '';
   let match = /(?:^#|&)message=([^&]+)/.exec(hash);
@@ -162,7 +177,11 @@ export async function maybeRestoreMessageHash(app) {
       // message, the user was almost certainly at the bottom; aligning its
       // top would leave them a page short. New anchors carry an explicit
       // bottom=0/1 marker so the top of the newest message is still exact.
-      let restoreBottom = bottomState === true || (bottomState == null && item === items.at(-1));
+      let isLastItem = item === items.at(-1);
+      // bottom=1 is authoritative only for the message it was written on while
+      // that message was still the newest. A new bottom message makes it stale;
+      // restore the ordinary top anchor instead of slamming to the bottom.
+      let restoreBottom = isLastItem && (bottomState === true || bottomState == null);
       if (restoreBottom) {
         cancelFrameListScrollAnimation(app);
         setFrameListScrollTop(app, frameList, frameList.scrollHeight - frameList.clientHeight, { programmatic: true });
@@ -301,9 +320,11 @@ export function lockScrollAtBottom(app) {
     return false;
 
   setScrollLockedForSession(app, true, sessionID);
-  setScrollLockModeForSession(app, 'bottom', sessionID);
+  // Reaching the bottom re-engages the lock, not bottom-hugging. The next
+  // message follows its top edge; the viewport itself stays put right now.
+  setScrollLockModeForSession(app, 'top', sessionID);
   paintScrollLockButton(app, sessionID, true);
-  app._frameListAnchoredToBottom = true;
+  app._frameListAnchoredToBottom = false;
   app._bottomLockIntent = false;
   if (expanded)
     app._scrollFramesToBottomImmediate?.();

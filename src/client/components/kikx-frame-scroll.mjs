@@ -14,6 +14,7 @@ import {
   animateFrameListScroll,
   breakScrollLockFromUser,
   cancelFrameListScrollAnimation,
+  clearBottomHashMarker,
   lockScrollAtBottom,
   lastFrameItemID,
   maybeRestoreMessageHash,
@@ -53,6 +54,8 @@ export function captureRenderSnapshot(app) {
     composerSelectionEnd: composerFocused ? composer.selectionEnd : null,
     composerSelectionDirection: composerFocused ? composer.selectionDirection : 'none',
     frameListNearBottom: app._frameListAnchoredToBottom,
+    viewFrameCount: Array.isArray(view?.frames) ? view.frames.length : 0,
+    viewLastFrameID: Array.isArray(view?.frames) ? (view.frames.at(-1)?.id || '') : '',
     forceScrollToBottom: app._forceScrollToBottomAfterRender,
     focusComposer: app._focusComposerAfterRender,
   };
@@ -62,6 +65,12 @@ export function afterRender(app, snapshot = {}) {
   let sessionID = app._state.selectedSessionID;
   let locked = isScrollLockedForSession(app, sessionID);
   let sessionChanged = Boolean(sessionID && snapshot.selectedSessionID !== sessionID);
+  let renderedView = app.querySelector('.kikx-thread__body kikx-chat-view');
+  let renderedFrames = Array.isArray(renderedView?.frames) ? renderedView.frames : [];
+  if (snapshot.viewLastFrameID
+    && renderedFrames.length > (snapshot.viewFrameCount || 0)
+    && (renderedFrames.at(-1)?.id || '') !== snapshot.viewLastFrameID)
+    clearBottomHashMarker(app);
   let hashID = messageHashID();
   let hashRestored = Boolean(hashID && String(app._hashRestoredSessionID || '').startsWith(`${sessionID}:${hashID}:`));
   if (sessionChanged)
@@ -292,7 +301,14 @@ function syncFrameThreadBody(app, sessionID, options) {
 
   let locked = isScrollLockedForSession(app, sessionID);
   let lockMode = getScrollLockModeForSession(app, sessionID);
+  let previousFrames = Array.isArray(view.frames) ? view.frames : [];
+  let previousFrameCount = previousFrames.length;
+  let previousLastFrameID = previousFrames.at(-1)?.id || '';
   let result = view.syncFrames(frames, app._state, locked ? { ...options, followLatest: true } : options);
+  if (previousLastFrameID
+    && frames.length > previousFrameCount
+    && (frames.at(-1)?.id || '') !== previousLastFrameID)
+    clearBottomHashMarker(app);
 
   if (locked && lockMode === 'bottom') {
     let initialPlacement = app._lockedPlacementSessionID !== sessionID;
