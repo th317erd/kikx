@@ -464,10 +464,46 @@
   overflow-wrap: anywhere;
 }
 
+/* A DEFAULT answer: applied automatically because nobody replied in time.
+   Green family because the question did get an answer, but amber-edged and
+   lower-contrast so it never reads as something the user said. */
+.kikx-question-frame__answer-given[data-answer-source='default'] {
+  border-color: #3a3320;
+  border-left-color: #d29922;
+  background: #191710;
+}
+
+.kikx-question-frame__answer-given[data-answer-source='default'] .kikx-question-frame__answer-label {
+  color: #d29922;
+}
+
+/* The explanatory line under either answer: why a default exists, or that a
+   revision was sent after one. */
+.kikx-question-frame__answer-note {
+  margin: 0;
+  color: #8b949e;
+  font-size: calc(11px * 1.25);
+  line-height: 1.45;
+}
+
+/* A revision shows both answers, oldest first, with no gap so the pair reads
+   as one receipt rather than two unrelated rows. */
+.kikx-question-frame__answers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 /* The answered row keeps a green edge so the thread shows, at a glance, which
    questions have been dealt with. */
 .kikx-question-frame[data-answer-state='sent'] .kikx-question-frame__card {
   border-color: #2ea043;
+}
+
+/* An editable default answer: the receipt is green-edged but the card still
+   has a live box in it, so styling it as fully settled would be a lie. */
+.kikx-question-frame:has(.kikx-question-frame__answer) .kikx-question-frame__card {
+  border-color: #30363d;
 }
 
 /* --- Answer notice ------------------------------------------------------ */

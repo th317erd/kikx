@@ -28,6 +28,30 @@ export function isTerminalQuestion(question) {
   return QUESTION_TERMINAL_STATUSES.includes(question?.status);
 }
 
+// Answer provenance. Mirrors the server's `question-fields.mjs` constants; the
+// client bundle does not import from `src/core`, so the literals are repeated.
+export const DEFAULT_ANSWER_SOURCE = 'default';
+export const USER_ANSWER_SOURCE = 'user';
+
+/**
+ * Is this question sitting on an answer that only a default supplied?
+ *
+ * The single gate for the "replace the default" affordance, mirroring the
+ * server's identical check. Duplicating the rule is deliberate: the server
+ * enforces it on write and the client honours it on render, and a client that
+ * guessed more generously would paint a box that the server then refuses with
+ * a 409 — the exact failure this UI exists to remove.
+ *
+ * Null provenance is NOT revisable. An answer whose origin was never recorded
+ * cannot be shown to have come from a default, so it is treated as somebody
+ * else's answer rather than being offered up for editing.
+ */
+export function isRevisableDefaultAnswer(question) {
+  return question?.deleted !== true
+    && question?.status === 'answered'
+    && question?.answerSource === DEFAULT_ANSWER_SOURCE;
+}
+
 function stringOrNull(value) {
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
 }
@@ -70,6 +94,16 @@ export function normalizeQuestionSummary(value) {
     // The answer was dropped entirely, so an answered row could not show what
     // was said and the inline frame fell back to the status word.
     answer: stringOrNull(value.answer),
+    // Where the answer came from. 'default' means the agent's own fallback
+    // fired because nobody replied; 'user' means a person did. Null is the
+    // honest third state — an answer written before provenance existed — and is
+    // deliberately NOT coerced to either, because guessing 'user' would offer
+    // an editable box on someone else's answer.
+    answerSource: stringOrNull(value.answerSource),
+    // The default that a person later overrode. Kept beside the live answer so
+    // the transcript can still show what the agent was originally told.
+    supersededDefaultAnswer: stringOrNull(value.supersededDefaultAnswer),
+    revisedAt: numberOr(value.revisedAt, 0),
     priority: value.priority === 'low' || value.priority === 'high' ? value.priority : 'normal',
     askedAt: numberOr(value.askedAt, 0),
     askedClock: stringOrNull(value.askedClock),
