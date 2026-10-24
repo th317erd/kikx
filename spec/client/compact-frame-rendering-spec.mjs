@@ -116,7 +116,7 @@ test('a successful read-file frame renders one compact line with the existing to
 
   let details = compactDetails(item);
   assert.ok(details, 'the frame must use the native details disclosure');
-  assert.equal(summaryDescription(item), 'Read file /tmp/notes.txt <-');
+  assert.equal(summaryDescription(item), '<- Read file /tmp/notes.txt');
   assert.equal(headerStatus(item), 'Read File');
   assert.equal(summaryIcon(item), 'eyeball');
 

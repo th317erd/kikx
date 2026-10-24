@@ -45,7 +45,7 @@ test('frameMoodBand exposes only bad, meh, and good bands', () => {
 test('compact headers use short action labels while bodies keep the full detail', () => {
   let read = toolFrame('read-file', { path: '/tmp/notes.txt' }, { status: 'success' });
   assert.deepEqual(compactFrameHeader(read), { label: 'Read File', icon: 'eyeball' });
-  assert.equal(compactFrameBodyDescription(read), 'Read file /tmp/notes.txt <-');
+  assert.equal(compactFrameBodyDescription(read), '<- Read file /tmp/notes.txt');
 
   let shell = toolFrame('exec', { command: 'ls /tmp' }, { status: 'success' });
   assert.deepEqual(compactFrameHeader(shell), { label: 'ls', icon: 'gear', code: true });
@@ -92,7 +92,7 @@ test('exec management tools use short header titles', () => {
 test('read-file renders the exact read wording and an eyeball icon', () => {
   let summary = compactFrameSummary(toolFrame('read-file', { path: '/tmp/notes.txt' }, { status: 'success' }));
 
-  assert.equal(summary.description, 'Read file /tmp/notes.txt <-');
+  assert.equal(summary.description, '<- Read file /tmp/notes.txt');
   assert.equal(summary.icon, 'eyeball');
   assert.equal(summary.status, 'success');
 });
@@ -101,7 +101,7 @@ test('read-file failures are red and write-file uses the quill icon', () => {
   assert.equal(frameStatus(toolFrame('read-file', { path: '/tmp/x' }, { status: 'error' })), 'error');
   assert.equal(
     compactFrameSummary(toolFrame('write-file', { path: '/tmp/out.txt' }, { status: 'success' })).description,
-    'Write file /tmp/out.txt ->',
+    '-> Write file /tmp/out.txt',
   );
   assert.equal(
     compactFrameSummary(toolFrame('write-file', { path: '/tmp/out.txt' }, { status: 'failed' })).status,
@@ -316,7 +316,7 @@ test('recovers the file path from a truncated input preview', () => {
     },
   });
 
-  assert.equal(summary.description, 'Write file /tmp/a.txt ->');
+  assert.equal(summary.description, '-> Write file /tmp/a.txt');
   assert.equal(summary.icon, 'quill');
 });
 

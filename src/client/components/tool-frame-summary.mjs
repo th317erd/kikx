@@ -423,9 +423,9 @@ function toolDescription(toolName, input, status = 'running', frame = null) {
 
   switch (toolName) {
     case 'read-file':
-      return path ? `Read file ${path} <-` : 'Read file <-';
+      return path ? `<- Read file ${path}` : '<- Read file';
     case 'write-file':
-      return path ? `Write file ${path} ->` : 'Write file ->';
+      return path ? `-> Write file ${path}` : '-> Write file';
     case 'exec':
       return status === 'success' ? 'Command completed' : status === 'error' ? 'Command failed' : 'Running command';
     case 'web-search':
