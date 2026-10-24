@@ -23,7 +23,7 @@ import {
 } from '../state/kikx-state.mjs';
 import { threadVisibleFrames } from '../state/thinking-state.mjs';
 import { childSessions } from './chat-view-model.mjs';
-import { formatTokenUsageTotal } from './kikx-app-helpers.mjs';
+import { formatTokenUsageTotal, hasSessionDeepLink } from './kikx-app-helpers.mjs';
 import { countRebuild } from './render-stats.mjs';
 import { buildInboxSidebarEntry, buildInboxView } from './kikx-inbox-view.mjs';
 import {
@@ -72,7 +72,11 @@ export function renderAppShell(app) {
           )
           : span.class('kikx-topbar__spacer')(),
       ),
-      app._state.authToken ? app._buildRunnerShell() : app._buildAuthShell(),
+      app._state.authToken
+        ? (hasSessionDeepLink() && app._deepLinkReady !== true
+          ? buildStartupLoading()
+          : app._buildRunnerShell())
+        : app._buildAuthShell(),
     ];
 
     if (app._state.authToken)
@@ -131,6 +135,19 @@ export function renderAppShell(app) {
     if (!app.querySelector('kikx-error-surface'))
       app.appendChild(createErrorSurfaceElement());
   }
+}
+
+export function buildStartupLoading() {
+  return main.class('kikx-startup-loading').ariaBusy('true')(
+    section.class('kikx-startup-loading__panel').role('status').ariaLive('polite')(
+      div.class('kikx-startup-loading__spinner').ariaHidden('true')(),
+      h2('Loading session'),
+      p('Restoring messages and scroll position…'),
+      div.class('kikx-startup-loading__track').ariaHidden('true')(
+        span.class('kikx-startup-loading__fill')(),
+      ),
+    ),
+  );
 }
 
 export function buildAuthShell(app) {

@@ -17,6 +17,11 @@ export function cssEscape(value) {
   return String(value).replace(/["\\]/g, '\\$&');
 }
 
+export function hasSessionDeepLink(search = globalThis.location?.search || '') {
+  let params = new URLSearchParams(search);
+  return Boolean(params.get('session')) || params.get('view') === 'thread';
+}
+
 export function formatTokenUsageTotal(value) {
   let total = Number(value);
   if (!Number.isFinite(total) || total < 0)

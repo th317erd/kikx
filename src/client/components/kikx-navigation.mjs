@@ -287,8 +287,10 @@ export async function applySessionDeepLink(app) {
 
   app._deepLinkApplied = true;
   let stack = stackFromCurrentURL(app);
-  if (stack.length <= 1)
+  if (stack.length <= 1) {
+    app._deepLinkReady = true;
     return;
+  }
 
   setNavigationStack(stack, app._state);
   let top = getCurrentSessionID(app._state);
@@ -298,7 +300,9 @@ export async function applySessionDeepLink(app) {
   try {
     if (top)
       await loadSessionFramesForURL(app, top);
-  } catch (_error) {}
+  } catch (_error) {} finally {
+    app._deepLinkReady = true;
+  }
 }
 
 // Keep the address bar in sync with the window stack so a reload (or a shared
@@ -337,5 +341,6 @@ export async function syncFromURL(app) {
       await loadSessionFramesForURL(app, top);
   } catch (_error) {}
 
+  app._deepLinkReady = true;
   app._render();
 }

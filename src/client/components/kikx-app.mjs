@@ -12,6 +12,7 @@ import './kikx-session-grid.mjs';
 import { installGlobalErrorCapture, uninstallGlobalErrorCapture } from '../lib/error-boundary.mjs';
 import { cleanupBindings } from '../lib/aeor-ui.mjs';
 import { installScrollDebugLogger } from '../lib/scroll-debug-logger.mjs';
+import { hasSessionDeepLink } from './kikx-app-helpers.mjs';
 import { flushComposerDraft } from './composer-drafts.mjs';
 import {
   buildAuthShell,
@@ -205,6 +206,9 @@ export class KikxApp extends HTMLElement {
     super();
 
     this._state = kikxState;
+    // The initial shell must not flash the project grid while a deep-linked
+    // session is still fetching its frame window.
+    this._deepLinkReady = !hasSessionDeepLink();
     // S3: shared, tiny full-rebuild counters. A browser probe can read
     // `document.querySelector('kikx-app')._renderStats` to confirm a streaming
     // burst did not cause a rebuild storm.

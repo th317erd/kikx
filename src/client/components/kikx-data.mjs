@@ -141,6 +141,7 @@ export async function loadSessions(app) {
   } catch (error) {
     app._state.status = error.message;
     app._state.statusKind = 'error';
+    app._deepLinkReady = true;
     app._render();
   }
 }
