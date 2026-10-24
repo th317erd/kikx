@@ -190,3 +190,11 @@ test('the shell keeps its base styling', async () => {
     assert.ok(css.includes(required), `app.css lost the ${required} rule`);
   }
 });
+
+test('inline code uses the shared compact line box in markdown summaries', async () => {
+  let css = await readFile(path.join(STYLES_DIR, 'app.css'), 'utf8');
+  assert.match(css, /\.kikx-markdown code \{[^}]*font-size: 0\.85em/);
+  assert.match(css, /\.kikx-frame__compact-description :not\(pre\) > code \{[^}]*font-size: 0\.85em/);
+  assert.doesNotMatch(css, /\.kikx-frame__compact-description code \{[^}]*font-size: inherit/);
+  assert.match(css, /\.kikx-frame__compact-markdown \{[^}]*line-height: 1\.55/);
+});

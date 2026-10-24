@@ -842,6 +842,7 @@ kikx-app {
 }
 
 .kikx-frame__compact-markdown {
+  line-height: 1.55;
   white-space: normal;
 }
 
@@ -904,14 +905,16 @@ kikx-app {
   white-space: nowrap;
 }
 
-.kikx-frame__compact-description code {
+.kikx-frame__compact-description :not(pre) > code {
   padding: 1px 4px;
   border: 1px solid rgba(255, 183, 102, 0.24);
   border-radius: 4px;
   background: rgba(255, 159, 64, 0.12);
   color: inherit;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: inherit;
+  /* Shared inline-token rule: inheriting the full summary size makes the
+     pill taller than its line box and adjacent lines collide. */
+  font-size: 0.85em;
 }
 
 /* Progress notes are prose, not a one-line status. Wrapping keeps the whole
