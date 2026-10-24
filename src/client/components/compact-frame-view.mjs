@@ -6,6 +6,7 @@
 
 import { elements } from '../lib/aeor-ui.mjs';
 import { compactFrameBodyDescription, compactFrameSummary } from './tool-frame-summary.mjs';
+import { renderMarkdownToElement } from '../lib/markdown-renderer.mjs';
 
 const { code, details, div, pre, span, summary } = elements;
 
@@ -37,7 +38,7 @@ export function updateCompactSummary(view, frame) {
 
   if (view.descriptionText !== descriptionText || view.codeText !== codeText) {
     let ownerDocument = view.element.ownerDocument || document;
-    renderDescription(view.description, descriptionText, codeText, ownerDocument);
+    renderDescription(view.description, descriptionText, codeText, ownerDocument, isMarkdownCompactSummary(frame));
     view.descriptionText = descriptionText;
     view.codeText = codeText;
   }
@@ -64,7 +65,7 @@ function buildCompactSummary(frame, ownerDocument) {
   let description = span.class('kikx-frame__compact-description').build(ownerDocument);
   let descriptionText = compactFrameBodyDescription(frame);
 
-  renderDescription(description, descriptionText, data.code || '', ownerDocument);
+  renderDescription(description, descriptionText, data.code || '', ownerDocument, isMarkdownCompactSummary(frame));
   element.appendChild(description);
 
   let command = null;
@@ -88,6 +89,10 @@ function buildCompactSummary(frame, ownerDocument) {
   };
 }
 
+function isMarkdownCompactSummary(frame) {
+  return frame?.type === 'AgentMessage' && frame?.content?.turnReport === true;
+}
+
 function buildCommandBlock(commandText, ownerDocument) {
   let codeNode = code.class('kikx-frame__compact-command-code language-bash').build(ownerDocument);
   codeNode.textContent = commandText;
@@ -96,11 +101,17 @@ function buildCommandBlock(commandText, ownerDocument) {
   return { pre: preNode, code: codeNode };
 }
 
-function renderDescription(element, description, codeText, ownerDocument) {
+function renderDescription(element, description, codeText, ownerDocument, markdown = false) {
   while (element.firstChild)
     element.removeChild(element.firstChild);
 
   if (!codeText) {
+    if (markdown) {
+      element.appendChild(renderMarkdownToElement(ownerDocument, description, {
+        className: 'kikx-frame__compact-markdown kikx-markdown',
+      }));
+      return;
+    }
     element.textContent = description;
     return;
   }

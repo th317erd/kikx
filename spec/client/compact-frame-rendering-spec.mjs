@@ -265,14 +265,18 @@ test('an end-turn report collapses to its short summary and expands to details',
     authorID: 'agent_1',
     content: {
       status: 'complete',
-      summary: '- Synced the branch.\n- Ran the focused spec.',
+      summary: '- **Synced** the `main` branch.\n- Ran the focused spec.',
       text: 'Full evidence:\n\n| Step | Result |\n| --- | --- |\n| fetch | clean |',
       turnReport: true,
     },
   }, {});
 
   assert.equal(item.classList.contains('kikx-frame--compact'), true);
-  assert.equal(summaryDescription(item), '- Synced the branch.\n- Ran the focused spec.');
+  let summary = item.querySelector('.kikx-frame__compact-description');
+  assert.equal(summary.querySelectorAll('li').length, 2);
+  assert.equal(summary.querySelector('strong').textContent, 'Synced');
+  assert.equal(summary.querySelector('code').textContent, 'main');
+  assert.doesNotMatch(summary.textContent, /\*\*|`/);
   assert.equal(headerStatus(item), 'Message');
   let details = compactDetails(item);
   assert.ok(details);

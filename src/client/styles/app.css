@@ -841,6 +841,25 @@ kikx-app {
   white-space: pre-line;
 }
 
+.kikx-frame__compact-markdown {
+  white-space: normal;
+}
+
+.kikx-frame__compact-markdown p,
+.kikx-frame__compact-markdown ul,
+.kikx-frame__compact-markdown ol {
+  margin: 0;
+}
+
+.kikx-frame__compact-markdown ul,
+.kikx-frame__compact-markdown ol {
+  padding-left: 1.1em;
+}
+
+.kikx-frame__compact-markdown li {
+  margin: 0;
+}
+
 .kikx-frame__compact {
   min-width: 0;
 }
