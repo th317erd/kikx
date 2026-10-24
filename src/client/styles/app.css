@@ -2396,7 +2396,15 @@ kikx-typing-indicator {
   right: 28px;
   bottom: 24px;
   z-index: 2;
+  width: 60px;
+  height: 60px;
+  border-radius: 14px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.38);
+}
+
+.kikx-scroll-lock-floating svg {
+  width: 2.1em;
+  height: 2.1em;
 }
 
 /* --- Session workspace: centered search + eye, relocated name --- */
