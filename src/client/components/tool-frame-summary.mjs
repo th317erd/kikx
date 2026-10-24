@@ -156,6 +156,12 @@ export function compactFrameHeader(frame) {
     label = summary.description.length <= 32 ? summary.description : humanizeToolName(toolName || frame?.type);
   }
 
+  if (toolName === 'read-file') {
+    let range = readFileRangeHeaderLabel(input);
+    if (range)
+      label = `${label || 'Read File'} ${range}`;
+  }
+
   return {
     label: label || summary.description || 'Tool',
     icon: summary.icon || 'diamond',
@@ -409,6 +415,30 @@ function inputField(input, field) {
   } catch (_error) {
     return match[1];
   }
+}
+
+export function readFileRangeHeaderLabel(input = {}) {
+  let startLine = positiveInteger(input.startLine);
+  let endLine = positiveInteger(input.endLine);
+  if (startLine != null || endLine != null) {
+    if (startLine != null && endLine != null)
+      return `[${startLine}-${endLine}]`;
+    if (startLine != null)
+      return `[${startLine}+]`;
+    return `[..${endLine}]`;
+  }
+
+  let startCharacter = nonNegativeInteger(input.startCharacter);
+  let endCharacter = nonNegativeInteger(input.endCharacter);
+  if (startCharacter != null || endCharacter != null) {
+    if (startCharacter != null && endCharacter != null)
+      return `[c${startCharacter}-${endCharacter}]`;
+    if (startCharacter != null)
+      return `[c${startCharacter}+]`;
+    return `[c..${endCharacter}]`;
+  }
+
+  return '';
 }
 
 export function readFileRangeLabel(input = {}) {

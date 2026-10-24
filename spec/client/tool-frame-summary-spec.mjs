@@ -50,6 +50,14 @@ test('compact headers use short action labels while bodies keep the full detail'
     compactFrameBodyDescription(toolFrame('read-file', { path: '/tmp/notes.txt', startLine: 10, endLine: 20 })),
     '<- Read file /tmp/notes.txt (lines 10-20)',
   );
+  assert.equal(
+    compactFrameHeader(toolFrame('read-file', { path: '/tmp/notes.txt', startLine: 10, endLine: 20 })).label,
+    'Read File [10-20]',
+  );
+  assert.equal(
+    compactFrameHeader(toolFrame('read-file', { path: '/tmp/notes.txt', startLine: 130 })).label,
+    'Read File [130+]',
+  );
 
   let shell = toolFrame('exec', { command: 'ls /tmp' }, { status: 'success' });
   assert.deepEqual(compactFrameHeader(shell), { label: 'ls', icon: 'gear', code: true });
