@@ -33,7 +33,6 @@ export {
 export {
   DELIVERY_RETRY_DELAYS_MS,
   applyDefaultAnswer,
-  findDueDefaults,
   findRetryableDeliveries,
   markRedelivered,
   recordDeliveryFailure,

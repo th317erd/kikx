@@ -53,9 +53,6 @@ export const KIKX_AUTH_MAGIC_LINK_TTL_SECONDS_PATH = '/kikx/auth/magic/link/ttl/
 // when on, the sampler keeps a bounded ring of process-memory samples and
 // warns once when RSS growth across a trailing window crosses the threshold.
 // It never logs per sample. Each path round-trips to KIKX_* via `envKeyFor`.
-// Ask-user delivery retry and default-answer sweeps. Seconds; 0 disables the
-// periodic tick (a tick scans the question docs, so embedders opt in).
-export const KIKX_MONITORING_QUESTIONS_INTERVAL_SECONDS_PATH = '/kikx/monitoring/questions/interval/seconds';
 export const KIKX_MONITORING_MEMORY_ENABLED_PATH = '/kikx/monitoring/memory/enabled';
 export const KIKX_MONITORING_MEMORY_INTERVAL_SECONDS_PATH = '/kikx/monitoring/memory/interval/seconds';
 export const KIKX_MONITORING_MEMORY_SAMPLES_PATH = '/kikx/monitoring/memory/samples';

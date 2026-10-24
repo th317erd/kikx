@@ -11,7 +11,6 @@ import {
   buildAnswerPromptText,
   buildQuestionScheduleFrame,
   cancelQuestionSchedule,
-  findDueDefaults,
   findRetryableDeliveries,
   markRedelivered,
   recordDeliveryFailure,
@@ -161,19 +160,6 @@ test('a default answer cannot be overwritten afterwards', async () => {
     () => store.answerQuestion(id, { answer: 'Changed my mind', userID: 'user_1' }),
     (error) => error.status === 409,
   );
-});
-
-test('findDueDefaults reads through the open index and reports the deadline', async () => {
-  let db = createDB();
-  let store = createStore(db, [ 'group_1', 'q_1' ]);
-
-  let id = await askWithDefault(store, { timeoutSeconds: 60 });
-
-  assert.deepEqual(await findDueDefaults(store, { now: T0 + 10 }), []);
-
-  let due = await findDueDefaults(store, { now: T0 + 60_000 });
-  assert.equal(due.length, 1);
-  assert.equal(due[0].id, id);
 });
 
 test('a dismissed question never has its default applied', async () => {

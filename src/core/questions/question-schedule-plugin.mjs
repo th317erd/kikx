@@ -75,7 +75,19 @@ export class QuestionScheduleFramePlugin extends BaseFramePlugin {
       return;
     }
 
-    let now = Number(services.clock?.() || frameRuntime?.clock?.() || Date.now());
+    // TWO CLOCKS, TWO UNITS — they are not interchangeable and must not be
+    // collapsed into one `now`:
+    //
+    //   question docs  → milliseconds (`QuestionsStore.clock`)
+    //   frame fields   → microseconds (`FrameRuntime.clock`, defaultUnixMicros)
+    //
+    // `services.clock` is `FrameRuntime.clock`, so deriving a single value from it
+    // and writing that into a question doc would stamp microsecond values into
+    // `updatedAt` and `answeredByDefaultAt` — a silent ~1000x error in fields the
+    // rest of the system reads as milliseconds. Each write below names the clock
+    // it wants.
+    let storeNow = Number(store.clock?.() ?? Date.now());
+    let frameNow = Number(frameRuntime?.clock?.() ?? storeNow * 1000);
 
     if (kind === QUESTION_DEADLINE_KIND) {
       // The backstop: somebody answered or dismissed after the schedule was
@@ -86,7 +98,14 @@ export class QuestionScheduleFramePlugin extends BaseFramePlugin {
         return;
       }
 
-      await this.applyDeadline({ store, answerService, frameRuntime, question, now });
+      await this.applyDeadline({
+        store,
+        answerService,
+        frameRuntime,
+        question,
+        storeNow,
+        frameNow,
+      });
       done();
       return;
     }
@@ -97,7 +116,14 @@ export class QuestionScheduleFramePlugin extends BaseFramePlugin {
         return;
       }
 
-      await this.retryDelivery({ store, answerService, frameRuntime, question, now });
+      await this.retryDelivery({
+        store,
+        answerService,
+        frameRuntime,
+        question,
+        storeNow,
+        frameNow,
+      });
       done();
       return;
     }
@@ -105,10 +131,10 @@ export class QuestionScheduleFramePlugin extends BaseFramePlugin {
     await next(this.context);
   }
 
-  async applyDeadline({ store, answerService, frameRuntime, question, now }) {
+  async applyDeadline({ store, answerService, frameRuntime, question, storeNow, frameNow }) {
     let result = null;
     try {
-      result = await applyDefaultAnswer(store, question.id, { now });
+      result = await applyDefaultAnswer(store, question.id, { now: storeNow });
     } catch (error) {
       this.context.services?.logger?.error?.('ask-user: scheduled default failed', error);
       return;
@@ -146,17 +172,17 @@ export class QuestionScheduleFramePlugin extends BaseFramePlugin {
     try {
       let updated = await recordDeliveryFailure(store, result.question.id, {
         reason: delivery?.reason || 'undeliverable',
-        now,
+        now: storeNow,
       });
 
       if (updated?.nextDeliveryAt != null)
-        await armQuestionRetry({ frameRuntime, question: updated, now });
+        await armQuestionRetry({ frameRuntime, question: updated, now: frameNow });
     } catch (error) {
       this.context.services?.logger?.error?.('ask-user: could not record default delivery failure', error);
     }
   }
 
-  async retryDelivery({ store, answerService, frameRuntime, question, now }) {
+  async retryDelivery({ store, answerService, frameRuntime, question, storeNow, frameNow }) {
     if (!answerService?.deliverAnswer)
       return;
 
@@ -169,7 +195,7 @@ export class QuestionScheduleFramePlugin extends BaseFramePlugin {
 
     if (delivery?.delivered) {
       try {
-        await markRedelivered(store, question.id, { now });
+        await markRedelivered(store, question.id, { now: storeNow });
       } catch (error) {
         this.context.services?.logger?.error?.('ask-user: could not mark redelivered', error);
       }
@@ -181,11 +207,11 @@ export class QuestionScheduleFramePlugin extends BaseFramePlugin {
     try {
       let updated = await recordDeliveryFailure(store, question.id, {
         reason: delivery?.reason || 'undeliverable',
-        now,
+        now: storeNow,
       });
 
       if (updated?.nextDeliveryAt != null)
-        await armQuestionRetry({ frameRuntime, question: updated, now });
+        await armQuestionRetry({ frameRuntime, question: updated, now: frameNow });
     } catch (error) {
       this.context.services?.logger?.error?.('ask-user: could not extend the delivery backoff', error);
     }
