@@ -1,6 +1,8 @@
 'use strict';
 
 import {
+  AUTH_SHARED_STORAGE_KEY,
+  AUTH_STORAGE_KEY,
   forgetDeletedSession,
   getSessionPaging,
   getSessions,
@@ -86,33 +88,101 @@ export async function deleteJSON(app, url) {
   return readResponse(response);
 }
 
-export async function refreshAuthToken(app) {
-  let refreshToken = app?._state?.refreshToken;
-  if (!refreshToken)
+export function refreshAuthToken(app) {
+  if (app?._refreshAuthPromise)
+    return app._refreshAuthPromise;
+
+  let promise = refreshAuthTokenNow(app);
+  if (app)
+    app._refreshAuthPromise = promise;
+  return promise.finally(() => {
+    if (app?._refreshAuthPromise === promise)
+      app._refreshAuthPromise = null;
+  });
+}
+
+async function refreshAuthTokenNow(app) {
+  if (!app?._state?.refreshToken)
     return false;
 
+  // Another tab may already have rotated the shared refresh token. Adopt its
+  // session instead of replaying our stale token, which would return 401 after
+  // the first tab's rotation.
+  let shared = readSharedAuthSession();
+  if (shared?.token
+    && shared.refresh_token
+    && shared.refresh_token !== app._state.refreshToken) {
+    adoptAuthSession(app, shared);
+    if (Number(shared.expires_at) > Date.now() + 5000)
+      return true;
+  }
+
+  let refreshToken = app._state.refreshToken;
   try {
     let response = await fetch('/api/v1/auth/refresh', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh_token: refreshToken }),
     });
-    let result = await readResponse(response);
+    let result = await response.json().catch(() => null);
+    if (!response.ok) {
+      // Rotate-race fallback: the sibling may have refreshed while our request
+      // was in flight. If the shared session changed, use it and retry the API.
+      let latest = readSharedAuthSession();
+      if (latest?.token
+        && latest.refresh_token
+        && latest.refresh_token !== refreshToken) {
+        adoptAuthSession(app, latest);
+        return true;
+      }
+      return false;
+    }
+
     let auth = result?.data;
     if (!auth?.token)
       return false;
-    app._state.authToken = auth.token;
-    app._state.refreshToken = auth.refresh_token || refreshToken;
-    try {
-      globalThis.sessionStorage?.setItem(AUTH_STORAGE_KEY, JSON.stringify({
-        ...auth,
-        user: auth.user || app._state.account,
-      }));
-    } catch (_error) {}
+    adoptAuthSession(app, {
+      ...auth,
+      user: auth.user || app._state.account,
+    });
     return true;
   } catch (_error) {
     return false;
   }
+}
+
+function readSharedAuthSession() {
+  try {
+    return JSON.parse(globalThis.localStorage?.getItem(AUTH_SHARED_STORAGE_KEY) || 'null');
+  } catch (_error) {
+    return null;
+  }
+}
+
+function adoptAuthSession(app, auth) {
+  if (!auth?.token)
+    return false;
+  app._state.authToken = auth.token;
+  app._state.refreshToken = auth.refresh_token || app._state.refreshToken;
+  persistAuthSession(auth);
+  return true;
+}
+
+export function persistAuthSession(auth) {
+  if (!auth?.token)
+    return;
+  let serialized = JSON.stringify(auth);
+  try {
+    globalThis.sessionStorage?.setItem(AUTH_STORAGE_KEY, serialized);
+  } catch (_error) {}
+  try {
+    globalThis.localStorage?.setItem(AUTH_SHARED_STORAGE_KEY, serialized);
+  } catch (_error) {}
+}
+
+export function clearAuthSession() {
+  try { globalThis.sessionStorage?.removeItem(AUTH_STORAGE_KEY); } catch (_error) {}
+  try { globalThis.localStorage?.removeItem(AUTH_SHARED_STORAGE_KEY); } catch (_error) {}
 }
 
 export function apiHeaders(app, headers = {}) {

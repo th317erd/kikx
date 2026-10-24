@@ -236,15 +236,8 @@ export class KikxComposerHistory extends HTMLElement {
             if (this.isOpen)
               this._load({ reset });
           }, 0);
-        } else if (this._authRetries < 3) {
-          this._authRetries += 1;
-          this._setStatus('Connecting...', true);
-          setTimeout(() => {
-            if (this.isOpen)
-              this._load({ reset });
-          }, 400);
         } else {
-          this._setStatus(message, true);
+          this._setStatus('Session expired. Please sign in again.', true);
         }
       } else {
         this._setStatus(message, true);

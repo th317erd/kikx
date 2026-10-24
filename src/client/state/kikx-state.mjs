@@ -44,6 +44,7 @@ import {
 import { createQuestionsState } from './questions-state.mjs';
 
 export const AUTH_STORAGE_KEY = 'kikx.auth.session';
+export const AUTH_SHARED_STORAGE_KEY = 'kikx.auth.shared';
 
 let savedAuth = loadSavedAuth();
 let params = new URLSearchParams(globalThis.location?.search || '');
@@ -613,9 +614,26 @@ function normalizeNonNegativeInteger(value) {
 }
 
 function loadSavedAuth() {
+  let session = readStoredAuth(globalThis.sessionStorage, AUTH_STORAGE_KEY);
+  let shared = readStoredAuth(globalThis.localStorage, AUTH_SHARED_STORAGE_KEY);
+  // A sibling tab may have rotated the refresh token while this tab kept a
+  // stale copy in sessionStorage. Prefer the newer shared session, but never
+  // use localStorage to authenticate a tab that has no session at all.
+  if (session.token && shared.token && authExpiry(shared) > authExpiry(session))
+    return shared;
+
+  return session;
+}
+
+function readStoredAuth(storage, key) {
   try {
-    return JSON.parse(sessionStorage.getItem(AUTH_STORAGE_KEY) || '{}') || {};
+    return JSON.parse(storage?.getItem(key) || '{}') || {};
   } catch (_error) {
     return {};
   }
+}
+
+function authExpiry(auth) {
+  let value = Number(auth?.expires_at);
+  return Number.isFinite(value) ? value : 0;
 }

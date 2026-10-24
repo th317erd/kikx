@@ -1,7 +1,6 @@
 'use strict';
 
 import {
-  AUTH_STORAGE_KEY,
   getAgents,
   getGridParentSessionID,
   removeTeam,
@@ -16,6 +15,7 @@ import {
   upsertSession,
   upsertTeam,
 } from '../state/kikx-state.mjs';
+import { clearAuthSession, persistAuthSession } from './kikx-data.mjs';
 export function syncAuthEmail(app, event) {
   app._state.authEmail = event.target.value;
 }
@@ -297,7 +297,7 @@ export async function selectSession(app, sessionID) {
 
 export function signOut(app) {
   app._disconnectRuntimeEvents();
-  sessionStorage.removeItem(AUTH_STORAGE_KEY);
+  clearAuthSession();
   app._state.authToken = '';
   app._state.refreshToken = '';
   resetAccountState(app._state);
@@ -322,7 +322,7 @@ export function applyAuth(app, auth) {
   app._state.refreshToken = auth.refresh_token || '';
   app._state.status = 'Signed in';
   app._state.statusKind = 'ready';
-  sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(auth));
+  persistAuthSession(auth);
   app._render();
   app._connectRuntimeEvents();
   app._loadClientComponents();
