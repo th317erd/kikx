@@ -231,10 +231,27 @@ test('the Inbox lists open questions in the browser and posts a free-form answer
     assert.equal(await answeredCard.getAttribute('data-question-settled'), 'true',
       'the retained row carries the settled flag that swaps the form for a receipt');
 
-    // The receipt itself. This is the complaint -- "there is no green 'You
-    // replied!' status, nothing. Just WHAM! Gone." -- asserted in a real browser.
-    let receipt = ((await answeredCard.locator('.kikx-question-card__closed').textContent()) || '').trim();
-    assert.equal(receipt, 'You replied.', 'the answered row shows a receipt instead of silently vanishing');
+    // The receipt itself. This is the complaint -- "there is no green status,
+    // nothing. Just WHAM! Gone." -- asserted in a real browser, and it now
+    // asserts the STRONGER thing: the row shows the answer the user typed, with
+    // its provenance, not the word "replied". A receipt that said "You replied."
+    // was the original defect: it proved the click landed without ever telling
+    // you what you had said.
+    let receipt = ((await answeredCard.locator('.kikx-question-card__receipt-text').textContent()) || '').trim();
+    assert.equal(receipt, answerText, 'the answered row shows the answer that was actually submitted');
+
+    let receiptLabel = ((await answeredCard.locator('.kikx-question-card__receipt-label').textContent()) || '').trim();
+    assert.equal(receiptLabel, 'Your answer', 'the answer is attributed, not anonymous');
+
+    assert.equal(
+      await answeredCard.locator('.kikx-question-card__receipt').getAttribute('data-answer-source'),
+      'user',
+      'the row marks the answer as the user\'s own words, not an agent default',
+    );
+
+    // The row is still the green receipt, not the grey status line it replaced.
+    assert.equal(await answeredCard.locator('.kikx-question-card__closed').count(), 0,
+      'a row with an answer shows the receipt instead of a bare status line');
 
     // The form is gone from the settled row: nothing left to submit.
     assert.equal(await answeredCard.locator('.kikx-question-card__input').count(), 0,

@@ -29,26 +29,29 @@ import {
   setAnswerDraft,
 } from '../state/question-drafts.mjs';
 import { bindDismissControl, buildDismissControl } from './kikx-question-card.mjs';
+import {
+  buildAnswerBlock,
+  buildAnswerReceipt,
+  RECEIPT_CLASSES,
+  REVISED_BY_USER_NOTE,
+  USER_ANSWER_LABEL,
+} from './kikx-answer-receipt.mjs';
 import { bindComposerSubmitKeys } from './composer-keyboard.mjs';
 import { describeQuestionOrigin } from '../state/question-attribution.mjs';
 
 const { div, span, p, form, textarea, button } = elements;
 
 
-// Labels. A default answer must never be presented as if the user said it: the
-// agent was told "declined to say" on the user's behalf, and the receipt is the
-// only place that fact is visible.
-const USER_ANSWER_LABEL = 'Your answer';
-const DEFAULT_ANSWER_LABEL = 'Default answer \u2014 applied automatically';
+// The receipt labels live in kikx-answer-receipt.mjs, shared with the Inbox
+// card, so the two surfaces cannot drift on who an answer is attributed to.
+// Only the strings specific to THIS surface stay here: the placeholder and the
+// submit label of the "replace this default" box.
 const DEFAULT_ANSWER_PLACEHOLDER = 'Write a different answer\u2026';
 const DEFAULT_ANSWER_SUBMIT = 'Send different answer';
-const DEFAULT_ANSWER_NOTE = 'Nobody answered in time, so this answer was applied for you. You can replace it below.';
-const REVISED_BY_USER_NOTE = 'Sent after the default above.';
 // The acknowledgement control. Its whole job is to be the cheaper, obviously
 // different choice from typing a replacement: "that's right" is one click, and
 // it must not look like it sends anything to the agent (it does not).
 const DEFAULT_ANSWER_CONFIRM = 'That\u2019s right';
-const ACKNOWLEDGED_BY_USER_NOTE = 'You confirmed this was right, so nobody was notified. You can still replace it below.';
 const ACKNOWLEDGED_BY_USER_PLACEHOLDER = 'Confirmed by you \u2014 replace it below if that was wrong.';
 
 export class KikxQuestionFrame extends HTMLElement {
@@ -91,68 +94,20 @@ export class KikxQuestionFrame extends HTMLElement {
   // A question that already has an answer shows it. The row used to read
   // "Answered (answered)." — the status, never the answer itself — so the
   // thread could not tell you what you had replied.
+  //
+  // The receipt is built by the module the Inbox card also uses. What stays here
+  // is only the case a receipt cannot express: a terminal question with no
+  // words at all, which needs a status line instead of an empty box.
   _answeredBlock(question) {
-    let answer = typeof question.answer === 'string' ? question.answer.trim() : '';
-    if (answer === '') {
-      // "Answered (answered)." said the same word twice and never said what was
-      // said. A closed row now names its state plainly.
-      let note = question.status === 'answered'
-        ? 'Answered.'
-        : `Closed: ${question.status}.`;
-      return p.class('kikx-question-frame__answered')(note);
-    }
+    let receipt = buildAnswerReceipt(document, question, RECEIPT_CLASSES.frame);
+    if (receipt)
+      return receipt;
 
-    let superseded = typeof question.supersededDefaultAnswer === 'string'
-      ? question.supersededDefaultAnswer.trim()
-      : '';
+    let note = question.status === 'answered'
+      ? 'Answered.'
+      : `Closed: ${question.status}.`;
 
-    // A revision happened: a default was delivered and a person later replaced
-    // it. Both answers are shown, oldest first, because the agent was told the
-    // default and may have acted on it — a receipt that only shows the new
-    // answer would hide the correction entirely.
-    if (superseded !== '') {
-      return div.class('kikx-question-frame__answers')(
-        this._buildAnswerBlock(superseded, {
-          label: DEFAULT_ANSWER_LABEL,
-          source: DEFAULT_ANSWER_SOURCE,
-        }),
-        this._buildAnswerBlock(answer, {
-          label: USER_ANSWER_LABEL,
-          source: USER_ANSWER_SOURCE,
-          note: REVISED_BY_USER_NOTE,
-        }),
-      ).build(document);
-    }
-
-    // A default this person already confirmed. The answer needs no correction,
-    // so the receipt says they confirmed it — and says outright that nobody was
-    // notified, because "confirmed" must not read as "the agent has been told".
-    if (isAcknowledgedDefaultAnswer(question) && this._buildAnswerBlock) {
-      return this._buildAnswerBlock(answer, {
-        label: DEFAULT_ANSWER_LABEL,
-        source: DEFAULT_ANSWER_SOURCE,
-        // Deliberately promises the correction path, because the gate above
-        // keeps it open. A note that said "settled" here would be a lie the UI
-        // then contradicts by rendering an editable box underneath it.
-        note: ACKNOWLEDGED_BY_USER_NOTE,
-      });
-    }
-
-    // Still the agent's own fallback. Say so, and say that it can be replaced —
-    // unless it cannot, in which case the note would be a promise the server
-    // does not keep.
-    if (question.answerSource === DEFAULT_ANSWER_SOURCE) {
-      return this._buildAnswerBlock(answer, {
-        label: DEFAULT_ANSWER_LABEL,
-        source: DEFAULT_ANSWER_SOURCE,
-        note: isRevisableDefaultAnswer(question) ? DEFAULT_ANSWER_NOTE : '',
-      });
-    }
-
-    // A real human answer is labelled as one; an answer of unknown provenance
-    // (written before provenance existed) carries no source marker at all
-    // rather than a guess.
-    return this._buildAnswerBlock(answer, { source: question.answerSource || undefined });
+    return p.class('kikx-question-frame__answered')(note);
   }
 
   _render() {
@@ -450,11 +405,11 @@ export class KikxQuestionFrame extends HTMLElement {
     // appended under the default rather than painted over it.
     if (this._defaultReceiptNode()) {
       this._removeAnswerForm(card);
-      card.appendChild(this._buildAnswerBlock(answerText, {
+      card.appendChild(buildAnswerBlock(document, answerText, {
         label: USER_ANSWER_LABEL,
         source: USER_ANSWER_SOURCE,
         note: REVISED_BY_USER_NOTE,
-      }));
+      }, RECEIPT_CLASSES.frame));
       return;
     }
 
@@ -468,7 +423,7 @@ export class KikxQuestionFrame extends HTMLElement {
       return;
 
     this._removeAnswerForm(card);
-    card.appendChild(this._buildAnswerBlock(answerText));
+    card.appendChild(buildAnswerBlock(document, answerText, {}, RECEIPT_CLASSES.frame));
   }
 
   // Drop the answer box and its control row from a card. Used once a send
@@ -481,36 +436,6 @@ export class KikxQuestionFrame extends HTMLElement {
           stale.parentNode.removeChild(stale);
       }
     }
-  }
-
-  // The answer block is built in two places — `_answeredBlock()` for a question
-  // that is already terminal, and `_showSent()` for one this tab just sent — so
-  // it is built once and shared. Two hand-rolled copies is how the same sentence
-  // ended up painted twice.
-  _buildAnswerBlock(answerText, options = {}) {
-    let label = options.label || USER_ANSWER_LABEL;
-    let children = [
-      span.class('kikx-question-frame__answer-label')(label),
-      div.class('kikx-question-frame__answer-text')(answerText),
-    ];
-
-    if (typeof options.note === 'string' && options.note !== '')
-      children.push(p.class('kikx-question-frame__answer-note')(options.note));
-
-    let node = div.class('kikx-question-frame__answer-given')(...children).build(document);
-
-    // Machine-readable provenance, so the stylesheet and the specs can tell a
-    // delivered default from a human reply without matching on prose that is
-    // meant to be reworded.
-    //
-    // Written ONLY when a source was actually supplied. Defaulting to "user"
-    // here branded every legacy answer (answerSource: null) as a human reply,
-    // which is the same class of lie as labelling a default "Your answer". An
-    // unknown source stays absent.
-    if (node.setAttribute && options.source)
-      node.setAttribute('data-answer-source', options.source);
-
-    return node;
   }
 
   // Whether this frame is already showing an answer block. Scoped to its own

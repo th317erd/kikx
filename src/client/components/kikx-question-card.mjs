@@ -23,6 +23,7 @@ import {
   setAnswerDraft,
 } from '../state/question-drafts.mjs';
 import { describeQuestionOrigin } from '../state/question-attribution.mjs';
+import { buildAnswerReceipt, RECEIPT_CLASSES } from './kikx-answer-receipt.mjs';
 import { bindComposerSubmitKeys } from './composer-keyboard.mjs';
 
 const { article, button, div, form, label, li, p, span, textarea, ul } = elements;
@@ -304,12 +305,28 @@ export function renderQuestionCard(app, question, options = {}) {
     ? { node: buildSettleControl(ownerDocument, model.settleAfter), holdToConfirm: false }
     : (closed ? null : buildDismissControl(ownerDocument, 'close'));
 
+  // A closed row shows the ANSWER, not just the word "answered". It used to
+  // render `closedNote` and nothing else, so the Inbox — the one place you look
+  // across all your questions — was the one place that would not tell you what
+  // you had said.
+  //
+  // This is the same builder the session frame uses, so the two surfaces cannot
+  // drift on the three rules that took the longest to get right: a default is
+  // never labelled as the user's words, a revision shows BOTH answers, and
+  // provenance is claimed only when it is known.
+  //
+  // `canReplace: false` because a closed row renders no form — the shared notes
+  // otherwise promise "you can replace it below" at a box that is not there.
+  let receipt = closed
+    ? buildAnswerReceipt(ownerDocument, model, RECEIPT_CLASSES.card, { canReplace: false })
+    : null;
+
   let node = article.class(CARD_CLASS)(
     buildHeader(app, model, age, groupCount, closeControl ? closeControl.node : null),
     p.class(TEXT_CLASS)(model.text),
     buildRefList(refs),
     closed
-      ? p.class(CLOSED_CLASS)(settledFor ? settledNote(model) : closedNote(model.status))
+      ? (receipt || p.class(CLOSED_CLASS)(settledFor ? settledNote(model) : closedNote(model.status)))
       : buildAnswerForm(inputID, ownerDocument),
   ).build(ownerDocument);
 
