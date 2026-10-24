@@ -429,6 +429,18 @@
   filter: brightness(1.08);
 }
 
+/* A minimized row is only an author and a command label, so the percentage
+   cap used by full headers makes short labels such as "python" resolve
+   against a shrink-to-fit width and truncate. Let the label claim its own
+   space, capped at a predictable long-word length. */
+.kikx-frame--minimized .kikx-frame__meta-status {
+  max-width: none;
+}
+
+.kikx-frame--minimized .kikx-frame__meta-status-label {
+  max-width: 18ch;
+}
+
 .kikx-frame__meta-status-label code {
   padding: 1px 5px;
   border: 1px solid rgba(255, 183, 102, 0.28);

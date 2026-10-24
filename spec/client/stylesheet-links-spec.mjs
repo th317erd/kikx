@@ -206,3 +206,10 @@ test('timestamps stay quiet until hover and disappear from minimized rows', asyn
   assert.match(css, /\.kikx-frame:hover \.kikx-frame__timestamp[^{]*\{[^}]*opacity: 1/);
   assert.match(css, /\.kikx-frame--minimized \.kikx-frame__timestamp \{[^}]*display: none/);
 });
+
+
+test('minimized command labels claim enough width for ordinary tool names', async () => {
+  let css = await readFile(path.join(STYLES_DIR, 'frame-colors.css'), 'utf8');
+  assert.match(css, /\.kikx-frame--minimized \.kikx-frame__meta-status \{[^}]*max-width: none/);
+  assert.match(css, /\.kikx-frame--minimized \.kikx-frame__meta-status-label \{[^}]*max-width: 18ch/);
+});
