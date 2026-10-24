@@ -5,6 +5,7 @@ import { createIcon } from '../lib/icons.mjs';
 import { buildScrollLockFloatingButton, buildScrollLockToolbar } from './kikx-scroll-lock.mjs';
 import { activateComposerDraftSession } from './composer-drafts.mjs';
 import './kikx-composer-history.mjs';
+import './kikx-participants-popup.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { createErrorSurfaceElement } from './kikx-error-surface.mjs';
 import { reattachAnswerNotice } from './answer-notice.mjs';
@@ -298,6 +299,7 @@ export function buildWindowHeader(app, { title, sessionID = null, collapsed = fa
       span.class.bindState((state) => `kikx-workspace__status kikx-auth-status--${state.previewsLoading ? 'pending' : 'ready'}`, ['previewsLoading', 'previewStatus'])(
         span.textContent.bindState((state) => state.previewsLoading ? 'Loading previews…' : (state.previewStatus || ''), ['previewsLoading', 'previewStatus'])(),
       ),
+      sessionID ? buildParticipantsPopup(app, sessionID) : null,
       sessionID
         ? button
           .type('button')
@@ -313,12 +315,12 @@ export function buildWindowHeader(app, { title, sessionID = null, collapsed = fa
   );
 }
 
-// 6x6 grid glyph for the sub-session filter toggle, drawn as an inline SVG so
-// no external asset or font is required.
+// 3x3 dot grid glyph for the sub-session filter toggle, drawn as an inline SVG
+// so no external asset or font is required.
 export function buildGridIcon() {
-  let size = 6;
-  let step = 2;
-  let dot = 1.1;
+  let size = 3;
+  let step = 4;
+  let dot = 2.2;
   let span = (size - 1) * step + dot;
   let svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', `0 0 ${span} ${span}`);
@@ -340,6 +342,16 @@ export function buildGridIcon() {
   }
 
   return svg;
+}
+
+export function buildParticipantsPopup(app, sessionID) {
+  let popup = document.createElement('kikx-participants-popup');
+  popup.configure({
+    app,
+    appState: app._state,
+    sessionID,
+  });
+  return popup;
 }
 
 export function buildChildGrid(app, parentSessionID) {
