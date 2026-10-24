@@ -3,7 +3,7 @@
 import {
   normalizeQuestionDoc,
   summarizeQuestion,
-} from './questions-store.mjs';
+} from './question-doc.mjs';
 
 /**
  * Repair for the derived ask-user indexes.

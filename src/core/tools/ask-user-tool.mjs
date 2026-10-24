@@ -5,7 +5,7 @@ import {
   assertAskPrecondition,
   findDuplicateQuestions,
 } from '../questions/question-dedupe.mjs';
-import { normalizeQuestionList } from '../questions/questions-store.mjs';
+import { normalizeQuestionList } from '../questions/question-doc.mjs';
 import { armQuestionDeadline } from '../questions/question-deadline-schedule.mjs';
 
 const DEFAULT_MAX_QUESTIONS = 25;

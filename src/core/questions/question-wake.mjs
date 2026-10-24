@@ -20,6 +20,7 @@
 // chatter, and an answer is never chain-capped. A human outranks the bot's own
 // scheduling.
 
+import { reviseAnswer } from './question-answer-revision.mjs';
 import { patchQuestionFrameContent } from './question-frame-patch.mjs';
 import { cancelQuestionSchedule } from './question-deadline-schedule.mjs';
 import { isWakeSuppressed } from './question-fields.mjs';
@@ -197,6 +198,88 @@ export class QuestionAnswerService {
   }
 
   /**
+   * Replace a fired default with the user's real answer, and deliver it.
+   *
+   * This is the counterpart to `submitAnswer`, for the one state that method
+   * refuses on purpose: a question whose answer came from a DEFAULT. The agent
+   * has already been woken with "declined to say" and may have acted on it, so
+   * a revision is not silent — it posts a second, clearly-labelled UserMessage.
+   * Without that second wake the agent keeps a stale assumption forever, which
+   * is the failure this whole path exists to correct.
+   *
+   * Returns `{ revised:false, reason, question }` when there is nothing to
+   * revise. That is a normal "too late, a person already answered" outcome, the
+   * same way `applyDefaultAnswer` treats "the user got there first"; only
+   * malformed input or a missing question throws.
+   */
+  async reviseDefaultAnswer(questionID, input = {}) {
+    let result = await reviseAnswer(this.questionsStore, questionID, {
+      answer: input.answer,
+      userID: input.userID,
+      answerFrameID: input.answerFrameID,
+      now: input.now,
+    });
+
+    if (!result.revised)
+      return { ...result, delivered: false, pending: false, suppressed: false, frameID: null };
+
+    let revised = result.question;
+
+    // Same order as submitAnswer: durability first, then visibility, then the
+    // wake. A crash in between leaves a stored revision with no second wake,
+    // which is recoverable and visible, rather than a wake about an answer that
+    // was never stored.
+    await patchQuestionFrameContent({ frameRuntime: this.frameRuntime }, revised, {
+      frameRuntime: this.frameRuntime,
+    });
+
+    let delivery = await this.deliverAnswer(revised, input);
+
+    if (!delivery.delivered) {
+      // The revision itself is stored and correct; only the second wake failed.
+      // Deliberately NOT markUndeliverable: that status exists for "the answer
+      // never reached the agent", and demoting a good answer because the
+      // correction could not be delivered would hide the answer as well.
+      this.emit('question.answered', {
+        sessionID: revised.sessionID,
+        question: revised,
+        frameID: null,
+        wakeFrameID: null,
+      });
+
+      return {
+        revised: true,
+        question: revised,
+        delivered: false,
+        pending: false,
+        suppressed: false,
+        reason: delivery.reason,
+        frameID: null,
+        sessionID: revised.sessionID,
+        agentID: revised.agentID,
+      };
+    }
+
+    this.emit('question.answered', {
+      sessionID: revised.sessionID,
+      question: delivery.question || revised,
+      frameID: delivery.frameID,
+      wakeFrameID: delivery.frameID,
+    });
+
+    return {
+      revised: true,
+      question: delivery.question || revised,
+      delivered: true,
+      pending: false,
+      suppressed: false,
+      frameID: delivery.frameID,
+      sessionID: revised.sessionID,
+      agentID: revised.agentID,
+    };
+  }
+
+  /**
    * Post the wake for an already-answered question. Never throws for an
    * undeliverable target: returns `{ delivered:false, reason }` so the caller
    * can record the state without losing the answer.
@@ -359,13 +442,25 @@ export class QuestionAnswerService {
 export function buildAnswerPromptText(question, group = null) {
   let lines = [];
 
+  // A revision is the ONE case where a human answer replaces an answer the
+  // agent already received. The agent may have acted on the default, so the
+  // prompt has to say both things: a person did answer, and what it replaced.
+  let superseded = typeof question.supersededDefaultAnswer === 'string'
+    ? question.supersededDefaultAnswer
+    : null;
+
   let age = describeAge(question.askedAt, question.answeredAt);
   let asked = age ? ` (you asked ${age})` : '';
 
   // A default is the agent's own fallback firing, not a human reply. Saying so
   // plainly is the difference between "the user decided" and "nobody answered,
   // so your own default took effect" — a model must not conflate those.
-  if (question.answerSource === 'default') {
+  if (superseded !== null) {
+    lines.push(`The user answered your question${asked}, replacing the default you specified:`);
+    lines.push('');
+    lines.push(`Your default was: ${superseded}`);
+    lines.push('A person has now given a real answer. It supersedes the default.');
+  } else if (question.answerSource === 'default') {
     lines.push(`No answer arrived in time, so the default you specified was applied${asked}:`);
   } else {
     lines.push(`The user answered your question${asked}:`);
@@ -398,7 +493,10 @@ export function buildAnswerPromptText(question, group = null) {
     }
   }
 
-  if (question.answerSource === 'default') {
+  if (superseded !== null) {
+    lines.push('');
+    lines.push('If you already acted on the default, that assumption was wrong and should be corrected.');
+  } else if (question.answerSource === 'default') {
     lines.push('');
     lines.push('Nobody confirmed this. Treat it as your own assumption, and say so if you act on it.');
   } else if (question.mode === 'continue') {

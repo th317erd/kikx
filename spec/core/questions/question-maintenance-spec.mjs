@@ -144,7 +144,13 @@ test('a real user answer wins: the default never overwrites it', async () => {
 
   let question = await store.getQuestion(id);
   assert.equal(question.answer, 'Postgres', 'the human answer survived');
-  assert.equal(question.answerSource, null, 'and it is not mislabelled as a default');
+  // SUPERSEDED RULE. This used to assert 'null', which was true only because
+  // nothing ever wrote provenance for a human answer: `USER_ANSWER_SOURCE` was
+  // defined and never used. Now that a human answer records `'user'`, the real
+  // claim being tested is that it is not mislabelled as a DEFAULT - that is the
+  // distinction the revision path depends on, because only a 'default' answer
+  // may be overridden later.
+  assert.equal(question.answerSource, 'user', 'a human answer is recorded as human, never as a default');
 });
 
 test('a default answer cannot be overwritten afterwards', async () => {

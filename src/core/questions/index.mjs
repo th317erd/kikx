@@ -1,13 +1,18 @@
 'use strict';
 
+// The store keeps only the I/O; the pure document layer moved to
+// ./question-doc.mjs so questions-store.mjs could fall back under the 800-line
+// hard limit in AGENTS.md. Both are re-exported here so the public surface is
+// unchanged.
+export { QuestionsStore } from './questions-store.mjs';
+
 export {
   QUESTION_MAX_PER_CALL,
   QUESTION_STATUSES,
   QUESTION_TERMINAL_STATUSES,
-  QuestionsStore,
   normalizeQuestionDoc,
   summarizeQuestion,
-} from './questions-store.mjs';
+} from './question-doc.mjs';
 
 export {
   listDocPaths,

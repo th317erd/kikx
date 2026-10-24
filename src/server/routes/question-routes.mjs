@@ -86,6 +86,22 @@ export async function handleQuestionRoutes({ request, response, url, context }) 
     let account = await getRequestAccount(context, request);
     let answerService = context.require('questionAnswerService');
 
+    // A stored answer is normally terminal: a second POST is a 409. The one
+    // exception is an answer that only a DEFAULT supplied — the agent's own
+    // fallback fired while the user was away, and the person it spoke for is
+    // entitled to replace it with what they actually meant. The gate for that
+    // lives in the store (`answerSource === 'default'`), not here, so this
+    // branch cannot widen the 409 for a genuine human answer.
+    let revise = async () => {
+      if (typeof answerService.reviseDefaultAnswer !== 'function' || silent)
+        return null;
+
+      return await answerService.reviseDefaultAnswer(answerRoute.questionID, {
+        answer: silent ? NO_RESPONSE_ANSWER_TEXT : body.answer,
+        userID: account?.id || body.userID || null,
+      });
+    };
+
     let result;
     try {
       result = await answerService.submitAnswer(answerRoute.questionID, {
@@ -94,8 +110,27 @@ export async function handleQuestionRoutes({ request, response, url, context }) 
         wakeSuppressed: silent,
       });
     } catch (error) {
-      if (error?.status === 409)
-        throw httpError(409, 'Question already answered');
+      if (error?.status === 409) {
+        let revised = await revise();
+
+        // `revised:false` means the question is terminal for a real reason: a
+        // person already answered, it was dismissed, or delivery failed. That
+        // is the original 409, unchanged.
+        if (!revised?.revised)
+          throw httpError(409, 'Question already answered');
+
+        writeJSON(response, 200, {
+          data: {
+            question: revised.question,
+            delivered: revised.delivered === true,
+            pending: false,
+            suppressed: false,
+            revised: true,
+            frameID: revised.frameID ?? null,
+          },
+        });
+        return true;
+      }
 
       if (error?.status === 404)
         throw httpError(404, `Question not found: ${answerRoute.questionID}`);
