@@ -6,6 +6,7 @@ import {
   findDuplicateQuestions,
 } from '../questions/question-dedupe.mjs';
 import { normalizeQuestionList } from '../questions/questions-store.mjs';
+import { armQuestionDeadline } from '../questions/question-deadline-schedule.mjs';
 
 const DEFAULT_MAX_QUESTIONS = 25;
 
@@ -213,6 +214,13 @@ export class AskUserTool extends PluginInterface {
     });
 
     await this.emitQuestionFrames({ result, sessionID, agentID });
+
+    // Arm each question's default-answer deadline on the generic scheduled-frame
+    // queue. Doing it here (not on a timer) is what makes the deadline O(1) per
+    // question and durable across a restart. A failure to arm must not fail the
+    // ask: the question is already persisted, and the fire-time plugin re-reads
+    // it, so the worst case is a default that never fires rather than an error.
+    await this.armDeadlines(result);
     // Runtime event so clients can refresh an Inbox without polling. Emitted
     // after persistence and frame emission: the event is a notification, never
     // the source of truth, so a failure here must not fail the tool call.
@@ -269,6 +277,26 @@ export class AskUserTool extends PluginInterface {
    * groupID). Registration of the client renderer is P3; an unregistered frame
    * type renders through the fallback, so emitting here is safe in P1.
    */
+  async armDeadlines(result) {
+    let frameRuntime = this.context?.services?.frameRuntime || this.context?.frameRuntime || null;
+    if (!frameRuntime?.ensureSessionEntry)
+      return;
+
+    for (let question of result.questions || []) {
+      if (question.defaultDueAt == null)
+        continue;
+
+      try {
+        await armQuestionDeadline({ frameRuntime, question });
+      } catch (error) {
+        this.context?.services?.logger?.warn?.(
+          'ask-user: could not arm the default-answer deadline',
+          error?.message || error,
+        );
+      }
+    }
+  }
+
   async emitQuestionFrames({ result, sessionID, agentID }) {
     let frameEngine = resolveFrameEngine(this.context);
     if (!frameEngine || typeof frameEngine.merge !== 'function')

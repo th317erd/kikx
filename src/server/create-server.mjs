@@ -35,7 +35,6 @@ import {
   KIKX_DATABASE_PATH,
   KIKX_DATABASE_URL,
   KIKX_PLUGIN_PATHS_PATH,
-  KIKX_MONITORING_QUESTIONS_INTERVAL_SECONDS_PATH,
   KIKX_MONITORING_MEMORY_ENABLED_PATH,
   KIKX_MONITORING_MEMORY_GROWTH_THRESHOLD_MB_PATH,
   KIKX_MONITORING_MEMORY_GROWTH_WINDOW_SAMPLES_PATH,
@@ -56,7 +55,7 @@ import {
 import { CompactionService } from '../core/compaction/index.mjs';
 import { QuestionAnswerService, QuestionsStore } from '../core/questions/index.mjs';
 import { repairQuestionIndex } from '../core/questions/question-index-repair.mjs';
-import { QuestionMaintenanceService } from '../core/questions/question-maintenance-service.mjs';
+import { registerQuestionScheduleRouting } from '../core/questions/question-schedule-plugin.mjs';
 import { CommandRegistry, registerInternalCommands } from '../core/commands/index.mjs';
 import { PluginRegistry } from '../core/plugins/index.mjs';
 import { loadPlugins } from '../core/plugins/plugin-loader.mjs';
@@ -136,11 +135,6 @@ export async function createServer(options = {}) {
   // seconds; the sampler works in milliseconds and clamps a too-small value.
   let memorySamplerEnabled = parseBoolean(await config.get(KIKX_MONITORING_MEMORY_ENABLED_PATH), false);
   let memorySamplerIntervalMS = parseEnvPositiveInteger(await config.get(KIKX_MONITORING_MEMORY_INTERVAL_SECONDS_PATH), 30) * 1000;
-  // Ask-user maintenance (delivery retry + default answers), off by default.
-  let questionMaintenanceIntervalMs = parseEnvNonNegativeInteger(
-    await config.get(KIKX_MONITORING_QUESTIONS_INTERVAL_SECONDS_PATH),
-    0,
-  ) * 1000;
   let memorySamplerLimit = parseEnvPositiveInteger(await config.get(KIKX_MONITORING_MEMORY_SAMPLES_PATH), DEFAULT_MEMORY_SAMPLE_LIMIT);
   let memorySamplerGrowthWindow = parseEnvPositiveInteger(await config.get(KIKX_MONITORING_MEMORY_GROWTH_WINDOW_SAMPLES_PATH), DEFAULT_MEMORY_GROWTH_WINDOW_SAMPLES);
   // 0 disables the growth warning entirely (e.g. sampling without alerting).
@@ -217,6 +211,11 @@ export async function createServer(options = {}) {
         context,
       });
       context.require('frameRouter').loadFromRegistry(context.require('pluginRegistry'));
+      // Question schedule routing MUST come before agent routing. A fired
+      // deadline that resolves to an already-answered question calls done()
+      // without next(), and the chain only stops before an agent turn if this
+      // plugin ran first.
+      registerQuestionScheduleRouting(context.require('frameRouter'));
       registerAgentRouting(context.require('frameRouter'));
     })());
   }
@@ -543,18 +542,6 @@ export async function createServer(options = {}) {
     }));
   }
 
-  // Delivery retry and agent-specified defaults. Started after the services it
-  // depends on exist, and stopped on close: a maintenance timer must never be
-  // the reason a process refuses to exit.
-  if (!context.has('questionMaintenanceService')) {
-    context.set('questionMaintenanceService', new QuestionMaintenanceService({
-      questionsStore: context.require('questionsStore'),
-      questionAnswerService: context.require('questionAnswerService'),
-      intervalMs: questionMaintenanceIntervalMs,
-      logger: options.logger || console,
-    }));
-  }
-
   // The open index and per-agent mirrors are derived caches, and nothing else
   // in production rebuilt them: a lost entry was invisible forever because
   // `listOpen()` reads the index only. Repair at startup, before the readiness
@@ -631,11 +618,6 @@ export async function createServer(options = {}) {
   memorySampler.start();
   server.on('close', () => memorySampler.stop());
 
-  // Off by default (`questionMaintenanceIntervalMs <= 0`): a tick is a periodic
-  // full scan of the question docs, which tests and embedders should opt into.
-  let questionMaintenance = context.require('questionMaintenanceService');
-  questionMaintenance.start();
-  server.on('close', () => questionMaintenance.stop());
   let runtimeEventGateway = context.has('runtimeEventGateway') ? context.require('runtimeEventGateway') : null;
   server.on('close', () => runtimeEventGateway?.close?.());
   return server;

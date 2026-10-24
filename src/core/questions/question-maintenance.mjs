@@ -80,39 +80,6 @@ export async function applyDefaultAnswer(store, questionID, options = {}) {
 }
 
 /**
- * Open questions whose default is due, read through the open index so the cost
- * tracks the open set rather than all history.
- */
-export async function findDueDefaults(store, options = {}) {
-  let now = Number(options.now ?? store.clock());
-  let limit = Number.isInteger(options.limit) ? options.limit : 50;
-  let open = await store.listOpen();
-  let due = [];
-
-  for (let summary of open.summaries) {
-    if (due.length >= limit)
-      break;
-
-    let question = null;
-    try {
-      question = await store.getQuestion(summary.id);
-    } catch (_error) {
-      continue;
-    }
-
-    if (question.status !== 'open' || !question.defaultAnswer)
-      continue;
-
-    if (question.defaultDueAt == null || Number(question.defaultDueAt) > now)
-      continue;
-
-    due.push(question);
-  }
-
-  return due;
-}
-
-/**
  * Record a failed delivery attempt and schedule the next one.
  *
  * The question keeps its `undeliverable` status — that status is what makes the
