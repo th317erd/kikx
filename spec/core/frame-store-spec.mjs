@@ -5,6 +5,7 @@ import test from 'node:test';
 
 import { FrameEngine } from '../../src/core/frames/index.mjs';
 import { FrameStore } from '../../src/core/aeordb/frame-store.mjs';
+import { projectClientFrameForWindow } from '../../src/core/aeordb/frame-store-preview.mjs';
 
 function createClient(options = {}) {
   let calls = [];
@@ -1132,4 +1133,50 @@ test('a single-frame-type window pushes that type into the directory glob', asyn
   ));
   assert.ok(listing);
   assert.equal(listing.options.glob, '**/frames/*-UserDraft-*.json');
+});
+
+test('client frame windows drop model-only and lazily loaded payloads', () => {
+  let agent = projectClientFrameForWindow({
+    id: 'a1',
+    type: 'AgentMessage',
+    content: {
+      status: 'complete',
+      text: 'done',
+      thinking: { text: 'private reasoning' },
+      toolResults: [ { result: 'large duplicate' } ],
+    },
+  });
+  assert.equal(agent.content.text, 'done');
+  assert.equal(agent.content.thinking, undefined);
+  assert.equal(agent.content.toolResults, undefined);
+
+  let streaming = projectClientFrameForWindow({
+    id: 'a2',
+    type: 'AgentMessage',
+    content: { status: 'streaming', thinking: { text: 'live' } },
+  });
+  assert.equal(streaming.content.thinking.text, 'live');
+
+  let compaction = projectClientFrameForWindow({
+    id: 'c1',
+    type: 'CompactionFrame',
+    content: { summary: 'memory', frameIDs: [ 'f1', 'f2' ] },
+  });
+  assert.equal(compaction.content.frameIDs, undefined);
+  assert.equal(compaction.content.summary, 'memory');
+
+  let tool = projectClientFrameForWindow({
+    id: 't1',
+    type: 'ShellToolFrame',
+    content: { toolOutputID: 'out_1', preview: 'large preview', status: 'success' },
+  });
+  assert.equal(tool.content.preview, undefined);
+  assert.equal(tool.content.toolOutputID, 'out_1');
+
+  let inline = projectClientFrameForWindow({
+    id: 't2',
+    type: 'ShellToolFrame',
+    content: { preview: 'inline output' },
+  });
+  assert.equal(inline.content.preview, 'inline output');
 });

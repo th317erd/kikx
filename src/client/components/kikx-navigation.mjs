@@ -117,7 +117,10 @@ export function minimizeCurrent(app) {
     app._render();
     let grid = app.querySelector('kikx-session-grid');
     setHeroName(app, grid?.cardViewElement(leavingSessionID));
-  }).finally(() => clearHeroNames(app));
+  }).finally(() => {
+    clearHeroNames(app);
+    app._loadSessionPreviews?.().catch?.(() => null);
+  });
 }
 
 // Keep state.selectedSessionID aligned with the current stack entry so frames
@@ -343,4 +346,6 @@ export async function syncFromURL(app) {
 
   app._deepLinkReady = true;
   app._render();
+  if (isCollapsed(app._state))
+    app._loadSessionPreviews?.().catch?.(() => null);
 }

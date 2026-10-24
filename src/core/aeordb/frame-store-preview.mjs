@@ -185,7 +185,7 @@ export class FrameStorePreviewBase extends FrameStoreScheduledBase {
 
     let outputFrames = options.raw === true
       ? frames
-      : projectFrameMessages(frames).filter(isPreviewVisibleFrame);
+      : projectFrameMessages(frames).filter(isPreviewVisibleFrame).map(projectClientFrameForWindow);
 
     let pagedFromCursor = Boolean(startID) || after != null;
     return {
@@ -309,7 +309,7 @@ export class FrameStorePreviewBase extends FrameStoreScheduledBase {
 
     let truncated = allHeads.length > previewCount || offset > 0;
     return {
-      heads: allHeads.slice(-previewCount),
+      heads: allHeads.slice(-previewCount).map(projectClientFrameForWindow),
       truncated,
     };
   }
@@ -330,4 +330,41 @@ function emptyFrameWindow() {
 function findOrderBoundary(sortedPaths, before) {
   let index = sortedPaths.findIndex((path) => frameOrderFromPath(path) >= before);
   return index === -1 ? sortedPaths.length : index;
+}
+
+// The HTTP frame window is display state, not model memory. Completed thinking
+// traces, per-response tool result copies, compaction frame-id lists, and stored
+// output previews are all large and either unused by the client or fetched
+// lazily when a tool card is expanded. Keep them in raw windows (model/context
+// callers) and in SSE frames; only trim the projected client window.
+export function projectClientFrameForWindow(frame) {
+  let content = frame?.content;
+  if (!content || typeof content !== 'object' || Array.isArray(content))
+    return frame;
+
+  let next = { ...content };
+  let changed = false;
+
+  if (frame.type === 'AgentMessage' && content.status !== 'streaming') {
+    if ('thinking' in next) {
+      delete next.thinking;
+      changed = true;
+    }
+    if ('toolResults' in next) {
+      delete next.toolResults;
+      changed = true;
+    }
+  }
+
+  if (frame.type === 'CompactionFrame' && Array.isArray(next.frameIDs)) {
+    delete next.frameIDs;
+    changed = true;
+  }
+
+  if (next.toolOutputID && typeof next.preview === 'string') {
+    delete next.preview;
+    changed = true;
+  }
+
+  return changed ? { ...frame, content: next } : frame;
 }

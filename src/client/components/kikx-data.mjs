@@ -138,17 +138,10 @@ export async function loadSessions(app) {
 
     app._render();
     // A deep-linked thread does not show session cards, so preview reads must
-    // not delay startup or compete with its 600-frame fetch. Load them once the
-    // thread has painted; grid/root loads still wait so cards are not blank.
-    if (isCollapsed(app._state) || !app._state.selectedSessionID) {
+    // not compete with its frame fetch. Load them only when a grid is actually
+    // visible; navigation back to a grid requests them explicitly.
+    if (isCollapsed(app._state) || !app._state.selectedSessionID)
       await app._loadSessionPreviews();
-    } else {
-      let timer = setTimeout(() => {
-        if (app.isConnected)
-          app._loadSessionPreviews();
-      }, 1200);
-      timer.unref?.();
-    }
   } catch (error) {
     app._state.status = error.message;
     app._state.statusKind = 'error';
@@ -287,7 +280,7 @@ export async function loadClientComponents(app) {
   }
 }
 
-export const DEFAULT_FRAME_WINDOW_LIMIT = 400;
+export const DEFAULT_FRAME_WINDOW_LIMIT = 120;
 // Once the initial window is on screen, paging in 600 raw frames at a time
 // prepends hundreds of rendered heads and forces a multi-thousand-pixel
 // scrollTop correction. Keep incremental pages small; the initial/reload

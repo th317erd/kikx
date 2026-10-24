@@ -255,13 +255,25 @@ export class PostgreSQLConnection extends DatabaseConnectionBase {
 
   async getMany(paths) {
     let result = {};
-    for (let path of paths) {
-      let key = normalizePath(path);
-      let row = (await this.pool.query('SELECT body FROM documents WHERE path = $1', [ key ])).rows[0];
+    let requested = Array.isArray(paths) ? paths : [];
+    if (requested.length === 0)
+      return result;
+
+    let keys = requested.map((path) => normalizePath(path));
+    let uniqueKeys = [ ...new Set(keys) ];
+    let rows = (await this.pool.query(
+      'SELECT path, body FROM documents WHERE path = ANY($1::text[])',
+      [ uniqueKeys ],
+    )).rows;
+    let byPath = new Map(rows.map((row) => [ row.path, row ]));
+
+    for (let index = 0; index < requested.length; index++) {
+      let key = keys[index];
+      let row = byPath.get(key);
       if (!row)
         throw notFound(key);
 
-      result[path] = { path: key, content: row.body };
+      result[requested[index]] = { path: key, content: row.body };
     }
 
     return result;
