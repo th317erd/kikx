@@ -13,6 +13,7 @@ import { DatabaseConnectionBase } from '../../../src/core/database/database-conn
 import { DatabaseError } from '../../../src/core/database/database-error.mjs';
 import {
   PostgreSQLConnection,
+  globToSQLLike,
   resolvePostgresConfig,
 } from '../../../src/core/database/postgresql-connection.mjs';
 import { runDatabaseContractSuite } from './driver-contract-harness.mjs';
@@ -192,4 +193,12 @@ test('PostgreSQLConnection returns raw text when expectJSON is false', { skip: !
   } finally {
     await db.close();
   }
+});
+
+test('PostgreSQLConnection converts simple directory globs to bounded LIKE patterns', () => {
+  assert.equal(globToSQLLike('**'), null);
+  assert.equal(globToSQLLike(''), null);
+  assert.equal(globToSQLLike('**/session.json'), '%%/session.json');
+  assert.equal(globToSQLLike('**/frames/*-UserDraft-*.json'), '%%/frames/%-UserDraft-%.json');
+  assert.equal(globToSQLLike('a_b*?.json'), '%a\\_b%_.json');
 });

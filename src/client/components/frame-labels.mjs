@@ -96,16 +96,25 @@ function microsecondISOString(date, microseconds) {
   return `${prefix}.${String(millisecondPart).padStart(3, '0')}${String(microsecondPart).padStart(3, '0')}Z`;
 }
 
+const timestampFormatters = new Map();
+
 function formatTimestampLabel(date, options = {}) {
-  let formatter = new Intl.DateTimeFormat(options.locale || undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    ...(options.timeZone ? { timeZone: options.timeZone } : {}),
-  });
+  let locale = options.locale || '';
+  let timeZone = options.timeZone || '';
+  let key = `${locale}\u0000${timeZone}`;
+  let formatter = timestampFormatters.get(key);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(options.locale || undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      ...(options.timeZone ? { timeZone: options.timeZone } : {}),
+    });
+    timestampFormatters.set(key, formatter);
+  }
 
   return formatter.format(date);
 }

@@ -136,7 +136,10 @@ async function collectComposerHistory(runtime, sessionID, options = {}) {
     let window = await runtime.frameStore.listFrameWindow(sessionID, {
       limit: HISTORY_SCAN_PAGE_SIZE,
       raw: true,
-      frameTypes: [ 'UserMessage', 'UserDraft' ],
+      // Draft-only callers must not read every user-message body in the window.
+      // The frame-type path filter is applied before JSON reads, so this turns a
+      // large-session draft lookup into a handful of reads instead of thousands.
+      frameTypes: draftsOnly ? [ 'UserDraft' ] : [ 'UserMessage', 'UserDraft' ],
       ...(cursor != null ? { before: cursor } : {}),
     });
     let frames = Array.isArray(window?.frames) ? window.frames : [];

@@ -54,6 +54,10 @@ function isParseableJson(text) {
 // is required: the database default locale is not byte-ordered and would
 // otherwise break both the sentinel bound and the stream paging order.
 const DESCENDANT_QUERY = 'SELECT path FROM documents WHERE path COLLATE "C" >= $1 AND path COLLATE "C" < $2 ORDER BY path COLLATE "C"';
+// A simple glob is cheap to push into SQL. This matters most for session
+// listings: without it, finding `session.json` under /sessions scans every
+// nested frame path in every session before the JavaScript filter sees it.
+const DESCENDANT_QUERY_GLOB = 'SELECT path FROM documents WHERE path COLLATE "C" >= $1 AND path COLLATE "C" < $2 AND path COLLATE "C" LIKE $3 ESCAPE \'\\\' ORDER BY path COLLATE "C"';
 const STREAM_PAGE_SIZE = 500;
 
 // PostgreSQL document-store driver. `pg` is imported lazily inside connect() so
@@ -194,7 +198,10 @@ export class PostgreSQLConnection extends DatabaseConnectionBase {
 
   async list(prefix, options = {}) {
     let base = normalizePath(prefix);
-    let result = await this.pool.query(DESCENDANT_QUERY, pathBounds(base));
+    let globLike = globToSQLLike(options.glob);
+    let result = globLike
+      ? await this.pool.query(DESCENDANT_QUERY_GLOB, [ ...pathBounds(base), globLike ])
+      : await this.pool.query(DESCENDANT_QUERY, pathBounds(base));
     let matches = selectDocumentPaths(result.rows.map((row) => row.path), prefix, options);
     let items = paginate(matches, options).map((key) => ({ path: key }));
     return { items, total: matches.length };
@@ -359,6 +366,19 @@ export class PostgreSQLConnection extends DatabaseConnectionBase {
 
 function notFound(path) {
   return new DatabaseError(`Database document not found: ${path}`, { status: 404, code: 'not_found' });
+}
+
+export function globToSQLLike(glob) {
+  if (typeof glob !== 'string' || glob.trim() === '' || glob === '**')
+    return null;
+
+  let pattern = glob.trim()
+    .replace(/\\/g, '\\\\')
+    .replace(/%/g, '\\%')
+    .replace(/_/g, '\\_')
+    .replace(/\*+/g, '%')
+    .replace(/\?/g, '_');
+  return `%${pattern}`;
 }
 
 // Resolve a pg Pool config from explicit options, plain `config`/`secrets`

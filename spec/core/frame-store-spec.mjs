@@ -839,7 +839,7 @@ test('FrameStore previews only the bounded tail per session', async () => {
   let fetchCalls = aeordb.calls.filter((call) => call.method === 'fetchFiles');
   let frameFetch = fetchCalls.find((call) => call.paths.some((path) => path.includes('/frames/')));
   assert.ok(frameFetch, 'preview fetched frame bodies');
-  assert.ok(frameFetch.paths.length <= 5 * 8, `bounded frame fetch (got ${frameFetch.paths.length})`);
+  assert.ok(frameFetch.paths.length <= 5 * 2, `started with the small preview tail (got ${frameFetch.paths.length})`);
   assert.ok(frameFetch.paths.length < 300, 'did not fetch all frames');
 
   // No FrameEngine / full listFrames path is used.
@@ -1114,4 +1114,22 @@ test('FrameStore window projects visible heads only', async () => {
 
   assert.deepEqual(result.frames.map((frame) => frame.order), [ 1, 3, 5 ]);
   assert.equal(result.newestOrder, 5);
+});
+
+test('a single-frame-type window pushes that type into the directory glob', async () => {
+  let aeordb = createClient();
+  let store = new FrameStore({ aeordb, rootPath: '/kikx' });
+  seedSessionWithFrames(aeordb, 'ses_types', 6);
+
+  await store.listFrameWindow('ses_types', {
+    limit: 10,
+    frameTypes: [ 'UserDraft' ],
+  });
+
+  let listing = aeordb.calls.find((call) => (
+    call.method === 'listDirectory'
+    && call.path.includes('/sessions/ses_types/interactions')
+  ));
+  assert.ok(listing);
+  assert.equal(listing.options.glob, '**/frames/*-UserDraft-*.json');
 });

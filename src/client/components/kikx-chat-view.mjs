@@ -12,7 +12,7 @@ const FRAME_ENTER_ANIMATION_MS = 220;
 // pages can be revealed without a refetch), but only a recent window is kept in
 // the DOM. Scrolling to the top reveals older state frames in chunks; scrolling
 // back to the bottom switches back to the newest window.
-export const MAX_RENDERED_FRAMES = 200;
+export const MAX_RENDERED_FRAMES = 120;
 export const MAX_TOTAL_RENDERED_FRAMES = 800;
 export const RENDER_WINDOW_REVEAL = 40;
 

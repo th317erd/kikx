@@ -29,43 +29,51 @@ export class FrameStorePreviewBase extends FrameStoreScheduledBase {
       return [];
 
     let previewCount = normalizePreviewCount(options.previewCount);
-    let rawLimit = Math.min(MAX_PREVIEW_RAW_FRAMES, previewCount * PREVIEW_RAW_EXPANSION);
+    let maxRawLimit = Math.min(MAX_PREVIEW_RAW_FRAMES, previewCount * PREVIEW_RAW_EXPANSION);
     let sessions = await this.loadSessionManifests(ids);
-    let previews = [];
+    let previews = new Array(ids.length);
 
-    for (let sessionID of ids) {
-      let session = sessions.get(sessionID) || null;
+    // Each session preview is an independent tail read. A small worker pool
+    // overlaps the database latency without opening one query per session at
+    // once. Order is preserved by assigning results back to the source index.
+    let cursor = 0;
+    let workers = Array.from({ length: Math.min(4, ids.length) }, async () => {
+      while (cursor < ids.length) {
+        let index = cursor++;
+        let sessionID = ids[index];
+        let session = sessions.get(sessionID) || null;
 
-      if (!session) {
-        previews.push({
+        if (!session) {
+          previews[index] = {
+            sessionID,
+            session: null,
+            heads: [],
+            truncated: false,
+            error: 'session not found',
+          };
+          continue;
+        }
+
+        let entry = {
           sessionID,
-          session: null,
+          session,
           heads: [],
           truncated: false,
-          error: 'session not found',
-        });
-        continue;
+          error: null,
+        };
+
+        try {
+          let tail = await this.loadSessionPreviewHeads(sessionID, { maxRawLimit, previewCount });
+          entry.heads = tail.heads;
+          entry.truncated = tail.truncated;
+        } catch (error) {
+          entry.error = error?.message || 'preview unavailable';
+        }
+
+        previews[index] = entry;
       }
-
-      let entry = {
-        sessionID,
-        session,
-        heads: [],
-        truncated: false,
-        error: null,
-      };
-
-      try {
-        let tail = await this.loadSessionPreviewHeads(sessionID, { rawLimit, previewCount });
-        entry.heads = tail.heads;
-        entry.truncated = tail.truncated;
-      } catch (error) {
-        entry.error = error?.message || 'preview unavailable';
-      }
-
-      previews.push(entry);
-    }
-
+    });
+    await Promise.all(workers);
     return previews;
   }
 
@@ -77,8 +85,17 @@ export class FrameStorePreviewBase extends FrameStoreScheduledBase {
     let before = normalizeOptionalOrder(options.before);
     let after = normalizeOptionalOrder(options.after);
     let startID = typeof options.start === 'string' ? options.start.trim() : '';
+    let frameTypes = Array.isArray(options.frameTypes)
+      ? new Set(options.frameTypes.filter((type) => typeof type === 'string' && type.trim() !== ''))
+      : null;
     let interactionsPath = `${this.rootPath}/sessions/${encodeSegment(sessionID)}/interactions`;
-    let listOptions = { depth: -1, glob: '**/frames/*.json' };
+    // Push a single-type filter into the directory range scan. Draft lookups are
+    // the hot case: without this they list every frame path in a large session
+    // just to discard all but a few UserDraft entries.
+    let frameTypeGlob = frameTypes?.size === 1 && !startID
+      ? `**/frames/*-${encodeSegment([ ...frameTypes ][0])}-*.json`
+      : '';
+    let listOptions = { depth: -1, glob: frameTypeGlob || '**/frames/*.json' };
     let probe;
 
     try {
@@ -144,9 +161,6 @@ export class FrameStorePreviewBase extends FrameStoreScheduledBase {
     if (total === 0 || windowPaths.length === 0)
       return { ...emptyFrameWindow(), total };
 
-    let frameTypes = Array.isArray(options.frameTypes)
-      ? new Set(options.frameTypes.filter((type) => typeof type === 'string' && type.trim() !== ''))
-      : null;
     let readPaths = frameTypes
       ? windowPaths.filter((path) => [ ...frameTypes ].some((type) => path.includes(`-${type}-`)))
       : windowPaths;
@@ -241,7 +255,7 @@ export class FrameStorePreviewBase extends FrameStoreScheduledBase {
     return low;
   }
 
-  async loadSessionPreviewHeads(sessionID, { rawLimit, previewCount }) {
+  async loadSessionPreviewHeads(sessionID, { maxRawLimit, previewCount }) {
     let interactionsPath = `${this.rootPath}/sessions/${encodeSegment(sessionID)}/interactions`;
     let baseOptions = { depth: -1, glob: '**/frames/*.json', limit: 1, offset: 0 };
     let probe = await this.aeordb.listDirectory(interactionsPath, baseOptions);
@@ -250,39 +264,52 @@ export class FrameStorePreviewBase extends FrameStoreScheduledBase {
     if (total <= 0)
       return { heads: [], truncated: false };
 
-    let offset = Math.max(0, total - rawLimit);
-    let tailPaths = await this.listDirectoryPaths(interactionsPath, {
-      depth: -1,
-      glob: '**/frames/*.json',
-      limit: rawLimit,
-      offset,
-    });
-    tailPaths = tailPaths.filter((path) => path.includes('/frames/'));
-    let sortedPaths = sortFramePathsByOrder(tailPaths);
+    // Start with a small tail and expand only when hidden/tool frames did not
+    // project to enough visible heads. Most sessions stop after 2x previewCount
+    // instead of always reading the 8x worst-case window.
+    let rawLimit = Math.min(maxRawLimit, Math.max(previewCount, previewCount * 2));
+    let allHeads = [];
+    let offset = 0;
 
-    let reads = await readJSONFiles(this.aeordb, sortedPaths, {
-      fallbackOnBatchError: true,
-      continueOnError: true,
-    });
-    let frames = [];
-    for (let read of reads) {
-      if (read.error) {
-        // Never silently drop a frame: surface it as a visible load-error so the
-        // projected stream stays truthful about what could not be read.
-        frames.push(createFrameLoadError(sessionID, read.path, read.error));
-        continue;
+    while (true) {
+      offset = Math.max(0, total - rawLimit);
+      let tailPaths = await this.listDirectoryPaths(interactionsPath, {
+        depth: -1,
+        glob: '**/frames/*.json',
+        limit: rawLimit,
+        offset,
+      });
+      tailPaths = tailPaths.filter((path) => path.includes('/frames/'));
+      let sortedPaths = sortFramePathsByOrder(tailPaths);
+
+      let reads = await readJSONFiles(this.aeordb, sortedPaths, {
+        fallbackOnBatchError: true,
+        continueOnError: true,
+      });
+      let frames = [];
+      for (let read of reads) {
+        if (read.error) {
+          // Never silently drop a frame: surface it as a visible load-error so the
+          // projected stream stays truthful about what could not be read.
+          frames.push(createFrameLoadError(sessionID, read.path, read.error));
+          continue;
+        }
+
+        let frame = read.value;
+        if (frame?.id && frame.type)
+          frames.push(frame);
       }
 
-      let frame = read.value;
-      if (frame?.id && frame.type)
-        frames.push(frame);
+      allHeads = projectFrameMessages(frames).filter(isPreviewVisibleFrame);
+      if (allHeads.length >= previewCount || offset === 0 || rawLimit >= maxRawLimit)
+        break;
+
+      rawLimit = Math.min(maxRawLimit, rawLimit * 2);
     }
 
-    let heads = projectFrameMessages(frames).filter(isPreviewVisibleFrame);
-    let truncated = heads.length > previewCount || offset > 0;
-
+    let truncated = allHeads.length > previewCount || offset > 0;
     return {
-      heads: heads.slice(-previewCount),
+      heads: allHeads.slice(-previewCount),
       truncated,
     };
   }

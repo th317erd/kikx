@@ -137,7 +137,18 @@ export async function loadSessions(app) {
     await app._applySessionDeepLink();
 
     app._render();
-    await app._loadSessionPreviews();
+    // A deep-linked thread does not show session cards, so preview reads must
+    // not delay startup or compete with its 600-frame fetch. Load them once the
+    // thread has painted; grid/root loads still wait so cards are not blank.
+    if (isCollapsed(app._state) || !app._state.selectedSessionID) {
+      await app._loadSessionPreviews();
+    } else {
+      let timer = setTimeout(() => {
+        if (app.isConnected)
+          app._loadSessionPreviews();
+      }, 1200);
+      timer.unref?.();
+    }
   } catch (error) {
     app._state.status = error.message;
     app._state.statusKind = 'error';
@@ -276,7 +287,7 @@ export async function loadClientComponents(app) {
   }
 }
 
-export const DEFAULT_FRAME_WINDOW_LIMIT = 600;
+export const DEFAULT_FRAME_WINDOW_LIMIT = 400;
 // Once the initial window is on screen, paging in 600 raw frames at a time
 // prepends hundreds of rendered heads and forces a multi-thousand-pixel
 // scrollTop correction. Keep incremental pages small; the initial/reload
@@ -492,6 +503,20 @@ export async function loadAccount(app, options = {}) {
 }
 
 export async function loadSessionPreviews(app) {
+  if (app._sessionPreviewsLoadPromise)
+    return await app._sessionPreviewsLoadPromise;
+
+  let promise = loadSessionPreviewsNow(app);
+  app._sessionPreviewsLoadPromise = promise;
+  try {
+    return await promise;
+  } finally {
+    if (app._sessionPreviewsLoadPromise === promise)
+      app._sessionPreviewsLoadPromise = null;
+  }
+}
+
+async function loadSessionPreviewsNow(app) {
   let sessions = getSessions(app._state);
   if (sessions.length === 0) {
     setPreviewStatus('', app._state);
