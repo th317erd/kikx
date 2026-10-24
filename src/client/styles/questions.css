@@ -262,6 +262,67 @@
   font-style: italic;
 }
 
+/* --- Answer receipt ------------------------------------------------------
+
+   The Inbox row's copy of the receipt the session frame renders. Same three
+   facts, same visual grammar, so "what did I say?" has one answer whichever
+   surface you ask on.
+
+   Green because the answer landed. This is the thing the owner asked for by
+   name: a green receipt, not a grey status line. A default answer takes the
+   amber edge instead — it did get an answer, but not one a person wrote. */
+.kikx-question-card__receipts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kikx-question-card__receipt {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid #2c3b2f;
+  border-left: 3px solid #2ea043;
+  border-radius: 8px;
+  background: #101a13;
+}
+
+.kikx-question-card__receipt-label {
+  color: #7ea888;
+  font-size: calc(11px * 1.25);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.kikx-question-card__receipt-text {
+  color: #e7f0e9;
+  font-size: calc(13px * 1.25);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The agent's own fallback. Amber, not green: it is an answer, but it is not
+   the user's words, and the two must not look the same at a glance. */
+.kikx-question-card__receipt[data-answer-source='default'] {
+  border-color: #3a3320;
+  border-left-color: #d29922;
+  background: #191710;
+}
+
+.kikx-question-card__receipt[data-answer-source='default'] .kikx-question-card__receipt-label {
+  color: #d29922;
+}
+
+.kikx-question-card__receipt-note {
+  margin: 0;
+  color: #8b949e;
+  font-size: calc(11px * 1.25);
+  line-height: 1.45;
+}
+
 /* --- Settled receipt ----------------------------------------------------
 
    A row the user just answered or dismissed stays on screen for its window

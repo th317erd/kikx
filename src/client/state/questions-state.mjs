@@ -267,6 +267,15 @@ export function settleQuestion(questions = [], questionID, options = {}) {
   let closedAt = numberOr(options.closedAt, Date.now());
   let settleAfter = numberOr(options.settleAfter, 0);
 
+  // Where the answer came from, when the caller knows. Without this the row kept
+  // the provenance of the OPEN question it used to be — `null` for a question
+  // nobody had answered yet — so answering wrote the words but not their
+  // authorship, and the receipt showed a human answer with no source marker at
+  // all. Every caller that writes an answer must say who wrote it.
+  let answerSource = USER_ANSWER_SOURCE === options.answerSource || DEFAULT_ANSWER_SOURCE === options.answerSource
+    ? options.answerSource
+    : null;
+
   // No window means no receipt: remove the row, exactly as closing used to.
   // Retention is opt-in by the caller that actually renders a receipt, so a
   // caller with nothing to show never leaves a terminal row in the model.
@@ -275,7 +284,16 @@ export function settleQuestion(questions = [], questionID, options = {}) {
 
   return sortQuestions(normalizeQuestionList(questions).map((question) => (
     question.id === id
-      ? { ...question, status, answer: answer ?? question.answer, closedAt, settleAfter }
+      ? {
+        ...question,
+        status,
+        answer: answer ?? question.answer,
+        // Only overwritten when the caller named a source: a dismissal settles a
+        // row without answering it, and must not relabel an existing answer.
+        answerSource: answerSource ?? question.answerSource,
+        closedAt,
+        settleAfter,
+      }
       : question
   )));
 }

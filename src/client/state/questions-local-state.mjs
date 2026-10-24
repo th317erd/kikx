@@ -21,6 +21,7 @@ import {
   settleQuestion,
   normalizeQuestionList,
   rememberClosedQuestionID,
+  USER_ANSWER_SOURCE,
 } from './questions-state.mjs';
 
 function numberOr(value, fallback) {
@@ -57,6 +58,10 @@ export function applyLocalAnswer(state, questionID, options = {}) {
   state.questions = settleQuestion(state.questions || [], id, {
     status: 'answered',
     answer: options.answer,
+    // This row was settled by a person typing into the answer box, so the
+    // provenance is 'user' and the receipt can say so. Leaving it unset let the
+    // row inherit the open question's `null` and the answer showed unlabelled.
+    answerSource: USER_ANSWER_SOURCE,
     closedAt: numberOr(options.closedAt, 0) || Date.now(),
     settleAfter: numberOr(options.settleAfter, 0),
   });
