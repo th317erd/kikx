@@ -52,6 +52,18 @@ export async function postJSON(app, url, body) {
   return readResponse(response);
 }
 
+export async function putJSON(app, url, body, options = {}) {
+  let response = await fetch(url, {
+    method: 'PUT',
+    headers: apiHeaders(app, {
+      'Content-Type': 'application/json',
+    }),
+    body: JSON.stringify(body),
+    keepalive: options.keepalive === true,
+  });
+  return readResponse(response);
+}
+
 export async function patchJSON(app, url, body) {
   let response = await fetch(url, {
     method: 'PATCH',

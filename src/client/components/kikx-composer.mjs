@@ -1,18 +1,17 @@
 'use strict';
 
-import { getSelectedFrames, upsertFrame, upsertSession } from '../state/kikx-state.mjs';
+import { upsertFrame, upsertSession } from '../state/kikx-state.mjs';
 import { shouldSubmitComposerKey } from './composer-keyboard.mjs';
 import { ensureAutoScrollAfterSend } from './kikx-frame-scroll-lock.mjs';
 import {
-  composerCaretAllowsHistory,
-  composerHistoryEntriesFromFrames,
-  composerHistoryDirectionForKey,
-  navigateComposerHistory,
-  recordComposerHistoryEntry,
-} from './composer-history.mjs';
+  clearComposerDraftWithServer,
+  flushComposerDraft,
+  syncComposerDraft,
+} from './composer-drafts.mjs';
 
 export function syncDraft(app, event) {
   app._state.draft = event.target.value;
+  syncComposerDraft(app, app._state.draft);
 }
 
 export async function onSubmit(app, event) {
@@ -33,10 +32,11 @@ export async function onSubmit(app, event) {
 
   app._state.status = 'Committing message...';
   app._state.statusKind = 'pending';
+  let sessionID = app._state.selectedSessionID;
+  await flushComposerDraft(app, sessionID).catch(() => false);
   clearComposerDraft(app);
 
   try {
-    let sessionID = app._state.selectedSessionID;
     let result = await app._postJSON(`/api/v1/sessions/${encodeURIComponent(sessionID)}/messages`, {
       text: draft,
       authorDisplayName: app._state.account?.name || null,
@@ -47,7 +47,7 @@ export async function onSubmit(app, event) {
     if (result.data.frame?.id)
       upsertFrame(sessionID, result.data.frame, app._state);
     ensureAutoScrollAfterSend(app);
-    recordComposerHistoryEntry(app._composerHistory, draft);
+    await clearComposerDraftWithServer(app, sessionID);
     app._forceScrollToBottomAfterRender = true;
     app._focusComposerAfterRender = true;
     await app._loadFrames(sessionID, { render: false, merge: true });
@@ -63,53 +63,11 @@ export async function onSubmit(app, event) {
 }
 
 export function onComposerKeydown(app, event) {
-  if (handleComposerHistoryKey(app, event))
-    return;
-
   if (!shouldSubmitComposerKey(event))
     return;
 
   event.preventDefault();
   event.target?.form?.requestSubmit();
-}
-
-export function handleComposerHistoryKey(app, event) {
-  let direction = composerHistoryDirectionForKey(event);
-  if (!direction)
-    return false;
-
-  let composer = event.target;
-  if (!composer)
-    return false;
-
-  if (!composerCaretAllowsHistory(direction, composer.value, composer.selectionStart))
-    return false;
-
-  syncComposerHistoryFromFrames(app);
-
-  let navigation = navigateComposerHistory(app._composerHistory, direction, composer.value);
-  if (!navigation.handled)
-    return false;
-
-  event.preventDefault();
-  composer.value = navigation.value ?? '';
-  app._state.draft = composer.value;
-
-  let caret = composer.value.length;
-  try {
-    composer.setSelectionRange(caret, caret);
-  } catch (_error) {}
-
-  return true;
-}
-
-export function syncComposerHistoryFromFrames(app) {
-  if (app._composerHistory.cursor !== -1)
-    return;
-
-  let entries = composerHistoryEntriesFromFrames(getSelectedFrames(app._state));
-  if (entries.length > 0)
-    app._composerHistory.entries = entries;
 }
 
 export function clearComposerDraft(app) {
@@ -129,6 +87,7 @@ export function restoreComposerDraftOnFailure(app, submittedDraft) {
     return;
 
   app._state.draft = submittedDraft;
+  syncComposerDraft(app, submittedDraft);
   let composer = app.querySelector('textarea[name="message"]');
   if (composer && composer.value === '')
     composer.value = submittedDraft;

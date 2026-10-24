@@ -3,6 +3,8 @@
 import { elements, $ } from '../lib/aeor-ui.mjs';
 import { createIcon } from '../lib/icons.mjs';
 import { buildScrollLockFloatingButton, buildScrollLockToolbar } from './kikx-scroll-lock.mjs';
+import { activateComposerDraftSession } from './composer-drafts.mjs';
+import './kikx-composer-history.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { createErrorSurfaceElement } from './kikx-error-surface.mjs';
 import { reattachAnswerNotice } from './answer-notice.mjs';
@@ -110,6 +112,10 @@ export function renderAppShell(app) {
     // confirmation on screen when the send resolved is not silently dropped.
     reattachAnswerNotice(app);
     app._afterRender(renderSnapshot);
+    activateComposerDraftSession(app, app._state.selectedSessionID).catch((error) => {
+      app._state.status = error.message;
+      app._state.statusKind = 'error';
+    });
     return true;
   }, { sessionID: app._state.selectedSessionID });
 
@@ -481,6 +487,10 @@ export function buildThreadSection(app, sessionID) {
   // Pinned to the lower-left (participant space): per-agent "thinking" panels,
   // so the thread never grows/collapses as an agent streams.
   let thinkingRack = document.createElement('kikx-thinking-rack');
+  let composerHistory = document.createElement('kikx-composer-history');
+  composerHistory.configure({ app, sessionID });
+  let historyChevron = createIcon('chevron-left');
+  historyChevron.classList.add('kikx-composer-history-button__chevron');
 
   return section.class('kikx-thread')(
     buildWindowHeader(app, {
@@ -496,13 +506,21 @@ export function buildThreadSection(app, sessionID) {
       thinkingRack,
     ),
     form.class('kikx-composer').onSubmit(app._onSubmit)(
+      composerHistory,
       div.class('kikx-composer__input-row')(
+        button
+          .type('button')
+          .class('kikx-composer-history-button')
+          .title('Message history (Ctrl+R)')
+          .ariaLabel('Message history')
+          .disabled(!hasSelectedSession)
+          .onClick(() => app._toggleComposerHistory?.())(historyChevron),
         textarea
           .name('message')
           .placeholder(hasSelectedSession ? 'Send a message' : 'Create or select a session first')
           .disabled(!hasSelectedSession)
           .onKeydown(app._onComposerKeydown)
-          .onInput(app._syncDraft)(app._state.draft),
+          .onInput(app._syncDraft)(app._activeComposerDraftSessionID === sessionID ? app._state.draft : ''),
         div.class('kikx-composer__actions')(
           button
             .type('button')

@@ -340,9 +340,40 @@ kikx-app {
 
 .kikx-composer__input-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: stretch;
   gap: 10px;
+}
+
+.kikx-composer-history-button {
+  display: grid;
+  width: 26px;
+  min-height: 80px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid #3b434b;
+  border-radius: 6px;
+  background: #242a30;
+  color: #88939e;
+  cursor: pointer;
+}
+
+.kikx-composer-history-button:hover,
+.kikx-composer-history-button:focus-visible {
+  border-color: #57636e;
+  color: #dce3ea;
+  outline: none;
+}
+
+.kikx-composer-history-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.kikx-composer-history-button__chevron {
+  width: 1.15em;
+  height: 1.15em;
+  transform: rotate(90deg);
 }
 
 .kikx-composer__actions {
@@ -1578,6 +1609,7 @@ kikx-typing-indicator {
 }
 
 .kikx-composer {
+  position: relative;
   display: grid;
   gap: 10px;
 }
@@ -1741,6 +1773,146 @@ kikx-typing-indicator {
   background: #181c20;
   color: #f5f7fa;
   font: inherit;
+}
+
+/* Composer reverse-search popup, anchored above the message box. */
+.kikx-composer-history-popover {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  max-height: min(420px, 65dvh);
+  overflow: hidden;
+  border: 1px solid #3b4652;
+  border-radius: 9px;
+  background: #11161b;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.58);
+}
+
+.kikx-composer-history-popover[hidden] {
+  display: none;
+}
+
+.kikx-composer-history__search-wrap {
+  padding: 9px;
+  border-bottom: 1px solid #29323a;
+}
+
+.kikx-composer-history__search {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 34px;
+  padding: 6px 9px;
+  border: 1px solid #3d4a56;
+  border-radius: 6px;
+  background: #181e24;
+  color: #f5f7fa;
+  font: inherit;
+  font-size: calc(13px * 1.25);
+}
+
+.kikx-composer-history__search:focus {
+  border-color: #3d6cff;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(61, 108, 255, 0.22);
+}
+
+.kikx-composer-history__status {
+  padding: 9px 12px;
+  color: #9ca8b4;
+  font-size: calc(12px * 1.25);
+}
+
+.kikx-composer-history__list {
+  display: flex;
+  min-height: 80px;
+  overflow-y: auto;
+  flex-direction: column;
+  overscroll-behavior: contain;
+}
+
+.kikx-composer-history__item {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 11px;
+  border-bottom: 1px solid #222b33;
+  color: #d8e0e8;
+  cursor: pointer;
+}
+
+.kikx-composer-history__item:hover,
+.kikx-composer-history__item.is-selected {
+  background: #1a2330;
+}
+
+.kikx-composer-history__body {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 3px;
+  min-width: 0;
+}
+
+.kikx-composer-history__text {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: calc(13px * 1.25);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.kikx-composer-history__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #788592;
+  font-size: calc(11px * 1.25);
+}
+
+.kikx-composer-history__badge {
+  padding: 1px 5px;
+  border: 1px solid #4b5c6d;
+  border-radius: 999px;
+  color: #a9c4dd;
+  font-size: calc(10px * 1.25);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.kikx-composer-history__delete {
+  --apb-size: 1.6rem;
+  --apb-fill: #ef4444;
+  --apb-icon: #ef4444;
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.kikx-composer-history__delete:not(aeor-progress-button) {
+  display: inline-grid;
+  width: var(--apb-size);
+  height: var(--apb-size);
+  padding: 0;
+  place-items: center;
+  border: 1px solid #7f1d1d;
+  border-radius: 50%;
+  background: transparent;
+  color: #ef4444;
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.kikx-composer-history__delete:not(aeor-progress-button):hover {
+  background: rgba(239, 68, 68, 0.16);
 }
 
 @media (max-width: 960px) {

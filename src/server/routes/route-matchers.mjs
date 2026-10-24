@@ -178,3 +178,38 @@ export function matchQuestionDismissRoute(pathname) {
     questionID: decodeURIComponent(match[1]),
   };
 }
+
+// Composer reverse-search and draft persistence. Drafts are hidden frames in
+// the session log, so they survive reloads and follow the user across hosts.
+export function matchSessionComposerRoute(pathname) {
+  let match = /^\/api\/v1\/sessions\/([^/]+)\/composer\/(history|drafts)$/.exec(pathname);
+  if (!match)
+    return null;
+
+  return {
+    sessionID: decodeURIComponent(match[1]),
+    resource: match[2],
+  };
+}
+
+export function matchSessionComposerDraftRoute(pathname) {
+  let match = /^\/api\/v1\/sessions\/([^/]+)\/composer\/drafts\/([^/]+)$/.exec(pathname);
+  if (!match)
+    return null;
+
+  return {
+    sessionID: decodeURIComponent(match[1]),
+    draftID: decodeURIComponent(match[2]),
+  };
+}
+
+export function matchSessionComposerHistoryItemRoute(pathname) {
+  let match = /^\/api\/v1\/sessions\/([^/]+)\/composer\/history\/([^/]+)$/.exec(pathname);
+  if (!match)
+    return null;
+
+  return {
+    sessionID: decodeURIComponent(match[1]),
+    frameID: decodeURIComponent(match[2]),
+  };
+}

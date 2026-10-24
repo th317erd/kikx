@@ -15,6 +15,7 @@ export {
 } from './frame-type-classes.mjs';
 
 export { FrameTypeUserMessage } from './frame-type-user-message.mjs';
+export { FrameTypeUserDraft } from './frame-type-user-draft.mjs';
 export { FrameTypeAgentMessage } from './frame-type-agent-message.mjs';
 export { FrameTypeCommandResult } from './frame-type-command-result.mjs';
 export { FrameTypeCompactionFrame } from './frame-type-compaction-frame.mjs';

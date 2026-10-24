@@ -37,6 +37,10 @@ const frameMethods = {
     return await this.frameStore.listFrameWindow(sessionID, options);
   },
 
+  async listRawFrameWindow(sessionID, options = {}) {
+    return await this.frameStore.listFrameWindow(sessionID, { ...options, raw: true });
+  },
+
   async listSessionPreviews(sessionIDs, options = {}) {
     return await this.frameStore.listSessionPreviews(sessionIDs, options);
   },

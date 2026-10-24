@@ -6,13 +6,13 @@ import {
 } from '../state/kikx-state.mjs';
 import { applyAgentConfigValues } from '../state/agent-state-utils.mjs';
 import { createThinkingBuffer } from '../state/thinking-state.mjs';
-import { createComposerHistoryState } from './composer-history.mjs';
 import './kikx-frame-item.mjs';
 import './kikx-chat-view.mjs';
 import './kikx-session-grid.mjs';
 import { installGlobalErrorCapture, uninstallGlobalErrorCapture } from '../lib/error-boundary.mjs';
 import { cleanupBindings } from '../lib/aeor-ui.mjs';
 import { installScrollDebugLogger } from '../lib/scroll-debug-logger.mjs';
+import { flushComposerDraft } from './composer-drafts.mjs';
 import {
   buildAuthShell,
   buildBreadcrumb,
@@ -65,6 +65,7 @@ import {
   loadDeletedSessions,
   restoreSession,
   patchJSON,
+  putJSON,
   postJSON,
   applyPreviewToGrid,
   flushPreviewRefresh,
@@ -140,11 +141,9 @@ import {
 } from './kikx-navigation.mjs';
 import {
   clearComposerDraft,
-  handleComposerHistoryKey,
   onComposerKeydown,
   onSubmit,
   restoreComposerDraftOnFailure,
-  syncComposerHistoryFromFrames,
   syncDraft,
 } from './kikx-composer.mjs';
 import {
@@ -220,7 +219,6 @@ export class KikxApp extends HTMLElement {
     this._frameRuntimeRefreshSessionIDs = new Set();
     this._frameRuntimeFlushScheduled = false;
     this._runtimeReconcileScheduled = false;
-    this._composerHistory = createComposerHistoryState();
     this._thinking = createThinkingBuffer();
     this._pendingPreviewSessionIDs = new Set();
     this._previewRefreshScheduled = false;
@@ -304,6 +302,7 @@ export class KikxApp extends HTMLElement {
     this._getJSON = async (url) => getJSON(this, url);
     this._postJSON = async (url, body) => postJSON(this, url, body);
     this._patchJSON = async (url, body) => patchJSON(this, url, body);
+    this._putJSON = async (url, body, options) => putJSON(this, url, body, options);
     this._deleteJSON = async (url) => deleteJSON(this, url);
     this._apiHeaders = (headers = {}) => apiHeaders(this, headers);
     this._syncDraft = (event) => syncDraft(this, event);
@@ -313,8 +312,6 @@ export class KikxApp extends HTMLElement {
     this._syncEditingSessionTitle = (event) => syncEditingSessionTitle(this, event);
     this._onSubmit = async (event) => onSubmit(this, event);
     this._onComposerKeydown = (event) => onComposerKeydown(this, event);
-    this._handleComposerHistoryKey = (event) => handleComposerHistoryKey(this, event);
-    this._syncComposerHistoryFromFrames = () => syncComposerHistoryFromFrames(this);
     this._loadAccount = async (options = {}) => loadAccount(this, options);
     this._openAccountEditor = async () => openAccountEditor(this);
     this._closeAccountEditor = () => closeAccountEditor(this);
@@ -393,6 +390,7 @@ export class KikxApp extends HTMLElement {
     this._scrollFramesToBottomImmediate = (frameList = this.querySelector('.kikx-frame-list')) => scrollFramesToBottomImmediate(this, frameList);
     this._fillOlderFrames = (frameList = this.querySelector('.kikx-frame-list')) => fillOlderFramesFromSentinel(this, frameList);
     this._toggleScrollLock = () => toggleScrollLock(this);
+    this._toggleComposerHistory = () => this.querySelector('kikx-composer-history')?.toggle?.();
     this._lockScrollToLatest = () => lockScrollToLatest(this);
     this._restoreFrameListScroll = (snapshot = {}) => restoreFrameListScroll(this, snapshot);
     this._onFrameContentResize = () => onFrameContentResize(this);
@@ -534,6 +532,14 @@ export class KikxApp extends HTMLElement {
         return;
       }
 
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'r') {
+        if (!this._state.selectedSessionID)
+          return;
+        event.preventDefault();
+        this._toggleComposerHistory?.();
+        return;
+      }
+
       if (!(event.ctrlKey || event.metaKey) && [ 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ' ].includes(event.key)) {
         this._frameListUserGestureUntil = Date.now() + 2000;
         this._ignoreFrameScrollUntil = 0;
@@ -549,6 +555,12 @@ export class KikxApp extends HTMLElement {
       this._lockScrollToLatest();
     };
     (globalThis.window || globalThis).addEventListener?.('keydown', this._onAppKeydown, true);
+    this._onPageHide = () => {
+      let sessionID = this._activeComposerDraftSessionID || this._state.selectedSessionID;
+      if (sessionID)
+        flushComposerDraft(this, sessionID, { keepalive: true }).catch(() => false);
+    };
+    (globalThis.window || globalThis).addEventListener?.('pagehide', this._onPageHide);
     installFrameRuntimeVisibilityDrain(this);
   }
 
@@ -563,9 +575,12 @@ export class KikxApp extends HTMLElement {
       (globalThis.window || globalThis).removeEventListener?.('popstate', this._onPopState);
     if (this._onAppKeydown)
       (globalThis.window || globalThis).removeEventListener?.('keydown', this._onAppKeydown, true);
+    if (this._onPageHide)
+      (globalThis.window || globalThis).removeEventListener?.('pagehide', this._onPageHide);
     this._onSessionEnter = null;
     this._onPopState = null;
     this._onAppKeydown = null;
+    this._onPageHide = null;
     if (this._previousScrollRestoration && globalThis.history && 'scrollRestoration' in globalThis.history)
       globalThis.history.scrollRestoration = this._previousScrollRestoration;
     this._previousScrollRestoration = null;

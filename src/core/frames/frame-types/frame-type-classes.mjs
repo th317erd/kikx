@@ -6,6 +6,7 @@
 
 import { FrameTypeDefault } from './frame-type-default.mjs';
 import { FrameTypeUserMessage } from './frame-type-user-message.mjs';
+import { FrameTypeUserDraft } from './frame-type-user-draft.mjs';
 import { FrameTypeAgentMessage } from './frame-type-agent-message.mjs';
 import { FrameTypeCommandResult } from './frame-type-command-result.mjs';
 import { FrameTypeCompactionFrame } from './frame-type-compaction-frame.mjs';
@@ -15,6 +16,7 @@ import { FrameTypeAgentProgress } from './frame-type-agent-progress.mjs';
 
 export const FRAME_TYPE_CLASSES = {
   UserMessage: FrameTypeUserMessage,
+  UserDraft: FrameTypeUserDraft,
   AgentMessage: FrameTypeAgentMessage,
   CommandResult: FrameTypeCommandResult,
   CompactionFrame: FrameTypeCompactionFrame,

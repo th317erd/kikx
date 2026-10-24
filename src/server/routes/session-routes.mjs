@@ -13,6 +13,9 @@ import {
 import { suspendSessionAgents } from '../../core/agents/agent-cancellation.mjs';
 import {
   matchSessionCancelRoute,
+  matchSessionComposerDraftRoute,
+  matchSessionComposerHistoryItemRoute,
+  matchSessionComposerRoute,
   matchSessionCompactionRetryRoute,
   matchSessionDeleteRoute,
   matchSessionRestoreRoute,
@@ -187,6 +190,81 @@ export async function handleSessionRoutes({ request, response, url, context }) {
     });
 
     writeJSON(response, 200, { data: result });
+    return true;
+  }
+
+  let composerRoute = matchSessionComposerRoute(url.pathname);
+  if (composerRoute) {
+    let account = await getRequestAccount(context, request);
+    if (!account?.id)
+      throw httpError(401, 'Authentication required');
+    let frameRuntime = context.require('frameRuntime');
+
+    if (request.method === 'GET' && composerRoute.resource === 'history') {
+      let result = await frameRuntime.listComposerHistory(composerRoute.sessionID, {
+        userID: account.id,
+        query: url.searchParams.get('q') || '',
+        limit: parsePositiveInteger(url.searchParams.get('limit'), 30),
+        before: parseOptionalNonNegativeInteger(url.searchParams.get('before')),
+      });
+      writeJSON(response, 200, { data: result });
+      return true;
+    }
+
+    if (request.method === 'GET' && composerRoute.resource === 'drafts') {
+      let result = await frameRuntime.listComposerDrafts(composerRoute.sessionID, {
+        userID: account.id,
+        limit: parsePositiveInteger(url.searchParams.get('limit'), 50),
+        before: parseOptionalNonNegativeInteger(url.searchParams.get('before')),
+      });
+      writeJSON(response, 200, { data: result });
+      return true;
+    }
+  }
+
+  let draftRoute = matchSessionComposerDraftRoute(url.pathname);
+  if (draftRoute && request.method === 'PUT') {
+    let account = await getRequestAccount(context, request);
+    if (!account?.id)
+      throw httpError(401, 'Authentication required');
+    let body = await readJSON(request);
+    if (typeof body.text !== 'string')
+      throw httpError(400, 'text must be a string');
+    let frameRuntime = context.require('frameRuntime');
+    let draft = await frameRuntime.upsertComposerDraft(draftRoute.sessionID, {
+      draftID: draftRoute.draftID,
+      userID: account.id,
+      authorDisplayName: account.name || 'You',
+      text: body.text,
+    });
+    writeJSON(response, 200, { data: { draft } });
+    return true;
+  }
+
+  if (draftRoute && request.method === 'DELETE') {
+    let account = await getRequestAccount(context, request);
+    if (!account?.id)
+      throw httpError(401, 'Authentication required');
+    let frameRuntime = context.require('frameRuntime');
+    await frameRuntime.deleteComposerDraft(draftRoute.sessionID, {
+      draftID: draftRoute.draftID,
+      userID: account.id,
+    });
+    writeJSON(response, 200, { data: { draft: null } });
+    return true;
+  }
+
+  let historyItemRoute = matchSessionComposerHistoryItemRoute(url.pathname);
+  if (historyItemRoute && request.method === 'DELETE') {
+    let account = await getRequestAccount(context, request);
+    if (!account?.id)
+      throw httpError(401, 'Authentication required');
+    let frameRuntime = context.require('frameRuntime');
+    let redacted = await frameRuntime.redactUserMessageFrame(historyItemRoute.sessionID, {
+      frameID: historyItemRoute.frameID,
+      userID: account.id,
+    });
+    writeJSON(response, 200, { data: { frame: redacted } });
     return true;
   }
 

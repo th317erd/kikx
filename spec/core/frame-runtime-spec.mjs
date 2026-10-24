@@ -1745,3 +1745,58 @@ function quietLogger() {
     log() {},
   };
 }
+
+test('FrameRuntime persists composer drafts and searches user message history', async () => {
+  let aeordb = createClient();
+  let runtime = createRuntime({
+    aeordb,
+    ids: [ 'ses_1', ...Array.from({ length: 80 }, (_value, index) => `generated_${index}`) ],
+  });
+  await runtime.createSession({ title: 'Composer history' });
+
+  let first = await runtime.appendUserMessage('ses_1', { text: 'first private note', userID: 'usr_1' });
+  await runtime.appendUserMessage('ses_1', { text: 'second public note', userID: 'usr_1' });
+  await runtime.upsertComposerDraft('ses_1', {
+    userID: 'usr_1',
+    draftID: 'draft_one',
+    text: 'unfinished draft',
+  });
+
+  let history = await runtime.listComposerHistory('ses_1', { userID: 'usr_1', limit: 10 });
+  assert.deepEqual(history.entries.map((entry) => entry.text), [
+    'first private note',
+    'second public note',
+    'unfinished draft',
+  ]);
+  assert.equal(history.entries.at(-1).kind, 'draft');
+
+  let filtered = await runtime.listComposerHistory('ses_1', { userID: 'usr_1', query: 'private', limit: 10 });
+  assert.deepEqual(filtered.entries.map((entry) => entry.text), [ 'first private note' ]);
+
+  let drafts = await runtime.listComposerDrafts('ses_1', { userID: 'usr_1' });
+  assert.deepEqual(drafts.drafts.map((draft) => draft.text), [ 'unfinished draft' ]);
+
+  await runtime.upsertComposerDraft('ses_1', {
+    userID: 'usr_1',
+    draftID: 'draft_one',
+    text: 'updated unfinished draft',
+  });
+  history = await runtime.listComposerHistory('ses_1', { userID: 'usr_1', limit: 10 });
+  assert.equal(history.entries.at(-1).text, 'updated unfinished draft');
+
+  await runtime.deleteComposerDraft('ses_1', { userID: 'usr_1', draftID: 'draft_one' });
+  history = await runtime.listComposerHistory('ses_1', { userID: 'usr_1', limit: 10 });
+  assert.equal(history.entries.some((entry) => entry.kind === 'draft'), false);
+
+  await runtime.redactUserMessageFrame('ses_1', {
+    userID: 'usr_1',
+    frameID: first.frame.id,
+  });
+  history = await runtime.listComposerHistory('ses_1', { userID: 'usr_1', limit: 10 });
+  assert.deepEqual(history.entries.map((entry) => entry.text), [ 'second public note' ]);
+  let raw = await runtime.listRawFrameWindow('ses_1', { limit: 100 });
+  let redactedFrame = raw.frames.find((frame) => frame.id === first.frame.id);
+  assert.equal(redactedFrame.hidden, true);
+  assert.equal(redactedFrame.deleted, true);
+  assert.match(redactedFrame.content.text, /^<REDACTED BY usr_1 AT /);
+});

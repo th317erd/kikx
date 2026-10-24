@@ -162,11 +162,13 @@ export class FrameStorePreviewBase extends FrameStoreScheduledBase {
         frames.push(frame);
     }
 
-    let heads = projectFrameMessages(frames).filter(isPreviewVisibleFrame);
+    let outputFrames = options.raw === true
+      ? frames
+      : projectFrameMessages(frames).filter(isPreviewVisibleFrame);
 
     let pagedFromCursor = Boolean(startID) || after != null;
     return {
-      frames: heads,
+      frames: outputFrames,
       total,
       hasMore: startOffset > 0,
       ...(pagedFromCursor ? { hasMoreNewer: startOffset + (windowPaths.length || 0) < total } : {}),
