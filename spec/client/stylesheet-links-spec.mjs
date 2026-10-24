@@ -198,3 +198,11 @@ test('inline code uses the shared compact line box in markdown summaries', async
   assert.doesNotMatch(css, /\.kikx-frame__compact-description code \{[^}]*font-size: inherit/);
   assert.match(css, /\.kikx-frame__compact-markdown \{[^}]*line-height: 1\.55/);
 });
+
+
+test('timestamps stay quiet until hover and disappear from minimized rows', async () => {
+  let css = await readFile(path.join(STYLES_DIR, 'app.css'), 'utf8');
+  assert.match(css, /\.kikx-frame__timestamp \{[^}]*opacity: 0\.4/);
+  assert.match(css, /\.kikx-frame:hover \.kikx-frame__timestamp[^{]*\{[^}]*opacity: 1/);
+  assert.match(css, /\.kikx-frame--minimized \.kikx-frame__timestamp \{[^}]*display: none/);
+});

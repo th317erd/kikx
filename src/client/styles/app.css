@@ -646,10 +646,22 @@ kikx-app {
 .kikx-frame__timestamp {
   color: #87929d;
   font-variant-numeric: tabular-nums;
+  opacity: 0.4;
+  transition: opacity 120ms ease;
 }
 
 .kikx-frame__timestamp {
   white-space: nowrap;
+}
+
+.kikx-frame:hover .kikx-frame__timestamp,
+.kikx-frame:focus-within .kikx-frame__timestamp {
+  opacity: 1;
+}
+
+/* Minimized tool rows are compact header chips; the timestamp is noise there. */
+.kikx-frame--minimized .kikx-frame__timestamp {
+  display: none;
 }
 
 .kikx-frame p {
