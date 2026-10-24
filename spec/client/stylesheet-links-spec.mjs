@@ -215,8 +215,8 @@ test('minimized command labels claim enough width for ordinary tool names', asyn
 });
 
 
-test('the floating scroll-lock control is twice the normal button size', async () => {
+test('the floating scroll-lock control is one and a half times the normal button size', async () => {
   let css = await readFile(path.join(STYLES_DIR, 'app.css'), 'utf8');
-  assert.match(css, /\.kikx-scroll-lock-floating \{[^}]*width: 60px;[^}]*height: 60px;/);
-  assert.match(css, /\.kikx-scroll-lock-floating svg \{[^}]*width: 2\.1em;[^}]*height: 2\.1em;/);
+  assert.match(css, /\.kikx-scroll-lock-floating \{[^}]*width: 45px;[^}]*height: 45px;/);
+  assert.match(css, /\.kikx-scroll-lock-floating svg \{[^}]*width: 1\.575em;[^}]*height: 1\.575em;/);
 });
