@@ -224,7 +224,7 @@ test('the floating scroll-lock control is one and a half times the normal button
 
 test('frame quick actions reserve a right gutter and appear on hover', async () => {
   let css = await readFile(path.join(STYLES_DIR, 'app.css'), 'utf8');
-  assert.match(css, /\.kikx-frame-stream \{[^}]*padding: 0 52px 1px 0/);
+  assert.match(css, /\.kikx-frame-stream \{[^}]*padding: 0 72px 1px 0/);
   assert.match(css, /\.kikx-frame:hover \.kikx-frame__quick-actions[^{]*\{[^}]*opacity: 1/);
   assert.match(css, /\.kikx-frame--minimized \.kikx-frame__quick-actions \{[^}]*display: none/);
   assert.match(css, /\.kikx-frame__quick-action svg \{[^}]*width: 17px/);

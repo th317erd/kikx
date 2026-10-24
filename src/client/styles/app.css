@@ -518,9 +518,9 @@ kikx-app {
   /* One pixel of breathing room below the last card. ScrollTop is clamped to an
      integer while layout can end on a fractional pixel; without this the last
      card's bottom border can be shaved by the scroll container. The right gutter
-     keeps a right-aligned UserMessage from pushing its quick-action rail under
-     the scrollbar/clip edge. */
-  padding: 0 52px 1px 0;
+     leaves comfortable clearance beyond the quick-action rail so right-aligned
+     UserMessages cannot push the opaque rail under the scrollbar/clip edge. */
+  padding: 0 72px 1px 0;
   list-style: none;
 }
 
