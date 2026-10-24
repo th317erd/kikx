@@ -59,9 +59,6 @@ function createApp() {
     async _deleteJSON() {
       return null;
     },
-    async _refreshAuth() {
-      return false;
-    },
   };
   return { app, textarea };
 }

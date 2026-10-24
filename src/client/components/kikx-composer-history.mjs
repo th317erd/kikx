@@ -21,7 +21,6 @@ export class KikxComposerHistory extends HTMLElement {
     this._query = '';
     this._selectedIndex = -1;
     this._searchTimer = null;
-    this._authRetries = 0;
     this._selecting = false;
     this._outsideHandler = null;
   }
@@ -64,7 +63,6 @@ export class KikxComposerHistory extends HTMLElement {
     this._search.disabled = false;
     this._query = '';
     this._before = null;
-    this._authRetries = 0;
     this._entries = [];
     this._selectedIndex = -1;
     this._hasMoreOlder = true;
@@ -225,23 +223,9 @@ export class KikxComposerHistory extends HTMLElement {
       this._setStatus(this._entries.length === 0 ? 'No matching messages.' : '', this._entries.length === 0);
     } catch (error) {
       let message = error?.message || 'History unavailable.';
-      if (/Authentication required/i.test(message)) {
-        let refreshed = false;
-        try {
-          refreshed = await this._app?._refreshAuth?.();
-        } catch (_error) {}
-        if (refreshed) {
-          this._setStatus('Connecting...', true);
-          setTimeout(() => {
-            if (this.isOpen)
-              this._load({ reset });
-          }, 0);
-        } else {
-          this._setStatus('Session expired. Please sign in again.', true);
-        }
-      } else {
-        this._setStatus(message, true);
-      }
+      this._setStatus(/Authentication required/i.test(message)
+        ? 'Session expired. Please sign in again.'
+        : message, true);
     } finally {
       this._loading = false;
     }

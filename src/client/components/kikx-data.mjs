@@ -36,51 +36,72 @@ import { refreshSubSessionCards } from './kikx-sub-session-frame.mjs';
 import { readResponse } from './kikx-app-helpers.mjs';
 import { createThinkingBuffer } from '../state/thinking-state.mjs';
 
-export async function getJSON(app, url) {
-  let response = await fetch(url, {
-    headers: apiHeaders(app),
+async function requestJSON(app, url, options = {}) {
+  let request = {
+    ...options,
+    headers: apiHeaders(app, options.headers),
+  };
+  let response = await fetch(url, request);
+  if (response.status !== 401 || !shouldRefreshForURL(url))
+    return response;
+
+  let refreshed = await refreshAuthToken(app);
+  if (!refreshed)
+    return response;
+
+  return await fetch(url, {
+    ...options,
+    headers: apiHeaders(app, options.headers),
   });
-  return readResponse(response);
+}
+
+function shouldRefreshForURL(url) {
+  try {
+    let path = new URL(url, globalThis.location?.origin || 'http://localhost').pathname;
+    return !path.startsWith('/api/v1/auth/');
+  } catch (_error) {
+    return true;
+  }
+}
+
+export async function getJSON(app, url) {
+  return readResponse(await requestJSON(app, url));
 }
 
 export async function postJSON(app, url, body) {
-  let response = await fetch(url, {
+  return readResponse(await requestJSON(app, url, {
     method: 'POST',
-    headers: apiHeaders(app, {
+    headers: {
       'Content-Type': 'application/json',
-    }),
+    },
     body: JSON.stringify(body),
-  });
-  return readResponse(response);
+  }));
 }
 
 export async function putJSON(app, url, body, options = {}) {
-  let response = await fetch(url, {
+  return readResponse(await requestJSON(app, url, {
     method: 'PUT',
-    headers: apiHeaders(app, {
+    headers: {
       'Content-Type': 'application/json',
-    }),
+    },
     body: JSON.stringify(body),
     keepalive: options.keepalive === true,
-  });
-  return readResponse(response);
+  }));
 }
 
 export async function patchJSON(app, url, body) {
-  let response = await fetch(url, {
+  return readResponse(await requestJSON(app, url, {
     method: 'PATCH',
-    headers: apiHeaders(app, {
+    headers: {
       'Content-Type': 'application/json',
-    }),
+    },
     body: JSON.stringify(body),
-  });
-  return readResponse(response);
+  }));
 }
 
 export async function deleteJSON(app, url) {
-  let response = await fetch(url, {
+  let response = await requestJSON(app, url, {
     method: 'DELETE',
-    headers: apiHeaders(app),
   });
   if (response.status === 204)
     return null;

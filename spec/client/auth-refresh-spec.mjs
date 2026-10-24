@@ -11,7 +11,7 @@ const { document, window } = installDom();
 globalThis.document = document;
 globalThis.window = window;
 
-const { refreshAuthToken } = await import('../../src/client/components/kikx-data.mjs');
+const { getJSON, refreshAuthToken } = await import('../../src/client/components/kikx-data.mjs');
 
 function createStorage() {
   let values = new Map();
@@ -145,6 +145,44 @@ test('refreshAuthToken recovers if a sibling tab rotates during the request', as
     assert.equal(await refreshAuthToken(app), true);
     assert.equal(app._state.authToken, 'sibling-access');
     assert.equal(app._state.refreshToken, 'sibling-refresh');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('shared API requests retry once after a centralized 401 refresh', async () => {
+  installStorage();
+  let calls = [];
+  let originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    calls.push(url);
+    if (url === '/api/v1/auth/refresh') {
+      return new Response(JSON.stringify({
+        data: { token: 'access-2', refresh_token: 'refresh-2', expires_at: Date.now() + 60_000 },
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    if (calls.filter((entry) => entry === '/api/v1/sessions/ses_1/frames').length === 1) {
+      return new Response(JSON.stringify({ error: { message: 'Authentication required' } }), {
+        status: 401,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    return new Response(JSON.stringify({ data: { frames: [] } }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+  try {
+    let app = {
+      _state: { authToken: 'expired', refreshToken: 'refresh-1' },
+    };
+    let result = await getJSON(app, '/api/v1/sessions/ses_1/frames');
+    assert.deepEqual(result.data.frames, []);
+    assert.deepEqual(calls, [
+      '/api/v1/sessions/ses_1/frames',
+      '/api/v1/auth/refresh',
+      '/api/v1/sessions/ses_1/frames',
+    ]);
   } finally {
     globalThis.fetch = originalFetch;
   }
