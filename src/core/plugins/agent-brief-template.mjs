@@ -59,7 +59,7 @@ const BRIEF_TOOL_LINES_COMMON = [
   '  control:   stop, set-character, exec-suspend, exec-resume, exec-kill;',
   '             session-control (coordinator suspension recovery)',
   '  help:      help (lists all tools; each tool has its own help)',
-  '  work:      read-file, write-file, exec, exec-list, exec-status, exec-read,',
+  '  work:      read-file, write-file, exec, exec-script, exec-list, exec-status, exec-read,',
   '             exec-grep, fetch, search, feedback-report',
   '  ask:       question-list (filters: scope tree/session/all, status, query,',
   '             session/agent/group/priority), question-get, question-create',

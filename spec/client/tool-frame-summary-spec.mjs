@@ -131,6 +131,18 @@ test('exec uses the gear icon without repeating the command inline', () => {
   assert.equal(summary.status, 'running');
 });
 
+test('exec-script uses a script header and keeps the entry in the body', () => {
+  let frame = {
+    id: 'script-1',
+    type: 'ScriptToolFrame',
+    content: { toolName: 'exec-script', status: 'running', input: { entry: 'src/main.mjs' } },
+  };
+
+  assert.deepEqual(compactFrameHeader(frame), { label: 'Script', icon: 'terminal' });
+  assert.equal(compactFrameBodyDescription(frame), 'Run script src/main.mjs');
+  assert.equal(compactFrameSummary(frame).icon, 'terminal');
+});
+
 test('a completed exec result says completed instead of Running', () => {
   let summary = compactFrameSummary({
     id: 'exec-result',

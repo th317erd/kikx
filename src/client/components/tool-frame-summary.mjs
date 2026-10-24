@@ -26,6 +26,7 @@ const TOOL_ICONS = new Map([
   [ 'output-read', 'eyeball' ],
   [ 'write-file', 'quill' ],
   [ 'exec', 'gear' ],
+  [ 'exec-script', 'terminal' ],
   [ 'exec-grep', 'search' ],
   [ 'web-search', 'search' ],
   [ 'web-fetch', 'fetch' ],
@@ -125,6 +126,7 @@ const COMPACT_HEADER_LABELS = new Map([
   [ 'exec-read', 'Read Output' ],
   [ 'output-read', 'Read Output' ],
   [ 'write-file', 'Write File' ],
+  [ 'exec-script', 'Script' ],
   [ 'exec-status', 'Exec Status' ],
   [ 'exec-list', 'Exec List' ],
   [ 'exec-grep', 'Exec Search' ],
@@ -689,6 +691,11 @@ function toolDescription(toolName, input, status = 'running', frame = null) {
       return path ? `-> Write file ${path}` : '-> Write file';
     case 'exec':
       return status === 'success' ? 'Command completed' : status === 'error' ? 'Command failed' : 'Running command';
+    case 'exec-script': {
+      let entry = inputField(input, 'entry')
+        || (isPlainObject(input.packageJson) ? text(input.packageJson.main) : '');
+      return entry ? `Run script ${entry}` : 'Run script';
+    }
     case 'web-search':
       return query ? `Search for ${query}` : 'Search the web';
     case 'web-fetch':

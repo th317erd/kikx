@@ -11,6 +11,7 @@ export {
 } from './question-tools.mjs';
 export { CwdClearTool, CwdGetTool, CwdSetTool } from './cwd-tools.mjs';
 export { ExecTool } from './exec-tool.mjs';
+export { ExecScriptTool } from './exec-script-tool.mjs';
 export { FeedbackReportTool } from './feedback-tool.mjs';
 export { LocalCommandExecutionService } from './local-command-execution-service.mjs';
 export { LocalFileAccessService } from './local-file-access-service.mjs';
@@ -70,3 +71,9 @@ export { WebFetchTool } from './web-fetch-tool.mjs';
 export { WebSearchTool } from './web-search-tool.mjs';
 export { WriteFileTool } from './write-file-tool.mjs';
 export { registerBuiltInTools } from './register-built-in-tools.mjs';
+export {
+  buildScriptShellCommand,
+  normalizeScriptPath,
+  prepareScriptWorkspace,
+  removeScriptWorkspace,
+} from './script-workspace.mjs';

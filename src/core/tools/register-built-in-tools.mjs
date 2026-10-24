@@ -10,6 +10,7 @@ import {
   QuestionGetTool,
 } from './question-tools.mjs';
 import { ExecTool } from './exec-tool.mjs';
+import { ExecScriptTool } from './exec-script-tool.mjs';
 import { FeedbackReportTool } from './feedback-tool.mjs';
 import {
   CwdClearTool,
@@ -70,6 +71,7 @@ export const BUILT_IN_TOOLS = [
   [ 'read-file', ReadFileTool ],
   [ 'write-file', WriteFileTool ],
   [ 'exec', ExecTool ],
+  [ 'exec-script', ExecScriptTool ],
   [ 'exec-list', ExecListTool ],
   [ 'exec-status', ExecStatusTool ],
   [ 'exec-read', ExecReadTool ],

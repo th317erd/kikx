@@ -382,6 +382,33 @@ export class ShellToolUse extends ToolUse {
   }
 }
 
+export class ScriptToolUse extends ShellToolUse {
+  static toolName = 'exec-script';
+
+  displayName() {
+    return 'Script';
+  }
+
+  renderSummaryText() {
+    return this.isResultFrame ? this.resultSummary() : this.callSummary();
+  }
+
+  callSummary() {
+    return this.input.entry ? `Running script: ${this.input.entry}...` : 'Running script...';
+  }
+
+  resultSummary() {
+    let outcome = this.status === 'error' ? 'failed' : 'completed';
+    return this.input.entry ? `Script ${outcome}: ${this.input.entry}` : `Script ${outcome}.`;
+  }
+
+  renderArgumentsDetails() {
+    // Unlike exec, the script and package are the interesting payload, so keep
+    // the generic lazy JSON disclosure available for inspection.
+    return ToolUse.prototype.renderArgumentsDetails.call(this);
+  }
+}
+
 export class WebSearchUse extends ToolUse {
   static toolName = 'web-search';
 

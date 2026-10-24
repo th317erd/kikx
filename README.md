@@ -12,7 +12,7 @@ The old Mythix/Mythix ORM/Solr application is archived in `old-app/` for referen
 - Internal slash commands such as `/invite` and `/compact`, routed before agent providers.
 - Teams of actors: teams may include agents and real users, and `/invite` can invite a whole team.
 - Agentic loop primitives for responding, null responses, forwarding, progress updates, continuation scheduling, todo lists, per-session cwd, and completion self-review.
-- Tool system with persisted tool results, typed tool frames, range/grep/search access for large outputs, web search/fetch, database search/fetch, file read/write, async shell execution, process inspection, session/team management, todo management, and feedback reporting.
+- Tool system with persisted tool results, typed tool frames, range/grep/search access for large outputs, web search/fetch, database search/fetch, file read/write, async shell and temporary-script execution, process inspection, session/team management, todo management, and feedback reporting.
 - Browser client with magic-link auth, sessions, agents, teams, account profile editing, markdown rendering, custom tool-frame components, token/status display, SSE updates, and no shadow DOM.
 - Asynchronous context compaction using `CompactionFrame` records and a manual `/compact` command.
 
@@ -161,6 +161,8 @@ Agent-specific behavior belongs in plugins. Plugins can define:
 The built-in tool execution service stores every tool result in the configured database. Small outputs are returned inline to the agent; large outputs return a pointer with instructions for `output-read`, `output-grep`, `output-search`, `database-fetch`, or range reads.
 
 Long-running shell work is managed by the async process system. `exec` starts managed processes, waits briefly for very short commands, stores output, exposes process inspection/kill/read/grep tools, and wakes the agent when long work completes.
+
+`exec-script` uses that same managed process pipeline for temporary Node.js programs. It writes the entry script, `package.json`, and optional supporting files to a fresh directory under the system temp root, installs dependencies with npm when declared, runs the entry with the server's Node binary, and returns the usual exit code/stdout/stderr. This replaces long chains of `exec` calls when a task needs real control flow or several files; set `keepTempDir` when you need to inspect the generated workspace after failure.
 
 ## Agentic Script
 

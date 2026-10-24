@@ -22,6 +22,7 @@ const EXPECTED_TAGS = [
   'kikx-cwd-tool-use',
   'kikx-feedback-tool-use',
   'kikx-shell-tool-use',
+  'kikx-script-tool-use',
   'kikx-web-search-use',
   'kikx-fetch-use',
   'kikx-read-file-use',
