@@ -330,8 +330,8 @@ test('AgentInterface asks with the raw trigger message and builds two-tier brief
   assert.equal(askCall.prompt, 'hello');
   assert.match(askCall.startBrief, /^Kikx Advanced Agent Harness - v/);
   assert.match(askCall.startBrief, /Precepts — MANDATORY/);
-  assert.match(askCall.messageBrief, /^Message from /);
-  assert.match(askCall.messageBrief, /hello/);
+  assert.ok(askCall.messageBrief.startsWith('hello'));
+  assert.match(askCall.messageBrief, /Turn context — from /);
 });
 
 test('AgentInterface base loop runs first-message hook before asking the provider', async () => {
@@ -357,8 +357,8 @@ test('AgentInterface base loop runs first-message hook before asking the provide
   assert.match(agent.calls[1].startBrief, /Character: You are a pragmatic engineer\./);
   assert.match(agent.calls[1].startBrief, /Behavior — MANDATORY:/);
   // Brief B: sender, message, compact state.
-  assert.match(agent.calls[1].messageBrief, /^Message from /);
-  assert.match(agent.calls[1].messageBrief, /hello/);
+  assert.ok(agent.calls[1].messageBrief.startsWith('hello'));
+  assert.match(agent.calls[1].messageBrief, /Turn context — from /);
   assert.match(agent.calls[1].messageBrief, /todo:/);
   assert.match(agent.calls[1].messageBrief, /cwd:/);
   assert.match(agent.calls[1].messageBrief, /coord:/);
@@ -666,9 +666,9 @@ test('AgentInterface prompt describes agent-authored trigger frames accurately',
 
   let askCall = agent.calls.find((call) => call.method === 'ask');
   assert.ok(askCall);
-  // Brief B labels the sender accurately and carries the agent-authored message.
-  assert.match(askCall.messageBrief, /Message from Reviewer /);
-  assert.match(askCall.messageBrief, /Coder, can you sanity-check this\?/);
+  // Brief B starts with the agent-authored message and labels the sender afterward.
+  assert.ok(askCall.messageBrief.startsWith('Coder, can you sanity-check this?'));
+  assert.match(askCall.messageBrief, /Turn context — from Reviewer /);
   // Only 2 parties (two agents) are present, so no coordinator preamble (D3).
   assert.doesNotMatch(askCall.startBrief, /COORDINATOR PREAMBLE/);
 });

@@ -74,10 +74,18 @@ export function buildModelMessages(params = {}, options = {}) {
 
   messages.push({ role: 'system', content: systemPrompt });
 
+  // Brief A is scaffolding, not conversation history. Put it at the tail of
+  // this turn's prompt instead of between the system message and history so the
+  // history prefix stays byte-identical from one turn to the next. The previous
+  // turn's final user message starts with the raw user text, which is exactly
+  // what the next turn replays as history; the provider can therefore reuse the
+  // cached prefix through that text. Brief A only appears on (re)starts and is
+  // beyond that reusable prefix.
+  let startBriefText = '';
   if (!isRawPrompt && shouldSendStartBrief(params).send) {
     let startBrief = buildStartBrief(params);
     if (startBrief.text.trim() !== '') {
-      messages.push({ role: 'user', content: startBrief.text });
+      startBriefText = startBrief.text;
       markStartBriefSent(params);
     }
   }
@@ -104,7 +112,11 @@ export function buildModelMessages(params = {}, options = {}) {
     return messages;
   }
 
-  let messageBrief = buildMessageBrief({ ...params, messageText: resolvePromptContent(params) });
+  let messageBrief = buildMessageBrief({
+    ...params,
+    messageText: resolvePromptContent(params),
+    startBriefText,
+  });
   // A hidden/continuation frame must still carry its message. Providers fall back
   // to `frame.content.text` when the prompt is empty, so only substitute that
   // fallback when no brief text can be produced at all.

@@ -40,6 +40,7 @@ const promptMethods = {
       agentID: normalizeOptionalID(prompt.agentID),
       agentName: normalizeOptionalID(prompt.agentName),
       userText,
+      messageText: typeof prompt.messageText === 'string' ? prompt.messageText : userText,
       messages,
     };
     let frame = {

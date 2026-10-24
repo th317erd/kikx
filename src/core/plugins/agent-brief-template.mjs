@@ -175,6 +175,7 @@ export function buildMessageBrief(context = {}) {
   let sender = resolveBriefSender(context);
   let stamp = resolveBriefTimestamp(context);
   let message = normalizeBriefString(context.messageText) || normalizeBriefString(context.frame?.content?.text);
+  let startBriefText = normalizeBriefString(context.startBriefText);
   let todo = resolveBriefTodo(context);
   let questions = resolveBriefQuestions(context);
   let cwd = normalizeBriefString(context.cwdState?.cwd || context.cwd) || 'none';
@@ -184,9 +185,12 @@ export function buildMessageBrief(context = {}) {
 
   return {
     text: [
-      `Message from ${sender} ${stamp}:`,
+      // The raw message must stay first. The next turn replays it as a history
+      // turn, so everything before it would break the provider's cached prefix.
       message,
       '',
+      ...(startBriefText ? [ startBriefText, '' ] : []),
+      `Turn context — from ${sender} ${stamp}:`,
       `todo:    ${todo}`,
       ...(questions ? [ `open:    ${questions}` ] : []),
       `cwd:     ${cwd}`,

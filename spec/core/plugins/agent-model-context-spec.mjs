@@ -23,12 +23,12 @@ import {
 
 function startBriefMessages(messages) {
   return messages.filter((message) => typeof message.content === 'string'
-    && message.content.startsWith(START_BRIEF_BANNER_PREFIX));
+    && message.content.includes(START_BRIEF_BANNER_PREFIX));
 }
 
 function messageBriefMessages(messages) {
   return messages.filter((message) => typeof message.content === 'string'
-    && message.content.startsWith('Message from '));
+    && message.content.includes('Turn context — from '));
 }
 
 test('frameToModelTurn maps a UserMessage to a user turn', () => {
@@ -239,8 +239,8 @@ test('Brief B renders microsecond frame timestamps as a sane ISO date', () => {
     agent: { id: 'agent_1', name: 'Gemma' },
     session: { id: 'ses_1', participantAgentIDs: [ 'agent_1' ], coordinatorAgentID: 'agent_1' },
   });
-  let header = text.split('\n')[0];
-  assert.match(header, /^Message from Save Test 544 2026-/);
+  let header = text.split('\n').find((line) => line.startsWith('Turn context — from '));
+  assert.match(header, /^Turn context — from Save Test 544 2026-/);
   assert.doesNotMatch(header, /058\d\d/);
 });
 
@@ -267,8 +267,8 @@ test('Brief B carries sender, message, and compact dynamic state', () => {
     },
   });
 
-  assert.ok(text.startsWith('Message from Wyatt Greenway '));
-  assert.match(text, /How are you Gemma\?/);
+  assert.ok(text.startsWith('How are you Gemma?'));
+  assert.match(text, /Turn context — from Wyatt Greenway 2026-/);
   assert.match(text, /todo:    2 item\(s\); focus: Review parser; items: Review parser \| \[done\] Ship notes/);
   assert.match(text, /cwd:     \/tmp\/kikx-work/);
   assert.match(text, /coord:   true/);
@@ -291,7 +291,7 @@ test('the system prompt carries the communication contract', () => {
   assert.match(SESSION_SYSTEM_PROMPT, /newest request wins/);
 });
 
-test('buildModelMessages assembles system, Brief A (once), history (sans trigger), then Brief B', () => {
+test('buildModelMessages keeps history first and moves Brief A and dynamic context to the tail', () => {
   let messages = buildModelMessages({
     prompt: 'newest question',
     frame: { id: 'trigger', type: 'UserMessage', authorType: 'user', authorID: 'usr_1', content: { text: 'newest question' } },
@@ -306,16 +306,17 @@ test('buildModelMessages assembles system, Brief A (once), history (sans trigger
 
   assert.equal(messages[0].role, 'system');
   assert.equal(messages[0].content, SESSION_SYSTEM_PROMPT);
-  // Brief A appears exactly once, before history.
+  // Brief A appears exactly once, in the final turn after the reusable history prefix.
   assert.equal(startBriefMessages(messages).length, 1);
   let briefAIndex = messages.findIndex((message) => message.role === 'user'
-    && typeof message.content === 'string' && message.content.startsWith(START_BRIEF_BANNER_PREFIX));
+    && typeof message.content === 'string' && message.content.includes(START_BRIEF_BANNER_PREFIX));
   let historyIndex = messages.findIndex((message) => message.content === 'older turn');
-  assert.ok(briefAIndex < historyIndex, 'Brief A precedes history');
-  // Brief B is the final user turn and the message appears exactly once.
+  assert.ok(briefAIndex > historyIndex, 'Brief A follows history');
+  assert.equal(briefAIndex, messages.length - 1, 'Brief A lives in the final user turn');
+  // Brief B is the final user turn and the message starts it exactly once.
   assert.equal(messageBriefMessages(messages).length, 1);
-  assert.match(messages.at(-1).content, /Message from /);
-  assert.match(messages.at(-1).content, /newest question/);
+  assert.match(messages.at(-1).content, /Turn context — from /);
+  assert.ok(messages.at(-1).content.startsWith('newest question'));
   assert.equal(messages.filter((m) => typeof m.content === 'string' && m.content === 'newest question').length, 0);
   assert.equal(messages.filter((m) => typeof m.content === 'string' && m.content.includes('newest question')).length, 1);
 });
@@ -388,8 +389,8 @@ test('buildModelMessages uses the triggering frame text when no prompt is suppli
     frame: { id: 'trigger', type: 'UserMessage', authorType: 'user', content: { text: 'from frame' } },
     frames: [],
   });
-  assert.match(messages.at(-1).content, /Message from /);
-  assert.match(messages.at(-1).content, /from frame/);
+  assert.match(messages.at(-1).content, /Turn context — from /);
+  assert.ok(messages.at(-1).content.startsWith('from frame'));
 });
 
 test('buildModelMessages sends Brief A only once across a multi-turn restart boundary', () => {
@@ -606,3 +607,64 @@ test('Brief B warns when context is compacting or was trimmed', () => {
   assert.match(trimmed, /!!!WARNING!!! Context was trimmed to fit the model window/);
   assert.match(trimmed, /KNOWN TO BE MISSING FROM YOUR MEMORY/);
 });
+
+
+test('consecutive turns keep the user prefix ahead of Brief A and dynamic context', () => {
+  let session = {
+    id: 'ses_cache',
+    participantAgentIDs: [ 'agent_1' ],
+    participantUserIDs: [ 'usr_1' ],
+    coordinatorAgentID: 'agent_1',
+  };
+  let firstFrame = {
+    id: 'msg_cache_1',
+    type: 'UserMessage',
+    order: 1,
+    authorType: 'user',
+    authorID: 'usr_1',
+    content: { text: 'stable user request' },
+  };
+  let base = {
+    agent: { id: 'agent_1' },
+    session,
+    frames: [],
+  };
+
+  let first = buildModelMessages({
+    ...base,
+    frame: firstFrame,
+    frames: [ firstFrame ],
+  });
+  assert.ok(first.at(-1).content.startsWith('stable user request\n\n' + START_BRIEF_BANNER_PREFIX));
+
+  // The captured message text is what history replays on the next turn.
+  firstFrame.content.modelPrompt = { messageText: 'stable user request' };
+  let second = buildModelMessages({
+    ...base,
+    frame: { id: 'msg_cache_2', type: 'UserMessage', order: 3, authorType: 'user', authorID: 'usr_1', content: { text: 'next request' } },
+    frames: [
+      firstFrame,
+      { id: 'agent_cache_1', type: 'AgentMessage', order: 2, authorID: 'agent_1', content: { text: 'prior answer' } },
+    ],
+  });
+
+  let firstText = promptText(first);
+  let secondText = promptText(second);
+  let commonLength = commonPrefixLength(firstText, secondText);
+  let common = firstText.slice(0, commonLength);
+  assert.ok(common.trimEnd().endsWith('stable user request'), 'cache reuse reaches the end of the prior user text');
+  assert.ok(common.length > SESSION_SYSTEM_PROMPT.length + 'stable user request'.length,
+    'the cached prefix is larger than the system message alone');
+});
+
+function promptText(messages) {
+  return messages.map((message) => `[${message.role}]\n${message.content}`).join('\n');
+}
+
+function commonPrefixLength(left, right) {
+  let length = Math.min(left.length, right.length);
+  let index = 0;
+  while (index < length && left[index] === right[index])
+    index++;
+  return index;
+}

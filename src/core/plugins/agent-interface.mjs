@@ -102,6 +102,9 @@ export class AgentInterface extends PluginInterface {
         agentID: params.agent?.id || this.context?.agent?.id || null,
         agentName: params.agent?.name || this.context?.agent?.name || null,
         userText: frame.content?.text || '',
+        messageText: typeof params.prompt === 'string' && params.prompt.trim() !== ''
+          ? params.prompt.trim()
+          : String(frame.content?.text || '').trim(),
       });
     } catch (error) {
       this.context?.logger?.warn?.(`Unable to record model prompt: ${error?.message || error}`);
