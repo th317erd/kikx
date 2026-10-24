@@ -505,6 +505,37 @@ test('the Inbox row and the in-thread Question frame compute to the same visual 
   t.diagnostic('narrow-column overflow (' + overflowed.length + '):\n'
     + (overflowed.join('  ') || '  (none)'));
 
+  // The accent must be PINK, not merely equal on both sides.
+  //
+  // `differences` above compares the two surfaces to each other, so it cannot see
+  // a rule that greys BOTH of them at once - and that is exactly what happened:
+  // the answerable-state override used the `border-color` shorthand, which
+  // repainted the 3px left accent from #ff4fa3 to #30363d on both surfaces. Every
+  // assertion in this file stayed green while the owner's screenshot showed a
+  // frame that "does not look like a QuestionFrame". The accent is the one
+  // affordance that says "this is a question", so it is asserted ABSOLUTELY, on
+  // the computed colour read out of a real browser rather than parsed out of the
+  // stylesheet.
+  const ACCENT = 'rgb(255, 79, 163)';
+  let accentWrong = [];
+  for (let width of COLUMN_WIDTHS) {
+    for (let row of measuredByWidth[width]) {
+      if (row.label !== 'row box') continue;
+      for (let side of ['frame', 'inbox']) {
+        let seen = row[side];
+        if (!seen) continue;
+        if (seen.borderLeftColor !== ACCENT || seen.borderLeftWidth !== '3px')
+          accentWrong.push(`@${width}px ${side}: ${seen.borderLeftWidth} ${seen.borderLeftColor}`);
+      }
+    }
+  }
+  t.diagnostic(`left accent (expected 3px ${ACCENT}): `
+    + (accentWrong.length ? accentWrong.join('  ') : 'correct at every width'));
+  assert.deepEqual(accentWrong, [],
+    `the left accent on the question box must compute to 3px ${ACCENT} on BOTH surfaces; `
+      + 'a grey accent means the answerable-state rule is recolouring the edge, which is '
+      + 'what "does not look like a QuestionFrame" reported');
+
   t.diagnostic('style differences across widths ' + COLUMN_WIDTHS.join('/') + ':\n'
     + (differences.map((diff) => `  @${diff.width}px ${diff.label}.${diff.prop}: frame=${diff.frame} inbox=${diff.inbox}`).join('\n') || '  (none)'));
 
