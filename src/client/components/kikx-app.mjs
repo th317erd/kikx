@@ -67,6 +67,7 @@ import {
   patchJSON,
   putJSON,
   postJSON,
+  refreshAuthToken,
   applyPreviewToGrid,
   flushPreviewRefresh,
   getSessionPreviews,
@@ -304,6 +305,7 @@ export class KikxApp extends HTMLElement {
     this._patchJSON = async (url, body) => patchJSON(this, url, body);
     this._putJSON = async (url, body, options) => putJSON(this, url, body, options);
     this._deleteJSON = async (url) => deleteJSON(this, url);
+    this._refreshAuth = async () => refreshAuthToken(this);
     this._apiHeaders = (headers = {}) => apiHeaders(this, headers);
     this._syncDraft = (event) => syncDraft(this, event);
     this._syncAuthEmail = (event) => syncAuthEmail(this, event);

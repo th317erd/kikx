@@ -214,13 +214,27 @@ export class KikxComposerHistory extends HTMLElement {
       this._setStatus(this._entries.length === 0 ? 'No matching messages.' : '', this._entries.length === 0);
     } catch (error) {
       let message = error?.message || 'History unavailable.';
-      if (/Authentication required/i.test(message) && this._authRetries < 3) {
-        this._authRetries += 1;
-        this._setStatus('Connecting...', true);
-        setTimeout(() => {
-          if (this.isOpen)
-            this._load({ reset });
-        }, 400);
+      if (/Authentication required/i.test(message)) {
+        let refreshed = false;
+        try {
+          refreshed = await this._app?._refreshAuth?.();
+        } catch (_error) {}
+        if (refreshed) {
+          this._setStatus('Connecting...', true);
+          setTimeout(() => {
+            if (this.isOpen)
+              this._load({ reset });
+          }, 0);
+        } else if (this._authRetries < 3) {
+          this._authRetries += 1;
+          this._setStatus('Connecting...', true);
+          setTimeout(() => {
+            if (this.isOpen)
+              this._load({ reset });
+          }, 400);
+        } else {
+          this._setStatus(message, true);
+        }
       } else {
         this._setStatus(message, true);
       }

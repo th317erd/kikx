@@ -86,6 +86,35 @@ export async function deleteJSON(app, url) {
   return readResponse(response);
 }
 
+export async function refreshAuthToken(app) {
+  let refreshToken = app?._state?.refreshToken;
+  if (!refreshToken)
+    return false;
+
+  try {
+    let response = await fetch('/api/v1/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    let result = await readResponse(response);
+    let auth = result?.data;
+    if (!auth?.token)
+      return false;
+    app._state.authToken = auth.token;
+    app._state.refreshToken = auth.refresh_token || refreshToken;
+    try {
+      globalThis.sessionStorage?.setItem(AUTH_STORAGE_KEY, JSON.stringify({
+        ...auth,
+        user: auth.user || app._state.account,
+      }));
+    } catch (_error) {}
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
 export function apiHeaders(app, headers = {}) {
   let next = { ...headers };
   if (app._state.authToken)
