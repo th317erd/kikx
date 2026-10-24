@@ -3,6 +3,12 @@
 import { AgentCreateTool, AgentUpdateTool } from './agent-tools.mjs';
 import { AskUserTool } from './ask-user-tool.mjs';
 import { QuestionListTool } from './question-list-tool.mjs';
+import {
+  QuestionAnswerTool,
+  QuestionCreateTool,
+  QuestionDismissTool,
+  QuestionGetTool,
+} from './question-tools.mjs';
 import { ExecTool } from './exec-tool.mjs';
 import { FeedbackReportTool } from './feedback-tool.mjs';
 import {
@@ -99,6 +105,10 @@ export const BUILT_IN_TOOLS = [
   [ 'team-add-member', TeamAddMemberTool ],
   [ 'team-remove-member', TeamRemoveMemberTool ],
   [ 'question-list', QuestionListTool ],
+  [ 'question-get', QuestionGetTool ],
+  [ 'question-create', QuestionCreateTool ],
+  [ 'question-answer', QuestionAnswerTool ],
+  [ 'question-dismiss', QuestionDismissTool ],
   [ 'ask-user', AskUserTool ],
   [ 'todo-get', TodoGetTool ],
   [ 'todo-add', TodoAddTool ],

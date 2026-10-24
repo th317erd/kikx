@@ -144,7 +144,12 @@ export class KikxQuestionFrame extends HTMLElement {
     if (!content || typeof content !== 'object')
       return null;
 
-    return normalizeQuestionSummary(content.question || content);
+    let source = content.question || content;
+    return normalizeQuestionSummary({
+      ...source,
+      sessionID: source.sessionID || this._frame?.sessionID || null,
+      agentID: source.agentID || this._frame?.authorID || null,
+    });
   }
 
   // A question that already has an answer shows it. The row used to read
@@ -310,7 +315,7 @@ export class KikxQuestionFrame extends HTMLElement {
 
     // Whoever asked is named, not numbered: the same attribution the Inbox card
     // uses, so the two surfaces cannot disagree about who is waiting on you.
-    let origin = describeQuestionOrigin(this._appState?.app?._state, question);
+    let origin = describeQuestionOrigin(this._appState?.app?._state || this._appState, question);
 
     // Feedback lives in the frame as well as the Inbox card. `_submit` is what
     // wires these; they are built here because the DSL cannot reach a node it

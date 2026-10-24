@@ -32,6 +32,7 @@ export function isTerminalQuestion(question) {
 // client bundle does not import from `src/core`, so the literals are repeated.
 export const DEFAULT_ANSWER_SOURCE = 'default';
 export const USER_ANSWER_SOURCE = 'user';
+export const AGENT_ANSWER_SOURCE = 'agent';
 
 /**
  * Is this question sitting on an answer that only a default supplied?
@@ -115,6 +116,7 @@ export function normalizeQuestionSummary(value) {
     // deliberately NOT coerced to either, because guessing 'user' would offer
     // an editable box on someone else's answer.
     answerSource: stringOrNull(value.answerSource),
+    answeredByAgentID: stringOrNull(value.answeredByAgentID),
     // The default that a person later overrode. Kept beside the live answer so
     // the transcript can still show what the agent was originally told.
     supersededDefaultAnswer: stringOrNull(value.supersededDefaultAnswer),

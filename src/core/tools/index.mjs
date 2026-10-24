@@ -3,6 +3,12 @@
 export { AgentCreateTool, AgentUpdateTool } from './agent-tools.mjs';
 export { ASK_USER_MAX_QUESTIONS, AskUserTool } from './ask-user-tool.mjs';
 export { QuestionListTool } from './question-list-tool.mjs';
+export {
+  QuestionAnswerTool,
+  QuestionCreateTool,
+  QuestionDismissTool,
+  QuestionGetTool,
+} from './question-tools.mjs';
 export { CwdClearTool, CwdGetTool, CwdSetTool } from './cwd-tools.mjs';
 export { ExecTool } from './exec-tool.mjs';
 export { FeedbackReportTool } from './feedback-tool.mjs';

@@ -35,11 +35,13 @@ installDom();
 const { KikxQuestionFrame } = await import('../../src/client/components/kikx-question-frame.mjs');
 const { createQuestionsState } = await import('../../src/client/state/questions-state.mjs');
 const {
+  answerDraftStore,
   createDraftStore,
   getAnswerDraft,
   pruneAnswerDrafts,
   setAnswerDraft,
 } = await import('../../src/client/state/question-drafts.mjs');
+const { fetchQuestions } = await import('../../src/client/components/kikx-runtime-events.mjs');
 
 // The shape the server actually emits in `content` (ask-user-tool.mjs
 // `emitQuestionFrames`): a flat question document under `questionID`, not
@@ -277,4 +279,19 @@ test('a complete page still prunes drafts for questions answered elsewhere', () 
 
   assert.equal(getAnswerDraft(store, 'q_open'), 'keep me');
   assert.equal(getAnswerDraft(store, 'q_answered_elsewhere'), '');
+});
+
+test('a scoped/empty reconnect fetch never prunes an answer draft', async () => {
+  let app = createApp();
+  app._state.selectedSessionID = 'child_session';
+  app._getJSON = async () => ({ data: { questions: [] } });
+  setAnswerDraft(answerDraftStore(app), 'q_reconnect', 'half-typed answer');
+
+  await fetchQuestions(app, { complete: true });
+
+  assert.equal(
+    getAnswerDraft(answerDraftStore(app), 'q_reconnect'),
+    'half-typed answer',
+    'a question outside the current scope must not lose the user\'s draft',
+  );
 });

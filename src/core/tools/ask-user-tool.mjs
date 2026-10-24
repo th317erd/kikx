@@ -325,6 +325,8 @@ export class AskUserTool extends PluginInterface {
           // attachQuestionFrame stamps already use that name.
           id: question.id,
           questionID: question.id,
+          sessionID: question.sessionID,
+          agentID: question.agentID,
           groupID: question.groupID,
           index: question.index,
           text: question.text,

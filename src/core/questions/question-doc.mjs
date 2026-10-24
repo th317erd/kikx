@@ -135,6 +135,7 @@ export function normalizeQuestionDoc(value) {
     answeredAt: value.answeredAt || null,
     answeredClock: value.answeredClock || null,
     answeredByUserID: normalizeOptionalString(value.answeredByUserID) || null,
+    answeredByAgentID: normalizeOptionalString(value.answeredByAgentID) || null,
     answerFrameID: normalizeOptionalString(value.answerFrameID) || null,
     dismissalReason: normalizeOptionalString(value.dismissalReason) || null,
     deliveryAttempts: Number.isInteger(value.deliveryAttempts) ? value.deliveryAttempts : 0,

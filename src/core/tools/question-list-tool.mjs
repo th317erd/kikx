@@ -3,6 +3,7 @@
 import { PluginInterface } from '../plugins/index.mjs';
 import { resolveContextService } from './file-tool-cwd.mjs';
 import { builtInToolComponent } from './tool-client-components.mjs';
+import { queryQuestions } from '../questions/question-query.mjs';
 
 /**
  * Read the questions already pending in this session tree.
@@ -24,7 +25,7 @@ export class QuestionListTool extends PluginInterface {
   static pluginID = 'internal:questions';
   static featureName = 'question-list';
   static displayName = 'List questions';
-  static description = 'List the questions already pending in this session and its child sessions, with an openDigest that ask-user requires before asking again.';
+  static description = 'List/search questions with session-tree, status, text, agent, priority, group, and pagination filters. Returns an openDigest for the current session tree.';
   static frameType = 'QuestionListToolFrame';
   static clientComponent = builtInToolComponent('kikx-question-list-use');
   static riskLevel = 'none';
@@ -33,13 +34,27 @@ export class QuestionListTool extends PluginInterface {
     properties: {
       session_id: {
         type: 'string',
-        description: 'Session to scope the listing to. Defaults to your current session. Its child sessions are always included.',
+        description: 'Session to scope the listing to. Defaults to your current session.',
+      },
+      scope: {
+        type: 'string',
+        enum: [ 'tree', 'session', 'all' ],
+        description: 'tree: session plus all descendants (default). session: this session only. all: every session; coordinator-only.',
       },
       status: {
         type: 'string',
         enum: [ 'open', 'answered', 'dismissed', 'undeliverable', 'all' ],
-        description: 'Which questions to return. Defaults to open, which is the set you are deciding whether to re-ask. Use all to review history.',
+        description: 'Which questions to return. Defaults to open. Use all to review history.',
       },
+      query: {
+        type: 'string',
+        description: 'Optional case-insensitive text search over question, answer, dismissal reason, and context refs.',
+      },
+      agent_id: { type: 'string', description: 'Optional filter by asking agent id.' },
+      priority: { type: 'string', enum: [ 'low', 'normal', 'high' ], description: 'Optional priority filter.' },
+      group_id: { type: 'string', description: 'Optional question group id filter.' },
+      limit: { type: 'integer', minimum: 1, maximum: 200, description: 'Page size (default 50).' },
+      offset: { type: 'integer', minimum: 0, description: 'Result offset (default 0).' },
     },
     additionalProperties: false,
   };
@@ -60,6 +75,11 @@ export class QuestionListTool extends PluginInterface {
     '',
     'If a batch was only partially answered, this shows you exactly which ones are',
     'still open, so you can ask about those alone rather than the whole set again.',
+    '',
+    'Filters: use scope=session for only this session, scope=tree (default) for',
+    'this session plus descendants, or scope=all (coordinator only) for every',
+    'session. Use query to search question/answer text and context refs, and',
+    'session_id to inspect another session tree.',
   ].join('\n');
 
   questionsStore() {
@@ -100,34 +120,23 @@ export class QuestionListTool extends PluginInterface {
     let sessionID = normalizeOptionalString(
       params.session_id || params.sessionID || params._sessionID || this.context.session?.id,
     );
-    if (!sessionID)
+    let scope = normalizeOptionalString(params.scope) || 'tree';
+    if (scope === 'all' && this.context.isCoordinator !== true)
+      throw new Error('question-list scope=all is coordinator-only');
+    if (scope !== 'all' && !sessionID)
       throw new Error(`${this.constructor.featureName} requires a session context`);
 
-    let listed = await this.questionsStore().listVisibleQuestions({
+    return await queryQuestions(this.questionsStore(), {
+      scope,
       sessionID,
       status: normalizeOptionalString(params.status) || 'open',
+      query: normalizeOptionalString(params.query || params.q) || null,
+      agentID: normalizeOptionalString(params.agent_id || params.agentID) || null,
+      priority: normalizeOptionalString(params.priority) || null,
+      groupID: normalizeOptionalString(params.group_id || params.groupID) || null,
+      limit: params.limit,
+      offset: params.offset,
     });
-
-    return {
-      rootSessionID: listed.rootSessionID,
-      sessionIDs: listed.sessionIDs,
-      openDigest: listed.openDigest,
-      total: listed.total,
-      questions: listed.questions.map((question) => ({
-        id: question.id,
-        text: question.text,
-        status: question.status,
-        priority: question.priority,
-        askedAt: question.askedAt ?? null,
-        groupID: question.groupID ?? null,
-        sessionID: question.sessionID ?? null,
-        agentID: question.agentID ?? null,
-        answer: question.answer ?? null,
-        answerSource: question.answerSource ?? null,
-        answeredAt: question.answeredAt ?? null,
-        dismissalReason: question.dismissalReason ?? null,
-      })),
-    };
   }
 }
 

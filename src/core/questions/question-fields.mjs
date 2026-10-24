@@ -15,6 +15,7 @@
  */
 export const DEFAULT_ANSWER_SOURCE = 'default';
 export const USER_ANSWER_SOURCE = 'user';
+export const AGENT_ANSWER_SOURCE = 'agent';
 
 // --- Revision intent -------------------------------------------------------
 

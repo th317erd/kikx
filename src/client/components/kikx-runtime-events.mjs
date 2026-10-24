@@ -3,7 +3,7 @@
 import { forgetDeletedSession, isCollapsed, recordDeletedSession, setTokenUsage, upsertFrames, upsertSession } from '../state/kikx-state.mjs';
 import { applyThinkingFrame } from '../state/thinking-state.mjs';
 import { applyQuestionEvent, applyQuestionsFetch } from '../state/questions-state.mjs';
-import { pruneAnswerDrafts } from '../state/question-drafts.mjs';
+import { clearAnswerDraft } from '../state/question-drafts.mjs';
 import { isDeletedSession } from '../state/session-state-utils.mjs';
 import { guardClientOperation, reportClientError } from '../lib/error-boundary.mjs';
 import { scheduleAnimationFrame, parseRuntimeEventResult } from './kikx-app-helpers.mjs';
@@ -410,6 +410,16 @@ function applyRuntimeQuestionEvent(app, data) {
 
   applyQuestionEvent(state.questionsState, { type: data.type, payload: data });
 
+  // A terminal event is the only authoritative signal that a draft is dead.
+  // A scoped/truncated fetch is not: a question outside the current Inbox
+  // scope, or one the server could not enumerate during a restart, must never
+  // erase text the user is still typing.
+  let updates = Array.isArray(data.questions) ? data.questions : data.question ? [ data.question ] : [];
+  for (let update of updates) {
+    if (update?.id && [ 'answered', 'dismissed', 'undeliverable' ].includes(update.status))
+      clearAnswerDraft(app._answerDrafts, update.id);
+  }
+
   if (!app._syncQuestionShell())
     app._requestRender();
 }
@@ -423,41 +433,50 @@ function applyRuntimeQuestionEvent(app, data) {
  * response is not truncated; otherwise a paginated fetch must not drop rows it
  * did not see, or questions would vanish once more than one page is open.
  */
-export async function fetchQuestions(app, options = {}) {
+export function fetchQuestions(app, options = {}) {
   let state = app._state;
   if (!state?.questionsState)
-    return;
+    return Promise.resolve();
 
-  if (state.questionsState.loading)
-    return;
+  let rootSessionID = state.selectedSessionID || '';
+  let key = rootSessionID || '*';
+  if (app._questionsFetch?.key === key)
+    return app._questionsFetch.promise;
 
+  let token = Symbol('questions-fetch');
+  let promise = fetchQuestionsNow(app, { ...options, rootSessionID, token });
+  app._questionsFetch = { key, token, promise };
+  return promise.finally(() => {
+    if (app._questionsFetch?.token === token)
+      app._questionsFetch = null;
+  });
+}
+
+async function fetchQuestionsNow(app, options = {}) {
+  let state = app._state;
+  let rootSessionID = options.rootSessionID || '';
+  let limit = options.limit || 50;
   state.questionsState.loading = true;
 
   try {
-    let limit = options.limit || 50;
-    let result = await app._getJSON(`/api/v1/questions?limit=${encodeURIComponent(limit)}`);
+    let params = new URLSearchParams({ limit: String(limit) });
+    if (rootSessionID)
+      params.set('rootSessionID', rootSessionID);
+    let result = await app._getJSON(`/api/v1/questions?${params}`);
+    if (app._questionsFetch?.token !== options.token)
+      return;
+
     let payload = result?.data || result || {};
     let questions = Array.isArray(payload.questions) ? payload.questions : [];
     let complete = questions.length < limit;
-
     applyQuestionsFetch(state.questionsState, payload, { complete });
-
-    // A question answered in another tab leaves this tab's typed draft with
-    // nothing to attach to. Prune after the model settles so a still-open
-    // question's draft — including one the user is typing into right now — is
-    // never touched.
-    //
-    // `complete` must be forwarded: a truncated page is a partial view of the
-    // open set, and pruning against it deletes drafts for questions that exist
-    // and are still open but simply were not on this page. That happened on
-    // reconnect — the connection resyncs by calling this — so reconnecting
-    // could wipe an answer being typed for a question past the page limit.
-    pruneAnswerDrafts(app._answerDrafts, new Set(
-      state.questionsState.questions.map((question) => question.id),
-    ), { complete });
   } catch (error) {
-    state.questionsState.loading = false;
+    if (app._questionsFetch?.token !== options.token)
+      return;
     state.questionsState.error = error?.message || String(error);
+  } finally {
+    if (app._questionsFetch?.token === options.token)
+      state.questionsState.loading = false;
   }
 
   if (!app._syncQuestionShell())

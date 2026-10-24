@@ -77,6 +77,8 @@ export class QuestionAnswerService {
     let answered = await this.questionsStore.answerQuestion(questionID, {
       answer: input.answer,
       userID: input.userID,
+      answeredByAgentID: input.answeredByAgentID,
+      answerSource: input.answerSource,
       answerFrameID: input.answerFrameID,
       wakeSuppressed: input.wakeSuppressed,
     });
@@ -503,6 +505,8 @@ export function buildAnswerPromptText(question, group = null) {
     lines.push('A person has now given a real answer. It supersedes the default.');
   } else if (question.answerSource === 'default') {
     lines.push(`No answer arrived in time, so the default you specified was applied${asked}:`);
+  } else if (question.answerSource === 'agent') {
+    lines.push(`A coordinator agent answered your question${asked}:`);
   } else {
     lines.push(`The user answered your question${asked}:`);
   }

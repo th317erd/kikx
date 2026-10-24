@@ -80,6 +80,7 @@ export async function patchQuestionFrameContent(context = {}, question = null, o
         // replied" — so it cannot offer the one affordance that depends on the
         // difference (replacing a default that spoke for nobody).
         answerSource: question.answerSource ?? null,
+        answeredByAgentID: question.answeredByAgentID ?? null,
         answeredByDefaultAt: question.answeredByDefaultAt ?? null,
         // Set only once a person has taken the answer over, so the renderer can
         // still say what the default was after it has been replaced.

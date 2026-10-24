@@ -3,6 +3,7 @@
 import { randomUUID } from 'node:crypto';
 
 import {
+  AGENT_ANSWER_SOURCE,
   USER_ANSWER_SOURCE,
   normalizeTimeoutMs,
   normalizeContextRefs,
@@ -188,6 +189,9 @@ export class QuestionsStore {
       assertOpen(question, 'answered');
 
       let now = this.clock();
+      let answerSource = normalizeOptionalString(input.answerSource || input.answer_source) === AGENT_ANSWER_SOURCE
+        ? AGENT_ANSWER_SOURCE
+        : USER_ANSWER_SOURCE;
       let updated = {
         ...question,
         status: 'answered',
@@ -196,9 +200,14 @@ export class QuestionsStore {
         // unanswered question look identical, so nothing downstream can tell
         // "a person replied" from "nobody ever did", which is the whole basis
         // of the revision path (only a 'default' answer may be overridden).
-        answerSource: USER_ANSWER_SOURCE,
+        answerSource,
         answeredAt: now,
-        answeredByUserID: normalizeOptionalString(input.userID || input.user_id) || null,
+        answeredByUserID: answerSource === USER_ANSWER_SOURCE
+          ? (normalizeOptionalString(input.userID || input.user_id) || null)
+          : null,
+        answeredByAgentID: answerSource === AGENT_ANSWER_SOURCE
+          ? (normalizeOptionalString(input.answeredByAgentID || input.answered_by_agent_id) || null)
+          : null,
         answerFrameID: normalizeOptionalString(input.answerFrameID || input.answer_frame_id) || null,
         // Sticky once set. The only write that can follow an answer is
         // `reviseAnswer`, and that one happens exclusively when a DEFAULT
@@ -324,10 +333,21 @@ export class QuestionsStore {
     let summaries = Array.isArray(index.summaries) ? index.summaries : [];
 
     let sessionID = normalizeOptionalString(filters.sessionID || filters.session_id);
+    let rootSessionID = normalizeOptionalString(filters.rootSessionID || filters.root_session_id);
+    let includeDescendants = filters.includeDescendants === true || filters.include_descendants === true;
     let agentID = normalizeOptionalString(filters.agentID || filters.agent_id);
     let groupID = normalizeOptionalString(filters.groupID || filters.group_id);
+    let query = normalizeOptionalString(filters.query || filters.q).toLowerCase();
+    let priority = normalizeOptionalString(filters.priority).toLowerCase();
 
-    if (sessionID)
+    let root = rootSessionID || (includeDescendants ? sessionID : '');
+    let visibleSessionIDs = root
+      ? new Set(resolveVisibleSessionIDs(root, await this.listSessionTree()))
+      : null;
+
+    if (visibleSessionIDs)
+      summaries = summaries.filter((entry) => visibleSessionIDs.has(entry.sessionID));
+    else if (sessionID)
       summaries = summaries.filter((entry) => entry.sessionID === sessionID);
 
     if (agentID)
@@ -335,6 +355,12 @@ export class QuestionsStore {
 
     if (groupID)
       summaries = summaries.filter((entry) => entry.groupID === groupID);
+
+    if (priority)
+      summaries = summaries.filter((entry) => entry.priority === priority);
+
+    if (query)
+      summaries = summaries.filter((entry) => String(entry.text || '').toLowerCase().includes(query));
 
     return {
       ids: summaries.map((entry) => entry.id),

@@ -5,6 +5,7 @@
 // hard limit in AGENTS.md. Both are re-exported here so the public surface is
 // unchanged.
 export { QuestionsStore } from './questions-store.mjs';
+export { queryQuestions } from './question-query.mjs';
 
 export {
   QUESTION_MAX_PER_CALL,
@@ -20,6 +21,7 @@ export {
 } from './question-index-repair.mjs';
 
 export {
+  AGENT_ANSWER_SOURCE,
   DEFAULT_ANSWER_SOURCE,
   USER_ANSWER_SOURCE,
 } from './question-fields.mjs';

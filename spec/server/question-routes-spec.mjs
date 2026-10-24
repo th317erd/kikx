@@ -614,3 +614,27 @@ test('POST dismiss rejects a non-string reason', async () => {
     await close(stores.server);
   }
 });
+
+
+test('GET /api/v1/questions rootSessionID scopes to the session tree', async () => {
+  let stores = await startServer({ ids: [ 'g_root', 'q_root', 'g_child', 'q_child', 'g_other', 'q_other' ] });
+
+  try {
+    stores.questionsStore.listSessionTree = async () => [
+      { id: 'root', parentSessionID: null },
+      { id: 'child', parentSessionID: 'root' },
+      { id: 'other', parentSessionID: null },
+    ];
+    await seedQuestion(stores, { sessionID: 'root' });
+    await seedQuestion(stores, { sessionID: 'child' });
+    await seedQuestion(stores, { sessionID: 'other' });
+
+    let tree = await (await fetch(`${stores.baseURL}/api/v1/questions?rootSessionID=root`)).json();
+    assert.deepEqual(tree.data.questions.map((question) => question.id).sort(), [ 'q_child', 'q_root' ]);
+
+    let exact = await (await fetch(`${stores.baseURL}/api/v1/questions?sessionID=root`)).json();
+    assert.deepEqual(exact.data.questions.map((question) => question.id), [ 'q_root' ]);
+  } finally {
+    await close(stores.server);
+  }
+});

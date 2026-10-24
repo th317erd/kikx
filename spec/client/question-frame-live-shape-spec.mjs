@@ -151,3 +151,21 @@ test('submitting from a live-shaped frame reports the real question id', () => {
   );
   assert.equal(calls[0].text, 'Yes, it is permitted.');
 });
+
+
+test('a live Question frame is attributed from its top-level frame metadata', () => {
+  let el = mount({
+    id: 'frame_attr',
+    type: 'Question',
+    sessionID: 'ses_live',
+    authorID: 'agent_live',
+    content: LIVE_FRAME_CONTENT,
+  }, {
+    agentDetailsByID: { agent_live: { id: 'agent_live', name: 'Zav' } },
+    sessionDetailsByID: { ses_live: { id: 'ses_live', title: 'umbrafox' } },
+  });
+
+  assert.doesNotMatch(textOf(el), /Unattributed question/);
+  assert.match(textOf(el), /Zav/);
+  assert.match(textOf(el), /umbrafox/);
+});

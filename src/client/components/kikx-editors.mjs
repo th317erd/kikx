@@ -288,6 +288,7 @@ export async function selectSession(app, sessionID) {
     app._state.status = 'Session loaded';
     app._state.statusKind = 'ready';
     app._render();
+    app._loadQuestions?.({ complete: true });
   } catch (error) {
     app._state.status = error.message;
     app._state.statusKind = 'error';

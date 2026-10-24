@@ -306,3 +306,19 @@ test('settling a row does not overwrite an answer\u2019s provenance by omission'
   assert.equal(settled[0].answerSource, 'user',
     'a settle that names no source leaves the recorded one alone');
 });
+
+
+test('a coordinator-agent answer is labelled as agent-provided, not as the user\'s', async () => {
+  const { renderQuestionCard } = await import('../../src/client/components/kikx-question-card.mjs');
+  let card = renderQuestionCard(app, question({
+    answer: 'Use the coordinator decision.',
+    answerSource: 'agent',
+    answeredByAgentID: 'agent_1',
+  }));
+
+  let receipt = card.querySelector('.kikx-question-card__receipt');
+  assert.ok(receipt);
+  assert.equal(receipt.getAttribute('data-answer-source'), 'agent');
+  assert.match(card.querySelector('.kikx-question-card__receipt-label').textContent, /coordinator agent/i);
+  assert.doesNotMatch(card.querySelector('.kikx-question-card__receipt-label').textContent, /Your answer/);
+});

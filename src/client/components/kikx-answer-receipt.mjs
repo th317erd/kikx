@@ -28,6 +28,7 @@
 // callers pass the class map. Everything else here is shared.
 
 import {
+  AGENT_ANSWER_SOURCE,
   DEFAULT_ANSWER_SOURCE,
   isAcknowledgedDefaultAnswer,
   isRevisableDefaultAnswer,
@@ -38,6 +39,8 @@ import {
 // is literally accurate on both surfaces; the Inbox row's own status line is a
 // separate sentence and is left to the caller.
 export const USER_ANSWER_LABEL = 'Your answer';
+export const AGENT_ANSWER_LABEL = 'Answer provided by a coordinator agent';
+export const AGENT_ANSWER_NOTE = 'A coordinator agent answered this on the user\'s behalf.';
 export const DEFAULT_ANSWER_LABEL = 'Default answer \u2014 applied automatically';
 export const DEFAULT_ANSWER_NOTE = 'Nobody answered in time, so this answer was applied for you. You can replace it below.';
 // The same fact without the promise. A closed Inbox row renders no answer box
@@ -180,6 +183,14 @@ export function buildAnswerReceipt(ownerDocument, question, classes = RECEIPT_CL
       note: isRevisableDefaultAnswer(question)
         ? (canReplace ? DEFAULT_ANSWER_NOTE : DEFAULT_ANSWER_NOTE_PLAIN)
         : '',
+    }, classes);
+  }
+
+  if (question.answerSource === AGENT_ANSWER_SOURCE) {
+    return buildAnswerBlock(ownerDocument, answer, {
+      label: AGENT_ANSWER_LABEL,
+      source: AGENT_ANSWER_SOURCE,
+      note: AGENT_ANSWER_NOTE,
     }, classes);
   }
 

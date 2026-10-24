@@ -120,6 +120,7 @@ export function minimizeCurrent(app) {
   }).finally(() => {
     clearHeroNames(app);
     app._loadSessionPreviews?.().catch?.(() => null);
+    app._loadQuestions?.({ complete: true });
   });
 }
 
@@ -227,6 +228,7 @@ export async function openSessionFromCard(app, sessionID) {
   }
 
   await app._loadSessionPreviews();
+  await app._loadQuestions?.({ complete: true });
 }
 
 export function threadChatViewElement(app) {
@@ -305,6 +307,7 @@ export async function applySessionDeepLink(app) {
       await loadSessionFramesForURL(app, top);
   } catch (_error) {} finally {
     app._deepLinkReady = true;
+    app._loadQuestions?.({ complete: true });
   }
 }
 
@@ -346,6 +349,7 @@ export async function syncFromURL(app) {
 
   app._deepLinkReady = true;
   app._render();
+  app._loadQuestions?.({ complete: true });
   if (isCollapsed(app._state))
     app._loadSessionPreviews?.().catch?.(() => null);
 }

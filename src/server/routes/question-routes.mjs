@@ -31,10 +31,18 @@ export async function handleQuestionRoutes({ request, response, url, context }) 
     let status = url.searchParams.get('status');
 
     let questionsStore = context.require('questionsStore');
+    let sessionID = url.searchParams.get('sessionID');
+    let rootSessionID = url.searchParams.get('rootSessionID');
+    let includeDescendants = Boolean(rootSessionID)
+      || url.searchParams.get('includeDescendants') === '1';
     let open = await questionsStore.listOpen({
-      sessionID: url.searchParams.get('sessionID'),
+      sessionID,
+      rootSessionID: includeDescendants ? (rootSessionID || sessionID) : null,
+      includeDescendants,
       agentID: url.searchParams.get('agentID'),
       groupID: url.searchParams.get('groupID'),
+      query: url.searchParams.get('q') || url.searchParams.get('query'),
+      priority: url.searchParams.get('priority'),
     });
 
     let questions = Array.isArray(open.summaries) ? open.summaries : [];
