@@ -39,7 +39,7 @@ const {
   maybeRestoreMessageHash,
   scrollToLatestMessageTop,
 } = await import('../../src/client/components/kikx-frame-scroll-lock.mjs');
-const { afterRender, maybeLoadOlderFrames, onFrameContentResize } = await import('../../src/client/components/kikx-frame-scroll.mjs');
+const { afterRender, maybeLoadOlderFrames, onFrameContentResize, onFrameListScroll } = await import('../../src/client/components/kikx-frame-scroll.mjs');
 const { setAnimationFrameScheduler } = await import('../../src/client/components/kikx-app-helpers.mjs');
 
 function resetStorage() {
@@ -210,7 +210,7 @@ test('a suppressed anchor still fills a viewport that cannot scroll', () => {
   assert.equal(loads, 1);
 });
 
-test('reaching the bottom locks instantly in top mode without moving the viewport', () => {
+test('reaching the bottom locks instantly in bottom mode without moving the viewport', () => {
   resetStorage();
   let list = { scrollTop: 940, scrollHeight: 1000, clientHeight: 600 };
   // The raw state carries one hidden/phantom tail frame that the thread will
@@ -236,8 +236,8 @@ test('reaching the bottom locks instantly in top mode without moving the viewpor
   assert.equal(lockScrollAtBottom(app), true);
   assert.equal(list.scrollTop, 940, 'engaging the lock must not move the viewport');
   assert.equal(isScrollLockedForSession(app, 's1'), true);
-  assert.equal(getScrollLockModeForSession(app, 's1'), 'top');
-  assert.equal(app._frameListAnchoredToBottom, false);
+  assert.equal(getScrollLockModeForSession(app, 's1'), 'bottom');
+  assert.equal(app._frameListAnchoredToBottom, true);
 });
 
 test('a new bottom message clears a stale bottom URL marker', () => {
@@ -326,6 +326,31 @@ test('a user scroll attempt unlocks instantly', () => {
 
   breakScrollLockFromUser(app);
   assert.equal(isScrollLockedForSession(app, 's1'), false);
+});
+
+test('a one-pixel layout correction does not break a bottom lock', () => {
+  resetStorage();
+  let list = { scrollTop: 100, scrollHeight: 1000, clientHeight: 400, getBoundingClientRect: () => ({ top: 0 }), querySelectorAll: () => [] };
+  let app = {
+    _state: { selectedSessionID: 's1', sessionPagingByID: { s1: { hasMoreOlder: false, hasMoreNewer: false } } },
+    _frameListUserGestureUntil: Date.now() + 1000,
+    _ignoreFrameScrollUntil: Date.now() + 1000,
+    _lastObservedFrameScrollTop: 100,
+    querySelector(selector) {
+      return selector === '.kikx-frame-list' ? list : null;
+    },
+  };
+  setScrollLockedForSession(app, true, 's1');
+  setScrollLockModeForSession(app, 'bottom', 's1');
+
+  list.scrollTop = 99;
+  onFrameListScroll(app, { currentTarget: list });
+  assert.equal(isScrollLockedForSession(app, 's1'), true, 'sub-pixel/rounding movement must not unlock');
+
+  list.scrollTop = 80;
+  app._ignoreFrameScrollUntil = 0;
+  onFrameListScroll(app, { currentTarget: list });
+  assert.equal(isScrollLockedForSession(app, 's1'), false, 'real upward movement unlocks');
 });
 
 test('content growth re-pins the viewport when bottom-locked', () => {

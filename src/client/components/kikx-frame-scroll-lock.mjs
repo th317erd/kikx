@@ -320,11 +320,12 @@ export function lockScrollAtBottom(app) {
     return false;
 
   setScrollLockedForSession(app, true, sessionID);
-  // Reaching the bottom re-engages the lock, not bottom-hugging. The next
-  // message follows its top edge; the viewport itself stays put right now.
-  setScrollLockModeForSession(app, 'top', sessionID);
+  // Reaching the bottom engages bottom-follow, but does not move the viewport
+  // at this instant. If newer loaded frames had to be revealed, follow them so
+  // the lock is attached to the true tail.
+  setScrollLockModeForSession(app, 'bottom', sessionID);
   paintScrollLockButton(app, sessionID, true);
-  app._frameListAnchoredToBottom = false;
+  app._frameListAnchoredToBottom = true;
   app._bottomLockIntent = false;
   if (expanded)
     app._scrollFramesToBottomImmediate?.();

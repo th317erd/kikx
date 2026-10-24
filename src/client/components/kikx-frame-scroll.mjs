@@ -546,7 +546,7 @@ export function onFrameListScroll(app, event) {
     // must not turn the lock straight back off.
     let delta = previousScrollTop == null ? 0 : frameList.scrollTop - previousScrollTop;
     let lockMode = getScrollLockModeForSession(app, sessionID);
-    let movedAway = lockMode === 'bottom' ? delta < -0.5 : Math.abs(delta) > 0.5;
+    let movedAway = lockMode === 'bottom' ? delta < -2 : Math.abs(delta) > 2;
     if (userGesture && isScrollLockedForSession(app, sessionID) && movedAway) {
       brokeLock = true;
       app._sentinelSuppressed = false;
