@@ -24,6 +24,7 @@ import {
 import { installSessionMethods } from './frame-runtime-sessions.mjs';
 import { installFrameMethods } from './frame-runtime-frames.mjs';
 import { installComposerMethods } from './frame-runtime-composer.mjs';
+import { installPromptMethods } from './frame-runtime-prompts.mjs';
 
 export class FrameRuntime extends EventEmitter {
   constructor(options = {}) {
@@ -538,3 +539,4 @@ export class FrameRuntime extends EventEmitter {
 installSessionMethods(FrameRuntime.prototype);
 installFrameMethods(FrameRuntime.prototype);
 installComposerMethods(FrameRuntime.prototype);
+installPromptMethods(FrameRuntime.prototype);

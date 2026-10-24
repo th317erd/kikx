@@ -216,7 +216,7 @@ export function buildUserMessageContent(text, extra) {
     return content;
 
   for (let [ key, value ] of Object.entries(extra)) {
-    if (key === 'text')
+    if (key === 'text' || key === 'modelPrompt')
       continue;
     if (value === undefined)
       continue;

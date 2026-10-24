@@ -1196,3 +1196,52 @@ async function collect(iterable) {
     items.push(item);
   return items;
 }
+
+
+test('providers can record the final model prompt against the trigger user message', async () => {
+  let calls = [];
+  let runtime = {
+    async recordModelPrompt(sessionID, frameID, prompt) {
+      calls.push({ sessionID, frameID, prompt });
+      return { id: frameID };
+    },
+  };
+  let agent = new AgentInterface({
+    services: { frameRuntime: runtime },
+    agent: { id: 'agent_1', name: 'Zav' },
+  });
+  let frame = {
+    id: 'msg_1',
+    type: 'UserMessage',
+    authorType: 'user',
+    hidden: false,
+    sessionID: 'ses_1',
+    content: { text: 'Please implement it.' },
+  };
+
+  await agent.recordModelPrompt(
+    [ { role: 'user', content: 'Message from Wyatt:\nPlease implement it.' } ],
+    { userFrame: frame, session: { id: 'ses_1' }, agent: { id: 'agent_1', name: 'Zav' } },
+  );
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].sessionID, 'ses_1');
+  assert.equal(calls[0].frameID, 'msg_1');
+  assert.equal(calls[0].prompt.userText, 'Please implement it.');
+  assert.equal(calls[0].prompt.agentName, 'Zav');
+  assert.deepEqual(calls[0].prompt.messages, [
+    { role: 'user', content: 'Message from Wyatt:\nPlease implement it.' },
+  ]);
+});
+
+test('providers skip prompt recording for hidden internal wakes', async () => {
+  let calls = 0;
+  let agent = new AgentInterface({
+    services: { frameRuntime: { async recordModelPrompt() { calls++; } } },
+  });
+  await agent.recordModelPrompt([ { role: 'user', content: 'internal' } ], {
+    userFrame: { id: 'wake', type: 'UserMessage', authorType: 'user', hidden: true, content: { text: 'internal' } },
+    session: { id: 'ses_1' },
+  });
+  assert.equal(calls, 0);
+});

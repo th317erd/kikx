@@ -378,8 +378,9 @@ test('a UserMessage renders markdown emphasis, strikethrough and code', () => {
     content: { text: '*testing* _user_ ~~sweat~~ **too** much, __italic__ and `code`' },
   }, {});
 
-  let content = item.querySelector('.kikx-frame__content.kikx-markdown');
+  let content = item.querySelector('.kikx-user-message__text.kikx-markdown');
   assert.ok(content, 'user messages use the markdown renderer');
+  assert.ok(item.querySelector('.kikx-user-message__prompt'), 'user messages expose the sent-prompt disclosure');
   assert.equal(content.querySelector('em')?.textContent, 'testing');
   assert.equal(content.querySelector('del')?.textContent, 'sweat');
   assert.equal(content.querySelector('strong')?.textContent, 'too');

@@ -530,6 +530,125 @@ kikx-app {
   margin: 0 0 10px auto;
 }
 
+.kikx-frame__content--user-message {
+  min-width: 0;
+}
+
+.kikx-user-message {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kikx-user-message__text {
+  min-width: 0;
+}
+
+.kikx-user-message__prompt {
+  min-width: 0;
+  padding-top: 6px;
+  border-top: 1px solid rgba(125, 211, 208, 0.16);
+}
+
+.kikx-user-message__prompt-summary {
+  width: fit-content;
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: #7f9398;
+  cursor: pointer;
+  font-size: calc(11px * 1.25);
+  line-height: 1.4;
+  opacity: 0.65;
+  transition: opacity 120ms ease, color 120ms ease;
+}
+
+.kikx-user-message__prompt-summary:hover,
+.kikx-user-message__prompt-summary:focus-visible,
+.kikx-user-message__prompt[open] .kikx-user-message__prompt-summary {
+  color: #a9d9d6;
+  opacity: 1;
+}
+
+.kikx-user-message__prompt-body {
+  display: grid;
+  gap: 10px;
+  max-height: min(65vh, 900px);
+  margin-top: 6px;
+  padding: 10px;
+  overflow: auto;
+  border: 1px solid #2b343c;
+  border-radius: 6px;
+  background: #0f1316;
+  color: #c8d0d8;
+}
+
+.kikx-user-message__prompt-meta {
+  color: #82919a;
+  font-size: calc(11px * 1.25);
+  font-variant-numeric: tabular-nums;
+}
+
+.kikx-user-message__prompt-message {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding-left: 8px;
+  border-left: 2px solid #38434c;
+}
+
+.kikx-user-message__prompt-message--system {
+  border-left-color: #69757f;
+}
+
+.kikx-user-message__prompt-message--user {
+  border-left-color: #3d7775;
+}
+
+.kikx-user-message__prompt-message--assistant {
+  border-left-color: #7d68a8;
+}
+
+.kikx-user-message__prompt-message--tool {
+  border-left-color: #9b7436;
+}
+
+.kikx-user-message__prompt-role {
+  color: #8b98a2;
+  font-size: calc(10px * 1.25);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.kikx-user-message__prompt-content {
+  min-width: 0;
+  color: #b8c4ce;
+  font-size: calc(12px * 1.25);
+  line-height: 1.5;
+}
+
+.kikx-user-message__prompt-content--user-fallback {
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: rgba(125, 211, 208, 0.08);
+  box-shadow: inset 2px 0 #7dd3d0;
+}
+
+.kikx-user-message__prompt-user-text {
+  padding: 0 0.15em;
+  border-radius: 3px;
+  background: rgba(125, 211, 208, 0.18);
+  box-shadow: 0 0 0 1px rgba(125, 211, 208, 0.32);
+  color: #c8fffb;
+}
+
+.kikx-user-message__prompt-empty {
+  margin: 0;
+  color: #84919a;
+  font-size: calc(12px * 1.25);
+}
+
 /* Keep full messages visually separated from surrounding minimized headers. */
 .kikx-frame:not(.kikx-frame--minimized) {
   margin-block: 1em;

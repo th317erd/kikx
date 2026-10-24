@@ -80,6 +80,35 @@ export class AgentInterface extends PluginInterface {
     return resolvePromptContent(params);
   }
 
+  // Providers call this with the final message list immediately before sending
+  // it. The trigger UserMessage stores the list for the client's expanded
+  // "sent prompt" view. Providers should call it after their own context
+  // fitting/trimming so the stored list matches the real request.
+  async recordModelPrompt(messages, params = {}) {
+    let frame = params.userFrame || params.frame || this.context?.userFrame || this.context?.frame;
+    if (!frame || frame.type !== 'UserMessage' || frame.authorType !== 'user' || frame.hidden === true)
+      return null;
+
+    let frameRuntime = params.services?.frameRuntime
+      || this.context?.services?.frameRuntime
+      || this.context?.frameRuntime;
+    if (typeof frameRuntime?.recordModelPrompt !== 'function')
+      return null;
+
+    let sessionID = params.session?.id || frame.sessionID;
+    try {
+      return await frameRuntime.recordModelPrompt(sessionID, frame.id, {
+        messages,
+        agentID: params.agent?.id || this.context?.agent?.id || null,
+        agentName: params.agent?.name || this.context?.agent?.name || null,
+        userText: frame.content?.text || '',
+      });
+    } catch (error) {
+      this.context?.logger?.warn?.(`Unable to record model prompt: ${error?.message || error}`);
+      return null;
+    }
+  }
+
   // Provider retry contract: once a provider has performed a side effect that
   // must not be repeated (usually executing model-requested tools), it marks
   // the instance retry-unsafe. Core may replay an empty failed request, but

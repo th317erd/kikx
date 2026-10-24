@@ -1,5 +1,6 @@
 'use strict';
 
+import './kikx-user-message-frame.mjs';
 import { elements, $, cleanupBindings } from '../lib/aeor-ui.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { renderMarkdownToElement } from '../lib/markdown-renderer.mjs';
@@ -103,7 +104,10 @@ function frameContentDescriptor(frame, appState) {
   if (frame.type === 'AgentThinking')
     return { kind: 'thinking', tagName: null };
 
-  if (frame.type === 'AgentMessage' || frame.type === 'AgentProgress' || frame.type === 'UserMessage')
+  if (frame.type === 'UserMessage')
+    return { kind: 'user-message', tagName: 'kikx-user-message-frame' };
+
+  if (frame.type === 'AgentMessage' || frame.type === 'AgentProgress')
     return { kind: frame.content?.status === 'streaming' ? 'stream' : 'markdown', tagName: null };
 
   return { kind: 'text', tagName: null };
@@ -553,6 +557,16 @@ export class KikxFrameItem extends HTMLElement {
       return;
     }
 
+    if (descriptor.kind === 'user-message') {
+      let child = this._contentElement.firstElementChild;
+      if (hasTagName(child, descriptor.tagName)) {
+        child.updateFrame(frame, this._appState);
+        return;
+      }
+      this._replaceContentElement(frame);
+      return;
+    }
+
     if (descriptor.kind === 'sub-session') {
       let child = this._contentElement.firstElementChild;
       if (hasTagName(child, descriptor.tagName)) {
@@ -663,6 +677,12 @@ export class KikxFrameItem extends HTMLElement {
     let descriptor = frameContentDescriptor(frame, this._appState);
     this._contentKind = descriptor.kind;
     this._contentTag = descriptor.tagName;
+
+    if (descriptor.kind === 'user-message') {
+      let element = document.createElement('kikx-user-message-frame');
+      element.updateFrame(frame, this._appState);
+      return div.class('kikx-frame__content kikx-frame__content--user-message')(element).build(document);
+    }
 
     if (descriptor.kind === 'sub-session')
       return this._buildSubSessionCard(frame);
