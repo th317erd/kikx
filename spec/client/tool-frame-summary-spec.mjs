@@ -392,3 +392,27 @@ test('invite command results name who was invited instead of repeating the comma
   };
   assert.equal(compactFrameBodyDescription(already), 'Zav was already in this session.');
 });
+
+
+test('shell focus labels skip compound syntax, comments, and quoted separators', () => {
+  let cases = [
+    [ 'cd /x 2>/dev/null || { echo "DIR MISSING"; exit 1; }\necho "== files =="\nls -la src/', 'ls' ],
+    [ 'echo "=== listeners ==="; (ss -ltnp 2>/dev/null || netstat -ltnp) | grep -E ":(3001|3002)"', 'ss' ],
+    [ '(command -v ss && ss -ltnp) 2>/dev/null | head -30', 'ss' ],
+    [ 'cd /x || exit 1\ngrep -rn \'mozavcodec\\|Library(\' media/ffvpx/moz.build | head -20', 'grep' ],
+    [ 'SSH="ssh -i $HOME/key -o ConnectTimeout=10 host"\n$SSH \'uptime\' 2>&1', 'ssh' ],
+    [ 'cd /home/wyatt && echo "open: $(curl -s \'http://127.0.0.1:3001/api/v1/questions\' | python3 -c "import sys,json;print(len(json.load(sys.stdin)))")"', 'curl' ],
+    [ 'set -u\nCAND=/tmp/x\n# comment\nCF=$(python3 - "$CAND" <<\'PY\'\nprint("x")\nPY\n)\necho "$CF"', 'python3' ],
+    [ 'for f in *.txt; do echo "$f"; grep -n foo "$f"; done', 'grep' ],
+    [ 'for d in /a /b; do if [ -d "$d" ]; then echo yes; else echo no; fi; done', 'shell' ],
+    [ 'cd /tmp && norm() { sed -n "s/x/y/p" "$1" | sort -u; }; norm k2.log', 'norm' ],
+    [ 'BODY=\'{"answer":"<User chose not to respond>","silent":true}\'\ncurl -s -d "$BODY" http://127.0.0.1:3002/x', 'curl' ],
+    [ 'cd ~/x && echo "PWD: $(pwd)" && echo "---GIT---" && git rev-parse --show-toplevel', 'pwd' ],
+    [ 'cd /x && case "spec/foo.mjs" in *-spec.mjs) echo IN;; *) echo OUT;; esac && git add spec/foo.mjs', 'git add' ],
+    [ 'cd /tmp\nPROMPT=\'You are auditing a UI\'\n~/Programs/bot-ocr --help', 'bot-ocr' ],
+    [ '~/.bot-common/tools/bot-ocr --help', 'bot-ocr' ],
+  ];
+
+  for (let [ command, expected ] of cases)
+    assert.equal(shellCommandFocusWord(command), expected, command);
+});
