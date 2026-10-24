@@ -91,6 +91,7 @@ export const kikxState = new ReactiveState({
   editingSessionTitle: '',
   editingAgentID: '',
   framesBySessionID: {},
+  frameFilters: null,
   sessionPagingByID: {},
   magicCode: params.get('code') || '',
   managingAgents: false,

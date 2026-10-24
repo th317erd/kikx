@@ -2851,6 +2851,17 @@ kikx-typing-indicator {
   gap: 6px;
 }
 
+/* Empty state after the frame filters narrowed the thread to nothing. It reads
+   as an empty thread but says something different, so it keeps the same box and
+   only adds a quieter tone - the message, not the styling, does the explaining. */
+.kikx-thread__empty--filtered {
+  gap: 6px;
+}
+
+.kikx-thread__empty--filtered p {
+  color: #9fb0bd;
+}
+
 /* Session participants popover. The custom element owns its open/close state;
    the header only supplies the current app state and session. */
 kikx-participants-popup {
@@ -3623,4 +3634,196 @@ kikx-thinking-panel {
   width: 1px;
   height: 1px;
   pointer-events: none;
+}
+
+/* Frame filter popover, opened by the eyeball in the window header. Sibling of
+   the participants popover above and deliberately the same shape: same button
+   metrics, same panel chrome, same row rhythm. The one visual difference is the
+   separator before the Hidden gate, which is not a category and must not read
+   as one. */
+kikx-frame-filter-popup {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.kikx-frame-filter__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid #3c444d;
+  border-radius: 6px;
+  background: transparent;
+  color: #cdd6df;
+  cursor: pointer;
+  font: inherit;
+}
+
+.kikx-frame-filter__button:hover,
+.kikx-frame-filter__button:focus-visible,
+kikx-frame-filter-popup.is-open .kikx-frame-filter__button {
+  border-color: #587183;
+  color: #f5f7fa;
+  outline: none;
+}
+
+.kikx-frame-filter__button svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+/* A filter is switched off, so the control itself should look narrowed. Only
+   the button reacts: the thread is the source of truth for what is on screen. */
+kikx-frame-filter-popup:not(.is-all-on) .kikx-frame-filter__button {
+  border-color: #6b4a1f;
+  color: #ffd9a3;
+}
+
+.kikx-frame-filter__panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  width: min(300px, calc(100vw - 32px));
+  padding: 10px;
+  border: 1px solid #3b4652;
+  border-radius: 9px;
+  background: #11161b;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.58);
+}
+
+.kikx-frame-filter__panel[hidden] {
+  display: none;
+}
+
+.kikx-frame-filter__panel:focus-visible {
+  outline: 2px solid #3d6cff;
+  outline-offset: 2px;
+}
+
+.kikx-frame-filter__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 4px 9px;
+  border-bottom: 1px solid #29323a;
+  color: #f5f7fa;
+}
+
+.kikx-frame-filter__header strong {
+  font-size: calc(13px * 1.25);
+}
+
+/* The pinned master row. It is a sibling of the scrolling list, so no list
+   scroll can carry it away, and it stays put while the categories scroll. */
+.kikx-frame-filter__pinned {
+  padding: 8px 0 6px;
+  border-bottom: 1px solid #29323a;
+}
+
+.kikx-frame-filter__list {
+  display: grid;
+  gap: 2px;
+  max-height: min(360px, 55vh);
+  margin-top: 6px;
+  overflow: auto;
+}
+
+.kikx-frame-filter__row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 6px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #cdd6df;
+  font-size: calc(13px * 1.25);
+}
+
+.kikx-frame-filter__row:hover {
+  background: #182027;
+}
+
+.kikx-frame-filter__row.is-off {
+  color: #7c8894;
+}
+
+.kikx-frame-filter__row--master {
+  font-weight: 600;
+  color: #f5f7fa;
+}
+
+.kikx-frame-filter__row--master.is-mixed {
+  color: #ffd9a3;
+}
+
+.kikx-frame-filter__checkbox {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: #3d6cff;
+  cursor: pointer;
+}
+
+.kikx-frame-filter__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kikx-frame-filter__count {
+  flex: 0 0 auto;
+  color: #9fb0bd;
+  font-size: calc(12px * 1.25);
+  font-variant-numeric: tabular-nums;
+}
+
+.kikx-frame-filter__row.is-off .kikx-frame-filter__count {
+  color: #616c77;
+}
+
+/* Separator for the Hidden gate. It is deliberately drawn as a different kind of
+   row, because it is not a filter like the ones above it: it reveals frames the
+   app normally keeps to itself. */
+.kikx-frame-filter__gate {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #29323a;
+}
+
+/* Child-session entry point. The grid it opens is the only surface that renders
+   the "+ Add Session" card, and the header toggle that used to reach it was
+   replaced by this popup. Without this row, child-session creation has no route
+   in the UI at all. */
+.kikx-frame-filter__footer {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #29323a;
+}
+
+.kikx-frame-filter__action {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #2f3944;
+  border-radius: 6px;
+  background: #171d23;
+  color: #cfd8e3;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.kikx-frame-filter__action:hover,
+.kikx-frame-filter__action:focus-visible {
+  background: #1e262e;
+  border-color: #3d4a58;
 }
