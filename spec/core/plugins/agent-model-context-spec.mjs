@@ -115,6 +115,7 @@ test('Brief A carries the version banner, precepts, tools, and behavior', () => 
   assert.match(text, /Character: You are terse\./);
   assert.match(text, /Precepts — MANDATORY/);
   assert.match(text, /Orient:/);
+  assert.match(text, /Facts: do not make assumptions\. Facts must be provable and proven\./);
   assert.match(text, /Proof: never claim done/i);
   assert.match(text, /continue-turn/);
   assert.match(text, /Delegation: agent-list/);

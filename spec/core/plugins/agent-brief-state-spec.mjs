@@ -52,6 +52,7 @@ test('packageVersion reads package.json.version and is cached', () => {
 test('the precepts constant carries all six precepts plus Proof', () => {
   assert.match(AGIS_PRECEPTS, /Orient:/);
   assert.match(AGIS_PRECEPTS, /Source:/);
+  assert.match(AGIS_PRECEPTS, /Facts: do not make assumptions\. Facts must be provable and proven\./);
   assert.match(AGIS_PRECEPTS, /Goal:/);
   assert.match(AGIS_PRECEPTS, /Peer:/);
   assert.match(AGIS_PRECEPTS, /Stakes:/);
