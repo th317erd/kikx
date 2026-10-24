@@ -22,6 +22,7 @@ export class KikxComposerHistory extends HTMLElement {
     this._selectedIndex = -1;
     this._searchTimer = null;
     this._authRetries = 0;
+    this._selecting = false;
     this._outsideHandler = null;
   }
 
@@ -58,6 +59,9 @@ export class KikxComposerHistory extends HTMLElement {
     this.hidden = false;
     if (this._app)
       this._app._composerHistoryOpen = true;
+    this._selecting = false;
+    this.classList.remove('is-selecting');
+    this._search.disabled = false;
     this._query = '';
     this._before = null;
     this._authRetries = 0;
@@ -138,6 +142,8 @@ export class KikxComposerHistory extends HTMLElement {
   }
 
   _onSearchInput() {
+    if (this._selecting)
+      return;
     clearTimeout(this._searchTimer);
     this._searchTimer = setTimeout(() => {
       this._query = this._search.value;
@@ -151,6 +157,11 @@ export class KikxComposerHistory extends HTMLElement {
   }
 
   _onSearchKeydown(event) {
+    if (this._selecting) {
+      event.preventDefault();
+      return;
+    }
+
     if (event.key === 'Escape') {
       event.preventDefault();
       this.close();
@@ -321,6 +332,8 @@ export class KikxComposerHistory extends HTMLElement {
     control.addEventListener(eventName, async (event) => {
       event.preventDefault();
       event.stopPropagation();
+      if (this._selecting)
+        return;
       control.disabled = true;
       try {
         await deleteComposerHistoryEntry(this._app, entry);
@@ -338,16 +351,33 @@ export class KikxComposerHistory extends HTMLElement {
   }
 
   async _select(entry) {
-    if (!entry)
+    if (!entry || this._selecting)
       return;
-    let replaced = await replaceComposerText(this._app, entry.text, {
-      draftID: entry.kind === 'draft' ? entry.draftID : null,
-      savedText: entry.kind === 'draft' ? entry.text : null,
-    });
-    if (replaced)
-      this.close();
-    else
+
+    // A selection is a one-shot action. The draft flush can take a network
+    // round-trip, and without this latch a second click queues a second replace
+    // that lands after the popup closed and overwrites the composer again.
+    this._selecting = true;
+    this.classList.add('is-selecting');
+    this._search.disabled = true;
+    this._setStatus('Opening...', true);
+    try {
+      let replaced = await replaceComposerText(this._app, entry.text, {
+        draftID: entry.kind === 'draft' ? entry.draftID : null,
+        savedText: entry.kind === 'draft' ? entry.text : null,
+      });
+      if (replaced) {
+        this.close();
+        return;
+      }
       this._setStatus('Could not save the current draft before replacing it.', true);
+    } finally {
+      if (this.isOpen) {
+        this._selecting = false;
+        this.classList.remove('is-selecting');
+        this._search.disabled = false;
+      }
+    }
   }
 
   _setStatus(text, visible) {

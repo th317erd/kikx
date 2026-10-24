@@ -1826,6 +1826,15 @@ kikx-typing-indicator {
   font-size: calc(12px * 1.25);
 }
 
+.kikx-composer-history-popover.is-selecting .kikx-composer-history__list,
+.kikx-composer-history-popover.is-selecting .kikx-composer-history__search {
+  pointer-events: none;
+}
+
+.kikx-composer-history-popover.is-selecting .kikx-composer-history__item {
+  cursor: progress;
+}
+
 .kikx-composer-history__list {
   display: flex;
   min-height: 80px;
