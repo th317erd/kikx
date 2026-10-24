@@ -120,6 +120,10 @@ function setTextIfChanged(node, next) {
     node.textContent = value;
 }
 
+function frameDebugClass(frame) {
+  return frame?.type ? `kikx-frame--${frame.type}` : '';
+}
+
 function frameHeaderStatus(frame, compact) {
   if (compact)
     return compactFrameHeader(frame);
@@ -560,6 +564,15 @@ export class KikxFrameItem extends HTMLElement {
     } else if (timeElement) {
       timeElement.remove();
     }
+
+    let debugClass = main?.querySelector('.kikx-frame__debug-class');
+    let debugLabel = frameDebugClass(frame);
+    if (!debugClass && main) {
+      debugClass = span.class('kikx-frame__debug-class')(debugLabel).build(document);
+      main.appendChild(debugClass);
+    } else if (debugClass) {
+      setTextIfChanged(debugClass, debugLabel);
+    }
   }
 
   _reconcileFrameContent(frame) {
@@ -681,6 +694,7 @@ export class KikxFrameItem extends HTMLElement {
           .datetime(timestamp.dateTime)
           .title(timestamp.title)(timestamp.label)
         : null,
+      span.class('kikx-frame__debug-class')(frameDebugClass(frame)),
     ).build(document);
 
     return div.class('kikx-frame__meta')(

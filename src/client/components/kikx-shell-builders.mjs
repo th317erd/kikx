@@ -574,6 +574,12 @@ export function buildStatusBar(app) {
     span.class('kikx-statusbar__dot')(),
     span.textContent.bindState((state) => state.connectionStatus, ['connectionStatus'])(),
     span.class('kikx-statusbar__spacer')(),
+    button
+      .type('button')
+      .class(`kikx-debug-toggle${app._state.debugMode === true ? ' is-on' : ''}`)
+      .ariaPressed(app._state.debugMode === true ? 'true' : 'false')
+      .title('Toggle client debug mode')
+      .onClick(app._toggleDebugMode)('Debug'),
     span
       .class('kikx-statusbar__tokens')
       .title('Total tracked tokens')

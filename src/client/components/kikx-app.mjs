@@ -13,6 +13,7 @@ import { installGlobalErrorCapture, uninstallGlobalErrorCapture } from '../lib/e
 import { cleanupBindings } from '../lib/aeor-ui.mjs';
 import { installScrollDebugLogger } from '../lib/scroll-debug-logger.mjs';
 import { hasSessionDeepLink } from './kikx-app-helpers.mjs';
+import { toggleDebugMode } from '../lib/debug-mode.mjs';
 import { flushComposerDraft } from './composer-drafts.mjs';
 import {
   buildAuthShell,
@@ -205,6 +206,7 @@ export class KikxApp extends HTMLElement {
     super();
 
     this._state = kikxState;
+    this.classList.toggle('kikx-debug-mode', this._state.debugMode === true);
     // The initial shell must not flash the project grid while a deep-linked
     // session is still fetching its frame window.
     this._deepLinkReady = !hasSessionDeepLink();
@@ -248,6 +250,10 @@ export class KikxApp extends HTMLElement {
     this._buildWindowHeader = (options) => buildWindowHeader(this, options);
     this._buildGridIcon = () => buildGridIcon();
     this._toggleSubSessions = () => toggleSubSessions(this);
+    this._toggleDebugMode = () => {
+      toggleDebugMode(this);
+      this._render();
+    };
     this._buildChildGrid = (parentSessionID) => buildChildGrid(this, parentSessionID);
     this._buildWorkspaceGrid = () => buildWorkspaceGrid(this);
     this._childGridTitle = (parentSessionID) => childGridTitle(this, parentSessionID);

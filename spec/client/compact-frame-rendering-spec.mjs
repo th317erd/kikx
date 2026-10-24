@@ -243,7 +243,7 @@ test('the frame metadata never renders the frame type in the upper-right', () =>
   }, toolState('exec', 'kikx-shell-tool-use'));
 
   assert.equal(item.querySelector('.kikx-frame__secondary'), null);
-  assert.doesNotMatch(item.querySelector('.kikx-frame__meta').textContent, /ShellToolFrame/);
+  assert.doesNotMatch(item.querySelector('.kikx-frame__meta-status-label')?.textContent || '', /ShellToolFrame/);
 });
 
 test('communication frames keep the normal meta and content layout', () => {

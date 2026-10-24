@@ -420,3 +420,11 @@ test('every frame carries an invisible hover target and the quote quick action',
   assert.equal(quote.getAttribute('aria-label'), 'Quote frame');
   assert.ok(quote.querySelector('svg'));
 });
+
+
+test('every frame carries its CSS class name for debug mode', () => {
+  let item = frameItem();
+  item.updateFrame({ id: 'debug-class', type: 'AgentMessage', content: { text: 'hello' } }, {});
+
+  assert.equal(item.querySelector('.kikx-frame__debug-class').textContent, 'kikx-frame--AgentMessage');
+});

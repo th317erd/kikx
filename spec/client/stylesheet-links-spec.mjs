@@ -249,3 +249,10 @@ test('frame lists reserve their scrollbar and mini previews never scroll', async
   assert.match(css, /\.kikx-chat-view--mini \.kikx-frame-list \{[^}]*justify-content: flex-end/);
   assert.match(css, /\.kikx-chat-view--mini \.kikx-user-message__prompt \{[^}]*display: none/);
 });
+
+
+test('debug mode reveals frame class names and the status-bar toggle', async () => {
+  let css = await readFile(path.join(STYLES_DIR, 'app.css'), 'utf8');
+  assert.match(css, /\.kikx-debug-mode \.kikx-frame__debug-class \{[^}]*display: inline/);
+  assert.match(css, /\.kikx-debug-toggle\.is-on \{[^}]*opacity: 1/);
+});

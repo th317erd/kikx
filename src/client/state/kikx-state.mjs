@@ -42,6 +42,7 @@ import {
   stackDepth,
 } from './navigation-stack.mjs';
 import { createQuestionsState } from './questions-state.mjs';
+import { readDebugMode } from '../lib/debug-mode.mjs';
 
 export const AUTH_STORAGE_KEY = 'kikx.auth.session';
 export const AUTH_SHARED_STORAGE_KEY = 'kikx.auth.shared';
@@ -84,6 +85,7 @@ export const kikxState = new ReactiveState({
   // never returns; getVisibleSessions() merges it in only while the eye is on.
   deletedSessionDetailsByID: {},
   deletedSessionIDs: [],
+  debugMode: readDebugMode(),
   draft: '',
   editingSessionID: '',
   editingSessionTitle: '',

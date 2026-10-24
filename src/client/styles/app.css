@@ -132,6 +132,30 @@ kikx-app {
   min-width: 12px;
 }
 
+.kikx-debug-toggle {
+  min-height: 20px;
+  padding: 0 7px;
+  border: 1px solid #39444e;
+  border-radius: 4px;
+  background: transparent;
+  color: #7f8c97;
+  cursor: pointer;
+  font: inherit;
+  font-size: calc(10px * 1.25);
+  letter-spacing: 0.06em;
+  opacity: 0.55;
+  text-transform: uppercase;
+}
+
+.kikx-debug-toggle:hover,
+.kikx-debug-toggle:focus-visible,
+.kikx-debug-toggle.is-on {
+  border-color: #d9b85f;
+  color: #f1d58a;
+  opacity: 1;
+  outline: none;
+}
+
 .kikx-statusbar__tokens {
   flex: 0 0 auto;
   color: #aab4bf;
@@ -962,6 +986,19 @@ kikx-app {
 .kikx-frame--ToolCall .kikx-frame__meta-main strong,
 .kikx-frame--ToolResult .kikx-frame__meta-main strong {
   color: #f6bd60;
+}
+
+.kikx-frame__debug-class {
+  display: none;
+  color: #7f8c97;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: calc(9px * 1.25);
+  letter-spacing: 0.02em;
+  opacity: 0.8;
+}
+
+.kikx-debug-mode .kikx-frame__debug-class {
+  display: inline;
 }
 
 .kikx-frame__timestamp {
