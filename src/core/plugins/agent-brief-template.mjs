@@ -89,7 +89,7 @@ export const TURN_ENDING_LINES = [
   'Stay aligned with the task the user gave you — vision → mission → current todos. If what you\'re doing isn\'t the user-assigned work, stop.',
 ];
 
-export const EXEC_SCRIPT_REMINDER_LINE = 'Don\'t forget that you have `exec-script` to write and execute a one-shot script in a single maneuver. Provide the files and a start command; it can run Python, Bash, Node, or another local interpreter. This is often better than running a whole slew of separate shell commands.';
+export const EXEC_SCRIPT_REMINDER_LINE = 'Prefer scripts: pre-consider all the steps you need to take next, and write one `exec-script` program to take those steps in a single shot. Provide the files and a start command; it can run Python, Bash, Node, or another local interpreter. Pragmatize the steps and the work. Use this especially when a task would otherwise become a long chain of separate `exec` calls; do not force a script when one simple command is clearly enough.';
 
 function buildMessageBriefAnswerLine(_context = {}) {
   return TURN_ENDING_LINES.join('\n');

@@ -546,8 +546,23 @@ test('Brief B carries the dual-verb turn-ending phrase', () => {
   assert.match(brief, /Communication — MANDATORY when you are actively working a turn:/);
   assert.match(brief, /Before a long-running, destructive, or externally visible action, explain it first\./);
   assert.match(brief, /A one-line status\s+is not enough in details\./);
-  assert.match(brief, /Don't forget that you have `exec-script` to write and execute a one-shot script in a single maneuver\./);
+  assert.match(brief, /Prefer scripts: pre-consider all the steps you need to take next, and write one `exec-script` program to take those steps in a single shot\./);
   assert.match(brief, /Provide the files and a start command; it can run Python, Bash, Node, or another local interpreter\./);
+  assert.match(brief, /Pragmatize the steps and the work\./);
+});
+
+test('the exec-script reminder reaches the final assembled model turn', () => {
+  let messages = buildModelMessages({
+    frame: { id: 'msg_1', type: 'UserMessage', authorType: 'user', authorID: 'usr_1', content: { text: 'go' } },
+    agent: { id: 'agent_1' },
+    frames: [],
+  });
+  let final = messages.at(-1);
+
+  assert.equal(final.role, 'user');
+  assert.match(final.content, /Prefer scripts:/);
+  assert.match(final.content, /`exec-script`/);
+  assert.match(final.content, /Pragmatize the steps and the work\./);
 });
 
 test('Brief B shows an autonomous-run clue only on self-triggered turns', () => {
