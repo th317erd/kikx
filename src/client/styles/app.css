@@ -792,6 +792,24 @@ kikx-app {
   padding: 6px 8px 0;
 }
 
+/* A compact end-turn report is still a message: keep the normal message card
+   shell and padding while only collapsing its long body. */
+.kikx-frame--compact.kikx-frame--AgentMessage {
+  width: fit-content;
+  max-width: min(78%, 960px);
+  justify-self: start;
+  padding: 12px;
+  border-color: var(--kikx-frame-border-color);
+  background: var(--kikx-frame-solid-color);
+}
+
+.kikx-frame--AgentMessage.kikx-frame--compact .kikx-frame__compact-description {
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: pre-line;
+}
+
 .kikx-frame__compact {
   min-width: 0;
 }

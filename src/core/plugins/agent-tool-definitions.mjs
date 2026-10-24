@@ -8,10 +8,10 @@ import { MAX_CHARACTER_COMPRESSED_LENGTH } from '../agents/character-limits.mjs'
 export const AGENT_TOOL_DEFINITIONS = [
   {
     name: 'end-turn',
-    description: 'End this turn with a REQUIRED short summary of what you did. Put longer evidence, tables, logs, and detail in details; the summary is the visible collapsed line.',
+    description: 'End this turn with a REQUIRED short bulleted summary of what you did. Put longer evidence, tables, logs, and detail in details; the summary is the visible collapsed line.',
     help: [
       'Use end-turn when the request is satisfied, or when you are pausing/waiting after work.',
-      'summary is REQUIRED and must be short: one or two sentences, outcome first. Do not paste tables, logs, or a full report into summary.',
+      'summary is REQUIRED and must be a short Markdown bullet list: 2-5 bullets, one line each, outcome first. Do not paste tables, logs, or a full report into summary.',
       'details is optional for evidence, proof, failures/risks, and remaining work. The user can expand the collapsed end-turn frame to read it.',
       'Omit both only when you did no visible work and have nothing new to report; the completion or reply will wake you.',
       'If you have actionable work you can do right now, use continue-turn instead and name the next step.',
@@ -21,7 +21,7 @@ export const AGENT_TOOL_DEFINITIONS = [
       properties: {
         summary: {
           type: 'string',
-          description: 'REQUIRED short summary: one or two sentences. This is the collapsed visible line; do not paste a full report here.',
+          description: 'REQUIRED short bulleted summary: 2-5 Markdown bullets, one line each. This is the collapsed visible line; do not paste a full report here.',
         },
         details: {
           type: 'string',

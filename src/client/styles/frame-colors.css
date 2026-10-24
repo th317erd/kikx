@@ -254,6 +254,13 @@
   padding-bottom: 6px;
 }
 
+/* Compact turn reports keep the same full-bleed message header as a normal
+   AgentMessage instead of the inset status/tool header treatment. */
+.kikx-frame--compact.kikx-frame--AgentMessage .kikx-frame__meta {
+  margin: -12px -12px 0;
+  padding: 12px 12px 8px;
+}
+
 .kikx-frame__meta-status-label {
   min-width: 0;
   overflow: hidden;

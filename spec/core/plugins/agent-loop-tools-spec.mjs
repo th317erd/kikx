@@ -28,23 +28,23 @@ test('model-facing tool descriptions carry the communication contract', () => {
 
   assert.match(descriptions.get('progress'), /before a new phase or related batch/);
   assert.match(descriptions.get('progress'), /after a meaningful result/);
-  assert.match(descriptions.get('end-turn'), /REQUIRED short summary/);
+  assert.match(descriptions.get('end-turn'), /REQUIRED short bulleted summary/);
   assert.match(descriptions.get('end-turn'), /detail/);
   assert.match(descriptions.get('continue-turn'), /visible progress report/);
 });
 
-test('end-turn requires a short summary and keeps long details expandable', () => {
+test('end-turn requires a bulleted summary and keeps long details expandable', () => {
   let state = createLoopState();
   let tools = createLoopTools(state, { isCoordinator: false });
   let control = tools['end-turn']({
-    summary: 'Synced the branch and ran the focused spec.',
+    summary: '- Synced the branch.\n- Ran the focused spec.',
     details: 'Full evidence:\n\n| Step | Result |\n| --- | --- |\n| fetch | 0 0 |',
   });
 
   assert.equal(control.type, 'LoopControl');
   assert.equal(control.action, 'finalize');
   assert.equal(state.finalFrame.type, 'AgentMessage');
-  assert.equal(state.finalFrame.content.summary, 'Synced the branch and ran the focused spec.');
+  assert.equal(state.finalFrame.content.summary, '- Synced the branch.\n- Ran the focused spec.');
   assert.match(state.finalFrame.content.text, /Full evidence/);
   assert.equal(state.finalFrame.content.turnReport, true);
 

@@ -326,13 +326,13 @@ test('end-turn report messages compact while ordinary AgentMessages stay expande
     type: 'AgentMessage',
     content: {
       status: 'complete',
-      summary: 'Synced the branch and ran the focused spec.',
+      summary: '- Synced the branch.\n- Ran the focused spec.',
       text: 'Full evidence table and logs.',
       turnReport: true,
     },
   };
   assert.equal(isCompactFrame(report), true);
-  assert.equal(compactFrameSummary(report).description, 'Synced the branch and ran the focused spec.');
+  assert.equal(compactFrameSummary(report).description, '- Synced the branch.\n- Ran the focused spec.');
   assert.deepEqual(compactFrameHeader(report), { label: 'Message', icon: 'chat' });
 
   let ordinary = { id: 'msg-1', type: 'AgentMessage', content: { text: 'A normal reply.' } };

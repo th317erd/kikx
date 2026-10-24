@@ -46,7 +46,7 @@ export function createLoopTools(state, context) {
     state.finalized = true;
     state.continuation = null;
     let normalized = normalizeToolResponseContent(content);
-    let summary = normalizeShortSummary(content?.summary);
+    let summary = normalizeBulletedSummary(content?.summary);
     let details = normalizeReportDetails(content?.details);
     if (summary !== '') {
       normalized = {
@@ -454,8 +454,17 @@ export async function recordAgentProgress(input, context = {}) {
   };
 }
 
-function normalizeShortSummary(value) {
-  return typeof value === 'string' ? value.trim() : '';
+function normalizeBulletedSummary(value) {
+  let text = typeof value === 'string' ? value.trim() : '';
+  if (text === '')
+    return '';
+
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => /^[-*•]\s+/.test(line) ? line : `- ${line}`)
+    .join('\n');
 }
 
 function normalizeReportDetails(value) {
