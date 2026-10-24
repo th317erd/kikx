@@ -229,3 +229,13 @@ test('frame quick actions reserve a right gutter and appear on hover', async () 
   assert.match(css, /\.kikx-frame--minimized \.kikx-frame__quick-actions \{[^}]*display: none/);
   assert.match(css, /\.kikx-frame__quick-action svg \{[^}]*width: 17px/);
 });
+
+
+test('frames transition dimensional and color properties, including auto height entry', async () => {
+  let css = await readFile(path.join(STYLES_DIR, 'app.css'), 'utf8');
+  assert.match(css, /interpolate-size: allow-keywords/);
+  assert.match(css, /\.kikx-frame \{[^}]*height 220ms ease/);
+  assert.match(css, /\.kikx-frame \{[^}]*width 180ms ease/);
+  assert.match(css, /\.kikx-frame \{[^}]*border-color 180ms ease/);
+  assert.match(css, /\.kikx-frame--entering \{[^}]*height: 0/);
+});

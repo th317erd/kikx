@@ -825,10 +825,26 @@ kikx-app {
   background: #171b1f;
   opacity: 1;
   transform: translateY(0);
+  /* Chromium can animate to/from `height: auto` when keyword interpolation is
+     enabled. That makes the frame-entry animation depend on the card's real
+     height instead of racing a 0 -> 20000px max-height transition. */
+  interpolate-size: allow-keywords;
   transition:
+    width 180ms ease,
+    inline-size 180ms ease,
+    min-width 180ms ease,
+    max-width 180ms ease,
+    height 220ms ease,
     max-height 220ms ease,
-    padding-top 220ms ease,
-    padding-bottom 220ms ease,
+    padding 220ms ease,
+    margin 220ms ease,
+    gap 180ms ease,
+    border-color 180ms ease,
+    border-radius 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease,
+    filter 180ms ease,
     opacity 180ms ease,
     transform 220ms ease;
 }
@@ -864,6 +880,7 @@ kikx-app {
 }
 
 .kikx-frame--entering {
+  height: 0;
   max-height: 0;
   padding-top: 0;
   padding-bottom: 0;
@@ -1078,6 +1095,7 @@ kikx-app {
   }
 
   .kikx-frame--entering {
+    height: auto;
     max-height: 20000px;
     padding-top: 12px;
     padding-bottom: 12px;
