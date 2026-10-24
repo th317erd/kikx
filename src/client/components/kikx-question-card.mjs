@@ -23,6 +23,7 @@ import {
   setAnswerDraft,
 } from '../state/question-drafts.mjs';
 import { describeQuestionOrigin } from '../state/question-attribution.mjs';
+import { bindComposerSubmitKeys } from './composer-keyboard.mjs';
 
 const { article, button, div, form, label, li, p, span, textarea, ul } = elements;
 
@@ -662,6 +663,13 @@ export function bindAnswerForm(node, handlers = {}) {
 
   formNode.addEventListener('submit', handleSubmit);
   formNode.addEventListener('keydown', handleKeydown);
+
+  // The Inbox card is the same form as the inline frame, so it needs the same
+  // keymap: Enter sends, Shift/Alt+Enter newlines. Bound to the textarea rather
+  // than the form so Enter on the Dismiss or confirm control keeps its own
+  // meaning. Reuses handleSubmit, so the in-flight guard and the empty-answer
+  // hint stay in one place.
+  bindComposerSubmitKeys(inputNode, () => handleSubmit({ preventDefault() {}, submitter: submitNode }));
   if (typeof onRead === 'function')
     inputNode.addEventListener('focus', handleFocus);
 }

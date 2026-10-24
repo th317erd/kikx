@@ -29,9 +29,11 @@ import {
   setAnswerDraft,
 } from '../state/question-drafts.mjs';
 import { bindDismissControl, buildDismissControl } from './kikx-question-card.mjs';
+import { bindComposerSubmitKeys } from './composer-keyboard.mjs';
 import { describeQuestionOrigin } from '../state/question-attribution.mjs';
 
 const { div, span, p, form, textarea, button } = elements;
+
 
 // Labels. A default answer must never be presented as if the user said it: the
 // agent was told "declined to say" on the user's behalf, and the receipt is the
@@ -202,6 +204,16 @@ export class KikxQuestionFrame extends HTMLElement {
         setAnswerDraft(drafts, question.id, answerInput.value);
       });
     }
+
+    // The box sits in a <form>, where a textarea's Enter inserts a newline and
+    // never submits. Bind the shared composer rule so Enter sends here too.
+    // Re-entering while a send is in flight is ignored: _submit has no re-entry
+    // guard of its own, so the guard lives in the one place that can see it.
+    bindComposerSubmitKeys(answerInput, () => {
+      if (this.getAttribute?.('data-answer-state') === 'busy')
+        return;
+      this._submit(question.id, answerInput);
+    });
 
     // A default answer that no person has taken over is NOT a closed row.
     // The agent's fallback fired because nobody replied, so the person it spoke
