@@ -20,7 +20,7 @@ import {
   normalizeQuestionList,
   openQuestionCount,
 } from '../state/questions-state.mjs';
-import { bindAnswerForm, renderQuestionCard } from './kikx-question-card.mjs';
+import { renderInboxQuestionRow } from './kikx-question-frame.mjs';
 import { buildViewBackButton } from './kikx-view-chrome.mjs';
 
 const { div, h3, header, h2, li, p, span, ul } = elements;
@@ -109,7 +109,7 @@ export function inboxEmptyState(app) {
   ).build(ownerDocument);
 }
 
-function buildGroup(app, group, now) {
+function buildGroup(app, group, now, handlers) {
   let groupCount = group.questions.length;
   let heading = groupHeading(group);
   let children = [];
@@ -120,7 +120,7 @@ function buildGroup(app, group, now) {
     children.push(h3.class(HEADING_CLASS)(heading));
 
   for (let question of group.questions) {
-    let card = renderQuestionCard(app, question, { now, groupCount });
+    let card = renderInboxQuestionRow(app, question, { now, groupCount, handlers });
     if (!card)
       continue;
 
@@ -170,7 +170,7 @@ export function buildInboxList(app, handlers = {}) {
   for (let group of groups) {
     let node = null;
     try {
-      node = buildGroup(app, group, now);
+      node = buildGroup(app, group, now, handlers);
     } catch (_error) {
       // One unrenderable row must not take the rest of the Inbox down with it
       // (S1): drop the failing group, keep the others.
@@ -186,14 +186,9 @@ export function buildInboxList(app, handlers = {}) {
 
   let list = div.class(LIST_CLASS)(groupNodes).build(ownerDocument);
 
-  let hasHandlers = handlers && (typeof handlers.onSubmit === 'function'
-    || typeof handlers.onDismiss === 'function'
-    || typeof handlers.onDismissAnswer === 'function'
-    || typeof handlers.onRead === 'function');
-  if (hasHandlers) {
-    for (let card of list.querySelectorAll(`.${CARD_CLASS}`))
-      bindAnswerForm(card, handlers);
-  }
+  // Each row is a `kikx-question-frame` mounted by the adapter, and the frame
+  // wires its own controls on render. There is no second bind pass: binding one
+  // here as well would attach every submit twice.
 
   return list;
 }
@@ -321,11 +316,13 @@ export function syncInboxList(app, handlers = {}) {
     if (!renderingSettled)
       continue;
 
-    let fresh = renderQuestionCard(app, question, { now: Date.now(), groupCount: questions.length });
+    let fresh = renderInboxQuestionRow(app, question, {
+      now: Date.now(),
+      groupCount: questions.length,
+      handlers,
+    });
     if (!fresh)
       continue;
-
-    bindAnswerForm(fresh, handlers);
 
     let row = card;
     while (row && row.parentNode && !row.classList?.contains(ROW_CLASS))
@@ -347,11 +344,10 @@ export function syncInboxList(app, handlers = {}) {
     if (present.has(question.id))
       continue;
 
-    let card = renderQuestionCard(app, question, { now, groupCount });
+    let card = renderInboxQuestionRow(app, question, { now, groupCount, handlers });
     if (!card)
       continue;
 
-    bindAnswerForm(card, handlers);
     list.appendChild(li.class(ROW_CLASS)(card).build(resolveDocument(app)));
   }
 

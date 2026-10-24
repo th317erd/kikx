@@ -172,19 +172,23 @@
 
 /* --- Question card (the real Inbox row) --------------------------------- */
 
+/* The row is a WRAPPER, not a second box.
+
+   On the in-thread surface the question's form IS its card (`__card`), so the
+   box — padding, edge, accent, radius, fill — belongs to the form. This rule
+   also painted that box here, which put a second nested box around the frame
+   inside every Inbox row. Two boxes is precisely what made a row read as a
+   different component from the question it renders, and the form inside it
+   kept a different gap again. The box now lives on
+   `.kikx-question-card__answer` — this surface's form — in the same rule as the
+   frame's, so the two cannot drift apart in either values or spacing. */
 .kikx-question-card {
-  display: grid;
-  gap: 10px;
-  padding: 14px;
-  border: 1px solid #2a3138;
-  border-radius: 10px;
-  background: #171c21;
+  display: block;
 }
 
 .kikx-question-card__header {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 10px;
   color: #8b97a3;
   font-size: calc(12px * 1.25);
@@ -192,8 +196,7 @@
 
 .kikx-question-card__agent {
   overflow: hidden;
-  max-width: 60%;
-  color: #aeb8c2;
+  color: #ffb7d8;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -205,11 +208,26 @@
   color: #6b7684;
 }
 
+/* The high-priority pill. The Inbox vocabulary names it `__priority`; with no
+   rule behind that name a high-priority row printed the word "high" as plain
+   body text beside the agent name. Same pill as the in-thread frame's. */
+.kikx-question-card__priority {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border: 1px solid #ff4fa3;
+  border-radius: 999px;
+  color: #ff9ac8;
+  font-size: calc(10px * 1.25);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .kikx-question-card__text {
   margin: 0;
   color: #f5f7fa;
   font-size: calc(14px * 1.25);
-  line-height: 1.55;
+  line-height: 1.5;
   overflow-wrap: anywhere;
 }
 
@@ -231,10 +249,12 @@
   font-size: calc(11px * 1.25);
 }
 
-.kikx-question-card__answer {
-  display: grid;
-  gap: 7px;
-}
+/* The Inbox form's layout lives with the frame's card rule (see
+   `.kikx-question-frame__card`), because they are the same element on two
+   surfaces and a second copy of `gap` here is a second value to keep in step.
+   Measured before this change: the 7px gap against the frame's 9px made an
+   identical question render 6px shorter in the Inbox (253px vs 259px) purely
+   from three 2px gaps. */
 
 .kikx-question-card__answer-label {
   color: #aeb8c2;
@@ -256,6 +276,16 @@
 }
 
 .kikx-question-card__closed {
+  margin: 0;
+  color: #6b7684;
+  font-size: calc(12px * 1.25);
+  font-style: italic;
+}
+
+/* A question whose text could not be read. The Inbox vocabulary names this
+   `__missing`; it had no rule, so it inherited the body font and the row's
+   silence read as a rendering fault rather than a stated one. */
+.kikx-question-card__missing {
   margin: 0;
   color: #6b7684;
   font-size: calc(12px * 1.25);
@@ -332,12 +362,12 @@
 
    The left rule is what makes it read as "already dealt with" against the
    neighbouring cards that are still awaiting an answer. */
-.kikx-question-card[data-question-settled="true"] {
+.kikx-question-card[data-question-settled="true"] .kikx-question-card__answer {
   border-left: 3px solid #2f81f7;
   opacity: 0.85;
 }
 
-.kikx-question-card[data-question-settled="true"][data-question-status="dismissed"] {
+.kikx-question-card[data-question-settled="true"][data-question-status="dismissed"] .kikx-question-card__answer {
   border-left-color: #f97316;
 }
 
@@ -439,17 +469,20 @@
 /* The row itself cools down while busy, so the change is visible even when the
    button is scrolled past. */
 .kikx-question-card[data-answer-state='busy'],
-.kikx-question-frame[data-answer-state='busy'] {
+.kikx-question-frame[data-answer-state='busy'],
+.kikx-question-frame--inbox[data-answer-state='busy'] .kikx-question-card__answer {
   border-color: #3d6cff;
 }
 
 .kikx-question-card[data-answer-state='error'],
-.kikx-question-frame[data-answer-state='error'] {
+.kikx-question-frame[data-answer-state='error'],
+.kikx-question-frame--inbox[data-answer-state='error'] .kikx-question-card__answer {
   border-color: #d29922;
 }
 
 .kikx-question-card[data-answer-state='sent'],
-.kikx-question-frame[data-answer-state='sent'] {
+.kikx-question-frame[data-answer-state='sent'],
+.kikx-question-frame--inbox[data-answer-state='sent'] .kikx-question-card__answer {
   border-color: #2ea043;
 }
 
@@ -593,7 +626,17 @@
 
 /* An editable default answer: the receipt is green-edged but the card still
    has a live box in it, so styling it as fully settled would be a lie. */
-.kikx-question-frame:has(.kikx-question-frame__answer) .kikx-question-frame__card {
+/* `:has(__answer)` matches BOTH surfaces: the frame's textarea carries that name
+   in the thread, and in the Inbox row `.kikx-question-card__answer` is the FORM
+   itself. Both branches were needed — the selector as written only spoke the
+   thread's vocabulary, so it greyed the frame's edge while the Inbox kept its
+   accent, and the two surfaces disagreed on all four border colours in the one
+   state a user actually sees. Measured in Chrome at 420/300/240px, not inferred.
+   The Inbox branch keys on `.kikx-question-frame--inbox`, NOT on the row's
+   `<article>`: the frame sits between the article and the form, so `:has(> …)`
+   off the article matches nothing at all. */
+.kikx-question-frame:has(.kikx-question-frame__answer) .kikx-question-frame__card,
+.kikx-question-frame--inbox:has(.kikx-question-card__answer) .kikx-question-card__answer {
   border-color: #30363d;
 }
 
@@ -853,7 +896,18 @@
   display: block;
 }
 
-.kikx-question-frame__card {
+/* The frame mounted inside an Inbox row. The `<article>` around it is the card
+   box, so the frame itself contributes no border, padding or background: two
+   nested boxes in one row is what made the row look like a different component
+   from the in-thread question it is supposed to match. */
+.kikx-question-frame--inbox {
+  display: block;
+}
+
+/* One box, two surfaces, one rule. A second copy of these values under a second
+   class name is how the surfaces drifted in the first place. */
+.kikx-question-frame__card,
+.kikx-question-card__answer {
   display: grid;
   gap: 9px;
   padding: 13px 14px;
