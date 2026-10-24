@@ -239,3 +239,13 @@ test('frames transition dimensional and color properties, including auto height 
   assert.match(css, /\.kikx-frame \{[^}]*border-color 180ms ease/);
   assert.match(css, /\.kikx-frame--entering \{[^}]*height: 0/);
 });
+
+
+test('frame lists reserve their scrollbar and mini previews never scroll', async () => {
+  let css = await readFile(path.join(STYLES_DIR, 'app.css'), 'utf8');
+  assert.match(css, /\.kikx-frame-list \{[^}]*scrollbar-gutter: stable/);
+  assert.match(css, /\.kikx-frame-list:hover \{[^}]*scrollbar-color: #52606c transparent/);
+  assert.match(css, /\.kikx-chat-view--mini \.kikx-frame-list \{[^}]*overflow: hidden/);
+  assert.match(css, /\.kikx-chat-view--mini \.kikx-frame-list \{[^}]*justify-content: flex-end/);
+  assert.match(css, /\.kikx-chat-view--mini \.kikx-user-message__prompt \{[^}]*display: none/);
+});

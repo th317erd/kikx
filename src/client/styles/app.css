@@ -594,6 +594,36 @@ kikx-app {
   /* The client owns scroll placement (anchor/pin). Browser scroll anchoring
      reacting to frame reconciliation is the source of the random jumps. */
   overflow-anchor: none;
+  /* Reserve the scrollbar track even while the thumb is hidden, so hovering
+     or scrolling cannot change the content width and shift every frame. */
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.kikx-frame-list:hover {
+  scrollbar-color: #52606c transparent;
+}
+
+.kikx-frame-list::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.kikx-frame-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.kikx-frame-list::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  background-clip: padding-box;
+}
+
+.kikx-frame-list:hover::-webkit-scrollbar-thumb {
+  background: #52606c;
+  background-clip: padding-box;
 }
 
 .kikx-frame-stream {
@@ -2495,8 +2525,26 @@ kikx-typing-indicator {
   transform-origin: top left;
 }
 
+.kikx-chat-view--mini .kikx-frame-list {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+
+.kikx-chat-view--mini .kikx-frame-stream {
+  width: 100%;
+  min-height: 0;
+  padding: 0 16px 16px 0;
+}
+
 .kikx-chat-view--mini .kikx-frame {
   pointer-events: none;
+}
+
+.kikx-chat-view--mini .kikx-user-message__prompt {
+  display: none;
 }
 
 /* Seamless maximize/minimize: shared-element hero morph (View Transitions). */
