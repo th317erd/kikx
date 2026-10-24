@@ -15,6 +15,7 @@ import {
   upsertSession,
 } from '../state/kikx-state.mjs';
 import { stackFromSearchParams, stackToURL } from '../state/navigation-stack.mjs';
+import { frameFiltersSignature, normalizeFrameFilters } from '../lib/frame-filters.mjs';
 import {
   HERO_VIEW_TRANSITION_NAME,
   runViewTransition,
@@ -82,6 +83,22 @@ export function toggleShowDeleted(app) {
   app._state.showDeletedSessions = app._state.showDeletedSessions !== true;
   if (app._state.showDeletedSessions)
     app._loadDeletedSessions();
+  app._render();
+}
+
+// Replace the frame filter set and repaint the shell. _render() is enough: the
+// thread body is rebuilt from threadRenderFrames, which reads this state, so a
+// filter change takes effect on the same pass as the popup's own repaint.
+//
+// The signature guard keeps an off/on round trip from doing nothing twice, and
+// stops a redundant rebuild when a click cannot have changed anything (for
+// example Ctrl+Click on an already-isolated row).
+export function setFrameFilters(app, filters) {
+  let next = normalizeFrameFilters(filters);
+  if (frameFiltersSignature(next) === frameFiltersSignature(app._state.frameFilters))
+    return;
+
+  app._state.frameFilters = next;
   app._render();
 }
 

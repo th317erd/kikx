@@ -1,7 +1,7 @@
 'use strict';
 
 import { getDeletedSessions, getGridParentSessionID, getSelectedFrames, getSessionPaging, getSessionPreviews, getVisibleSessions } from '../state/kikx-state.mjs';
-import { thinkingAgents, threadVisibleFrames } from '../state/thinking-state.mjs';
+import { thinkingAgents, threadRenderFrames } from '../state/thinking-state.mjs';
 import { guardClientOperation, reportClientError } from '../lib/error-boundary.mjs';
 import { currentViewName } from '../state/navigation-stack.mjs';
 import { scheduleAnimationFrame } from './kikx-app-helpers.mjs';
@@ -264,7 +264,7 @@ function syncFrameThreadBody(app, sessionID, options) {
   if (!body)
     return;
 
-  let frames = threadVisibleFrames(getSelectedFrames(app._state));
+  let frames = threadRenderFrames(getSelectedFrames(app._state), app._state.frameFilters);
   let view = body.querySelector('kikx-chat-view');
   if (frames.length === 0 || !view) {
     disconnectFrameListObserver(app);

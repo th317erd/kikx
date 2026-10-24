@@ -6,6 +6,7 @@ import { buildScrollLockFloatingButton, buildScrollLockToolbar } from './kikx-sc
 import { activateComposerDraftSession } from './composer-drafts.mjs';
 import './kikx-composer-history.mjs';
 import './kikx-participants-popup.mjs';
+import './kikx-frame-filter-popup.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { createErrorSurfaceElement } from './kikx-error-surface.mjs';
 import { reattachAnswerNotice } from './answer-notice.mjs';
@@ -21,7 +22,7 @@ import {
   getStackDepth,
   getVisibleSessions,
 } from '../state/kikx-state.mjs';
-import { threadVisibleFrames } from '../state/thinking-state.mjs';
+import { hasAnyFrames, threadRenderFrames } from '../state/thinking-state.mjs';
 import { childSessions } from './chat-view-model.mjs';
 import { formatTokenUsageTotal, hasSessionDeepLink } from './kikx-app-helpers.mjs';
 import { countRebuild } from './render-stats.mjs';
@@ -317,23 +318,15 @@ export function buildWindowHeader(app, { title, sessionID = null, collapsed = fa
         span.textContent.bindState((state) => state.previewsLoading ? 'Loading previews…' : (state.previewStatus || ''), ['previewsLoading', 'previewStatus'])(),
       ),
       sessionID ? buildParticipantsPopup(app, sessionID) : null,
-      sessionID
-        ? button
-          .type('button')
-          .class(`kikx-sign-out-button kikx-window__view-toggle${collapsed ? ' is-active' : ''}`)
-          .ariaPressed(collapsed ? 'true' : 'false')
-          .title(collapsed ? 'Show all chat messages' : 'Show only sub-sessions')
-          .onClick(app._toggleSubSessions)(
-            buildGridIcon(),
-            ` (${childSessionsFor(app, sessionID).length})`,
-          )
-        : null,
+      sessionID ? buildFrameFilterPopup(app, sessionID) : null,
     ),
   );
 }
 
-// 3x3 dot grid glyph for the sub-session filter toggle, drawn as an inline SVG
-// so no external asset or font is required.
+// 3x3 dot grid glyph, drawn as an inline SVG so no external asset or font is
+// required. No longer rendered: the header's frame-filter popup replaced the
+// grid-of-dots sub-session toggle. Kept (with buildGridIcon's spec) until the
+// renderQuestionCard cleanup lands, so this change stays reviewable on its own.
 export function buildGridIcon() {
   let size = 3;
   let step = 4;
@@ -359,6 +352,19 @@ export function buildGridIcon() {
   }
 
   return svg;
+}
+
+export function buildFrameFilterPopup(app, sessionID) {
+  let popup = document.createElement('kikx-frame-filter-popup');
+  popup.configure({
+    app,
+    appState: app._state,
+    sessionID,
+    // The popup no longer re-derives this: importing the session helpers pulled
+    // the whole app graph into the element and broke its isolated import.
+    childCount: childSessionsFor(app, sessionID).length,
+  });
+  return popup;
 }
 
 export function buildParticipantsPopup(app, sessionID) {
@@ -599,8 +605,20 @@ export function buildFrameThread(app) {
     ).build(document);
   }
 
-  let frames = threadVisibleFrames(getSelectedFrames(app._state)).filter((frame) => frame && !frame.deleted && !frame.hidden);
+  let allFrames = getSelectedFrames(app._state);
+  let frames = threadRenderFrames(allFrames, app._state.frameFilters)
+    .filter((frame) => frame && !frame.deleted);
   if (frames.length === 0) {
+    // Frames exist but every filter is off: say so, rather than claiming the
+    // session is empty. The popup is the only way out of this state, so point
+    // at it.
+    if (hasAnyFrames(allFrames)) {
+      return div.class('kikx-thread__empty kikx-thread__empty--filtered')(
+        p('No frames match the current filters.'),
+        p.class('kikx-thread__empty-hint')('Open the frame filter (the eye in the header) and turn categories back on.'),
+      ).build(document);
+    }
+
     return div.class('kikx-thread__empty')(
       p('No messages yet.'),
       p.class('kikx-thread__empty-hint')("Type /invite 'name of party' to invite an agent, or other party"),

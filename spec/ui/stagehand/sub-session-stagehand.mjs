@@ -112,34 +112,44 @@ test('Stagehand enters a sub-session card and collapses a session to a sub-sessi
     await page.evaluate(() => document.querySelector('.kikx-window__close').click());
     await waitForThreadTitle(page, 'Parent Project');
 
-    // The sub-session filter toggle is a grid icon + count, and is reversible.
-    let toggleOff = await page.evaluate(() => {
-      let toggle = document.querySelector('.kikx-window__view-toggle');
+    // The grid-of-dots toggle was replaced by the frame-filter popup: the same
+    // narrowing now happens by Ctrl+Clicking the Child Sessions row, which
+    // leaves only child-session frames on screen. The old toggle's collapsed
+    // grid is gone, so this checks the replacement instead of a dead selector.
+    let filter = await page.evaluate(() => {
+      let button = document.querySelector('kikx-frame-filter-popup .kikx-frame-filter__button');
       return {
-        hasGridIcon: Boolean(toggle?.querySelector('svg.kikx-grid-icon')),
-        text: toggle?.textContent?.trim(),
-        pressed: toggle?.getAttribute('aria-pressed'),
+        present: Boolean(button),
+        hasEyeball: Boolean(button?.querySelector('svg')),
+        hasGridIcon: Boolean(button?.querySelector('svg.kikx-grid-icon')),
       };
     });
-    assert.equal(toggleOff.hasGridIcon, true);
-    assert.equal(toggleOff.text, '(1)');
-    assert.equal(toggleOff.pressed, 'false');
+    assert.equal(filter.present, true, 'the header shows the frame filter');
+    assert.equal(filter.hasEyeball, true, 'it carries a glyph');
+    assert.equal(filter.hasGridIcon, false, 'the old grid-of-dots glyph is gone');
 
-    // Toggle on -> collapsed grid of parent's children.
-    await page.evaluate(() => document.querySelector('.kikx-window__view-toggle').click());
-    await waitForCollapsed(page, true);
+    // Open the popup and isolate Child Sessions.
+    await page.evaluate(() => document.querySelector('kikx-frame-filter-popup .kikx-frame-filter__button').click());
+    await page.evaluate(() => {
+      let row = document.querySelector('[data-filter-key="child-sessions"] .kikx-frame-filter__checkbox');
+      row.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true }));
+    });
 
-    let childGridTitles = await page.evaluate(() => Array.from(
-      document.querySelectorAll('kikx-session-grid > kikx-session-card'),
-    ).map((card) => card.querySelector('.kikx-session-card__title')?.textContent));
-    assert.deepEqual(childGridTitles, [ 'Child Session' ]);
+    let isolated = await page.evaluate(() => document.querySelector('kikx-app')?._state?.frameFilters);
+    assert.equal(isolated['child-sessions'], true, 'Child Sessions stays on');
+    assert.equal(isolated.user, false, 'Ctrl+Click cleared the other categories');
 
-    let toggleOn = await page.evaluate(() => document.querySelector('.kikx-window__view-toggle')?.getAttribute('aria-pressed'));
-    assert.equal(toggleOn, 'true');
+    // The thread still shows the child-session card, and nothing else.
+    await page.waitForSelector('kikx-sub-session-frame kikx-session-card', { timeout: 10000 });
 
-    // Toggle off -> back to the full chat.
-    await page.evaluate(() => document.querySelector('.kikx-window__view-toggle').click());
-    await waitForCollapsed(page, false);
+    // Shift+Click restores every category.
+    await page.evaluate(() => {
+      let row = document.querySelector('[data-filter-key="user"] .kikx-frame-filter__checkbox');
+      row.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true }));
+    });
+    let restored = await page.evaluate(() => document.querySelector('kikx-app')?._state?.frameFilters);
+    assert.equal(restored.user, true, 'Shift+Click turned the categories back on');
+    assert.equal(restored.hidden, false, 'and did not switch the Hidden gate on');
     assert.equal(await page.evaluate(() => Boolean(document.querySelector('.kikx-window__close'))), true);
   } finally {
     await stagehand.close().catch(() => {});
@@ -195,19 +205,6 @@ async function waitForThreadFrames(page, expectedIDs, timeoutMS = 10000) {
   }
 
   throw new Error(`Timed out waiting for thread frames: ${expectedIDs.join(', ')}`);
-}
-
-async function waitForCollapsed(page, expected, timeoutMS = 10000) {
-  let startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMS) {
-    let collapsed = await page.evaluate(() => document.querySelector('kikx-app')?._state?.navigationStack?.at(-1)?.collapsed);
-    if (collapsed === expected)
-      return;
-
-    await delay(50);
-  }
-
-  throw new Error(`Timed out waiting for collapsed=${expected}`);
 }
 
 function delay(ms) {

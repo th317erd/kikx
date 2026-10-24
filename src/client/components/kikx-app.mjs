@@ -27,6 +27,7 @@ import {
   buildSessionGrid,
   buildStatusBar,
   buildSessionSearch,
+  buildFrameFilterPopup,
   buildThreadSection,
   buildWindow,
   buildWindowHeader,
@@ -138,6 +139,7 @@ import {
   syncFromURL,
   syncSelectedSessionToStack,
   syncURLFromStack,
+  setFrameFilters,
   threadChatViewElement,
   toggleSubSessions,
 } from './kikx-navigation.mjs';
@@ -261,6 +263,7 @@ export class KikxApp extends HTMLElement {
     this._buildSessionGrid = (parentSessionID) => buildSessionGrid(this, parentSessionID);
     this._buildSessionSearch = () => buildSessionSearch(this);
     this._paintSessionSearch = () => paintSessionSearch(this);
+    this._setFrameFilters = (next) => setFrameFilters(this, next);
     this._toggleShowDeleted = () => toggleShowDeleted(this);
     this._loadDeletedSessions = async () => loadDeletedSessions(this);
     this._buildThreadSection = (sessionID) => buildThreadSection(this, sessionID);
