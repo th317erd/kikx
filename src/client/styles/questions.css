@@ -297,7 +297,7 @@
 }
 
 .kikx-question-card__receipt-text {
-  color: #e7f0e9;
+  color: #3fb950;
   font-size: calc(13px * 1.25);
   line-height: 1.5;
   white-space: pre-wrap;
@@ -548,7 +548,7 @@
 }
 
 .kikx-question-frame__answer-text {
-  color: #e7f0e9;
+  color: #3fb950;
   font-size: calc(13px * 1.25);
   line-height: 1.5;
   white-space: pre-wrap;
