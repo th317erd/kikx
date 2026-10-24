@@ -355,6 +355,9 @@ export function compactFrameBodyDescription(frame) {
   if (toolName === 'exec')
     return '';
 
+  if (frame?.type === 'CommandResult')
+    return commandResultBodyDescription(frame);
+
   return compactFrameSummary(frame).description || '';
 }
 
@@ -707,6 +710,63 @@ function commandResultDescription(frame) {
     return `Command /${command}`;
 
   return text(content.text) || 'Command result';
+}
+
+function commandResultBodyDescription(frame) {
+  let content = frame.content || {};
+  if (text(content.command) === 'invite') {
+    let invite = inviteResultDescription(content.data);
+    if (invite)
+      return invite;
+  }
+
+  return text(content.text) || commandResultDescription(frame);
+}
+
+function inviteResultDescription(data) {
+  if (!isPlainObject(data))
+    return '';
+
+  let agentName = text(data.agentName);
+  if (agentName) {
+    return data.alreadyParticipant === true
+      ? `${agentName} was already in this session.`
+      : `${agentName} joined this session.`;
+  }
+
+  let joined = participantNames([
+    ...(Array.isArray(data.invitedAgents) ? data.invitedAgents : []),
+    ...(Array.isArray(data.invitedUsers) ? data.invitedUsers : []),
+  ]);
+  let already = participantNames(Array.isArray(data.alreadyParticipants) ? data.alreadyParticipants : []);
+  let parts = [];
+  if (joined.length > 0)
+    parts.push(`${formatNameList(joined)} joined this session.`);
+  if (already.length > 0)
+    parts.push(`${formatNameList(already)} ${already.length === 1 ? 'was' : 'were'} already in this session.`);
+
+  return parts.join(' ');
+}
+
+function participantNames(entries) {
+  let names = [];
+  let seen = new Set();
+  for (let entry of entries) {
+    let name = text(entry?.name) || text(entry?.actorID) || text(entry?.id);
+    if (!name || seen.has(name))
+      continue;
+    seen.add(name);
+    names.push(name);
+  }
+  return names;
+}
+
+function formatNameList(names) {
+  if (names.length <= 1)
+    return names[0] || '';
+  if (names.length === 2)
+    return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(', ')}, and ${names.at(-1)}`;
 }
 
 function text(value) {

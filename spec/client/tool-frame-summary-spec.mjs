@@ -338,3 +338,45 @@ test('end-turn report messages compact while ordinary AgentMessages stay expande
   let ordinary = { id: 'msg-1', type: 'AgentMessage', content: { text: 'A normal reply.' } };
   assert.equal(isCompactFrame(ordinary), false);
 });
+
+
+test('invite command results name who was invited instead of repeating the command', () => {
+  let agent = {
+    type: 'CommandResult',
+    content: {
+      command: 'invite',
+      status: 'ok',
+      text: 'Zav joined this session.',
+      data: { agentName: 'Zav', alreadyParticipant: false },
+    },
+  };
+  assert.equal(compactFrameHeader(agent).label, 'Command /invite');
+  assert.equal(compactFrameBodyDescription(agent), 'Zav joined this session.');
+
+  let team = {
+    type: 'CommandResult',
+    content: {
+      command: 'invite',
+      status: 'ok',
+      text: 'Team Review joined this session (2 agents, 1 user).',
+      data: {
+        teamName: 'Review',
+        invitedAgents: [ { name: 'Zav' }, { name: 'Reviewer' } ],
+        invitedUsers: [ { name: 'Wyatt' } ],
+        alreadyParticipants: [],
+      },
+    },
+  };
+  assert.equal(compactFrameBodyDescription(team), 'Zav, Reviewer, and Wyatt joined this session.');
+
+  let already = {
+    type: 'CommandResult',
+    content: {
+      command: 'invite',
+      status: 'ok',
+      text: 'Zav is already in this session.',
+      data: { agentName: 'Zav', alreadyParticipant: true },
+    },
+  };
+  assert.equal(compactFrameBodyDescription(already), 'Zav was already in this session.');
+});
