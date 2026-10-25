@@ -1,6 +1,7 @@
 'use strict';
 
 import { readJSONFiles } from './aeordb-file-utils.mjs';
+import { createFrameLoadError } from './frame-store-errors.mjs';
 import { frameOrderFromPath, sortFramePathsByOrder } from './frame-store-ordering.mjs';
 import { encodeSegment } from './frame-store-paths.mjs';
 import {
@@ -197,8 +198,28 @@ export async function listFilteredFrameWindow(store, sessionID, options = {}, de
     if (paths.length === 0)
       return;
 
-    let reads = await readJSONFiles(store.aeordb, paths);
+    // This is the only walk that hydrates bodies, so it is the only place a
+    // single malformed document can reach the caller. It must not fail the
+    // page: one unparseable frame used to turn a whole session's thread into an
+    // HTTP 500 while every other frame on that page was readable.
+    let reads = await readJSONFiles(store.aeordb, paths, {
+      fallbackOnBatchError: true,
+      continueOnError: true,
+    });
     for (let read of reads) {
+      if (read?.error) {
+        // Never silently drop a frame. A body that could not be read becomes a
+        // visible load-error at the order its filename implies, so the thread
+        // says a frame is unreadable instead of letting a message vanish. The
+        // filter predicate is deliberately not consulted: this is a marker
+        // about the read, not content the user filtered on, and hiding it
+        // would recreate the silence this branch exists to prevent.
+        matches.push(createFrameLoadError(sessionID, read.path, read.error));
+        if (matches.length > limit)
+          return;
+        continue;
+      }
+
       let frame = read?.value;
       if (!frameMatchesWindowFilters(frame, filters, query))
         continue;
