@@ -168,6 +168,8 @@ Tags are indexed `{ target_type, target_id, name, value }` records for any entit
 
 OCR runs through tag-selected agents. `ocr` sends local image/PDF paths to the highest-scoring `ocr_score` agent and falls back to the next one on failure. Regular provider agents use their normal `runOcr` fallback; the bundled `plugins/ocr` provider (`host-ocr-command`) runs a configured command such as `bot-ocr`. Add `plugins/ocr` to `KIKX_PLUGIN_PATHS` to load it.
 
+The OCR tool emits an `OcrFrame`; its expanded view shows the asking bot's question, the image(s), and the OCR response. Images load through the authenticated `/api/v1/image-proxy` route, which verifies file magic bytes and refuses non-image data. A session can disable image proxying with `/pref set ocr.image_proxy false`; the setting cascades to child sessions and the proxy returns a safe placeholder instead of the image.
+
 Session preferences are generic per-session key/value settings edited with `/pref`:
 
 ```text

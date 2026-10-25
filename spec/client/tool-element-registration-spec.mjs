@@ -24,7 +24,6 @@ const EXPECTED_TAGS = [
   'kikx-feedback-tool-use',
   'kikx-shell-tool-use',
   'kikx-script-tool-use',
-  'kikx-ocr-tool-use',
   'kikx-tag-tool-use',
   'kikx-web-search-use',
   'kikx-fetch-use',

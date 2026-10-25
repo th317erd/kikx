@@ -983,6 +983,7 @@ kikx-app {
 }
 
 .kikx-frame[data-frame-type$="ToolFrame"] .kikx-frame__meta-main strong,
+.kikx-frame[data-frame-type="OcrFrame"] .kikx-frame__meta-main strong,
 .kikx-frame--ToolCall .kikx-frame__meta-main strong,
 .kikx-frame--ToolResult .kikx-frame__meta-main strong {
   color: #f6bd60;
@@ -1174,7 +1175,8 @@ kikx-app {
 .kikx-frame--ToolCall,
 .kikx-frame--ToolResult,
 .kikx-frame--CompactionFrame,
-.kikx-frame[data-frame-type$="ToolFrame"] {
+.kikx-frame[data-frame-type$="ToolFrame"],
+.kikx-frame[data-frame-type="OcrFrame"] {
   border-color: #36434d;
   background: #14191d;
 }
@@ -3890,4 +3892,77 @@ kikx-frame-filter-popup:not(.is-all-on) .kikx-frame-filter__button {
 .kikx-frame-filter__action:focus-visible {
   background: #1e262e;
   border-color: #3d4a58;
+}
+
+/* Expanded OCR frame: question above the image(s), OCR response below. */
+.kikx-ocr-frame {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.kikx-ocr-frame__question,
+.kikx-ocr-frame__response {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #303941;
+  border-radius: 7px;
+  background: #11161b;
+}
+
+.kikx-ocr-frame__label {
+  color: #8c98a4;
+  font-size: calc(11px * 1.25);
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.kikx-ocr-frame__question-text,
+.kikx-ocr-frame__response-text,
+.kikx-ocr-frame__empty {
+  margin: 0;
+  color: #dce3ea;
+  font-size: calc(13px * 1.25);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.kikx-ocr-frame__response-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: calc(12px * 1.25);
+}
+
+.kikx-ocr-frame__images {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.kikx-ocr-frame__image-card {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+}
+
+.kikx-ocr-frame__image {
+  display: block;
+  width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+  border: 1px solid #303941;
+  border-radius: 7px;
+  background: #0d1013;
+}
+
+.kikx-ocr-frame__caption {
+  min-width: 0;
+  color: #8c98a4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: calc(11px * 1.25);
+  overflow-wrap: anywhere;
 }

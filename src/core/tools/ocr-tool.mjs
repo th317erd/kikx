@@ -1,15 +1,17 @@
 'use strict';
 
 import { PluginInterface } from '../plugins/index.mjs';
-import { builtInToolComponent } from './tool-client-components.mjs';
 
 export class OcrTool extends PluginInterface {
   static pluginID = 'internal:ocr';
   static featureName = 'ocr';
   static displayName = 'OCR';
   static description = 'Run OCR through the highest-priority OCR agents, falling back on failure.';
-  static frameType = 'OcrToolFrame';
-  static clientComponent = builtInToolComponent('kikx-ocr-tool-use');
+  static frameType = 'OcrFrame';
+  static clientComponent = {
+    tagName: 'kikx-ocr-frame',
+    moduleURL: '/client/components/kikx-ocr-frame.mjs',
+  };
   static riskLevel = 'none';
   static inputSchema = {
     type: 'object',
@@ -31,6 +33,7 @@ export class OcrTool extends PluginInterface {
     'Use ocr to send one or more local image/PDF paths to the configured OCR agents.',
     'Agents are selected by the ocr_score tag, highest first; a failed agent falls through to the next one.',
     'OCR agents may be regular agents or plugin-driven host commands. The result includes the text and which agent handled it.',
+    'The expanded OcrFrame shows the question, image(s), and OCR response. Images load through the authenticated image proxy; sessions can disable that proxy with the ocr.image_proxy preference.',
   ].join(' ');
 
   async _execute(params = {}) {

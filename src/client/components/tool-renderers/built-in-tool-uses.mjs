@@ -19,7 +19,6 @@ import {
   WebSearchUse,
   WriteFileUse,
 } from './tool-use-base.mjs';
-import { OcrToolUse } from './ocr-tool-use.mjs';
 import { ScriptToolUse } from './script-tool-use.mjs';
 import { TagToolUse } from './tag-tool-use.mjs';
 import { TodoToolUse } from './todo-tool-use.mjs';
@@ -27,7 +26,6 @@ import { TodoToolUse } from './todo-tool-use.mjs';
 defineToolElement('kikx-cwd-tool-use', CwdToolUse);
 defineToolElement('kikx-feedback-tool-use', FeedbackToolUse);
 defineToolElement('kikx-shell-tool-use', ShellToolUse);
-defineToolElement('kikx-ocr-tool-use', OcrToolUse);
 defineToolElement('kikx-script-tool-use', ScriptToolUse);
 defineToolElement('kikx-tag-tool-use', TagToolUse);
 defineToolElement('kikx-web-search-use', WebSearchUse);
@@ -80,7 +78,6 @@ export {
   ExecStatusUse,
   FeedbackToolUse,
   FetchUse,
-  OcrToolUse,
   OutputGrepUse,
   OutputReadUse,
   QuestionListUse,
