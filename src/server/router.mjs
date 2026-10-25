@@ -8,6 +8,7 @@ import { handleAccountRoutes } from './routes/account-routes.mjs';
 import { handleSessionRoutes } from './routes/session-routes.mjs';
 import { handleQuestionRoutes } from './routes/question-routes.mjs';
 import { handleAgentRoutes } from './routes/agent-routes.mjs';
+import { handleTagRoutes } from './routes/tag-routes.mjs';
 import { handleDatabaseRoutes } from './routes/database-routes.mjs';
 import { handleTeamRoutes } from './routes/team-routes.mjs';
 import { handleAuthRoutes } from './routes/auth-routes.mjs';
@@ -28,6 +29,7 @@ export async function routeRequest({ request, response, context, staticRoots }) 
     handleSessionRoutes,
     handleQuestionRoutes,
     handleAgentRoutes,
+    handleTagRoutes,
     handleDatabaseRoutes,
     handleTeamRoutes,
     handleAuthRoutes,

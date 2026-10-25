@@ -84,7 +84,7 @@ test('Stagehand designates compaction bots from the Agents modal with a distinct
     }));
     assert.equal(initial.crowns, 3);
     assert.equal(initial.bots, 3);
-    assert.deepEqual(initial.glyphs, [ 'compaction', 'compaction', 'compaction' ]);
+    assert.deepEqual(initial.glyphs, [ 'clamp', 'clamp', 'clamp' ]);
     assert.equal(initial.designated, 0);
 
     // Designate the first agent, then the second. Newest designation is #1.

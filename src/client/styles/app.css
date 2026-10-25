@@ -3108,6 +3108,8 @@ button.kikx-window__title:focus-visible {
    more transparent than the last. */
 .kikx-agent-list__crown .kikx-icon,
 .kikx-agent-list__compaction-bot .kikx-icon,
+.kikx-agent-list__ocr-bot .kikx-icon,
+.kikx-agent-list__tag-action .kikx-icon,
 .kikx-agent-list__edit .kikx-icon {
   width: 18px;
   height: 18px;
@@ -3251,6 +3253,46 @@ button.kikx-window__title:focus-visible {
   opacity: 0.5;
   cursor: progress;
 }
+/* OCR and plugin-registered agent-tag actions share the same compact button
+   shape. Tag definitions supply the icon and labels. */
+.kikx-agent-list__ocr-bot,
+.kikx-agent-list__tag-action {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid #3c444d;
+  border-radius: 6px;
+  background: transparent;
+  color: #5c6672;
+  font-size: calc(15px * 1.25);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.kikx-agent-list__ocr-bot:hover,
+.kikx-agent-list__ocr-bot:focus-visible,
+.kikx-agent-list__tag-action:hover,
+.kikx-agent-list__tag-action:focus-visible {
+  border-color: #6b7684;
+  color: #cdd6df;
+  outline: none;
+}
+
+.kikx-agent-list__ocr-bot.is-ocr-bot,
+.kikx-agent-list__tag-action.is-active {
+  border-color: currentColor;
+  color: #c084fc;
+  background: rgba(192, 132, 252, 0.10);
+}
+
+.kikx-agent-list__ocr-bot.is-busy,
+.kikx-agent-list__tag-action.is-busy {
+  opacity: 0.5;
+  cursor: progress;
+}
+
 
 .kikx-agent-form__status {
   display: grid;

@@ -11,6 +11,7 @@ import { buildAgentManagerBody, findAgentConfigSection } from './kikx-modals.mjs
 import { cssEscape } from './kikx-app-helpers.mjs';
 import { nonEmptyValues } from './agent-form-helpers.mjs';
 import { buildAgentTags } from '../state/agent-state-utils.mjs';
+import { agentTagActionActive } from './agent-tag-actions.mjs';
 import { readAgentGutsValues, validateAgentGuts } from './agent-config-form-registry.mjs';
 
 export function openAgentManager(app) {
@@ -135,6 +136,81 @@ export async function deleteAgent(app, agentID) {
     app._state.agentStatusKind = 'error';
     app._render();
   }
+}
+
+export async function toggleAgentTagAction(app, agent, tagName) {
+  let definition = (app._state.agentTagDefinitions || []).find((item) => item.name === tagName);
+  if (!definition?.agentAction)
+    return;
+
+  let current = app._state.agentDetailsByID[agent.id] || agent;
+  let active = agentTagActionActive(current, definition);
+  let nextValue = active ? definition.agentAction.offValue : definition.agentAction.onValue;
+  let key = `${current.id}:${tagName}`;
+  app._pendingTagActionKeys ||= new Set();
+  if (app._pendingTagActionKeys.has(key))
+    return;
+
+  app._pendingTagActionKeys.add(key);
+  app._state.agentStatus = `${active ? 'Clearing' : 'Setting'} ${definition.agentAction.activeLabel || definition.label || definition.name}...`;
+  app._state.agentStatusKind = 'pending';
+
+  try {
+    let latest = current;
+    let legacyToggle = definition.agentAction.legacyToggle;
+    if (legacyToggle === 'crown') {
+      let result = await app._postJSON(
+        `/api/v1/agents/${encodeURIComponent(current.id)}/${active ? 'uncrown' : 'crown'}`,
+        {},
+      );
+      latest = result.data.agent || latest;
+      reconcileMasters(app, result.data.masters);
+    } else if (legacyToggle === 'compaction') {
+      let result = await app._postJSON(
+        `/api/v1/agents/${encodeURIComponent(current.id)}/${active ? 'compact-uncrown' : 'compact-crown'}`,
+        {},
+      );
+      latest = result.data.agent || latest;
+      reconcileCompactionBots(app, result.data.compactionBots);
+    }
+
+    let tag = { target_type: 'agent', target_id: current.id, name: tagName, value: nextValue };
+    try {
+      let tagResult = await app._putJSON(
+        `/api/v1/tags/agent/${encodeURIComponent(current.id)}/${encodeURIComponent(tagName)}`,
+        { value: nextValue },
+      );
+      tag = tagResult?.data?.tag || tag;
+    } catch (error) {
+      // Older servers and test doubles may not expose the tag REST route yet.
+      // Legacy crown/compaction actions still work, so keep the icon usable.
+      if (!legacyToggle)
+        throw error;
+    }
+    upsertAgent({
+      ...latest,
+      tags: upsertLocalTag(latest.tags, tag),
+    }, app._state);
+
+    app._state.agentStatus = active
+      ? `Cleared ${definition.agentAction.activeLabel || definition.label || definition.name}`
+      : `Set ${definition.agentAction.activeLabel || definition.label || definition.name}`;
+    app._state.agentStatusKind = 'ready';
+    if (!repaintAgentManagerBody(app))
+      app._render();
+  } catch (error) {
+    app._state.agentStatus = error.message;
+    app._state.agentStatusKind = 'error';
+    syncAgentStatusText(app);
+  } finally {
+    app._pendingTagActionKeys.delete(key);
+  }
+}
+
+function upsertLocalTag(tags, tag) {
+  let list = Array.isArray(tags) ? tags.filter((item) => item?.name !== tag.name || (item.target_type && item.target_type !== 'agent')) : [];
+  list.push({ ...tag });
+  return list;
 }
 
 export async function toggleAgentCrown(app, agent) {

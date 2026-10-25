@@ -2,10 +2,10 @@
 
 import { rankCompactionBots } from './agent-list-model.mjs';
 
-// The compaction-bot toggle icon name. A stack/compress silhouette deliberately
-// distinct from the crown icon. Exported from one place so the owner can swap it
-// later without hunting the UI.
-export const COMPACTION_BOT_ICON = 'compaction';
+// The compaction-bot toggle icon name. A clamp silhouette deliberately distinct
+// from the crown icon. Exported from one place so the owner can swap it later
+// without hunting the UI.
+export const COMPACTION_BOT_ICON = 'clamp';
 
 // Rank designated compaction bots so the newest designation is #1, next #2, etc.
 // Returns a Map of agentID -> rank (1-based); non-designated agents are absent.

@@ -94,3 +94,16 @@ test('rankCompactionBots ignores crowned-only agents and vice versa', () => {
   assert.deepEqual(rankMasters(agents).map((agent) => agent.id), [ 'both', 'crown_only' ]);
   assert.deepEqual(rankCompactionBots(agents).map((agent) => agent.id), [ 'both', 'bot_only' ]);
 });
+
+test('role score tags override the legacy crown/compaction ranks', () => {
+  let agents = [
+    { id: 'legacy', crownedClock: '0009' },
+    { id: 'lead5', tags: [ { target_type: 'agent', name: 'leadership_score', value: 5 } ] },
+    { id: 'lead9', tags: [ { target_type: 'agent', name: 'leadership_score', value: 9 } ] },
+    { id: 'compact2', tags: [ { target_type: 'agent', name: 'compaction_score', value: 2 } ] },
+    { id: 'compact8', tags: [ { target_type: 'agent', name: 'compaction_score', value: 8 } ] },
+  ];
+
+  assert.deepEqual(rankMasters(agents).map((agent) => agent.id), [ 'lead9', 'lead5' ]);
+  assert.deepEqual(rankCompactionBots(agents).map((agent) => agent.id), [ 'compact8', 'compact2' ]);
+});

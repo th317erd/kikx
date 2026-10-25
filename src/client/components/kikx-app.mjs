@@ -201,6 +201,7 @@ import {
   syncAgentStatusText,
   toggleAgentCompactionBot,
   toggleAgentCrown,
+  toggleAgentTagAction,
 } from './kikx-agent-controller.mjs';
 import { onMagicLinkSubmit, verifyMagicLink } from './kikx-auth.mjs';
 import { renderStats } from './render-stats.mjs';
@@ -354,6 +355,7 @@ export class KikxApp extends HTMLElement {
     this._buildAgentDeleteButton = () => buildAgentDeleteButton(this);
     this._deleteAgent = async (agentID) => deleteAgent(this, agentID);
     this._toggleAgentCrown = async (agent) => toggleAgentCrown(this, agent);
+    this._toggleAgentTagAction = async (agent, tagName) => toggleAgentTagAction(this, agent, tagName);
     this._reconcileMasters = (masters) => reconcileMasters(this, masters);
     this._setAgentCrownBusy = (agentID, busy) => setAgentCrownBusy(this, agentID, busy);
     this._repaintAgentCrowns = () => repaintAgentCrowns(this);

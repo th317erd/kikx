@@ -11,6 +11,7 @@ import {
   resolveMentionActors,
 } from '../../../src/core/mentions/index.mjs';
 import { createServer } from '../../../src/server/create-server.mjs';
+import { CORE_TAG_DEFINITIONS } from '../../../src/core/tags/tag-definitions.mjs';
 
 let cachedOpenAIAPIKey = null;
 
@@ -519,6 +520,9 @@ function createAgentManagerStub(agents = [], providers = []) {
   return {
     listProviders() {
       return Promise.resolve(providers.slice());
+    },
+    listTagDefinitions() {
+      return CORE_TAG_DEFINITIONS.map((definition) => ({ ...definition }));
     },
     async listAgents() {
       return agents.slice();

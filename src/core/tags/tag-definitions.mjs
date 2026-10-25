@@ -19,6 +19,17 @@ export const CORE_TAG_DEFINITIONS = [
     priority: true,
     group: 'Agent roles',
     pluginID: 'core',
+    agentAction: {
+      icon: 'crown',
+      className: 'kikx-agent-list__crown',
+      activeClass: 'is-master',
+      rankClass: 'kikx-agent-list__crown--rank-',
+      label: 'Crown as master agent',
+      activeLabel: 'Master agent',
+      onValue: 10,
+      offValue: 0,
+      legacyToggle: 'crown',
+    },
   },
   {
     name: 'compaction_score',
@@ -32,6 +43,17 @@ export const CORE_TAG_DEFINITIONS = [
     priority: true,
     group: 'Agent roles',
     pluginID: 'core',
+    agentAction: {
+      icon: 'clamp',
+      className: 'kikx-agent-list__compaction-bot',
+      activeClass: 'is-compaction-bot',
+      rankClass: 'kikx-agent-list__compaction-bot--rank-',
+      label: 'Set as compaction bot',
+      activeLabel: 'Compaction bot',
+      onValue: 10,
+      offValue: 0,
+      legacyToggle: 'compaction',
+    },
   },
   {
     name: 'ocr_score',
@@ -45,6 +67,15 @@ export const CORE_TAG_DEFINITIONS = [
     priority: true,
     group: 'Agent roles',
     pluginID: 'core',
+    agentAction: {
+      icon: 'ocr',
+      className: 'kikx-agent-list__ocr-bot',
+      activeClass: 'is-ocr-bot',
+      label: 'Set as OCR bot',
+      activeLabel: 'OCR bot',
+      onValue: 10,
+      offValue: 0,
+    },
   },
 ];
 
@@ -69,6 +100,7 @@ export function normalizeTagDefinition(value = {}, fallbackName = '') {
     priority: value.priority === true,
     group: normalizeOptionalString(value.group),
     pluginID: normalizeOptionalString(value.pluginID),
+    agentAction: normalizeAgentAction(value.agentAction),
   };
 
   if (type === 'integer' || type === 'number') {
@@ -99,6 +131,32 @@ export function normalizeTagDefinitions(values = []) {
   }
 
   return definitions;
+}
+
+function normalizeAgentAction(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return null;
+
+  let icon = normalizeOptionalString(value.icon);
+  if (!icon)
+    return null;
+
+  return {
+    icon,
+    className: normalizeOptionalString(value.className),
+    activeClass: normalizeOptionalString(value.activeClass),
+    rankClass: normalizeOptionalString(value.rankClass),
+    label: normalizeOptionalString(value.label),
+    activeLabel: normalizeOptionalString(value.activeLabel),
+    onValue: normalizeActionValue(value.onValue, 10),
+    offValue: normalizeActionValue(value.offValue, 0),
+    legacyToggle: normalizeOptionalString(value.legacyToggle),
+  };
+}
+
+function normalizeActionValue(value, fallback) {
+  let number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
 }
 
 export function validateTagValue(definition, value) {

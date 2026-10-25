@@ -9,12 +9,15 @@ import {
 } from '../state/kikx-state.mjs';
 import { agentFilterPills, filterAgents } from './agent-list-model.mjs';
 import { masterRankByAgentID } from './master-agent-helpers.mjs';
+import { compactionBotRankByAgentID } from './compaction-bot-helpers.mjs';
 import {
-  COMPACTION_BOT_ICON,
-  compactionBotButtonAriaLabel,
-  compactionBotButtonTitle,
-  compactionBotRankByAgentID,
-} from './compaction-bot-helpers.mjs';
+  agentTagActionActive,
+  agentTagActionAriaLabel,
+  agentTagActionClassName,
+  agentTagActionRank,
+  agentTagActionTitle,
+  agentTagActions,
+} from './agent-tag-actions.mjs';
 import { findAgentConfigFormElement, resolveAgentConfigFormTag } from './agent-config-form-registry.mjs';
 import { buildAgentTagSection } from './agent-tag-form.mjs';
 import './kikx-default-agent-config-form.mjs';
@@ -80,6 +83,8 @@ export function buildAgentManagerBody(app) {
   let agents = filterAgents(allAgents, filter);
   let masterRankByID = masterRankByAgentID(allAgents);
   let compactionBotRankByID = compactionBotRankByAgentID(allAgents);
+  let actionDefinitions = agentTagActions(app._state.agentTagDefinitions);
+  let actionRanks = { masterRankByID, compactionBotRankByID };
 
   return [
     div.class('kikx-agent-filters')(
@@ -94,43 +99,35 @@ export function buildAgentManagerBody(app) {
       : agents.length === 0
         ? p.class('kikx-muted')('No agents match this filter.')
         : ul.class('kikx-agent-list')(
-        agents.map((agent) => {
-          let rank = masterRankByID.get(agent.id) || 0;
-          let compactionRank = compactionBotRankByID.get(agent.id) || 0;
-          return li
-            .class('kikx-agent-list__item')
-            .dataAgentId(agent.id)(
-              div.class('kikx-agent-list__details')(
-                strong(agent.name),
-                span(agentProviderLabel(app, agent)),
-              ),
-              div.class('kikx-agent-list__row-actions')(
-                button
+        agents.map((agent) => li
+          .class('kikx-agent-list__item')
+          .dataAgentId(agent.id)(
+            div.class('kikx-agent-list__details')(
+              strong(agent.name),
+              span(agentProviderLabel(app, agent)),
+            ),
+            div.class('kikx-agent-list__row-actions')(
+              ...actionDefinitions.map((definition) => {
+                let active = agentTagActionActive(agent, definition, actionRanks);
+                let rank = agentTagActionRank(agent, definition, actionRanks);
+                return button
                   .type('button')
-                  .class(`kikx-agent-list__crown${rank ? ` is-master kikx-agent-list__crown--rank-${rank}` : ''}`)
+                  .class(agentTagActionClassName(agent, definition, actionRanks))
                   .dataAgentId(agent.id)
-                  .title(rank ? `Master agent #${rank} (click to uncrown)` : 'Crown as master agent')
-                  .ariaLabel(rank ? `Master agent number ${rank}` : 'Crown as master agent')
-                  .ariaPressed(rank ? 'true' : 'false')
-                  .onClick(() => app._toggleAgentCrown(agent))(createIcon('crown')),
-                button
-                  .type('button')
-                  .class(`kikx-agent-list__compaction-bot${compactionRank ? ` is-compaction-bot kikx-agent-list__compaction-bot--rank-${compactionRank}` : ''}`)
-                  .dataAgentId(agent.id)
-                  .title(compactionBotButtonTitle(compactionRank))
-                  .ariaLabel(compactionBotButtonAriaLabel(compactionRank))
-                  .ariaPressed(compactionRank ? 'true' : 'false')
-                  .onClick(() => app._toggleAgentCompactionBot(agent))(createIcon(COMPACTION_BOT_ICON)),
-                button
-                  .type('button')
-                  .class('kikx-agent-list__edit')
-                  .dataAgentId(agent.id)
-                  .title('Edit agent')
-                  .ariaLabel('Edit agent')
-                  .onClick(() => app._editAgent(agent))(createIcon('gear')),
-              ),
-            );
-        }),
+                  .title(agentTagActionTitle(definition, active, rank))
+                  .ariaLabel(agentTagActionAriaLabel(definition, active, rank))
+                  .ariaPressed(active ? 'true' : 'false')
+                  .onClick(() => app._toggleAgentTagAction(agent, definition.name))(createIcon(definition.agentAction.icon));
+              }),
+              button
+                .type('button')
+                .class('kikx-agent-list__edit')
+                .dataAgentId(agent.id)
+                .title('Edit agent')
+                .ariaLabel('Edit agent')
+                .onClick(() => app._editAgent(agent))(createIcon('gear')),
+            ),
+          )),
       ),
     div.class('modal-footer-actions')(
       button.type('button').class('kikx-send-button').onClick(app._createAgent)('+ Add Agent'),

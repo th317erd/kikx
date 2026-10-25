@@ -327,13 +327,20 @@ export async function restoreSession(app, sessionID) {
 
 export async function loadAgents(app) {
   try {
-    let [ providersResult, tagsResult, agentsResult ] = await Promise.all([
+    let [ providersResult, agentsResult ] = await Promise.all([
       getJSON(app, '/api/v1/agent-providers'),
-      getJSON(app, '/api/v1/tag-definitions'),
       getJSON(app, '/api/v1/agents'),
     ]);
+    let tags = [];
+    try {
+      let tagsResult = await getJSON(app, '/api/v1/tag-definitions');
+      tags = tagsResult.data.tags || [];
+    } catch (_error) {
+      // Older servers do not expose tag definitions. Keep the agent manager
+      // usable instead of failing the whole load.
+    }
     setAgentProviders(providersResult.data.providers || [], app._state);
-    setAgentTagDefinitions(tagsResult.data.tags || [], app._state);
+    setAgentTagDefinitions(tags, app._state);
     setAgents(agentsResult.data.agents || [], app._state);
     if (!app._state.agentFormPluginID)
       resetAgentForm(app._state);

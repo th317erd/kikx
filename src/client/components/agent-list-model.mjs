@@ -10,7 +10,12 @@ export const MAX_MASTER_AGENTS = 3;
 export const MAX_COMPACTION_BOTS = 3;
 
 export function rankMasters(agents = []) {
-  return (Array.isArray(agents) ? agents : [])
+  let list = Array.isArray(agents) ? agents : [];
+  let tagged = rankByTag(list, 'leadership_score', MAX_MASTER_AGENTS);
+  if (tagged.length > 0)
+    return tagged;
+
+  return list
     .filter((agent) => Boolean(agent.crownedClock))
     .sort((a, b) => (
       String(b.crownedClock || '').localeCompare(String(a.crownedClock || ''))
@@ -22,7 +27,12 @@ export function rankMasters(agents = []) {
 
 // Parallel to rankMasters, over the independent compaction-bot fields.
 export function rankCompactionBots(agents = []) {
-  return (Array.isArray(agents) ? agents : [])
+  let list = Array.of(...(Array.isArray(agents) ? agents : []));
+  let tagged = rankByTag(list, 'compaction_score', MAX_COMPACTION_BOTS);
+  if (tagged.length > 0)
+    return tagged;
+
+  return list
     .filter((agent) => Boolean(agent.compactionCrownedClock))
     .sort((a, b) => (
       String(b.compactionCrownedClock || '').localeCompare(String(a.compactionCrownedClock || ''))
@@ -30,6 +40,22 @@ export function rankCompactionBots(agents = []) {
       || String(a.id).localeCompare(String(b.id))
     ))
     .slice(0, MAX_COMPACTION_BOTS);
+}
+
+function rankByTag(agents, name, limit) {
+  return agents
+    .map((agent) => ({ agent, value: tagNumber(agent, name) }))
+    .filter((entry) => entry.value > 0)
+    .sort((a, b) => b.value - a.value || String(a.agent.id).localeCompare(String(b.agent.id)))
+    .slice(0, limit)
+    .map((entry) => entry.agent);
+}
+
+function tagNumber(agent, name) {
+  let tag = (Array.isArray(agent?.tags) ? agent.tags : [])
+    .find((item) => item?.name === name && (!item.target_type || item.target_type === 'agent'));
+  let value = Number(tag?.value);
+  return Number.isFinite(value) ? value : 0;
 }
 
 // Agent-list filtering for the Agents modal.

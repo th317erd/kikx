@@ -11,7 +11,7 @@ import {
 } from '../../src/client/components/compaction-bot-helpers.mjs';
 
 test('COMPACTION_BOT_ICON names the compaction icon, distinct from the crown', () => {
-  assert.equal(COMPACTION_BOT_ICON, 'compaction');
+  assert.equal(COMPACTION_BOT_ICON, 'clamp');
   assert.notEqual(COMPACTION_BOT_ICON, 'crown');
 });
 

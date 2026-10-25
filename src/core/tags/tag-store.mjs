@@ -40,6 +40,16 @@ export class TagsStore {
     return sanitizeTag(tag);
   }
 
+  async upsertTag(input = {}) {
+    let target = normalizeTarget(input);
+    let name = normalizeName(input.name);
+    let path = this.tagPath({ ...target, name });
+    let existing = await this.readTagPath(path);
+    if (existing)
+      return await this.updateTag({ ...target, name, value: input.value });
+    return await this.createTag({ ...target, name, value: input.value });
+  }
+
   async getTag(input = {}) {
     let target = normalizeTarget(input);
     let name = normalizeName(input.name);
