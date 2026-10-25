@@ -24,20 +24,28 @@
 /* The row itself is NOT a pane.
  *
  * It used to be `max-height: 40vh; overflow: auto` with a `border-bottom`
- * divider. That made the session window hold two independent scroll
- * containers -- `.kikx-frame-list` below and this row above -- stacked with a
- * rule between them, which reads as a split view. The owner's model is that
- * everything lives inside the session view, so a second bordered scroller with
- * its own scrollbar is a view by another name, not a row.
+ * divider, which put an independent scroller above the `.kikx-frame-list`
+ * scroller. A second bordered scroller with its own scrollbar is a view by
+ * another name, so it is gone: no own scroller, no divider, no cap.
  *
- * So: no own scroller, no divider, no cap. The cards flow and wrap as their
- * own content, and the thread below is the single scrolling surface (the
- * `.kikx-thread` track for the body is `minmax(0, 1fr)`, so a tall child row
- * takes space from the thread rather than overflowing the window).
+ * The row is instead kept small by the cards being SMALL (see the compact card
+ * block below), not by a scrollbar.
  *
- * Known trade-off, stated rather than hidden: a session with very many direct
- * children would push the thread down. Bounding that belongs in the row's own
- * design (collapse/limit), not in a scrollbar that re-creates the pane.
+ * This distinction was originally got wrong in the opposite direction. An
+ * earlier revision removed the cap without shrinking the cards, on the
+ * reasoning that "no second pane" was the whole requirement. Measured on the
+ * owner's real session with 9 direct children at a 1600x1000 viewport, that
+ * produced:
+ *
+ *   session window   h=896
+ *   children row     h=668   (74.6% of the window)
+ *   thread body      h=36    <-- the conversation reduced to a sliver
+ *
+ * i.e. it re-created the split view by another route. The unit suite stayed
+ * green because its fixture parent had two children. The lesson is recorded
+ * here because it is the reason the compact block below exists at all: the
+ * row's height has to be bounded by something, and the only acceptable
+ * bounding that is not a scroll pane is making each card cheap.
  */
 .kikx-thread__children {
   padding: 12px 18px 0;
@@ -85,9 +93,9 @@
 .kikx-thread__children .kikx-session-grid > .kikx-session-card--add {
   display: inline-flex;
   flex-direction: column;
-  width: 240px;
+  width: 176px;
   max-width: 100%;
-  margin: 0 16px 16px 0;
+  margin: 0 12px 12px 0;
   vertical-align: top;
 }
 
@@ -99,6 +107,50 @@
   width: 100%;
   height: 100%;
   box-sizing: border-box;
+}
+
+/* Compact cards, inline row only.
+ *
+ * A card here is a NAVIGATION target inside a session that already has the
+ * user's attention, not a chooser like the Projects grid. It does not need a
+ * square screenshot of a whole conversation to be worth clicking, and paying
+ * `aspect-ratio: 1 / 1` for one made every card 347px tall at 240px wide, which
+ * is how nine children came to consume three quarters of the window.
+ *
+ * `app.css` sizes `.kikx-session-card__body` as a square and mounts a
+ * `kikx-chat-view` in `mini` mode inside it. Here the body becomes a short
+ * letterbox band instead: the same tiny chat, clipped, for a fraction of the
+ * height. The interior padding and gap shrink too, because at this card size the
+ * app.css values (12px padding, 8px gap) are a third of the card's height.
+ *
+ * None of this leaks to the Projects grid: every selector is scoped under
+ * `.kikx-thread__children`.
+ */
+.kikx-thread__children .kikx-session-card {
+  gap: 5px;
+  padding: 8px;
+  border-radius: 8px;
+}
+
+.kikx-thread__children .kikx-session-card__body {
+  aspect-ratio: auto;
+  height: 56px;
+}
+
+/* The header is two lines (title, then last-activity) at app.css sizes, which is
+   most of a compact card. One line of identity plus a smaller activity line keeps
+   the title readable while halving the block. */
+.kikx-thread__children .kikx-session-card__title {
+  font-size: calc(12px * 1.25);
+}
+
+.kikx-thread__children .kikx-session-card__meta,
+.kikx-thread__children .kikx-session-card__activity {
+  font-size: calc(10px * 1.25);
+}
+
+.kikx-thread__children .kikx-session-card__toolbar {
+  padding-top: 5px;
 }
 
 /* The add card is a real <button> with the class directly on it, so it needs its
