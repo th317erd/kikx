@@ -1,6 +1,7 @@
 'use strict';
 
 import { normalizeOcrImages } from './ocr-request.mjs';
+import { OCR_PRIORITY_TAG } from '../tags/tag-definitions.mjs';
 
 export class OcrService {
   constructor(options = {}) {
@@ -11,14 +12,18 @@ export class OcrService {
   }
 
   async listOcrAgents(options = {}) {
-    if (!this.agentManager?.listTaggedAgents)
+    if (!this.agentManager?.listAgents)
       return [];
 
-    return await this.agentManager.listTaggedAgents('ocr_score', {
-      limit: options.limit || 500,
-      minValue: options.minValue ?? 1,
-      excludeAgentIDs: options.excludeAgentIDs,
-    });
+    let excluded = new Set(Array.isArray(options.excludeAgentIDs) ? options.excludeAgentIDs : []);
+    let agents = await this.agentManager.listAgents({ limit: options.limit || 500 });
+    return agents
+      .filter((agent) => agent?.enabled !== false && !excluded.has(agent.id) && agentTagValue(agent, 'ocr_score') > 0)
+      .sort((a, b) => (
+        agentTagValue(b, OCR_PRIORITY_TAG) - agentTagValue(a, OCR_PRIORITY_TAG)
+        || agentTagValue(b, 'ocr_score') - agentTagValue(a, 'ocr_score')
+        || String(a.name || a.id).localeCompare(String(b.name || b.id))
+      ));
   }
 
   async run(request = {}) {
@@ -83,3 +88,11 @@ export class OcrService {
   }
 }
 
+
+
+function agentTagValue(agent, name) {
+  let tag = (Array.isArray(agent?.tags) ? agent.tags : [])
+    .find((item) => item?.name === name && (!item.target_type || item.target_type === 'agent'));
+  let value = Number(tag?.value);
+  return Number.isFinite(value) ? value : 0;
+}

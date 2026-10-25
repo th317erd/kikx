@@ -2,6 +2,7 @@
 
 export {
   CORE_TAG_DEFINITIONS,
+  OCR_PRIORITY_TAG,
   normalizeTagDefinition,
   normalizeTagDefinitions,
   normalizeTagInputList,

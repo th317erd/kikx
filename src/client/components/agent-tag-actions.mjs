@@ -39,59 +39,33 @@ export function agentTagActionRank(agent, definition, ranks = {}) {
   return ranks.tagRankByID?.[definition.name]?.get(agent?.id) || 0;
 }
 
-// Rank tag-only priority actions (OCR is the first one) by their numeric value.
-// This is what makes repeated clicks on different rows define a visible order.
-export function agentTagRankByID(agents = [], name) {
+// Rank tag-only priority actions (OCR is the first one) by their rank tag. OCR
+// stores the click timestamp in a companion tag, so repeated clicks are
+// newest-first without shifting every other row's value.
+export function agentTagRankByID(agents = [], definition) {
+  let rankTag = definition?.agentAction?.rankTag || definition?.name;
   let ranked = (Array.isArray(agents) ? agents : [])
-    .map((agent) => ({ id: agent?.id, value: agentTagValue(agent, name) }))
+    .map((agent) => {
+      let value = agentTagValue(agent, rankTag);
+      if (value <= 0 && rankTag !== definition?.name)
+        value = agentTagValue(agent, definition?.name);
+      return { id: agent?.id, value };
+    })
     .filter((entry) => entry.id && entry.value > 0)
     .sort((a, b) => b.value - a.value || String(a.id).localeCompare(String(b.id)));
   return new Map(ranked.map((entry, index) => [ entry.id, index + 1 ]));
 }
 
-// Compute the tag updates for a newest-click-wins priority list. Clicking an
-// inactive bot makes it #1 and shifts the rest down; clicking an active bot
-// clears it and shifts the rest up. `maxValue` (normally 10) bounds the list.
-export function priorityTagUpdates(agents = [], definition, clickedAgentID, options = {}) {
-  let maxValue = Number(definition?.agentAction?.onValue);
-  if (!Number.isFinite(maxValue) || maxValue <= 0)
-    maxValue = 10;
-  if (options.maxValue != null)
-    maxValue = Math.max(1, Math.trunc(Number(options.maxValue) || maxValue));
-
-  let ordered = (Array.isArray(agents) ? agents : [])
-    .map((agent) => ({ id: agent?.id, value: agentTagValue(agent, definition.name) }))
-    .filter((entry) => entry.id && entry.value > 0)
-    .sort((a, b) => b.value - a.value || String(a.id).localeCompare(String(b.id)))
-    .map((entry) => entry.id);
-
-  let wasActive = ordered.includes(clickedAgentID);
-  let next = ordered.filter((id) => id !== clickedAgentID);
-  if (!wasActive)
-    next.unshift(clickedAgentID);
-  next = next.slice(0, maxValue);
-
-  let affected = new Set([ ...ordered, clickedAgentID ]);
-  let updates = [];
-  for (let id of affected) {
-    let index = next.indexOf(id);
-    let value = index >= 0 ? maxValue - index : 0;
-    let current = agents.find((agent) => agent?.id === id);
-    if (current && agentTagValue(current, definition.name) === value)
-      continue;
-    updates.push({
-      target_type: 'agent',
-      target_id: id,
-      name: definition.name,
-      value,
-    });
-  }
-
-  return {
-    active: !wasActive,
-    rank: next.indexOf(clickedAgentID) + 1,
-    updates,
-  };
+// Monotonic click timestamp. Date.now() can tie during rapid clicks; adding one
+// keeps the newest click strictly above the previous rank timestamp.
+export function nextPriorityTimestamp(agents = [], definition, now = Date.now()) {
+  let rankTag = definition?.agentAction?.rankTag;
+  if (!rankTag)
+    return Number(now);
+  let max = 0;
+  for (let agent of Array.isArray(agents) ? agents : [])
+    max = Math.max(max, agentTagValue(agent, rankTag));
+  return Math.max(Number(now) || 0, max + 1);
 }
 
 export function agentTagActionClassName(agent, definition, ranks = {}) {

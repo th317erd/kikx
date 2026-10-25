@@ -11,7 +11,7 @@ import { buildAgentManagerBody, findAgentConfigSection } from './kikx-modals.mjs
 import { cssEscape } from './kikx-app-helpers.mjs';
 import { nonEmptyValues } from './agent-form-helpers.mjs';
 import { buildAgentTags } from '../state/agent-state-utils.mjs';
-import { agentTagActionActive, priorityTagUpdates } from './agent-tag-actions.mjs';
+import { agentTagActionActive, nextPriorityTimestamp } from './agent-tag-actions.mjs';
 import { readAgentGutsValues, validateAgentGuts } from './agent-config-form-registry.mjs';
 
 export function openAgentManager(app) {
@@ -175,26 +175,32 @@ export async function toggleAgentTagAction(app, agent, tagName) {
     }
 
     if (!legacyToggle) {
-      let priority = priorityTagUpdates(getAgents(app._state), definition, current.id);
+      let rankTag = definition.agentAction.rankTag;
+      let rankTimestamp = active
+        ? definition.agentAction.offValue
+        : nextPriorityTimestamp(getAgents(app._state), definition);
+      let updates = [
+        { name: tagName, value: nextValue },
+        ...(rankTag ? [ { name: rankTag, value: rankTimestamp } ] : []),
+      ];
       let tags = Array.isArray(latest.tags) ? latest.tags.slice() : [];
-      for (let update of priority.updates) {
-        let tag;
+      for (let update of updates) {
+        let tag = { target_type: 'agent', target_id: current.id, name: update.name, value: update.value };
         try {
           let tagResult = await app._putJSON(
-            `/api/v1/tags/agent/${encodeURIComponent(update.target_id)}/${encodeURIComponent(tagName)}`,
+            `/api/v1/tags/agent/${encodeURIComponent(current.id)}/${encodeURIComponent(update.name)}`,
             { value: update.value },
           );
-          tag = tagResult?.data?.tag || update;
+          tag = tagResult?.data?.tag || tag;
         } catch (error) {
           // Older servers and test doubles may not expose the tag REST route.
-          tag = update;
         }
         tags = upsertLocalTag(tags, tag);
       }
       upsertAgent({ ...latest, tags }, app._state);
-      app._state.agentStatus = priority.active
-        ? `Set ${definition.agentAction.activeLabel || definition.label || definition.name} #${priority.rank}`
-        : `Cleared ${definition.agentAction.activeLabel || definition.label || definition.name}`;
+      app._state.agentStatus = active
+        ? `Cleared ${definition.agentAction.activeLabel || definition.label || definition.name}`
+        : `Set ${definition.agentAction.activeLabel || definition.label || definition.name} #1`;
     } else {
       let tag = { target_type: 'agent', target_id: current.id, name: tagName, value: nextValue };
       try {
@@ -406,7 +412,8 @@ export function repaintAgentCompactionBots(app) {
 }
 
 export function syncAgentStatusText(app) {
-  let status = app.querySelector('.kikx-agent-manager .kikx-auth-status');
+  let status = app.querySelector('.aeor-modal__footer .kikx-auth-status')
+    || app.querySelector('.kikx-agent-manager .kikx-auth-status');
   if (!status)
     return;
 
@@ -432,5 +439,6 @@ export function repaintAgentManagerBody(app) {
   let definition = buildAgentManagerBody(app);
   let nodes = [ definition ].flat(Infinity).map((item) => item.build(document));
   manager.replaceChildren(...nodes);
+  syncAgentStatusText(app);
   return true;
 }

@@ -3984,3 +3984,12 @@ kikx-frame-filter-popup:not(.is-all-on) .kikx-frame-filter__button {
   font-size: calc(11px * 1.25);
   overflow-wrap: anywhere;
 }
+
+.kikx-agent-manager__footer {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.kikx-agent-manager__footer .kikx-auth-status {
+  margin-right: auto;
+}

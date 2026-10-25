@@ -6,6 +6,8 @@
 // `priority: true` means higher numeric values are selected first when the core
 // needs to pick one tagged actor for a role (leadership, compaction, OCR).
 
+export const OCR_PRIORITY_TAG = 'ocr_priority_at';
+
 export const CORE_TAG_DEFINITIONS = [
   {
     name: 'leadership_score',
@@ -72,6 +74,7 @@ export const CORE_TAG_DEFINITIONS = [
       className: 'kikx-agent-list__ocr-bot',
       activeClass: 'is-ocr-bot',
       rankClass: 'kikx-agent-list__ocr-bot--rank-',
+      rankTag: OCR_PRIORITY_TAG,
       label: 'Set as OCR bot',
       activeLabel: 'OCR bot',
       onValue: 10,
@@ -152,6 +155,7 @@ function normalizeAgentAction(value) {
     onValue: normalizeActionValue(value.onValue, 10),
     offValue: normalizeActionValue(value.offValue, 0),
     legacyToggle: normalizeOptionalString(value.legacyToggle),
+    rankTag: normalizeOptionalString(value.rankTag),
   };
 }
 

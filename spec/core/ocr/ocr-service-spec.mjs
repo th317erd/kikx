@@ -24,11 +24,16 @@ test('OcrService tries OCR agents in descending tag order and falls back', async
   ]);
   let service = new OcrService({
     agentManager: {
-      async listTaggedAgents(name) {
-        assert.equal(name, 'ocr_score');
+      async listAgents() {
         return [
-          { id: 'agent_1', name: 'Primary', pluginID: 'failing-ocr', tagValue: 10 },
-          { id: 'agent_2', name: 'Backup', pluginID: 'working-ocr', tagValue: 5 },
+          { id: 'agent_1', name: 'Primary', pluginID: 'failing-ocr', enabled: true, tags: [
+            { name: 'ocr_score', value: 10 },
+            { name: 'ocr_priority_at', value: 200 },
+          ] },
+          { id: 'agent_2', name: 'Backup', pluginID: 'working-ocr', enabled: true, tags: [
+            { name: 'ocr_score', value: 10 },
+            { name: 'ocr_priority_at', value: 100 },
+          ] },
         ];
       },
     },
@@ -52,7 +57,7 @@ test('OcrService tries OCR agents in descending tag order and falls back', async
 
 test('OcrService rejects empty images and an empty OCR roster', async () => {
   let service = new OcrService({
-    agentManager: { async listTaggedAgents() { return []; } },
+    agentManager: { async listAgents() { return []; } },
     pluginRegistry: { getAgentProvider() { return null; } },
   });
 
@@ -66,10 +71,16 @@ test('OcrService rejects empty images and an empty OCR roster', async () => {
 test('OcrService reports every failed attempt when all OCR agents fail', async () => {
   let service = new OcrService({
     agentManager: {
-      async listTaggedAgents() {
+      async listAgents() {
         return [
-          { id: 'agent_1', name: 'Primary', pluginID: 'failing-ocr', tagValue: 10 },
-          { id: 'agent_2', name: 'Backup', pluginID: 'failing-ocr', tagValue: 5 },
+          { id: 'agent_1', name: 'Primary', pluginID: 'failing-ocr', enabled: true, tags: [
+            { name: 'ocr_score', value: 10 },
+            { name: 'ocr_priority_at', value: 200 },
+          ] },
+          { id: 'agent_2', name: 'Backup', pluginID: 'failing-ocr', enabled: true, tags: [
+            { name: 'ocr_score', value: 10 },
+            { name: 'ocr_priority_at', value: 100 },
+          ] },
         ];
       },
     },

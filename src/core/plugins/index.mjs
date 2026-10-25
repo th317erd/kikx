@@ -42,6 +42,7 @@ export {
 export { PluginRegistry } from './plugin-registry.mjs';
 export {
   CORE_TAG_DEFINITIONS,
+  OCR_PRIORITY_TAG,
   normalizeTagInputList,
   registerBuiltInTagDefinitions,
   tagNumber,

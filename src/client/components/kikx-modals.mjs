@@ -65,12 +65,23 @@ export function buildAgentManager(app) {
     div.class('kikx-agent-manager')(
       buildAgentManagerBody(app),
     ),
+    buildAgentManagerFooter(app),
   );
 }
 
-// The filter pills + agent list + status. Built separately so filter changes
-// can swap just this content without rebuilding the modal element (which
-// replays the modal's open animation and looks like a close/reopen).
+export function buildAgentManagerFooter(app) {
+  return div.class('modal-footer-actions kikx-agent-manager__footer').slot('footer')(
+    p.class(`kikx-auth-status kikx-auth-status--${app._state.agentStatusKind}`)(
+      span(app._state.agentStatus),
+    ),
+    button.type('button').class('kikx-send-button').onClick(app._createAgent)('+ Add Agent'),
+  );
+}
+
+// The filter pills + agent list. Built separately so filter changes can swap
+// just this content without rebuilding the modal element (which replays the
+// modal's open animation and looks like a close/reopen). The footer lives in
+// buildAgentManagerFooter().
 export function buildAgentManagerBody(app) {
   let allAgents = getAgents(app._state);
   let filter = app._state.agentFilter || 'all';
@@ -87,7 +98,7 @@ export function buildAgentManagerBody(app) {
   let actionDefinitions = agentTagActions(app._state.agentTagDefinitions);
   let tagRankByID = Object.fromEntries(actionDefinitions.map((definition) => [
     definition.name,
-    agentTagRankByID(allAgents, definition.name),
+    agentTagRankByID(allAgents, definition),
   ]));
   let actionRanks = { masterRankByID, compactionBotRankByID, tagRankByID };
 
@@ -134,12 +145,6 @@ export function buildAgentManagerBody(app) {
             ),
           )),
       ),
-    div.class('modal-footer-actions')(
-      button.type('button').class('kikx-send-button').onClick(app._createAgent)('+ Add Agent'),
-    ),
-    p.class(`kikx-auth-status kikx-auth-status--${app._state.agentStatusKind}`)(
-      span(app._state.agentStatus),
-    ),
   ];
 }
 

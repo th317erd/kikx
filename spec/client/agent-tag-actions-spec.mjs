@@ -9,7 +9,8 @@ import {
   agentTagActionClassName,
   agentTagActions,
   agentTagActionTitle,
-  priorityTagUpdates,
+  agentTagRankByID,
+  nextPriorityTimestamp,
 } from '../../src/client/components/agent-tag-actions.mjs';
 import { iconNames } from '../../src/client/lib/icons.mjs';
 
@@ -34,32 +35,15 @@ test('tag action state combines the priority tag with legacy role fields', () =>
 });
 
 
-test('repeated clicks define a newest-first OCR priority order', () => {
+test('OCR priority is ordered by click timestamp, without shifting other rows', () => {
   let ocr = CORE_TAG_DEFINITIONS.find((definition) => definition.name === 'ocr_score');
   let agents = [
-    { id: 'a', tags: [ { target_type: 'agent', name: 'ocr_score', value: 10 } ] },
-    { id: 'b', tags: [ { target_type: 'agent', name: 'ocr_score', value: 9 } ] },
+    { id: 'a', tags: [ { name: 'ocr_score', value: 10 }, { name: 'ocr_priority_at', value: 100 } ] },
+    { id: 'b', tags: [ { name: 'ocr_score', value: 10 }, { name: 'ocr_priority_at', value: 200 } ] },
     { id: 'c', tags: [] },
   ];
 
-  let makeC = priorityTagUpdates(agents, ocr, 'c');
-  assert.equal(makeC.active, true);
-  assert.equal(makeC.rank, 1);
-  assert.deepEqual(Object.fromEntries(makeC.updates.map((update) => [ update.target_id, update.value ])), {
-    a: 9,
-    b: 8,
-    c: 10,
-  });
-
-  let afterC = [
-    { id: 'a', tags: [ { target_type: 'agent', name: 'ocr_score', value: 9 } ] },
-    { id: 'b', tags: [ { target_type: 'agent', name: 'ocr_score', value: 8 } ] },
-    { id: 'c', tags: [ { target_type: 'agent', name: 'ocr_score', value: 10 } ] },
-  ];
-  let removeA = priorityTagUpdates(afterC, ocr, 'a');
-  assert.equal(removeA.active, false);
-  assert.deepEqual(Object.fromEntries(removeA.updates.map((update) => [ update.target_id, update.value ])), {
-    a: 0,
-    b: 9,
-  });
+  assert.deepEqual([ ...agentTagRankByID(agents, ocr).entries() ], [ [ 'b', 1 ], [ 'a', 2 ] ]);
+  assert.equal(nextPriorityTimestamp(agents, ocr, 150), 201);
+  assert.equal(nextPriorityTimestamp(agents, ocr, 500), 500);
 });
