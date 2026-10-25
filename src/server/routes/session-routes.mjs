@@ -12,12 +12,18 @@ import {
 } from '../http-helpers.mjs';
 import { suspendSessionAgents } from '../../core/agents/agent-cancellation.mjs';
 import {
+  effectivePreference,
+  normalizePreferenceKey,
+  SESSION_PREFERENCE_DEFAULTS,
+} from '../../core/preferences/index.mjs';
+import {
   matchSessionCancelRoute,
   matchSessionComposerDraftRoute,
   matchSessionComposerHistoryItemRoute,
   matchSessionComposerRoute,
   matchSessionCompactionRetryRoute,
   matchSessionDeleteRoute,
+  matchSessionPreferencesRoute,
   matchSessionRestoreRoute,
   matchSessionRoute,
   matchSessionUpdateRoute,
@@ -110,7 +116,41 @@ export async function handleSessionRoutes({ request, response, url, context }) {
 
     writeJSON(response, 201, {
       data: {
-        session,
+        session: await withEffectivePreferences(frameRuntime, session),
+      },
+    });
+    return true;
+  }
+
+  // Effective preferences are derived from this session and its ancestors. The
+  // manifest stores only own values; this endpoint is the focused lookup a UI
+  // can use when it has not loaded the whole hierarchy. `?key=` returns the one
+  // requested value as well as the full effective map.
+  let preferencesRoute = matchSessionPreferencesRoute(url.pathname);
+  if (request.method === 'GET' && preferencesRoute) {
+    let frameRuntime = context.require('frameRuntime');
+    let resolved = await frameRuntime.getEffectivePreferences(preferencesRoute.sessionID);
+    let keyParam = url.searchParams.get('key');
+    let key = null;
+    if (keyParam != null && keyParam.trim() !== '') {
+      try {
+        key = normalizePreferenceKey(keyParam);
+      } catch (error) {
+        throw httpError(400, error.message);
+      }
+    }
+
+    writeJSON(response, 200, {
+      data: {
+        sessionID: preferencesRoute.sessionID,
+        preferences: resolved.preferences,
+        ownPreferences: resolved.ownPreferences || {},
+        defaults: SESSION_PREFERENCE_DEFAULTS,
+        ...(key ? {
+          key,
+          value: effectivePreference(resolved.preferences, key),
+          found: Object.hasOwn(resolved.preferences, key),
+        } : {}),
       },
     });
     return true;
@@ -129,7 +169,7 @@ export async function handleSessionRoutes({ request, response, url, context }) {
 
     writeJSON(response, 200, {
       data: {
-        session,
+        session: await withEffectivePreferences(frameRuntime, session),
       },
     });
     return true;
@@ -144,7 +184,7 @@ export async function handleSessionRoutes({ request, response, url, context }) {
 
     writeJSON(response, 200, {
       data: {
-        session,
+        session: await withEffectivePreferences(frameRuntime, session),
       },
     });
     return true;
@@ -162,7 +202,7 @@ export async function handleSessionRoutes({ request, response, url, context }) {
 
     writeJSON(response, 200, {
       data: {
-        session,
+        session: await withEffectivePreferences(frameRuntime, session),
       },
     });
     return true;
@@ -386,4 +426,15 @@ export async function handleSessionRoutes({ request, response, url, context }) {
   }
 
   return false;
+}
+
+async function withEffectivePreferences(frameRuntime, session) {
+  if (!session?.id || typeof frameRuntime?.getEffectivePreferences !== 'function')
+    return session;
+
+  let resolved = await frameRuntime.getEffectivePreferences(session.id);
+  return {
+    ...session,
+    effectivePreferences: resolved.preferences,
+  };
 }

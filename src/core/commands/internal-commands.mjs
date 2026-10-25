@@ -5,6 +5,7 @@ import { ClearCompactionBotCommand } from './clear-compaction-bot-command.mjs';
 import { ClearCoordinatorBotCommand } from './clear-coordinator-bot-command.mjs';
 import { CompactCommand } from './compact-command.mjs';
 import { InviteCommand } from './invite-command.mjs';
+import { PreferenceCommand } from './preference-command.mjs';
 import { SetCompactionBotCommand } from './set-compaction-bot-command.mjs';
 import { SetCoordinatorBotCommand } from './set-coordinator-bot-command.mjs';
 import { SlashCommandFramePlugin } from './slash-command-frame-plugin.mjs';
@@ -20,6 +21,7 @@ export function registerInternalCommands({ pluginRegistry, commandRegistry }) {
   commandRegistry.registerCommand('cancel', CancelCommand, { aliases: CancelCommand.aliases });
   commandRegistry.registerCommand('compact', CompactCommand);
   commandRegistry.registerCommand('invite', InviteCommand);
+  commandRegistry.registerCommand('pref', PreferenceCommand, { aliases: PreferenceCommand.aliases });
   commandRegistry.registerCommand('set-coordinator-bot', SetCoordinatorBotCommand);
   commandRegistry.registerCommand('clear-coordinator-bot', ClearCoordinatorBotCommand);
   commandRegistry.registerCommand('set-compaction-bot', SetCompactionBotCommand);

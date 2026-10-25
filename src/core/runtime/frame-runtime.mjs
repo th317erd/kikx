@@ -9,6 +9,12 @@ import { FrameEngine } from '../frames/frame-engine.mjs';
 import { ScheduledFrameQueue } from './scheduled-frame-queue.mjs';
 import { countMessageFrames } from '../../shared/frame-manager/frame-manager.mjs';
 import {
+  effectivePreference,
+  normalizePreferenceKey,
+  normalizePreferences,
+  resolveEffectivePreferences,
+} from '../preferences/index.mjs';
+import {
   buildUserMessageContent,
   normalizeCoordinatorAgentID,
   normalizeCount,
@@ -94,6 +100,7 @@ export class FrameRuntime extends EventEmitter {
       createdClock: input.createdClock || stamp.clock,
       updatedClock: input.updatedClock || stamp.clock,
       deletedAt: input.deletedAt || null,
+      preferences: normalizePreferences(input.preferences),
     };
 
     if (!session.id || typeof session.id !== 'string')
@@ -160,6 +167,12 @@ export class FrameRuntime extends EventEmitter {
     if (Object.hasOwn(input, 'deletedAt'))
       session.deletedAt = input.deletedAt || null;
 
+    // Replace (never merge) the session's own preference map. Inheritance is
+    // resolved on read, so writing an own value must not freeze ancestor values
+    // into the child manifest.
+    if (Object.hasOwn(input, 'preferences'))
+      session.preferences = normalizePreferences(input.preferences);
+
     let stamp = this.nextClockStamp();
     let now = stamp.at;
     session.updatedAt = input.updatedAt || now;
@@ -212,6 +225,68 @@ export class FrameRuntime extends EventEmitter {
 
   getSession(sessionID) {
     return this.sessions.get(sessionID)?.session || null;
+  }
+
+  // Effective preferences = defaults, then ancestor values root-to-leaf, then
+  // this session's own values. Reads the live cache first so a command sees the
+  // manifest it just wrote, then falls back to durable storage for ancestors
+  // that are not loaded (including after a restart).
+  async getEffectivePreferences(sessionID, options = {}) {
+    let resolved = await resolveEffectivePreferences(sessionID, {
+      getSession: (id) => this.getSession(id),
+      loadSession: (id) => this.frameStore.loadSession(id),
+      defaults: options.defaults,
+    });
+
+    if (!resolved.complete && resolved.chain.length === 0) {
+      let error = new Error(`Unknown session: ${sessionID}`);
+      error.status = 404;
+      throw error;
+    }
+
+    return resolved;
+  }
+
+  async getEffectivePreference(sessionID, key, fallback = undefined) {
+    let normalizedKey = normalizePreferenceKey(key);
+    let resolved = await this.getEffectivePreferences(sessionID);
+    return effectivePreference(resolved.preferences, normalizedKey, fallback);
+  }
+
+  // Return shallow copies with `effectivePreferences` attached. The durable
+  // manifest keeps only the session's own values; this field is derived session
+  // data for API/UI consumers and is never written back.
+  async attachEffectivePreferences(sessions, options = {}) {
+    let list = Array.isArray(sessions) ? sessions : [];
+    if (list.length === 0)
+      return [];
+
+    let cache = new Map();
+    for (let session of Array.isArray(options.seed) ? options.seed : []) {
+      if (session?.id)
+        cache.set(session.id, session);
+    }
+
+    let decorated = [];
+    for (let session of list) {
+      if (!session?.id) {
+        decorated.push(session);
+        continue;
+      }
+
+      cache.set(session.id, session);
+      let resolved = await resolveEffectivePreferences(session.id, {
+        sessionCache: cache,
+        loadSession: (id) => this.frameStore.loadSession(id),
+        defaults: options.defaults,
+      });
+      decorated.push({
+        ...session,
+        effectivePreferences: resolved.preferences,
+      });
+    }
+
+    return decorated;
   }
 
   // Move a session to the most-recently-used end of the LRU order. Eviction
@@ -301,10 +376,11 @@ export class FrameRuntime extends EventEmitter {
     // The workspace GET caps at 50 and session counts are small, so this is
     // acceptable; do not add a DB-level filter (all drivers share this path).
     let sessions = await this.frameStore.listSessions(options);
-    if (options.includeDeleted === true)
-      return sessions;
+    let visible = options.includeDeleted === true
+      ? sessions
+      : sessions.filter((session) => !session.deletedAt);
 
-    return sessions.filter((session) => !session.deletedAt);
+    return await this.attachEffectivePreferences(visible, { seed: sessions });
   }
 
   async appendUserMessage(sessionID, input = {}) {

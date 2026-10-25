@@ -9,7 +9,7 @@ The old Mythix/Mythix ORM/Solr application is archived in `old-app/` for referen
 - Durable sessions, frame history, agents, teams, token usage, tool outputs, user profiles, feedback reports, and context compaction frames, stored through a pluggable driver (PostgreSQL by default).
 - Git-like frame flow with `FrameEngine`, `FrameRouter`, and shared `FrameManager` projection.
 - Agent plugins for provider-specific configuration and execution, with OpenAI/Codex-style development support.
-- Internal slash commands such as `/invite` and `/compact`, routed before agent providers.
+- Internal slash commands such as `/invite`, `/compact`, and `/pref`, routed before agent providers.
 - Teams of actors: teams may include agents and real users, and `/invite` can invite a whole team.
 - Agentic loop primitives for responding, null responses, forwarding, progress updates, continuation scheduling, todo lists, per-session cwd, and completion self-review.
 - Tool system with persisted tool results, typed tool frames, range/grep/search access for large outputs, web search/fetch, database search/fetch, file read/write, async shell and temporary-script execution, OCR routing, indexed tags on any entity, process inspection, session/team management, todo management, and feedback reporting.
@@ -167,6 +167,17 @@ Long-running shell work is managed by the async process system. `exec` starts ma
 Tags are indexed `{ target_type, target_id, name, value }` records for any entity. The core registers typed role tags (`leadership_score`, `compaction_score`, `ocr_score`) and plugins can register more with `registerTagDefinition`. `tag-create`, `tag-list`, `tag-get`/`tag-read`, `tag-update`, and `tag-delete` expose them as tools; the agent create/edit dialog renders registered agent-tag definitions as typed controls. Agent-row role icons are also generated from each definition's `agentAction` metadata: crown for leadership, clamp for compaction, and scan/OCR for OCR. Higher positive role scores are selected first, with the legacy crown/compaction lists kept as fallbacks.
 
 OCR runs through tag-selected agents. `ocr` sends local image/PDF paths to the highest-scoring `ocr_score` agent and falls back to the next one on failure. Regular provider agents use their normal `runOcr` fallback; the bundled `plugins/ocr` provider (`host-ocr-command`) runs a configured command such as `bot-ocr`. Add `plugins/ocr` to `KIKX_PLUGIN_PATHS` to load it.
+
+Session preferences are generic per-session key/value settings edited with `/pref`:
+
+```text
+/pref set ocr.image_proxy false
+/pref unset ocr.image_proxy
+/pref get ocr.image_proxy
+/pref list
+```
+
+Values are booleans, finite numbers, or strings. A session inherits preferences from its ancestor chain; the nearest session with the key wins, and the session's own value wins over all ancestors. Setting a key on a parent therefore applies to every descendant unless a child explicitly overrides or unsets it. The manifest stores only the session's own values. `ocr.image_proxy` defaults to `true`; set it to `false` on a parent to disable OCR image proxying for that subtree. Read effective values from `FrameRuntime.getEffectivePreferences(sessionID)` / `getEffectivePreference(sessionID, key)`, `GET /api/v1/sessions/:id/preferences[?key=...]`, or the client helpers `getSessionEffectivePreferences` / `getSessionPreference`.
 
 ## Agentic Script
 

@@ -45,6 +45,12 @@ import {
 } from './navigation-stack.mjs';
 import { createQuestionsState } from './questions-state.mjs';
 import { readDebugMode } from '../lib/debug-mode.mjs';
+import {
+  normalizePreferences,
+  normalizePreferenceKey,
+  resolvePreferencesFromSessions,
+  SESSION_PREFERENCE_DEFAULTS,
+} from '../../shared/session-preferences.mjs';
 
 export const AUTH_STORAGE_KEY = 'kikx.auth.session';
 export const AUTH_SHARED_STORAGE_KEY = 'kikx.auth.shared';
@@ -184,6 +190,41 @@ export function getSessions(state = kikxState) {
 
 export function getSelectedSession(state = kikxState) {
   return state.sessionDetailsByID[state.selectedSessionID] || null;
+}
+
+// Resolve a session's effective preferences from the session records the client
+// already holds. The same rules as the server apply: defaults, then ancestors
+// root-to-leaf, then the session's own values. If an ancestor is missing (for
+// example a deleted parent outside the loaded page), a server-supplied
+// `effectivePreferences` field on the leaf is used as the fallback.
+export function getSessionEffectivePreferences(state = kikxState, sessionID = state.selectedSessionID) {
+  let sessionsByID = {
+    ...(state.deletedSessionDetailsByID || {}),
+    ...(state.sessionDetailsByID || {}),
+  };
+
+  try {
+    let resolved = resolvePreferencesFromSessions(sessionsByID, sessionID);
+    if (resolved.complete)
+      return resolved.preferences;
+
+    let supplied = sessionsByID[sessionID]?.effectivePreferences;
+    if (supplied && typeof supplied === 'object')
+      return { ...SESSION_PREFERENCE_DEFAULTS, ...normalizePreferences(supplied) };
+
+    return resolved.preferences;
+  } catch (_error) {
+    // A malformed stored value must not break rendering; fall back to defaults.
+    return { ...SESSION_PREFERENCE_DEFAULTS };
+  }
+}
+
+export function getSessionPreference(state = kikxState, sessionID = state.selectedSessionID, key, fallback = undefined) {
+  let normalizedKey = normalizePreferenceKey(key);
+  let preferences = getSessionEffectivePreferences(state, sessionID);
+  return Object.hasOwn(preferences, normalizedKey)
+    ? preferences[normalizedKey]
+    : fallback;
 }
 
 export function getSelectedFrames(state = kikxState) {

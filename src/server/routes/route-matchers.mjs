@@ -45,6 +45,18 @@ export function matchSessionRestoreRoute(pathname) {
   };
 }
 
+// GET /api/v1/sessions/:id/preferences returns the session's effective
+// preferences (defaults + inherited ancestors + own values).
+export function matchSessionPreferencesRoute(pathname) {
+  let match = /^\/api\/v1\/sessions\/([^/]+)\/preferences$/.exec(pathname);
+  if (!match)
+    return null;
+
+  return {
+    sessionID: decodeURIComponent(match[1]),
+  };
+}
+
 export function matchSessionRoute(pathname) {
   let match = /^\/api\/v1\/sessions\/([^/]+)\/(frames|frame-counts|messages)$/.exec(pathname);
   if (!match)
