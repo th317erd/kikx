@@ -37,10 +37,8 @@ import {
   currentSessionID,
   gridParentSessionID,
   popStack,
-  pushGrid,
   pushThread,
   scopeNounForDepth,
-  setCollapsed,
   stackDepth,
 } from './navigation-stack.mjs';
 import { createQuestionsState } from './questions-state.mjs';
@@ -274,7 +272,9 @@ export function getCurrentEntry(state = kikxState) {
 export function getCurrentSessionID(state = kikxState) {
   return currentSessionID(getNavigationStack(state));
 }
-
+// A session entry can no longer be collapsed: the child grid that `collapsed`
+// used to select is gone, and the URL parser discards the legacy flag. The flag
+// survives only on the root entry, so this reports false for every session.
 export function isCollapsed(state = kikxState) {
   return getCurrentEntry(state).collapsed === true;
 }
@@ -299,16 +299,8 @@ export function navigateThread(sessionID, state = kikxState) {
   state.navigationStack = pushThread(getNavigationStack(state), sessionID);
 }
 
-export function navigateGrid(parentSessionID, state = kikxState) {
-  state.navigationStack = pushGrid(getNavigationStack(state), parentSessionID);
-}
-
 export function navigateBack(state = kikxState) {
   state.navigationStack = popStack(getNavigationStack(state));
-}
-
-export function setCollapsedView(collapsed, state = kikxState) {
-  state.navigationStack = setCollapsed(getNavigationStack(state), collapsed === true);
 }
 
 // --- Inbox navigation (plan §6) -----------------------------------------

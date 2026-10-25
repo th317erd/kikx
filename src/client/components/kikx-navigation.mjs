@@ -10,7 +10,6 @@ import {
   isCollapsed,
   navigateBack,
   navigateThread,
-  setCollapsedView,
   setNavigationStack,
   upsertSession,
 } from '../state/kikx-state.mjs';
@@ -250,14 +249,6 @@ export function onSessionSearchInput(app, value) {
   applyWindowQuery(app, value);
 }
 
-// A pure toggle: on shows only sub-session cards, off shows all messages.
-export function toggleSubSessions(app) {
-  if (isCollapsed(app._state))
-    return app._expandCurrent();
-
-  return app._showSubSessions();
-}
-
 // Minimize the current session (pop the stack). Only valid past the root.
 export function minimizeCurrent(app) {
   if (getStackDepth(app._state) <= 1)
@@ -308,32 +299,6 @@ export function pruneMissingSessionsFromStack(app, { push = false } = {}) {
   setNavigationStack(pruned, app._state);
   syncSelectedSessionToStack(app);
   syncURLFromStack(app, { push });
-}
-
-// Toggle "show sub-sessions" (collapsed) on the current entry. The thread view
-// is replaced by a child grid; a crossfade transition plays without a shared
-// element (the two views are different element trees).
-export async function showSubSessions(app) {
-  await runViewTransition(() => {
-    setCollapsedView(true, app._state);
-    syncURLFromStack(app, { push: true });
-    app._render();
-  });
-
-  await app._loadSessionPreviews();
-}
-
-// Expand a collapsed grid back into the full chat for its session.
-export async function expandCurrent(app) {
-  let entry = getCurrentEntry(app._state);
-  if (!entry.collapsed || !entry.sessionID)
-    return;
-
-  await runViewTransition(() => {
-    setCollapsedView(false, app._state);
-    syncURLFromStack(app, { push: true });
-    app._render();
-  });
 }
 
 export function navigateToDepth(app, depth) {

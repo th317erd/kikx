@@ -10,10 +10,8 @@ import {
   gridParentSessionID,
   normalizeNavigationStack,
   popStack,
-  pushGrid,
   pushThread,
   scopeNounForDepth,
-  setCollapsed,
   stackDepth,
   stackFromSearchParams,
   stackToURL,
@@ -32,20 +30,20 @@ test('normalizeNavigationStack repairs empty and non-root-first stacks', () => {
   ]);
 });
 
-test('pushThread and pushGrid add levels with the right collapsed state', () => {
+// `pushGrid` is gone with the child-session view it addressed: pushing a
+// "collapsed" level has no meaning once every session window shows its thread.
+test('pushThread adds levels, each an expanded session entry', () => {
   let stack = createNavigationStack();
   stack = pushThread(stack, 'a');
   stack = pushThread(stack, 'b');
-  stack = pushGrid(stack, 'c');
 
   assert.deepEqual(stack, [
     { sessionID: null, collapsed: true },
     { sessionID: 'a', collapsed: false },
     { sessionID: 'b', collapsed: false },
-    { sessionID: 'c', collapsed: true },
   ]);
-  assert.equal(currentSessionID(stack), 'c');
-  assert.equal(currentEntry(stack).collapsed, true);
+  assert.equal(currentSessionID(stack), 'b');
+  assert.equal(currentEntry(stack).collapsed, false);
 });
 
 test('pushThread ignores blank session IDs', () => {
@@ -60,14 +58,6 @@ test('popStack never removes the root', () => {
   let popped = popStack(stack);
   assert.equal(popped.length, 1);
   assert.deepEqual(popStack(popped), [ { sessionID: null, collapsed: true } ]);
-});
-
-test('setCollapsed toggles only the top entry', () => {
-  let stack = pushThread(pushThread(createNavigationStack(), 'a'), 'b');
-  let collapsed = setCollapsed(stack, true);
-  assert.equal(collapsed.at(-1).collapsed, true);
-  assert.equal(collapsed.at(-2).collapsed, false);
-  assert.equal(collapsed.length, 3);
 });
 
 test('gridParentSessionID returns the current session (children owner)', () => {
@@ -85,15 +75,12 @@ test('stackDepth and scopeNounForDepth map depth to user-facing scope', () => {
   assert.equal(scopeNounForDepth(5), 'Sub-Session');
 });
 
-test('stackToURL encodes entered sessions and collapsed state, preserving other params', () => {
+test('stackToURL encodes entered sessions and preserves other params', () => {
   let stack = pushThread(pushThread(createNavigationStack(), 'a'), 'b');
-  let collapsed = setCollapsed(stack, true);
 
   assert.equal(stackToURL(stack, { pathname: '/', search: '' }), '/?session=a&session=b');
-  assert.equal(
-    stackToURL(collapsed, { pathname: '/', search: '' }),
-    '/?session=a&session=b&collapsed=1',
-  );
+  // `collapsed` is never emitted any more; it is a legacy input only.
+  assert.doesNotMatch(stackToURL(stack, { pathname: '/' }), /collapsed/);
   // Preserves unrelated params like the magic-link code.
   assert.equal(
     stackToURL(stack, { pathname: '/', search: '?code=abc' }),
@@ -103,12 +90,16 @@ test('stackToURL encodes entered sessions and collapsed state, preserving other 
   assert.equal(stackToURL(createNavigationStack(), { pathname: '/' }), '/');
 });
 
-test('stackFromSearchParams rebuilds the stack and legacy view flags', () => {
+test('stackFromSearchParams rebuilds the stack and tolerates legacy view flags', () => {
+  // `collapsed=1` was written by the child-grid view. The view is gone, so the
+  // flag must be parsed and discarded: a bookmark or a reload from a tab that was
+  // trapped in the grid has to land in the thread, not in a state that no longer
+  // exists. Silently dropping it keeps the round-trip quiet instead of erroring.
   let parsed = stackFromSearchParams('?code=abc&session=a&session=b&collapsed=1');
   assert.deepEqual(parsed.stack, [
     { sessionID: null, collapsed: true },
     { sessionID: 'a', collapsed: false },
-    { sessionID: 'b', collapsed: true },
+    { sessionID: 'b', collapsed: false },
   ]);
   assert.equal(parsed.viewThread, false);
 
@@ -116,13 +107,14 @@ test('stackFromSearchParams rebuilds the stack and legacy view flags', () => {
 
   // Legacy ?view=thread with no session asks the caller to open the first.
   assert.equal(stackFromSearchParams('?view=thread').viewThread, true);
-  // Legacy ?view=sub-sessions maps to collapsed.
+  // Legacy ?view=sub-sessions is ignored the same way `collapsed=1` is.
   let legacy = stackFromSearchParams('?session=a&view=sub-sessions');
-  assert.equal(legacy.stack.at(-1).collapsed, true);
+  assert.equal(legacy.stack.at(-1).collapsed, false);
+  assert.equal(legacy.view, null, 'it is not an addressable view name');
 });
 
 test('stack URL round-trips', () => {
-  let stack = setCollapsed(pushThread(pushThread(createNavigationStack(), 'a'), 'b'), true);
+  let stack = pushThread(pushThread(createNavigationStack(), 'a'), 'b');
   let url = stackToURL(stack, { pathname: '/' });
   let search = url.slice(url.indexOf('?'));
   assert.deepEqual(stackFromSearchParams(search).stack, stack);

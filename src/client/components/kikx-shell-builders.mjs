@@ -188,8 +188,6 @@ export function buildBreadcrumb(app) {
     let entry = stack[index];
     let session = getSessions(app._state).find((candidate) => candidate.id === entry.sessionID);
     let label = session?.title || (entry.sessionID ? String(entry.sessionID).slice(0, 8) : 'Session');
-    if (entry.collapsed)
-      label += ' (sub-sessions)';
     crumbs.push({
       label,
       sessionTitle: session?.title || '',
@@ -248,7 +246,6 @@ export function buildEditableTitle(app, title, sessionID) {
 
 export function buildRunnerShell(app) {
   let entry = getCurrentEntry(app._state);
-  let collapsed = entry.collapsed === true;
   // A view entry displaces the work area; the stack decides which one is on top
   // (plan §6: Inbox, §6.4: Activities).
   let viewName = entry.view || null;
@@ -270,22 +267,22 @@ export function buildRunnerShell(app) {
       // to whatever window was underneath.
       viewName === 'inbox'
         ? buildInboxView(app)
-        : (viewName === 'activities' ? buildActivitiesView(app) : buildWindow(app, entry, collapsed)),
+        : (viewName === 'activities' ? buildActivitiesView(app) : buildWindow(app, entry)),
     ),
   ];
 }
 
-// The unified work area: a maximized session over its parent, or the grid of
-// children when collapsed. One container; the stack decides what is on top.
-export function buildWindow(app, entry, collapsed) {
+// The work area. The root renders the project grid; an entered session renders
+// its own thread, and its children render inside that same window. There is no
+// second surface a session can switch into, so there is no state in which the
+// children are reachable and the conversation is not.
+export function buildWindow(app, entry) {
   let sessionID = entry.sessionID;
 
   if (!sessionID)
     return buildWorkspaceGrid(app);
 
-  return collapsed
-    ? buildChildGrid(app, sessionID)
-    : buildThreadSection(app, sessionID);
+  return buildThreadSection(app, sessionID);
 }
 
 export function scopeNoun(app) {
@@ -293,10 +290,12 @@ export function scopeNoun(app) {
 }
 
 // One window header for every level. The root grid has no Close; a nested
-// session window always offers Close (minimize / pop). A session window also
-// has a toggle between its chat and its sub-session grid. Add lives in the
-// grid as a leading "Add" card, not in this header.
-export function buildWindowHeader(app, { title, sessionID = null, collapsed = false } = {}) {
+// session window always offers Close (minimize / pop).
+//
+// Creating is not a mode, so it is not behind a view switch: every level carries
+// the same create button, immediately to the right of the eyeball. The eye
+// narrows what you are already looking at; this adds to where you are.
+export function buildWindowHeader(app, { title, sessionID = null } = {}) {
   let nested = getStackDepth(app._state) > 1;
   let backButton = nested
     ? button
@@ -311,7 +310,7 @@ export function buildWindowHeader(app, { title, sessionID = null, collapsed = fa
     div.class('kikx-window__lead')(
       backButton,
       buildBreadcrumbTitle(app, title, sessionID),
-      sessionID && !collapsed ? buildScrollLockToolbar(app, sessionID) : null,
+      sessionID ? buildScrollLockToolbar(app, sessionID) : null,
     ),
     buildSessionSearch(app),
     div.class('kikx-window__actions')(
@@ -324,6 +323,17 @@ export function buildWindowHeader(app, { title, sessionID = null, collapsed = fa
       // soft-deleted sessions are listed, so a header without it would strand
       // that control on the one screen that needs it.
       buildFrameFilterPopup(app, sessionID),
+      // The label comes from the same scope noun the inline Add card uses, so the
+      // two can never disagree about what this level creates. A hardcoded
+      // "Add Session" would contradict the card's "Add Sub-Session" two levels in.
+      // The root takes its label from the level itself rather than the ambient
+      // depth: the root entry is always the bottom of the stack, but a header
+      // should not change its own name because of where the stack happens to be.
+      button
+        .type('button')
+        .class('kikx-window__add')
+        .title(sessionID ? 'Add a session inside this one' : 'Add a project')
+        .onClick(() => app._createSession())(`+ Add ${sessionID ? scopeNoun(app) : 'Project'}`),
     ),
   );
 }
@@ -365,9 +375,6 @@ export function buildFrameFilterPopup(app, sessionID) {
     app,
     appState: app._state,
     sessionID,
-    // The popup no longer re-derives this: importing the session helpers pulled
-    // the whole app graph into the element and broke its isolated import.
-    childCount: childSessionsFor(app, sessionID).length,
   });
   return popup;
 }
@@ -382,17 +389,6 @@ export function buildParticipantsPopup(app, sessionID) {
   return popup;
 }
 
-export function buildChildGrid(app, parentSessionID) {
-  return section.class('kikx-workspace')(
-    buildWindowHeader(app, {
-      title: childGridTitle(app, parentSessionID),
-      sessionID: parentSessionID,
-      collapsed: true,
-    }),
-    buildSessionGrid(app, parentSessionID),
-  );
-}
-
 export function buildWorkspaceGrid(app) {
   return section.class('kikx-workspace')(
     buildWindowHeader(app, { title: 'Projects' }),
@@ -400,12 +396,10 @@ export function buildWorkspaceGrid(app) {
   );
 }
 
-export function childGridTitle(app, parentSessionID) {
-  return getSelectedSession(app._state)?.title || `Session ${String(parentSessionID).slice(0, 8)}`;
-}
-
-export function childSessionsFor(app, parentSessionID) {
-  return childSessions(getSessions(app._state), parentSessionID);
+// The inline child-session row. It reuses the project grid narrowed by
+// parentSessionID, so children need no component and no view of their own.
+export function buildChildSessionsRegion(app, sessionID) {
+  return div.class('kikx-thread__children')(buildSessionGrid(app, sessionID));
 }
 
 export function buildSessionGrid(app, parentSessionID) {
@@ -517,8 +511,15 @@ export function buildThreadSection(app, sessionID) {
     buildWindowHeader(app, {
       title: app._selectedSession()?.title || 'No session',
       sessionID,
-      collapsed: false,
     }),
+    // Child sessions belong to this window, so they render inside it: one row of
+    // cards between the header and the thread, with its Add card in the same row.
+    // They are not a separate view you travel to and back from -- the grid-of-dots
+    // toggle made them exactly that, and it offered no route back to this thread.
+    // The row is always rendered for a session, because its Add card is the inline
+    // route to creating a child; hiding it on a childless session would hide
+    // creation itself.
+    sessionID ? buildChildSessionsRegion(app, sessionID) : null,
     div.class('kikx-thread__body')(
       buildFrameThread(app),
       sessionID ? buildScrollLockFloatingButton(app, sessionID) : null,

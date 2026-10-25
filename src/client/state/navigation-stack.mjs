@@ -4,9 +4,9 @@
 export const VIEW_NAMES = [ 'inbox', 'activities' ];
 
 // A navigation stack of "windows" over a single work area. Each entry is either
-// the root (top-level projects) or an entered session. `collapsed` shows only
-// sub-sessions (a grid); expanded shows the full chat.
-//
+// the root (top-level projects) or an entered session. A session entry always
+// shows its thread; child sessions render inside that thread. Entries therefore
+// carry no view mode -- there is no second surface to be in.
 // Entry: { sessionID: string | null, collapsed: boolean, view?: VIEW_NAMES[number] }
 // Root:  { sessionID: null, collapsed: true }
 //
@@ -73,28 +73,12 @@ export function pushThread(stack, sessionID) {
   return [ ...base, { sessionID: sessionID.trim(), collapsed: false } ];
 }
 
-export function pushGrid(stack, parentSessionID) {
-  let base = normalizeNavigationStack(stack);
-  if (typeof parentSessionID !== 'string' || parentSessionID.trim() === '')
-    return base;
-
-  return [ ...base, { sessionID: parentSessionID.trim(), collapsed: true } ];
-}
-
 export function popStack(stack) {
   let base = normalizeNavigationStack(stack);
   if (base.length <= 1)
     return base;
 
   return base.slice(0, -1);
-}
-
-export function setCollapsed(stack, collapsed) {
-  let base = normalizeNavigationStack(stack);
-  let top = base.at(-1);
-  let next = base.slice(0, -1);
-  next.push({ ...top, collapsed: collapsed === true });
-  return next;
 }
 
 // --- Inbox view ---------------------------------------------------------
@@ -165,7 +149,7 @@ export function gridParentSessionID(stack) {
 // Encodes the current stack into a search string so a reload restores the
 // exact view. Format:
 //   ?session=<root>&session=<child>&...   (one per entered session, root first)
-//   &collapsed=1                          (the top entry is collapsed)
+//   &collapsed=1                        (legacy: parsed and ignored, see below)
 // The root entry (sessionID null) is implicit and never encoded.
 export function stackToSearchParams(stack, existing = '') {
   let base = normalizeNavigationStack(stack);
@@ -186,8 +170,6 @@ export function stackToSearchParams(stack, existing = '') {
   if (viewName)
     params.set('view', viewName);
 
-  if (base.length > 1 && base.at(-1).collapsed)
-    params.set('collapsed', '1');
 
   return params;
 }
@@ -207,15 +189,16 @@ export function stackFromSearchParams(search) {
   let sessionIDs = params.getAll('session')
     .filter((id) => typeof id === 'string' && id.trim() !== '')
     .map((id) => id.trim());
-  let collapsed = params.get('collapsed') === '1'
-    || params.get('view') === 'sub-sessions';
+  // Old links carry `collapsed=1` (or `view=sub-sessions`) from when a session
+  // window could be swapped for its child grid. That view is gone, so the flags
+  // are read and deliberately discarded: a bookmark made while trapped in the
+  // grid must land on the thread, not on a view that no longer exists. Reading
+  // them at all keeps the URL round-trip silent instead of erroring.
+  params.delete('collapsed');
 
   let stack = [ { sessionID: null, collapsed: true } ];
   for (let sessionID of sessionIDs)
     stack.push({ sessionID, collapsed: false });
-
-  if (collapsed && stack.length > 1)
-    stack[stack.length - 1] = { ...stack[stack.length - 1], collapsed: true };
 
   let viewParam = params.get('view');
   let view = VIEW_NAMES.includes(viewParam) ? viewParam : null;

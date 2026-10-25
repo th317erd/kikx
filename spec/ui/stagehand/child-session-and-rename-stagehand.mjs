@@ -62,12 +62,13 @@ test('Stagehand adds a child session under a project and renames it from the win
     await page.goto(`${fixture.baseURL}/?code=stagehand-test`, { waitUntil: 'domcontentloaded', timeout: 10000 });
     await page.waitForSelector('kikx-session-grid > kikx-session-card', { timeout: 10000 });
 
-    // Enter the project, then its sub-session grid, and add a child there.
+    // Enter the project. Its child sessions are rendered inside the session
+    // window now, so the add card for a child lives in that inline row -- there is
+    // no view toggle to press first, and no separate grid to reach.
     await page.evaluate(() => document.querySelector('kikx-session-grid > kikx-session-card .kikx-session-card').click());
     await waitForTitle(page, 'Root Project');
-    await page.evaluate(() => document.querySelector('.kikx-window__view-toggle').click());
-    await waitForCollapsed(page, true);
-    await page.evaluate(() => document.querySelector('kikx-session-grid > .kikx-session-card--add').click());
+    await page.waitForSelector('.kikx-thread__children kikx-session-grid > .kikx-session-card--add', { timeout: 10000 });
+    await page.evaluate(() => document.querySelector('.kikx-thread__children kikx-session-grid > .kikx-session-card--add').click());
     await waitForTitle(page, 'Session 2');
 
     assert.equal(created.length, 1);
@@ -84,11 +85,10 @@ test('Stagehand adds a child session under a project and renames it from the win
     });
     await waitForTitle(page, 'Renamed Child');
 
-    // Close back to the project. The project entry was left collapsed, so closing
-    // returns directly to its sub-session grid listing the renamed child.
+    // Close back to the project. Its window renders the renamed child inline,
+    // between the header and the thread -- the same place it was created from.
     await page.evaluate(() => document.querySelector('.kikx-window__close').click());
     await waitForTitle(page, 'Root Project');
-    await waitForCollapsed(page, true);
     await waitForChildTitles(page, [ 'Renamed Child' ]);
   } finally {
     await stagehand.close().catch(() => {});
@@ -104,14 +104,10 @@ async function waitForTitle(page, expectedTitle, timeoutMS = 10000) {
   await waitFor(page, () => document.querySelector('.kikx-window__header h2, .kikx-window__header .kikx-window__title')?.textContent || '', expectedTitle, timeoutMS, `title ${expectedTitle}`);
 }
 
-async function waitForCollapsed(page, expected, timeoutMS = 10000) {
-  await waitFor(page, () => document.querySelector('kikx-app')?._state?.navigationStack?.at(-1)?.collapsed === true, expected, timeoutMS, `collapsed ${expected}`);
-}
-
 async function waitForChildTitles(page, expected, timeoutMS = 10000) {
   await waitFor(
     page,
-    () => JSON.stringify(Array.from(document.querySelectorAll('kikx-session-grid > kikx-session-card'))
+    () => JSON.stringify(Array.from(document.querySelectorAll('.kikx-thread__children kikx-session-grid > kikx-session-card'))
       .map((card) => card.querySelector('.kikx-session-card__title')?.textContent)),
     JSON.stringify(expected),
     timeoutMS,

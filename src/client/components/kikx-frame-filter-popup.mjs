@@ -38,7 +38,6 @@ export class KikxFrameFilterPopup extends HTMLElement {
     this._app = null;
     this._appState = null;
     this._sessionID = null;
-    this._childCount = 0;
     this._button = null;
     this._panel = null;
     this._master = null;
@@ -47,11 +46,10 @@ export class KikxFrameFilterPopup extends HTMLElement {
     this._keyHandler = null;
   }
 
-  configure({ app, appState = null, sessionID = null, childCount = 0 } = {}) {
+  configure({ app, appState = null, sessionID = null } = {}) {
     this._app = app || null;
     this._appState = appState || app?._state || null;
     this._sessionID = sessionID || null;
-    this._childCount = Number.isFinite(childCount) ? childCount : 0;
     if (this.isConnected)
       this._render();
   }
@@ -189,29 +187,14 @@ export class KikxFrameFilterPopup extends HTMLElement {
     this._rows.set(DELETED_ROW.key, gateControl);
     gate.appendChild(gateControl.row);
 
-    // The child-session grid used to be reachable only from the grid-of-dots
-    // toggle this popup replaced, and that grid is the only place the
-    // "+ Add Session" card is rendered. Removing the toggle therefore left
-    // child-session creation with no UI route at all. This footer is where that
-    // capability now lives: one control restores the grid, the add card and
-    // renaming, instead of a second creation path that could drift from it.
-    let footer = document.createElement('div');
-    footer.className = 'kikx-frame-filter__footer';
-    let gridButton = document.createElement('button');
-    gridButton.type = 'button';
-    gridButton.className = 'kikx-frame-filter__action';
-    gridButton.setAttribute('data-filter-action', 'child-sessions-grid');
-    gridButton.textContent = `Child sessions (${this._childCount})`;
-    gridButton.addEventListener('click', () => {
-      this._close();
-      if (typeof this._app?._showSubSessions === 'function')
-        this._app._showSubSessions();
-    });
-    footer.appendChild(gridButton);
-    if (!hasFrames)
-      footer.hidden = true;
-
-    this._panel.append(header, pinned, list, gate, footer);
+    // There is deliberately no child-session entry point here. This popup
+    // narrows what the current window shows; child sessions are not another view
+    // to travel to, they are rendered inside the window that owns them. The footer
+    // that used to reach the child grid existed only because that grid was the one
+    // place the "+ Add Session" card lived -- and a grid you could enter but never
+    // leave is what made child sessions a dead end. Creation lives in the window
+    // header at every level now, so this popup keeps a single job.
+    this._panel.append(header, pinned, list, gate);
     this._paint();
   }
 

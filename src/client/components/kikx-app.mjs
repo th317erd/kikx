@@ -19,7 +19,6 @@ import {
   buildAuthShell,
   buildBreadcrumb,
   buildBreadcrumbCrumb,
-  buildChildGrid,
   buildEditableTitle,
   buildFrameThread,
   buildGridIcon,
@@ -32,8 +31,6 @@ import {
   buildWindow,
   buildWindowHeader,
   buildWorkspaceGrid,
-  childGridTitle,
-  childSessionsFor,
   createChatViewElement,
   createFrameItemElement,
   renderAppShell,
@@ -127,7 +124,6 @@ import {
   clearFrameFilters,
   clearHeroNames,
   commitSessionName,
-  expandCurrent,
   minimizeCurrent,
   navigateToDepth,
   onSessionNameKeydown,
@@ -136,14 +132,12 @@ import {
   pruneMissingSessionsFromStack,
   toggleShowDeleted,
   setHeroName,
-  showSubSessions,
   stackFromCurrentURL,
   syncFromURL,
   syncSelectedSessionToStack,
   syncURLFromStack,
   setFrameFilters,
   threadChatViewElement,
-  toggleSubSessions,
 } from './kikx-navigation.mjs';
 import {
   clearComposerDraft,
@@ -252,19 +246,15 @@ export class KikxApp extends HTMLElement {
     this._cancelSessionNameEdit = () => cancelSessionNameEdit(this);
     this._commitSessionName = async (sessionID) => commitSessionName(this, sessionID);
     this._buildRunnerShell = () => buildRunnerShell(this);
-    this._buildWindow = (entry, collapsed) => buildWindow(this, entry, collapsed);
+    this._buildWindow = (entry) => buildWindow(this, entry);
     this._scopeNoun = () => scopeNoun(this);
     this._buildWindowHeader = (options) => buildWindowHeader(this, options);
     this._buildGridIcon = () => buildGridIcon();
-    this._toggleSubSessions = () => toggleSubSessions(this);
     this._toggleDebugMode = () => {
       toggleDebugMode(this);
       this._render();
     };
-    this._buildChildGrid = (parentSessionID) => buildChildGrid(this, parentSessionID);
     this._buildWorkspaceGrid = () => buildWorkspaceGrid(this);
-    this._childGridTitle = (parentSessionID) => childGridTitle(this, parentSessionID);
-    this._childSessions = (parentSessionID) => childSessionsFor(this, parentSessionID);
     this._buildSessionGrid = (parentSessionID) => buildSessionGrid(this, parentSessionID);
     this._buildSessionSearch = () => buildSessionSearch(this);
     this._setFrameFilters = (next) => setFrameFilters(this, next);
@@ -374,8 +364,6 @@ export class KikxApp extends HTMLElement {
     this._selectedSession = () => getSelectedSession(this._state);
     this._minimizeCurrent = () => minimizeCurrent(this);
     this._syncSelectedSessionToStack = () => syncSelectedSessionToStack(this);
-    this._showSubSessions = async () => showSubSessions(this);
-    this._expandCurrent = async () => expandCurrent(this);
     this._navigateToDepth = (depth) => navigateToDepth(this, depth);
     this._openSessionFromCard = async (sessionID) => openSessionFromCard(this, sessionID);
     this._threadChatViewElement = () => threadChatViewElement(this);

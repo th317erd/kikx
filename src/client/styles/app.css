@@ -2846,12 +2846,6 @@ kikx-typing-indicator {
   font-size: calc(12px * 1.25);
 }
 
-.kikx-window__view-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
 /* Empty state after the frame filters narrowed the thread to nothing. It reads
    as an empty thread but says something different, so it keeps the same box and
    only adds a quieter tone - the message, not the styling, does the explaining. */
@@ -3030,10 +3024,6 @@ kikx-participants-popup {
 .kikx-grid-icon {
   flex: 0 0 auto;
   fill: currentColor;
-}
-
-.kikx-window__view-toggle.is-active .kikx-grid-icon {
-  fill: #3d6cff;
 }
 
 .kikx-session-card--add {
@@ -3881,29 +3871,6 @@ kikx-frame-filter-popup:not(.is-all-on) .kikx-frame-filter__button {
   margin-top: 6px;
   padding-top: 6px;
   border-top: 1px solid #29323a;
-}
-
-/* Child-session entry point. The grid it opens is the only surface that renders
-   the "+ Add Session" card, and the header toggle that used to reach it was
-   replaced by this popup. Without this row, child-session creation has no route
-   in the UI at all. */
-.kikx-frame-filter__footer {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #29323a;
-}
-
-.kikx-frame-filter__action {
-  width: 100%;
-  padding: 6px 8px;
-  border: 1px solid #2f3944;
-  border-radius: 6px;
-  background: #171d23;
-  color: #cfd8e3;
-  font: inherit;
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
 }
 
 .kikx-frame-filter__action:hover,

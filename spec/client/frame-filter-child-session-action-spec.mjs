@@ -1,14 +1,28 @@
 'use strict';
 
-// Regression guard: removing the grid-of-dots header toggle removed the only
-// route to the child-session grid, and that grid is the only place the
-// "+ Add Session" card is rendered. Child-session creation then had no UI
-// route at all, while the whole suite stayed green, because no spec asserted
-// that the grid was still reachable. This one does.
+// Regression guard, inverted: there is no child-session entry point in the frame
+// filter popup, and there must not be one again.
 //
-// mini-dom has no CSS cascade or layout, so this asserts structure and
-// handler behaviour only. That the control is visible and correctly sized
-// belongs in the browser lane.
+// History, because this file used to assert the opposite. `c70aeb8` replaced the
+// header's grid-of-dots toggle with this popup. The toggle had done two jobs --
+// narrowing the thread, and entering a separate child-session grid -- and only
+// the first moved into the popup. To keep child-session creation reachable, this
+// popup grew a footer action ("Child sessions (n)") wired to `showSubSessions`,
+// and this spec was written to require it.
+//
+// That footer was the entrance to a view you could not leave: it set `collapsed`
+// on the stack entry, `buildWindow` then rendered the child grid *instead of* the
+// thread, and nothing in the grid cleared the flag. The owner's ruling was that
+// the second view itself was the defect -- everything about a session belongs in
+// that session's window -- so the grid was deleted and children render inline.
+// Creation now lives in the window header at every level, which is what the
+// footer's own comment claimed it existed to protect.
+//
+// So the absence asserted here is deliberate, not incidental. If a footer action
+// reappears, a second way into a replaced view has reappeared with it.
+//
+// mini-dom has no CSS cascade or layout, so this asserts structure only. That the
+// popup is visible and correctly placed belongs in the browser lane.
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -26,68 +40,63 @@ const SESSIONS = [
   { id: 'parent_1', parentSessionID: null, title: 'Parent' },
   { id: 'child_1', parentSessionID: 'parent_1', title: 'Child One' },
   { id: 'child_2', parentSessionID: 'parent_1', title: 'Child Two' },
-  { id: 'unrelated', parentSessionID: 'other', title: 'Elsewhere' },
 ];
 
-function bootPopup({ childCount = 2 } = {}) {
-  let calls = { showSubSessions: 0 };
+function bootPopup() {
+  let calls = { create: 0 };
   let app = {
-    _state: { sessions: SESSIONS, frameFilters: null },
-    _showSubSessions() { calls.showSubSessions += 1; },
+    _state: {
+      sessionIDs: SESSIONS.map((session) => session.id),
+      sessionDetailsByID: Object.fromEntries(SESSIONS.map((session) => [ session.id, session ])),
+      frameFilters: null,
+    },
+    _createSession() { calls.create += 1; },
   };
   let popup = document.createElement('kikx-frame-filter-popup');
-  popup.configure({ app, appState: app._state, sessionID: 'parent_1', childCount });
+  popup.configure({ app, appState: app._state, sessionID: 'parent_1' });
   document.body.appendChild(popup);
 
   return { popup, app, calls };
 }
 
-test('the popup exposes a control that reaches the child-session grid', () => {
+test('the popup no longer carries a control that opens a child-session grid', () => {
   let { popup } = bootPopup();
   popup._open({ focus: false });
 
-  let action = popup.querySelector('[data-filter-action="child-sessions-grid"]');
-  assert.ok(action, 'without this control the grid, and the add-session card, are unreachable');
-  assert.equal(action.tagName, 'BUTTON');
-  assert.equal(action.type, 'button');
+  assert.equal(
+    popup.querySelector('[data-filter-action="child-sessions-grid"]'),
+    null,
+    'that action opened a view whose thread it replaced; children render inline now',
+  );
 });
 
-test('that control shows the count the builder hands it', () => {
-  let { popup } = bootPopup({ childCount: 3 });
-  popup._open({ focus: false });
-
-  let action = popup.querySelector('[data-filter-action="child-sessions-grid"]');
-  assert.equal(action.textContent, 'Child sessions (3)', 'the count comes from the shell, not re-derived here');
-});
-
-test('clicking it opens the child-session grid exactly once and closes the popup', () => {
-  let { popup, calls } = bootPopup();
-  popup._open({ focus: false });
-  assert.equal(popup.isOpen, true);
-
-  popup.querySelector('[data-filter-action="child-sessions-grid"]')
-    .dispatchEvent(new Event('click', { bubbles: true }));
-
-  assert.equal(calls.showSubSessions, 1, 'the grid must be opened exactly once');
-  assert.equal(popup.isOpen, false, 'the popup must not stay over the grid it just opened');
-});
-
-test('the control lives inside the panel, so it is unreachable while closed', () => {
+test('the popup has no footer at all, so no count is plumbed in to label one', () => {
   let { popup } = bootPopup();
+  popup._open({ focus: false });
+
+  assert.equal(popup.querySelector('.kikx-frame-filter__footer'), null);
+  assert.equal(popup._childCount, undefined,
+    'the count existed only to label the footer action');
+});
+
+test('the popup keeps its actual job: the category rows and the Deleted gate', () => {
+  let { popup } = bootPopup();
+  popup._open({ focus: false });
+
+  // The eye narrows the thread. It is not, and is not becoming, a mode switch --
+  // so its real controls must survive the footer's removal.
   let panel = popup.querySelector('.kikx-frame-filter__panel');
-  assert.equal(panel.hidden, true, 'the panel starts closed');
-
-  let action = popup.querySelector('[data-filter-action="child-sessions-grid"]');
-  assert.equal(panel.contains(action), true, 'the route lives with the filters, not in the header');
-  assert.equal(popup.classList.contains('is-open'), false);
+  assert.ok(panel, 'the panel still renders');
+  assert.ok(panel.querySelector('[data-filter-key="user"]'), 'category rows survive');
+  assert.ok(panel.querySelector('[data-filter-key="deleted"]'), 'the Deleted gate survives');
 });
 
-test('it survives a session with no children and still routes', () => {
-  let { popup, calls } = bootPopup({ childCount: 0 });
+test('configure() no longer accepts or requires a child count', () => {
+  let popup = document.createElement('kikx-frame-filter-popup');
+  // A caller still passing the old field must not break; it is simply ignored.
+  popup.configure({ sessionID: 'parent_1', childCount: 3 });
+  document.body.appendChild(popup);
   popup._open({ focus: false });
 
-  let action = popup.querySelector('[data-filter-action="child-sessions-grid"]');
-  assert.equal(action.textContent, 'Child sessions (0)');
-  action.dispatchEvent(new Event('click', { bubbles: true }));
-  assert.equal(calls.showSubSessions, 1);
+  assert.equal(popup.querySelector('[data-filter-action="child-sessions-grid"]'), null);
 });

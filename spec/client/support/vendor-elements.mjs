@@ -32,7 +32,7 @@ function domAttributeName(name) {
   return name.replace(/([A-Z])/g, '-$1').toLowerCase();
 }
 
-function buildElement(tagName, attributes, children, ownerDocument, events = []) {
+function buildElement(tagName, attributes, children, ownerDocument, events = [], bindings = [], providedState = undefined) {
   let element = ownerDocument.createElement(tagName);
   for (let [ name, value ] of Object.entries(attributes)) {
     if (name === 'class')
@@ -41,11 +41,55 @@ function buildElement(tagName, attributes, children, ownerDocument, events = [])
       element.setAttribute(domAttributeName(name), '' + value);
   }
 
+  // Per-attribute state bindings (`.class.bindState(cb, keys)`), mirroring
+  // elements.js:410. Nothing subscribes here -- there is no ReactiveState in a
+  // spec process -- so the callback is evaluated once against the state it is
+  // given, which is enough to assert *which* state a control reads. The
+  // teardown callback is registered on the element so cleanupBindings() finds
+  // it exactly as it does in the browser.
+  for (let binding of bindings) {
+    let state = providedState;
+    if (state === undefined)
+      continue;
+
+    let apply = () => {
+      let value = binding.callback(state);
+      if (binding.attribute === null) {
+        if (value === null || value === undefined)
+          return;
+
+        if (typeof value === 'object' && !Array.isArray(value)) {
+          for (let [ name, attributeValue ] of Object.entries(value)) {
+            if (attributeValue === null || attributeValue === undefined || attributeValue === false)
+              delete attributes[name];
+            else
+              attributes[name] = attributeValue;
+          }
+        }
+
+        return;
+      }
+
+      if (value === null || value === undefined || value === false)
+        delete attributes[binding.attribute];
+      else
+        attributes[binding.attribute] = value;
+    };
+
+    apply();
+
+    if (typeof state.on === 'function')
+      binding.teardown = () => state.off?.('*', apply), state.on('*', apply);
+  }
+
   for (let child of children)
     appendChildValue(element, child, ownerDocument);
 
   for (let entry of events)
     element.addEventListener(entry.eventName, (event) => entry.handler(event));
+
+  if (bindings.length > 0)
+    element.__bindings = bindings.map((binding) => () => binding.teardown?.());
 
   return element;
 }
@@ -53,6 +97,7 @@ function buildElement(tagName, attributes, children, ownerDocument, events = [])
 function createBuilder(tagName) {
   let attributes = {};
   let children = [];
+  let bindings = [];
   // `on*` chains are event handlers, not attributes. The real module attaches
   // them with addEventListener (elements.js:189-194), so the stand-in must too
   // or a click-based spec silently never fires its handler.
@@ -73,10 +118,23 @@ function createBuilder(tagName) {
         return undefined;
 
       if (property === 'build')
-        return (ownerDocument) => buildElement(tagName, attributes, children, ownerDocument, events);
+        return (ownerDocument, state) => buildElement(tagName, attributes, children, ownerDocument, events, bindings, state);
 
-      // Lowercase only the first letter after "on": .onClick -> 'click',
-      // .onKeydown -> 'keydown' (never 'keyDown').
+      // `bindState` is read off the builder root for a whole-element binding, and
+      // off an attribute accessor for a per-attribute one. Both return the
+      // builder, not a state consumer (elements.js:378-386, 406-414) -- that is
+      // what lets `.class.bindState(cb, keys)()` terminate a child chain.
+      if (property === 'bindState') {
+        return (callback, filters) => {
+          bindings.push({ attribute: null, callback, filters });
+          return proxy;
+        };
+      }
+
+      // `on*` chains are event handlers, not attributes (elements.js:389-395).
+      // This branch must come before the attribute accessor, or `.onClick(fn)`
+      // is recorded as an inert `onclick="<function>"` attribute and every
+      // click-based assertion silently observes zero calls.
       if (typeof property === 'string' && /^on[A-Z]/.test(property)) {
         let eventName = property.charAt(2).toLowerCase() + property.slice(3);
         return (handler) => {
@@ -86,15 +144,36 @@ function createBuilder(tagName) {
         };
       }
 
-      return (value) => {
-        if (value === true)
-          attributes[property] = '';
-        else if (value === null || value === undefined || value === false)
-          delete attributes[property];
-        else
-          attributes[property] = value;
-        return proxy;
-      };
+      // An attribute accessor: `.class('x')` sets the attribute, while
+      // `.class.bindState(cb, keys)` binds it.
+      let attribute = property;
+
+      return new Proxy(
+        (value) => {
+          if (value === true)
+            attributes[attribute] = '';
+          else if (value === null || value === undefined || value === false)
+            delete attributes[attribute];
+          else
+            attributes[attribute] = value;
+          return proxy;
+        },
+        {
+          get: (_target, propertyName) => {
+            if (typeof propertyName === 'symbol')
+              return undefined;
+
+            if (propertyName === 'bindState') {
+              return (callback, filters) => {
+                bindings.push({ attribute, callback, filters });
+                return proxy;
+              };
+            }
+
+            return proxy[propertyName];
+          },
+        },
+      );
     },
     apply(_target, _thisArg, args) {
       return finalize(...args);
