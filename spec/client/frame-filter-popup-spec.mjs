@@ -18,11 +18,25 @@ const { KikxFrameFilterPopup, framesWouldRender } = await import('../../src/clie
 const { CATEGORY_ROWS, FILTER_KEYS, FILTER_ROWS, defaultFrameFilters, everyFilterOn, noFilterOn } =
   await import('../../src/client/lib/frame-filters.mjs');
 
-function makeApp(frames = []) {
+// Counts come from the server (`GET /frame-counts`), never from the frames the
+// browser happens to hold: the panel used to show Agent 60 beside User 0 and
+// Tools 0 because it described the loaded page instead of the session. So the
+// fake app carries `frameCountsBySessionID`, and `frames` here only models what
+// has been loaded -- it must not move a badge.
+function makeApp(frames = [], counts = null) {
   let app = {
-    _state: { framesBySessionID: { ses_1: frames }, frameFilters: defaultFrameFilters() },
+    _state: {
+      framesBySessionID: { ses_1: frames },
+      frameCountsBySessionID: counts ? { ses_1: { counts } } : {},
+      frameFilters: defaultFrameFilters(),
+    },
     _frameFilterPopupOpen: false,
     applied: [],
+    countRequests: [],
+  };
+  app._loadFrameCounts = (sessionID) => {
+    app.countRequests.push(sessionID);
+    return Promise.resolve(counts);
   };
   app._setFrameFilters = (next) => {
     app.applied.push(next);
@@ -86,27 +100,32 @@ test('one row exists per filter, in declared order, labelled and counted', () =>
   let frames = [
     { type: 'UserMessage', authorType: 'user' },
     { type: 'ToolCall' },
-    { type: 'UserMessage', authorType: 'user', hidden: true },
+    { type: 'UserMessage', authorType: 'user', deleted: true },
   ];
-  let popup = mount(makeApp(frames));
+  // Deliberately not the page-derived tallies (2 user, 1 tool): a badge is a
+  // fact about the whole session, so these are what the server would return.
+  let popup = mount(makeApp(frames, {
+    user: 412, agent: 388, question: 7, session: 3, tools: 12998, commands: 12564,
+    compaction: 55, deleted: 50,
+  }));
   let keys = [ ...popup.querySelectorAll('.kikx-frame-filter__list .kikx-frame-filter__row') ]
     .map((row) => row.getAttribute('data-filter-key'));
   assert.deepEqual(keys, CATEGORY_ROWS.map((row) => row.key), 'the list holds the categories, in order');
-  assert.equal(keys.includes('hidden'), false, 'the gate is rendered outside the list');
+  assert.equal(keys.includes('deleted'), false, 'the reveal is rendered outside the list');
 
   for (let row of popup.querySelectorAll('.kikx-frame-filter__list .kikx-frame-filter__row'))
     assert.ok(row.querySelector('.kikx-frame-filter__label').textContent.trim() !== '', 'every row has a label');
 
   let counts = Object.fromEntries([ ...popup.querySelectorAll('.kikx-frame-filter__list .kikx-frame-filter__row') ]
     .map((row) => [ row.getAttribute('data-filter-key'), row.querySelector('.kikx-frame-filter__count')?.textContent ]));
-  assert.equal(counts.user, '2');
-  assert.equal(counts.tools, '1');
+  assert.equal(counts.user, '412', 'the session total, not the loaded page');
+  assert.equal(counts.tools, '12998');
 
   // The gate carries its own count but is not a member of the category list.
   let gate = popup.querySelector('.kikx-frame-filter__gate .kikx-frame-filter__row');
-  assert.equal(gate.getAttribute('data-filter-key'), 'hidden');
-  assert.equal(gate.querySelector('.kikx-frame-filter__count').textContent, '1');
-  assert.equal(popup.querySelector('.kikx-frame-filter__list [data-filter-key="hidden"]'), null, 'the gate is not in the list');
+  assert.equal(gate.getAttribute('data-filter-key'), 'deleted');
+  assert.equal(gate.querySelector('.kikx-frame-filter__count').textContent, '50');
+  assert.equal(popup.querySelector('.kikx-frame-filter__list [data-filter-key="deleted"]'), null, 'the reveal is not in the list');
 });
 
 test('a plain click flips only that row', () => {

@@ -46,7 +46,7 @@ export function matchSessionRestoreRoute(pathname) {
 }
 
 export function matchSessionRoute(pathname) {
-  let match = /^\/api\/v1\/sessions\/([^/]+)\/(frames|messages)$/.exec(pathname);
+  let match = /^\/api\/v1\/sessions\/([^/]+)\/(frames|frame-counts|messages)$/.exec(pathname);
   if (!match)
     return null;
 

@@ -318,7 +318,11 @@ export function buildWindowHeader(app, { title, sessionID = null, collapsed = fa
         span.textContent.bindState((state) => state.previewsLoading ? 'Loading previews…' : (state.previewStatus || ''), ['previewsLoading', 'previewStatus'])(),
       ),
       sessionID ? buildParticipantsPopup(app, sessionID) : null,
-      sessionID ? buildFrameFilterPopup(app, sessionID) : null,
+      // One eyeball on every level, including the root Projects grid. The popup
+      // is where "show deleted" now lives, and the grid is exactly where
+      // soft-deleted sessions are listed, so a header without it would strand
+      // that control on the one screen that needs it.
+      buildFrameFilterPopup(app, sessionID),
     ),
   );
 }
@@ -436,9 +440,13 @@ export function buildSessionGrid(app, parentSessionID) {
   return div.class('kikx-workspace__grid')(grid);
 }
 
-// The centered session-workspace controls: a title filter with a floating eye
-// toggle. Placed in the window header (decision A: the search takes the header
-// center; the editable name relocates to the breadcrumb's active crumb).
+// The centered session-workspace controls: a title filter. Placed in the window
+// header (decision A: the search takes the header center; the editable name
+// relocates to the breadcrumb's active crumb).
+//
+// The floating eye that used to sit here is gone: "show deleted" moved into the
+// frame-filter popup, so there is one idiom for every kind of visibility rather
+// than a second control bolted onto the search field.
 export function buildSessionSearch(app) {
   let input = document.createElement('input');
   input.type = 'search';
@@ -450,46 +458,10 @@ export function buildSessionSearch(app) {
   input.addEventListener('input', (event) => app._onSessionSearchInput(event.target.value));
   input.addEventListener('keydown', (event) => event.stopPropagation());
 
-  let eye = document.createElement('button');
-  eye.type = 'button';
-  eye.className = 'kikx-session-search__eye';
-  eye.setAttribute('aria-label', 'Show deleted sessions');
-  // Reflect the current eye state at build time so a full shell rebuild (every
-  // toggle calls _render) shows the right on/off affordance without waiting for
-  // paintSessionSearch; paintSessionSearch handles in-place updates while typing.
-  applyEyeState(eye, app._state.showDeletedSessions === true);
-  eye.addEventListener('click', (event) => {
-    event.stopPropagation();
-    app._toggleShowDeleted();
-  });
-
   let container = document.createElement('div');
   container.className = 'kikx-session-search';
-  container.append(input, eye);
+  container.append(input);
   return container;
-}
-
-// Repaint the eye's on/off state in place (no shell rebuild while typing).
-export function paintSessionSearch(app) {
-  let eye = app.querySelector('.kikx-session-search__eye');
-  if (!eye)
-    return;
-
-  applyEyeState(eye, app._state.showDeletedSessions === true);
-}
-
-// The eye's on/off affordance: class, aria-pressed, tooltip, and glyph. Shared
-// by the builder (initial state) and paintSessionSearch (in-place repaint).
-function applyEyeState(eye, on) {
-  eye.classList.toggle('is-on', on);
-  eye.setAttribute('aria-pressed', on ? 'true' : 'false');
-  eye.setAttribute('aria-label', on ? 'Hide deleted sessions' : 'Show deleted sessions');
-  eye.title = on ? 'Hide deleted sessions' : 'Show deleted sessions';
-  // A single eye glyph for both states; the on/off affordance is the `is-on`
-  // class (color/opacity), never a different glyph. The previous off-state used
-  // the "eye in speech bubble" ZWJ emoji (U+1F441 ZWJ U+1F5E8), which renders as
-  // two smashed-together glyphs in most fonts.
-  eye.textContent = '\u{1F441}';
 }
 
 // The editable session name, relocated off the header center. Click to rename;

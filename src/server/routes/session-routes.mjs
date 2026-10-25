@@ -23,6 +23,34 @@ import {
   matchSessionUpdateRoute,
 } from './route-matchers.mjs';
 
+// Frame-window filter parameters.
+//
+// Each row is sent as its own `f_<key>` flag. Absence means "not requested",
+// which `normalizeWindowFilters` resolves to the row's default — categories on,
+// the Deleted gate off. Sending no flags therefore reproduces the unfiltered
+// window exactly, so older clients keep working unchanged.
+const FRAME_FILTER_PARAM_KEYS = [
+  'user',
+  'agent',
+  'question',
+  'session',
+  'tools',
+  'commands',
+  'compaction',
+  'deleted',
+];
+
+function parseFrameWindowFilters(params) {
+  let filters = {};
+  for (let key of FRAME_FILTER_PARAM_KEYS) {
+    let raw = params.get(`f_${key}`);
+    if (raw != null)
+      filters[key] = parseBoolean(raw, true);
+  }
+
+  return filters;
+}
+
 export async function handleSessionRoutes({ request, response, url, context }) {
   if (request.method === 'GET' && url.pathname === '/api/v1/sessions') {
     let frameRuntime = context.require('frameRuntime');
@@ -299,8 +327,33 @@ export async function handleSessionRoutes({ request, response, url, context }) {
       if (url.searchParams.has('after'))
         options.after = parseOptionalNonNegativeInteger(url.searchParams.get('after'));
 
+      // Filtering is a server concern: the client only ever holds a window, so
+      // it cannot know whether matches exist outside what it has loaded. See
+      // src/shared/frame-window-filters.mjs for why this is not a client predicate.
+      let filters = parseFrameWindowFilters(url.searchParams);
+      if (Object.keys(filters).length > 0)
+        options.filters = filters;
+
+      let query = url.searchParams.get('q');
+      if (typeof query === 'string' && query.trim() !== '')
+        options.query = query;
+
       writeJSON(response, 200, {
         data: await frameRuntime.listFrameWindow(sessionRoute.sessionID, options),
+      });
+      return true;
+    }
+
+    // Whole-session frame counts for the filter popup.
+    //
+    // The popup used to count whatever frames the browser happened to hold,
+    // which answers "how many are on this page" and produced a page-sized Agent
+    // number beside zeros for every kind that fell outside the page. Counts are
+    // a session property, so they are a server answer. They are derived from
+    // frame paths, never bodies: see `countFilterMatches`.
+    if (request.method === 'GET' && sessionRoute.resource === 'frame-counts') {
+      writeJSON(response, 200, {
+        data: await frameRuntime.countSessionFrames(sessionRoute.sessionID),
       });
       return true;
     }

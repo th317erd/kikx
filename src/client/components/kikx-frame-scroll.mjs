@@ -199,9 +199,6 @@ export function syncSessionShell(app) {
     threadTitle.textContent = selectedSession?.title || 'No session';
   }
 
-  // Repaint the "show deleted" eye in place (on/off tint) without a rebuild.
-  app._paintSessionSearch?.();
-
   let grid = app.querySelector('kikx-session-grid');
   if (grid) {
     // Respect the current level's parent filter; the grid shows direct

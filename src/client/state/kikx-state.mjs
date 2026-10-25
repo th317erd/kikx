@@ -91,6 +91,11 @@ export const kikxState = new ReactiveState({
   editingSessionTitle: '',
   editingAgentID: '',
   framesBySessionID: {},
+  // Whole-session frame counts, keyed by session id, as answered by the server's
+  // `frame-counts` endpoint. Kept apart from `framesBySessionID` on purpose: that
+  // map holds only the loaded window, and counting it is what made the filter
+  // popup report page-sized numbers.
+  frameCountsBySessionID: {},
   frameFilters: null,
   sessionPagingByID: {},
   magicCode: params.get('code') || '',

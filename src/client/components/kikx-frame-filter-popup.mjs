@@ -3,9 +3,8 @@
 import { createIcon } from '../lib/icons.mjs';
 import {
   CATEGORY_ROWS,
+  DELETED_ROW,
   FILTER_KEYS,
-  HIDDEN_ROW,
-  filterCounts,
   filterSummary,
   frameMatchesFilters,
   normalizeFrameFilters,
@@ -17,8 +16,13 @@ import {
 } from '../lib/frame-filters.mjs';
 
 // The eyeball popup: a pinned master checkbox, then one checkbox per frame
-// category. Every row starts checked, so opening the popup changes nothing
-// until the user clicks.
+// category, then the Deleted reveal. Every category starts checked and the
+// reveal starts off, so opening the popup changes nothing until the user clicks.
+//
+// "Deleted" is the single control for soft-deleted content of every kind: it
+// reveals soft-deleted messages in the thread AND makes the session grid include
+// the soft-deleted session bucket. There is deliberately no second eye: one
+// popup, one idiom, nothing stranded on a screen the popup does not reach.
 //
 // Click semantics (deliberately unlike a plain checkbox list):
 //   plain click  - flip that one row
@@ -120,6 +124,12 @@ export class KikxFrameFilterPopup extends HTMLElement {
     let list = document.createElement('div');
     list.className = 'kikx-frame-filter__list';
 
+    // No session means no frames on screen (the Projects/session grid). Frame
+    // categories would be meaningless there, so the popup keeps only the one
+    // control that still applies: the Deleted reveal, which is what brings
+    // soft-deleted sessions back into the grid.
+    let hasFrames = Boolean(this._sessionID);
+
     // The pinned row is a sibling of the list, not a member of it, so no list
     // scroll position can ever move it.
     let pinned = document.createElement('div');
@@ -130,10 +140,21 @@ export class KikxFrameFilterPopup extends HTMLElement {
       this._apply(toggleAllFilters(this._filters));
     });
     pinned.appendChild(this._master.row);
+    if (!hasFrames)
+      pinned.hidden = true;
 
-    let counts = filterCounts(this._countSourceFrames());
+    // `null` counts mean "not known yet" (or "not knowable from paths"), and
+    // render as a row with no badge rather than a confident zero.
+    let counts = this._serverCounts();
     for (let entry of CATEGORY_ROWS) {
-      let control = rowControl({ label: entry.label, key: entry.key, count: counts[entry.key] });
+      if (!hasFrames)
+        break;
+
+      let control = rowControl({
+        label: entry.label,
+        key: entry.key,
+        count: counts ? counts[entry.key] : null,
+      });
       control.input.addEventListener('click', (event) => {
         event.preventDefault();
         this._handleRowClick(entry.key, event);
@@ -141,22 +162,24 @@ export class KikxFrameFilterPopup extends HTMLElement {
       this._rows.set(entry.key, control);
       list.appendChild(control.row);
     }
+    if (!hasFrames)
+      list.hidden = true;
 
-    // The Hidden gate is not a category, so it sits outside the list, below a
+    // The Deleted reveal is not a category, so it sits outside the list, below a
     // rule, with no count-as-category semantics. It stays inside the scrolling
     // area's sibling group but is visually its own block.
     let gate = document.createElement('div');
     gate.className = 'kikx-frame-filter__gate';
     let gateControl = rowControl({
-      label: HIDDEN_ROW.label,
-      key: HIDDEN_ROW.key,
-      count: counts[HIDDEN_ROW.key],
+      label: DELETED_ROW.label,
+      key: DELETED_ROW.key,
+      count: hasFrames && counts ? counts[DELETED_ROW.key] : null,
     });
     gateControl.input.addEventListener('click', (event) => {
       event.preventDefault();
-      this._handleRowClick(HIDDEN_ROW.key, event);
+      this._handleRowClick(DELETED_ROW.key, event);
     });
-    this._rows.set(HIDDEN_ROW.key, gateControl);
+    this._rows.set(DELETED_ROW.key, gateControl);
     gate.appendChild(gateControl.row);
 
     // The child-session grid used to be reachable only from the grid-of-dots
@@ -178,19 +201,59 @@ export class KikxFrameFilterPopup extends HTMLElement {
         this._app._showSubSessions();
     });
     footer.appendChild(gridButton);
+    if (!hasFrames)
+      footer.hidden = true;
 
     this._panel.append(header, pinned, list, gate, footer);
     this._paint();
   }
 
-  _countSourceFrames() {
+  // Counts come from the server, not from the loaded window.
+  //
+  // `framesBySessionID[sessionID]` holds only the page the browser currently
+  // has, so counting it answers "how many are on this page" — which is how the
+  // panel ended up showing Agent 60 next to User 0, Tools 0 and Commands 0 for a
+  // session that contains 17,581 frames. A badge is a fact about the session.
+  //
+  // The request is issued on open and cached on app state. Until it lands the
+  // counts read as `null` and the rows render without a number, which is honest:
+  // no number is better than a number computed from the wrong set.
+  _serverCounts() {
     let sessionID = this._sessionID;
     if (!sessionID)
-      return [];
+      return null;
 
-    return this._appState?.framesBySessionIdForFilters?.(sessionID)
-      || this._appState?.framesBySessionID?.[sessionID]
-      || [];
+    return this._appState?.frameCountsBySessionID?.[sessionID]?.counts || null;
+  }
+
+  _requestCounts() {
+    let sessionID = this._sessionID;
+    let app = this._app;
+    if (!sessionID || !app || typeof app._loadFrameCounts !== 'function')
+      return;
+
+    let signature = this._countSignature();
+    if (this._countsRequestedFor === signature)
+      return;
+
+    this._countsRequestedFor = signature;
+    Promise.resolve(app._loadFrameCounts(sessionID))
+      .then(() => {
+        // The counts arrive after the panel may have been rebuilt (or closed).
+        // Painting is safe either way; a detached instance just does nothing
+        // visible.
+        if (this._panel)
+          this._renderPanel();
+      })
+      .catch(() => {
+        // A failed count request must not break the popup: the rows still work
+        // and simply have no badges.
+        this._countsRequestedFor = null;
+      });
+  }
+
+  _countSignature() {
+    return `${this._sessionID || ''}`;
   }
 
   _handleRowClick(key, event) {
@@ -255,6 +318,9 @@ export class KikxFrameFilterPopup extends HTMLElement {
       return;
     this._app._frameFilterPopupOpen = true;
     this._panel.hidden = false;
+    // Counts are a session fact fetched from the server; ask for them when the
+    // panel opens rather than counting whatever the browser has loaded.
+    this._requestCounts();
     this._button?.setAttribute('aria-expanded', 'true');
     this.classList.add('is-open');
     this._paint();
@@ -310,7 +376,7 @@ function rowControl({ label, key, count = null, kind = 'row' }) {
   let input = document.createElement('input');
   input.type = 'checkbox';
   input.className = 'kikx-frame-filter__checkbox';
-  input.checked = true;
+  input.checked = kind === 'master' || key !== DELETED_ROW.key;
   input.setAttribute('aria-label', label);
 
   let text = document.createElement('span');

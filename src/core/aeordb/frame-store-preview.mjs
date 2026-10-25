@@ -19,6 +19,8 @@ import {
 } from './frame-store-normalizers.mjs';
 import { frameOrderFromPath, sortFramePathsByOrder } from './frame-store-ordering.mjs';
 import { createFrameLoadError } from './frame-store-errors.mjs';
+import { windowFiltersAreDefault } from '../../shared/frame-window-filters.mjs';
+import { countSessionFrames, listFilteredFrameWindow } from './frame-store-window-scan.mjs';
 import { encodeSegment } from './frame-store-paths.mjs';
 import { projectFrameMessages } from '../../shared/frame-manager/frame-manager.mjs';
 
@@ -80,6 +82,21 @@ export class FrameStorePreviewBase extends FrameStoreScheduledBase {
   async listFrameWindow(sessionID, options = {}) {
     if (!sessionID)
       throw new TypeError('listFrameWindow() requires sessionID');
+
+    // A filtered window is a different question from a raw window: matches are
+    // not contiguous, so a fixed slice of raw rows can come back empty while
+    // thousands of matches sit just below it. Answer it with the bounded match
+    // scan instead, so paging walks matches and `hasMore` stays truthful. The
+    // default view never enters this branch, so its cost is unchanged.
+    if (!windowFiltersAreDefault(options.filters, options.query)) {
+      return await listFilteredFrameWindow(this, sessionID, options, {
+        interactionsPath: `${this.rootPath}/sessions/${encodeSegment(sessionID)}/interactions`,
+        // Deliberately NOT `isPreviewVisibleFrame`: the filter predicate has
+        // already decided visibility, and re-applying the default gate here
+        // would drop exactly the soft-deleted frames the user asked to see.
+        project: (frames) => projectFrameMessages(frames).map(projectClientFrameForWindow),
+      });
+    }
 
     let limit = normalizeLargeLimit(options.limit, DEFAULT_FRAME_LIST_LIMIT);
     let before = normalizeOptionalOrder(options.before);
@@ -197,6 +214,23 @@ export class FrameStorePreviewBase extends FrameStoreScheduledBase {
       oldestOrder: frameOrderFromPath(windowPaths[0]),
       newestOrder: frameOrderFromPath(windowPaths[windowPaths.length - 1]),
     };
+  }
+
+  // Per-row counts for the whole session, derived from frame paths only.
+  //
+  // Counting the loaded page instead is what made the popup report a page-sized
+  // Agent number beside zeros for kinds that happened to fall outside it. See
+  // `countFilterMatches` for why the count ignores the current selection and
+  // why Soft-deleted comes back `null` (it is a body field).
+  async countSessionFrames(sessionID) {
+    if (typeof sessionID !== 'string' || sessionID.trim() === '')
+      throw new TypeError('countSessionFrames() requires sessionID');
+
+    let interactionsPath = `${this.rootPath}/sessions/${encodeSegment(sessionID)}/interactions`;
+    return await countSessionFrames(this, sessionID, {
+      interactionsPath,
+      listOptions: { depth: -1, glob: '**/frames/*.json' },
+    });
   }
 
   // Find a frame by its stable id in the raw directory. Frame paths end with

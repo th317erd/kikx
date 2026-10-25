@@ -37,6 +37,13 @@ const frameMethods = {
     return await this.frameStore.listFrameWindow(sessionID, options);
   },
 
+  // Per-row frame counts for the whole session, not for the loaded page. The
+  // filter popup shows these, so they must describe the session; the client
+  // only holds a window and cannot compute them.
+  async countSessionFrames(sessionID) {
+    return await this.frameStore.countSessionFrames(sessionID);
+  },
+
   async listRawFrameWindow(sessionID, options = {}) {
     return await this.frameStore.listFrameWindow(sessionID, { ...options, raw: true });
   },

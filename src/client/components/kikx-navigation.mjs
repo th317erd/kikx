@@ -15,7 +15,12 @@ import {
   upsertSession,
 } from '../state/kikx-state.mjs';
 import { stackFromSearchParams, stackToURL } from '../state/navigation-stack.mjs';
-import { frameFiltersSignature, normalizeFrameFilters } from '../lib/frame-filters.mjs';
+import {
+  DELETED_ROW,
+  frameFiltersSignature,
+  normalizeFrameFilters,
+  toggleFilter,
+} from '../lib/frame-filters.mjs';
 import {
   HERO_VIEW_TRANSITION_NAME,
   runViewTransition,
@@ -76,29 +81,57 @@ export async function commitSessionName(app, sessionID) {
   app._render();
 }
 
-// Toggle the "show deleted sessions" eye. Turning it on fetches the deleted
-// bucket (includeDeleted=1) so previously-deleted sessions appear tinted; off
-// hides them again. The live list is untouched either way.
+// The popup's "Deleted" row is the single control for soft-deleted content of
+// every kind, so this is now only a thin delegate onto it: it flips the filter
+// row and lets setFrameFilters do the state write, the bucket fetch and the
+// repaint. Keeping one path means the eye can never disagree with the row.
 export function toggleShowDeleted(app) {
-  app._state.showDeletedSessions = app._state.showDeletedSessions !== true;
-  if (app._state.showDeletedSessions)
-    app._loadDeletedSessions();
-  app._render();
+  setFrameFilters(app, toggleFilter(normalizeFrameFilters(app._state.frameFilters), DELETED_ROW.key));
 }
 
-// Replace the frame filter set and repaint the shell. _render() is enough: the
-// thread body is rebuilt from threadRenderFrames, which reads this state, so a
-// filter change takes effect on the same pass as the popup's own repaint.
+// Replace the frame filter set and repaint the shell.
+//
+// Filtering is a server-side operation, so a filter change has to REFETCH the
+// window: the frames the new selection admits are not in the client's loaded
+// page, and no amount of local re-rendering can produce them. `_render()` alone
+// would only repaint the frames the previous selection fetched, which is the
+// bug this rewiring exists to avoid.
 //
 // The signature guard keeps an off/on round trip from doing nothing twice, and
-// stops a redundant rebuild when a click cannot have changed anything (for
+// stops a redundant refetch when a click cannot have changed anything (for
 // example Ctrl+Click on an already-isolated row).
 export function setFrameFilters(app, filters) {
   let next = normalizeFrameFilters(filters);
-  if (frameFiltersSignature(next) === frameFiltersSignature(app._state.frameFilters))
+  let query = app._state.sessionSearch || '';
+  if (frameFiltersSignature(next, query) === frameFiltersSignature(app._state.frameFilters, query))
     return;
 
   app._state.frameFilters = next;
+
+  // The Deleted row also governs the session grid's soft-deleted bucket. These
+  // two used to be separate controls (a frame filter here, an eye in the search
+  // box there), which let the thread and the grid disagree about what "deleted"
+  // meant. They are one flag now. Turning it on fetches the bucket
+  // (includeDeleted=1) so previously-deleted sessions actually exist to show.
+  let showDeleted = next[DELETED_ROW.key] === true;
+  let wasShowingDeleted = app._state.showDeletedSessions === true;
+  app._state.showDeletedSessions = showDeleted;
+  if (showDeleted && !wasShowingDeleted)
+    app._loadDeletedSessions?.();
+
+  // Reload the selected session's window under the new selection, then repaint.
+  // The frame cache must be dropped first: it holds frames chosen by the old
+  // filter, and merging a filtered window into them would mix two selections.
+  let sessionID = app._state.selectedSessionID;
+  if (sessionID && typeof app._loadFrames === 'function') {
+    app._state.framesBySessionID = { ...app._state.framesBySessionID, [sessionID]: [] };
+    app._loadFrames(sessionID).then(
+      () => app._render(),
+      () => app._render(),
+    );
+    return;
+  }
+
   app._render();
 }
 

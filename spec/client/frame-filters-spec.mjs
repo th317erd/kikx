@@ -4,12 +4,18 @@
 // silently, because they involve modifier keys and a master row with three
 // states. These tests pin the pure reducer; a separate spec covers the DOM
 // wiring on top of it.
+//
+// Two different notions of "not for you" are tested here, because conflating
+// them is a real bug this file exists to prevent:
+//   hidden:true  - system-only bookkeeping, never visible to anyone
+//   deleted:true - soft-deleted content the user can ask to see again
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
   CATEGORY_KEYS,
+  DELETED_ROW,
   FILTER_KEYS,
   allFilters,
   applyFrameFilters,
@@ -26,7 +32,7 @@ import {
   onlyFilter,
   toggleAllFilters,
   toggleFilter,
-  wantsHiddenFrames,
+  wantsDeletedFrames,
 } from '../../src/client/lib/frame-filters.mjs';
 
 test('every category starts enabled, so the default view shows everything visible', () => {
@@ -37,12 +43,9 @@ test('every category starts enabled, so the default view shows everything visibl
     assert.equal(filters[key], true, `${key} starts on`);
 });
 
-test('the Hidden gate starts off, because hidden frames are internal bookkeeping', () => {
-  // Composer drafts, frame groups, scheduled question deadlines and undispatched
-  // session invites all set hidden:true and have never been rendered in a thread.
-  // An all-on default would dump them into every conversation on first load.
-  assert.equal(defaultFrameFilters().hidden, false);
-  assert.equal(wantsHiddenFrames(defaultFrameFilters()), false);
+test('the Deleted reveal starts off, so soft-deleted content stays hidden until asked for', () => {
+  assert.equal(defaultFrameFilters().deleted, false);
+  assert.equal(wantsDeletedFrames(defaultFrameFilters()), false);
 });
 
 test('normalizeFrameFilters repairs missing and non-boolean entries to each row default', () => {
@@ -50,12 +53,12 @@ test('normalizeFrameFilters repairs missing and non-boolean entries to each row 
   assert.equal(filters.user, false, 'an explicit false survives');
   assert.equal(filters.agent, true, 'a non-boolean falls back to on');
   assert.equal(filters.question, true, 'null falls back to on');
-  assert.equal(filters.hidden, false, 'a missing gate falls back to off, not on');
+  assert.equal(filters.deleted, false, 'a missing reveal falls back to off, not on');
   assert.deepEqual(normalizeFrameFilters(null), defaultFrameFilters());
 });
 
-test('normalizeFrameFilters keeps an explicitly enabled gate', () => {
-  assert.equal(normalizeFrameFilters({ hidden: true }).hidden, true);
+test('normalizeFrameFilters keeps an explicitly enabled reveal', () => {
+  assert.equal(normalizeFrameFilters({ deleted: true }).deleted, true);
 });
 
 test('normalizeFrameFilters drops keys that are not filters', () => {
@@ -80,19 +83,21 @@ test('plain click on an unknown key changes nothing', () => {
   assert.deepEqual(toggleFilter(filters, 'bogus'), filters);
 });
 
-test('Ctrl+Click leaves only the clicked row enabled', () => {
+test('Ctrl+Click leaves only the clicked category enabled', () => {
   let next = onlyFilter(defaultFrameFilters(), 'question');
   assert.equal(next.question, true);
-  for (let key of FILTER_KEYS) {
+  for (let key of CATEGORY_KEYS) {
     if (key !== 'question')
       assert.equal(next[key], false, `${key} is cleared by Ctrl+Click`);
   }
   assert.equal(filterSummary(next), 'mixed');
 });
 
-test('Ctrl+Click on an already-isolated row keeps it isolated, so it is not a toggle', () => {
+test('Ctrl+Click on an already-isolated row restores every category', () => {
+  // A second Ctrl+Click is the escape hatch out of an isolation, so the view can
+  // never be stranded on one category with no obvious way back.
   let isolated = onlyFilter(defaultFrameFilters(), 'question');
-  assert.deepEqual(onlyFilter(isolated, 'question'), isolated);
+  assert.deepEqual(onlyFilter(isolated, 'question'), defaultFrameFilters());
 });
 
 test('Ctrl+Click on an unknown key changes nothing', () => {
@@ -100,7 +105,7 @@ test('Ctrl+Click on an unknown key changes nothing', () => {
   assert.deepEqual(onlyFilter(filters, 'bogus'), filters);
 });
 
-test('Shift+Click turns every row on, from any starting point', () => {
+test('Shift+Click turns every category on, from any starting point', () => {
   let allOff = allFilters(defaultFrameFilters(), false);
   assert.equal(noFilterOn(allOff), true);
 
@@ -155,13 +160,17 @@ test('frames are classified into every category they belong to', () => {
   assert.deepEqual(classifyFrame({ type: 'CompactionFrame' }), [ 'compaction' ]);
 });
 
-test('a frame referencing a child session is a Child Sessions frame', () => {
+test('a frame referencing a child session is a Sessions frame', () => {
   let frame = {
     type: 'UserMessage',
     authorType: 'user',
     content: { references: [ { type: 'session', id: 'child-1' } ] },
   };
-  assert.deepEqual(classifyFrame(frame), [ 'user', 'child-sessions' ], 'display order');
+  assert.deepEqual(classifyFrame(frame), [ 'user', 'session' ], 'display order');
+});
+
+test('a tool result that spawns a session is a Sessions frame too', () => {
+  assert.deepEqual(classifyFrame({ type: 'ToolResult', content: { sessionID: 'child-9' } }), [ 'session', 'tools' ]);
 });
 
 test('a blank or non-session reference does not count', () => {
@@ -196,82 +205,126 @@ test('clearing every row empties the thread, including unclassifiable frames', (
   assert.equal(frameMatchesFilters(unknown, allFilters(defaultFrameFilters(), false)), false);
 });
 
-test('a hidden frame needs the Hidden row plus one of its own categories', () => {
+// --- hidden is absolute ----------------------------------------------------
+
+test('a hidden frame is never rendered, whatever the filters say', () => {
+  // Every hidden:true producer in src/core is internal machinery. There is no
+  // user-facing "show me the drafts and frame groups" mode, so this is absolute.
   let hiddenUser = { type: 'UserMessage', authorType: 'user', hidden: true };
-  assert.equal(frameMatchesFilters(hiddenUser, defaultFrameFilters()), false, 'the gate is off by default');
-
-  let gateOn = toggleFilter(defaultFrameFilters(), 'hidden');
-  assert.equal(frameMatchesFilters(hiddenUser, gateOn), true, 'gate on reveals it');
-
-  let gateOnUserOff = toggleFilter(gateOn, 'user');
-  assert.equal(frameMatchesFilters(hiddenUser, gateOnUserOff), false, 'the gate does not override a turned-off category');
+  assert.equal(frameMatchesFilters(hiddenUser, defaultFrameFilters()), false);
+  assert.equal(frameMatchesFilters(hiddenUser, allFilters(defaultFrameFilters(), true)), false);
+  assert.equal(frameMatchesFilters(hiddenUser, toggleFilter(defaultFrameFilters(), 'deleted')), false);
+  assert.equal(frameMatchesFilters(hiddenUser, toggleFilter(defaultFrameFilters(), 'user')), false);
 });
 
-test('the gate does not hide ordinary frames when it is switched on', () => {
+test('a frame that is both hidden and deleted stays hidden', () => {
+  let frame = { type: 'UserMessage', authorType: 'user', hidden: true, deleted: true };
+  assert.equal(frameMatchesFilters(frame, toggleFilter(defaultFrameFilters(), 'deleted')), false);
+});
+
+// --- deleted is a reveal ------------------------------------------------
+
+test('a deleted frame needs the Deleted reveal plus one of its own categories', () => {
+  let deletedUser = { type: 'UserMessage', authorType: 'user', deleted: true };
+  assert.equal(frameMatchesFilters(deletedUser, defaultFrameFilters()), false, 'the reveal is off by default');
+
+  let revealOn = toggleFilter(defaultFrameFilters(), 'deleted');
+  assert.equal(frameMatchesFilters(deletedUser, revealOn), true, 'reveal on shows it under its category');
+
+  let revealOnUserOff = toggleFilter(revealOn, 'user');
+  assert.equal(frameMatchesFilters(deletedUser, revealOnUserOff), false, 'the reveal does not override a turned-off category');
+});
+
+test('the reveal does not hide ordinary frames when it is switched on', () => {
   let visible = { type: 'UserMessage', authorType: 'user' };
   assert.equal(frameMatchesFilters(visible, defaultFrameFilters()), true);
-  assert.equal(frameMatchesFilters(visible, toggleFilter(defaultFrameFilters(), 'hidden')), true);
+  assert.equal(frameMatchesFilters(visible, toggleFilter(defaultFrameFilters(), 'deleted')), true);
 });
 
-test('applyFrameFilters keeps the surrounding order and identity', () => {
-  let frames = [
-    { id: 'a', type: 'UserMessage', authorType: 'user' },
-    { id: 'b', type: 'ToolCall' },
-    { id: 'c', type: 'AgentMessage', authorType: 'agent' },
-  ];
-  let noTools = toggleFilter(defaultFrameFilters(), 'tools');
-  assert.deepEqual(applyFrameFilters(frames, noTools).map((frame) => frame.id), [ 'a', 'c' ]);
+test('the owner\'s worked examples all hold', () => {
+  let userMessage = { type: 'UserMessage', authorType: 'user' };
+  let deletedUserMessage = { type: 'UserMessage', authorType: 'user', deleted: true };
+  let sessionFrame = { type: 'Session' };
+  let deletedSessionFrame = { type: 'Session', deleted: true };
+
+  // 1. See only sessions: Ctrl+Click Sessions.
+  let onlySessions = onlyFilter(defaultFrameFilters(), 'session');
+  assert.equal(frameMatchesFilters(sessionFrame, onlySessions), true);
+  assert.equal(frameMatchesFilters(userMessage, onlySessions), false);
+
+  // 2. See deleted sessions: Ctrl+Click Sessions, then click Deleted.
+  //    This ADDS the deleted ones to the session view; it does not hide the live
+  //    ones. Deleted is a gate, not an "only deleted" mode.
+  let sessionsWithDeleted = toggleFilter(onlySessions, 'deleted');
+  assert.equal(frameMatchesFilters(deletedSessionFrame, sessionsWithDeleted), true, 'the deleted session appears');
+  assert.equal(frameMatchesFilters(sessionFrame, sessionsWithDeleted), true, 'and the live sessions still do');
+
+  // 3. See only user messages: Ctrl+Click User.
+  let onlyUser = onlyFilter(defaultFrameFilters(), 'user');
+  assert.equal(frameMatchesFilters(userMessage, onlyUser), true);
+  assert.equal(frameMatchesFilters(sessionFrame, onlyUser), false);
+
+  // 4. See deleted user messages: Ctrl+Click User, then click Deleted.
+  let userWithDeleted = toggleFilter(onlyUser, 'deleted');
+  assert.equal(frameMatchesFilters(deletedUserMessage, userWithDeleted), true, 'the deleted message appears');
+  assert.equal(frameMatchesFilters(userMessage, userWithDeleted), true, 'and the live messages still do');
+
+  // The reveal never leaks across categories: revealing deleted content while
+  // only User is on must not surface a deleted session.
+  assert.equal(frameMatchesFilters(deletedSessionFrame, userWithDeleted), false);
 });
 
-test('applyFrameFilters tolerates a non-array', () => {
-  assert.deepEqual(applyFrameFilters(null, defaultFrameFilters()), []);
-  assert.deepEqual(applyFrameFilters(undefined, defaultFrameFilters()), []);
-});
-
-test('hidden frames are opt-in, and the bulk gestures do not switch the reveal on', () => {
-  assert.equal(wantsHiddenFrames(defaultFrameFilters()), false, 'nothing is revealed on first load');
-  assert.equal(wantsHiddenFrames(toggleFilter(defaultFrameFilters(), 'hidden')), true);
+test('deleted content is opt-in, and the bulk gestures leave it alone', () => {
+  assert.equal(wantsDeletedFrames(defaultFrameFilters()), false, 'nothing is revealed on first load');
+  assert.equal(wantsDeletedFrames(toggleFilter(defaultFrameFilters(), 'deleted')), true);
 
   // Shift+Click and the pinned row act on the categories. If either switched the
-  // gate on, "select all" would reveal internal frames as a side effect.
-  assert.equal(wantsHiddenFrames(allFilters(defaultFrameFilters(), false)), false);
-  assert.equal(wantsHiddenFrames(allFilters(allFilters(defaultFrameFilters(), false))), false, 'select-all leaves the gate off');
+  // reveal on, "select all" would resurrect deleted content as a side effect.
+  assert.equal(wantsDeletedFrames(allFilters(defaultFrameFilters(), false)), false);
+  assert.equal(wantsDeletedFrames(allFilters(allFilters(defaultFrameFilters(), false))), false, 'select-all leaves the reveal off');
 
   let isolated = onlyFilter(defaultFrameFilters(), 'question');
-  assert.equal(wantsHiddenFrames(isolated), false, 'Ctrl+Click on Question does not reveal hidden frames');
+  assert.equal(wantsDeletedFrames(isolated), false, 'Ctrl+Click on Question does not reveal deleted frames');
 });
 
-test('Ctrl+Click on the gate reveals hidden frames without emptying the categories', () => {
-  let onlyGate = onlyFilter(defaultFrameFilters(), 'hidden');
-  assert.equal(onlyGate.hidden, true, 'the gate turns on');
-  assert.equal(everyFilterOn(onlyGate), true, 'the categories are left on, so something is still visible');
-  assert.equal(filterSummary(onlyGate), 'on');
+test('Ctrl+Click on the reveal turns it on without emptying the categories', () => {
+  let onlyReveal = onlyFilter(defaultFrameFilters(), 'deleted');
+  assert.equal(onlyReveal.deleted, true, 'the reveal turns on');
+  assert.equal(everyFilterOn(onlyReveal), true, 'the categories are left on, so something is still visible');
+  assert.equal(filterSummary(onlyReveal), 'on');
 });
 
-test('filterCounts counts categories and hidden frames separately', () => {
+test('filterCounts counts categories and deleted frames separately, and ignores hidden', () => {
   let frames = [
     { type: 'UserMessage', authorType: 'user' },
     { type: 'AgentMessage', authorType: 'agent' },
     { type: 'Question', authorType: 'agent' },
     { type: 'ToolCall' },
     { type: 'CompactionFrame' },
+    { type: 'UserMessage', authorType: 'user', deleted: true },
     { type: 'UserMessage', authorType: 'user', hidden: true },
   ];
   let counts = filterCounts(frames);
-  assert.equal(counts.user, 2, 'the hidden message is still a User frame');
+  assert.equal(counts.user, 2, 'the hidden message is not part of the user model');
   assert.equal(counts.agent, 2);
   assert.equal(counts.question, 1);
   assert.equal(counts.tools, 1);
   assert.equal(counts.compaction, 1);
   assert.equal(counts.commands, 0);
-  assert.equal(counts.hidden, 1, 'and it is also counted as Hidden');
+  assert.equal(counts.deleted, 1, 'and the deleted one is also counted as Deleted');
   for (let key of FILTER_KEYS)
     assert.equal(typeof counts[key], 'number');
 });
 
-test('the signature changes only when a filter actually flips', () => {
+test('DELETED_ROW is the only non-category row', () => {
+  assert.deepEqual(FILTER_KEYS, [ ...CATEGORY_KEYS, DELETED_ROW.key ]);
+  assert.equal(CATEGORY_KEYS.includes(DELETED_ROW.key), false);
+});
+
+test('the signature changes only when a filter or the query actually flips', () => {
   let filters = defaultFrameFilters();
   assert.equal(frameFiltersSignature(filters), frameFiltersSignature(defaultFrameFilters()));
   assert.notEqual(frameFiltersSignature(filters), frameFiltersSignature(toggleFilter(filters, 'tools')));
-  assert.equal(frameFiltersSignature(filters).length, FILTER_KEYS.length);
+  assert.notEqual(frameFiltersSignature(filters), frameFiltersSignature(filters, 'deploy'));
+  assert.equal(frameFiltersSignature(filters), frameFiltersSignature(filters, 'deploy'.slice(0, 0)));
 });

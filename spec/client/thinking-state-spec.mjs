@@ -25,7 +25,7 @@ test('isLiveThreadFrame flags thinking/delta/typing/streaming frames only', () =
   assert.equal(isLiveThreadFrame(null), false);
 });
 
-test('threadVisibleFrames drops hidden, deleted and live frames', () => {
+test('threadVisibleFrames drops hidden, soft-deleted and live frames by default', () => {
   let frames = [
     { id: 'u1', type: 'UserMessage' },
     { id: 't1', type: 'AgentThinking', responseFrameID: 'r1' },
@@ -36,6 +36,22 @@ test('threadVisibleFrames drops hidden, deleted and live frames', () => {
   ];
 
   assert.deepEqual(threadVisibleFrames(frames).map((frame) => frame.id), [ 'u1', 'm2' ]);
+});
+
+test('threadVisibleFrames reveals soft-deleted frames on request, but never hidden ones', () => {
+  let frames = [
+    { id: 'u1', type: 'UserMessage' },
+    { id: 'd1', type: 'AgentMessage', deleted: true },
+    { id: 'h1', type: 'AgentMessage', hidden: true },
+    { id: 'hd', type: 'AgentMessage', hidden: true, deleted: true },
+  ];
+
+  // The Deleted reveal is the only thing that brings soft-deleted content back.
+  assert.deepEqual(
+    threadVisibleFrames(frames, { includeDeleted: true }).map((frame) => frame.id),
+    [ 'u1', 'd1' ],
+    'hidden frames stay out even when deleted content is revealed',
+  );
 });
 
 test('threadVisibleFrames hides a completed tool call when its result is visible', () => {

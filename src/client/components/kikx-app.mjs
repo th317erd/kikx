@@ -33,7 +33,6 @@ import {
   buildWindowHeader,
   buildWorkspaceGrid,
   childGridTitle,
-  paintSessionSearch,
   childSessionsFor,
   createChatViewElement,
   createFrameItemElement,
@@ -76,6 +75,7 @@ import {
   loadAccount,
   loadAgents,
   loadClientComponents,
+  loadFrameCounts,
   loadFrames,
   loadFramesAtMessage,
   loadNewerFrames,
@@ -262,7 +262,6 @@ export class KikxApp extends HTMLElement {
     this._childSessions = (parentSessionID) => childSessionsFor(this, parentSessionID);
     this._buildSessionGrid = (parentSessionID) => buildSessionGrid(this, parentSessionID);
     this._buildSessionSearch = () => buildSessionSearch(this);
-    this._paintSessionSearch = () => paintSessionSearch(this);
     this._setFrameFilters = (next) => setFrameFilters(this, next);
     this._toggleShowDeleted = () => toggleShowDeleted(this);
     this._loadDeletedSessions = async () => loadDeletedSessions(this);
@@ -304,6 +303,9 @@ export class KikxApp extends HTMLElement {
     this._loadClientComponents = async () => loadClientComponents(this);
     this._cancelAgents = (target = null) => cancelAgents(this, target);
     this._loadFrames = async (sessionID, options = {}) => loadFrames(this, sessionID, options);
+    // Whole-session counts for the filter popup. Deliberately not derived from
+    // `_state.framesBySessionID`, which only holds the loaded window.
+    this._loadFrameCounts = async (sessionID, options = {}) => loadFrameCounts(this, sessionID, options);
     this._loadFramesAtMessage = async (sessionID, frameID, options = {}) => loadFramesAtMessage(this, sessionID, frameID, options);
     this._loadOlderFrames = async (sessionID = this._state.selectedSessionID) => loadOlderFrames(this, sessionID);
     this._loadNewerFrames = async (sessionID = this._state.selectedSessionID) => loadNewerFrames(this, sessionID);

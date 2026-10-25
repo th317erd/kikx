@@ -1,11 +1,5 @@
 'use strict';
 
-import {
-  applyFrameFilters,
-  normalizeFrameFilters,
-  wantsHiddenFrames,
-} from '../lib/frame-filters.mjs';
-
 // Pure helpers for the pinned "thinking" rack.
 //
 // The rack replaces the old inline thinking/streaming bubble. Two jobs:
@@ -38,11 +32,14 @@ export function isLiveThreadFrame(frame) {
 // repeats the command (and its output) as two adjacent cards. Hide the call
 // only when its visible result is in the same window, so a running call remains
 // visible until the result arrives.
-export function threadVisibleFrames(frames = [], { includeHidden = false } = {}) {
+export function threadVisibleFrames(frames = [], { includeDeleted = false } = {}) {
   let completedCallIDs = new Set();
   let completedCallFrameIDs = new Set();
-  let isGated = (frame) => frame.deleted === true
-    || (frame.hidden === true && includeHidden !== true);
+  // `hidden` is system-only bookkeeping and is dropped unconditionally. `deleted`
+  // is soft-deleted content the user may still want back, so it is dropped only
+  // while the Deleted reveal is off.
+  let isGated = (frame) => frame.hidden === true
+    || (frame.deleted === true && includeDeleted !== true);
 
   for (let frame of frames) {
     if (!frame || isGated(frame) || !isToolResultFrame(frame))
@@ -77,22 +74,29 @@ export function threadVisibleFrames(frames = [], { includeHidden = false } = {})
 // predicate above, then the popup's category filters on top. Both the initial
 // build and every incremental sync go through here, so the two paths cannot
 // disagree about what is on screen.
-export function threadRenderFrames(frames = [], filters = null) {
-  let normal = normalizeFrameFilters(filters);
-  let visible = threadVisibleFrames(frames, { includeHidden: wantsHiddenFrames(normal) });
-  return applyFrameFilters(visible, normal);
+// What the thread renders.
+//
+// The server already applied the filter set when it chose this window, so this
+// must NOT filter again: a second, partial pass over a loaded window would drop
+// frames the server deliberately sent and make the two disagree. The one thing
+// still enforced here is `hidden`, which is absolute — a system-only frame is
+// never content, whatever the popup says, and this stays true even if a hidden
+// frame reaches the client through an event rather than a window fetch.
+export function threadRenderFrames(frames = []) {
+  return threadVisibleFrames(frames, { includeDeleted: true });
 }
 
 // True when the session has frames a person could ever have seen, whether or
 // not the current filters keep them. Distinguishes "nothing here yet" from
 // "you filtered it away".
 //
-// Hidden frames are excluded on purpose: they are internal bookkeeping, so a
-// session holding only hidden and deleted frames is genuinely empty and must
-// not tell the user to go turn filters back on.
+// Hidden frames are excluded on purpose: they are internal bookkeeping and can
+// never be rendered. Soft-deleted frames DO count, because the Deleted row can
+// bring them back - a session holding only deleted messages should say "no
+// frames match the current filters", not "there is nothing here".
 export function hasAnyFrames(frames = []) {
   return (Array.isArray(frames) ? frames : [])
-    .some((frame) => frame && frame.deleted !== true && frame.hidden !== true);
+    .some((frame) => frame && frame.hidden !== true);
 }
 
 function isToolCallFrame(frame) {

@@ -30,6 +30,7 @@ import {
   upsertSession,
   upsertSessionPreview,
 } from '../state/kikx-state.mjs';
+import { frameFilterSearchParams } from '../lib/frame-filters.mjs';
 import { loadClientComponentDescriptors } from './frame-component-registry.mjs';
 import { clampPreviewCount, chunkSessionIDs } from './chat-view-model.mjs';
 import { refreshSubSessionCards } from './kikx-sub-session-frame.mjs';
@@ -378,7 +379,7 @@ export const DEFAULT_FRAME_WINDOW_LIMIT = 120;
 // window remains large.
 export const FRAME_PAGE_LIMIT = 100;
 
-function frameWindowURL(sessionID, { limit, before, after, start } = {}) {
+function frameWindowURL(sessionID, { limit, before, after, start, filters, query } = {}) {
   let params = new URLSearchParams();
   if (Number.isInteger(limit) && limit > 0)
     params.set('limit', String(limit));
@@ -389,9 +390,57 @@ function frameWindowURL(sessionID, { limit, before, after, start } = {}) {
   if (start != null)
     params.set('start', String(start));
 
-  let query = params.toString();
+  // Filtering happens on the server, so the popup's state travels with the
+  // request. `frameFilterSearchParams` emits only rows that differ from the
+  // default, so the untouched view sends no filter params at all and keeps the
+  // server's unfiltered fast path.
+  let filterParams = frameFilterSearchParams(filters, query);
+  for (let [ key, value ] of filterParams)
+    params.set(key, value);
+
+  let queryString = params.toString();
   let base = `/api/v1/sessions/${encodeURIComponent(sessionID)}/frames`;
-  return query ? `${base}?${query}` : base;
+  return queryString ? `${base}?${queryString}` : base;
+}
+
+// Fetch the whole-session frame counts that the filter popup's badges show.
+//
+// These deliberately do NOT come from `framesBySessionID[...]`: that array is
+// only the window the browser currently holds, so counting it answers "how many
+// are on this page". The popup is a control over the session, and a badge that
+// silently described the loaded page is what made a session with 17,581 frames
+// report User 0 / Tools 0 / Commands 0 beside an Agent number that was just the
+// page size.
+//
+// Counts are cached on app state per session so opening the popup repeatedly is
+// free. They are invalidated when frames arrive, because a count that outlives
+// the frames it counted is the same bug in a slower form.
+export async function loadFrameCounts(app, sessionID, options = {}) {
+  if (typeof sessionID !== 'string' || sessionID.trim() === '')
+    return null;
+
+  let state = app?._state;
+  let cached = state?.frameCountsBySessionID?.[sessionID] || null;
+  if (options.refresh !== true && cached)
+    return cached;
+
+  let result = await getJSON(app, `/api/v1/sessions/${encodeURIComponent(sessionID)}/frame-counts`);
+  let counts = result?.data?.counts || null;
+  if (!counts)
+    return cached;
+
+  if (state) {
+    if (!state.frameCountsBySessionID || typeof state.frameCountsBySessionID !== 'object')
+      state.frameCountsBySessionID = {};
+
+    state.frameCountsBySessionID[sessionID] = {
+      counts,
+      total: result.data.total ?? null,
+      truncated: result.data.truncated === true,
+    };
+  }
+
+  return state?.frameCountsBySessionID?.[sessionID] || { counts, total: null, truncated: false };
 }
 
 function frameWindowPaging(data = {}, limit = DEFAULT_FRAME_WINDOW_LIMIT) {
@@ -411,11 +460,15 @@ function frameWindowPaging(data = {}, limit = DEFAULT_FRAME_WINDOW_LIMIT) {
 // heads. Legacy whole-session callers pass `offset` to keep the old shape.
 export async function loadFrames(app, sessionID, options = {}) {
   let limit = Number.isInteger(options.limit) ? options.limit : DEFAULT_FRAME_WINDOW_LIMIT;
+  // Read the filter state at request time rather than capturing it, so a window
+  // loaded after a checkbox change carries the new selection.
   let result = await getJSON(app, frameWindowURL(sessionID, {
     limit,
     before: options.before,
     after: options.after,
     start: options.start,
+    filters: options.filters ?? app?._state?.frameFilters,
+    query: options.query ?? app?._state?.sessionSearch,
   }));
   let frames = result.data?.frames || [];
   let paging = frameWindowPaging(result.data, limit);

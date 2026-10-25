@@ -1,252 +1,215 @@
 'use strict';
 
-// Pure filter state for the thread "eyeball" popup.
+// Client view of the frame filter popup.
 //
-// The popup is a list of checkboxes, one per category of frame. A frame is
-// rendered when any one of the categories it belongs to is enabled. Frames can
-// belong to more than one category (a Question authored by an agent is both
-// `question` and `agent`), so enabling `question` alone is enough to show every
-// question, even with `agent` off.
+// The row definitions and the matching semantics live in
+// `src/shared/frame-window-filters.mjs` so the popup and the server store can
+// never disagree about which frames a given set of checkboxes admits. This
+// module adds only what the browser needs: mutation helpers for the checkbox
+// UI, the pinned-row summary, and the query-string encoding that tells the
+// server which frames to send.
 //
-// `hidden` is not an ordinary category: it is a *gate*, and it is the one row
-// that starts OFF. Frames marked hidden are internal bookkeeping - composer
-// drafts, frame groups, scheduled question deadlines, undispatched session
-// invites - and have never been rendered in a thread. Defaulting the gate on
-// would dump that machinery into every conversation on first load, so the gate
-// defaults off and the reveal is opt-in.
-//
-// Because the gate is not a category, the three bulk gestures (pinned row,
-// Ctrl+Click, Shift+Click) act on the categories only and leave the gate where
-// the user put it. Otherwise "select all" would silently turn the reveal on.
-//
-// Kept free of DOM and of the frame registry so both the popup and the thread
-// renderer can import it, and so the click patterns are unit-testable.
+// It deliberately does NOT filter rendered frames. Filtering is a transport
+// concern here: the client holds a bounded window of a lazy-loaded session, so
+// a local predicate would answer "no frames match" while matching frames sat
+// unread on disk, and paging would walk raw rows instead of matches.
 
-// Display order for the popup's category rows, after the pinned "all" row.
-// Each of these starts on.
-export const CATEGORY_ROWS = [
-  { key: 'user', label: 'User' },
-  { key: 'agent', label: 'Agent' },
-  { key: 'question', label: 'Question' },
-  { key: 'child-sessions', label: 'Child Sessions' },
-  { key: 'tools', label: 'Tools' },
-  { key: 'commands', label: 'Commands' },
-  { key: 'compaction', label: 'Compaction' },
-];
+import {
+  FRAME_FILTER_CATEGORY_KEYS,
+  FRAME_FILTER_GATE_KEYS,
+  FRAME_FILTER_KEYS,
+  FRAME_FILTER_ROWS,
+  defaultFrameWindowFilters,
+  frameFilterCategories,
+  frameFilterCounts,
+  frameMatchesQuery,
+  frameMatchesWindowFilters,
+  frameQueryMatchesText,
+  frameSearchText,
+  normalizeFrameQuery,
+  normalizeWindowFilters,
+  windowFiltersAreDefault,
+} from '../../shared/frame-window-filters.mjs';
 
-// The reveal gate, rendered below the categories and separated from them. It
-// starts off; see the header comment for why.
-export const HIDDEN_ROW = { key: 'hidden', label: 'Hidden' };
+export const CATEGORY_ROWS = FRAME_FILTER_ROWS.filter((row) => row.kind === 'category');
+export const DELETED_ROW = FRAME_FILTER_ROWS.find((row) => row.kind === 'gate')
+  || { key: 'deleted', label: 'Deleted', kind: 'gate' };
+export const FILTER_ROWS = FRAME_FILTER_ROWS;
+export const CATEGORY_KEYS = FRAME_FILTER_CATEGORY_KEYS;
+export const GATE_KEYS = FRAME_FILTER_GATE_KEYS;
+export const FILTER_KEYS = FRAME_FILTER_KEYS;
 
-// Every row, in render order: categories then the gate.
-export const FILTER_ROWS = [ ...CATEGORY_ROWS, HIDDEN_ROW ];
-
-export const CATEGORY_KEYS = CATEGORY_ROWS.map((row) => row.key);
-export const FILTER_KEYS = FILTER_ROWS.map((row) => row.key);
+export {
+  frameFilterCategories,
+  frameFilterCounts,
+  frameMatchesQuery,
+  frameMatchesWindowFilters,
+  frameQueryMatchesText,
+  frameSearchText,
+  normalizeFrameQuery,
+  windowFiltersAreDefault,
+};
 
 export function defaultFrameFilters() {
-  let filters = {};
-  for (let key of CATEGORY_KEYS)
-    filters[key] = true;
-  filters[HIDDEN_ROW.key] = false;
-
-  return filters;
+  return defaultFrameWindowFilters();
 }
 
-// Normalize anything coming out of state into a complete, boolean map. Absent
-// or non-boolean values fall back to that row's default, so a state object from
-// an older session neither hides the whole thread nor switches the hidden
-// reveal on behind the user's back.
 export function normalizeFrameFilters(filters) {
-  let source = filters && typeof filters === 'object' ? filters : {};
-  let normal = {};
-  for (let key of CATEGORY_KEYS)
-    normal[key] = typeof source[key] === 'boolean' ? source[key] : true;
-  normal[HIDDEN_ROW.key] = typeof source[HIDDEN_ROW.key] === 'boolean'
-    ? source[HIDDEN_ROW.key]
-    : false;
+  return normalizeWindowFilters(filters);
+}
+
+export function cloneFrameFilters(filters) {
+  return { ...normalizeWindowFilters(filters) };
+}
+
+export function toggleFilter(filters, key) {
+  let next = normalizeWindowFilters(filters);
+  if (!FILTER_KEYS.includes(key))
+    return next;
+
+  next[key] = !next[key];
+  return next;
+}
+
+// Ctrl-click semantics: exactly this category, and only this one.
+//
+// Gate rows are left untouched, because they widen rather than select — a
+// person narrowing to "just Sessions" does not also mean "and forget that I
+// turned deleted frames on". Narrowing to nothing (clicking an already-solo
+// category) restores every category so the view cannot become empty by
+// accident.
+export function onlyFilter(filters, key) {
+  let normal = normalizeWindowFilters(filters);
+
+  // Ctrl+Click on a gate row means "this reveal, on" — it must not clear the
+  // category selection, or isolating the reveal would empty the thread.
+  if (GATE_KEYS.includes(key)) {
+    normal[key] = true;
+    return normal;
+  }
+
+  if (!CATEGORY_KEYS.includes(key))
+    return normal;
+
+  let alreadySolo = CATEGORY_KEYS.every((candidate) => normal[candidate] === (candidate === key));
+  if (alreadySolo)
+    return allFilters(normal, true);
+
+  for (let candidate of CATEGORY_KEYS)
+    normal[candidate] = candidate === key;
 
   return normal;
 }
 
-export function cloneFrameFilters(filters) {
-  return { ...normalizeFrameFilters(filters) };
-}
-
-function isKnownKey(key) {
-  return FILTER_KEYS.includes(key);
-}
-
-// Plain click: flip exactly one row.
-export function toggleFilter(filters, key) {
-  let next = cloneFrameFilters(filters);
-  if (isKnownKey(key))
-    next[key] = !next[key];
-
-  return next;
-}
-
-// Ctrl+Click: the clicked row becomes the only enabled row.
-//
-// When the clicked row is the Hidden gate, the gate turns on and every category
-// turns off, which would show nothing. An isolated gate therefore leaves the
-// categories untouched and just switches the reveal on - clicking Hidden means
-// "show me the hidden ones", not "show me only the hidden ones".
-export function onlyFilter(filters, key) {
-  let next = cloneFrameFilters(filters);
-  if (!isKnownKey(key))
-    return next;
-
-  if (key === HIDDEN_ROW.key) {
-    next[key] = true;
-    return next;
-  }
-
-  for (let other of CATEGORY_KEYS)
-    next[other] = other === key;
-
-  return next;
-}
-
-// Shift+Click turns every category on; passing false clears them. The Hidden
-// gate is deliberately untouched: a bulk gesture must not reveal internal
-// frames as a side effect.
 export function allFilters(filters, value = true) {
-  let next = cloneFrameFilters(filters);
+  let next = normalizeWindowFilters(filters);
   for (let key of CATEGORY_KEYS)
     next[key] = value === true;
 
   return next;
 }
 
-// "Every category is on" - the gate is not a category, so it is not consulted.
+// True when every CATEGORY is on. The pinned row governs the categories only;
+// the gate rows are not selectors and must not make the master row read
+// "mixed" merely because Deleted is off.
 export function everyFilterOn(filters) {
-  let normal = normalizeFrameFilters(filters);
+  let normal = normalizeWindowFilters(filters);
   return CATEGORY_KEYS.every((key) => normal[key] === true);
 }
 
 export function noFilterOn(filters) {
-  let normal = normalizeFrameFilters(filters);
+  let normal = normalizeWindowFilters(filters);
   return CATEGORY_KEYS.every((key) => normal[key] === false);
 }
 
-// Pinned row click: all on when anything is off, all off when everything is on.
-// This is what makes the pinned checkbox a master toggle rather than a second
-// "turn everything on" button.
+// Pinned-row toggle: if anything is off, turn everything on; otherwise turn
+// everything off. The three-state rendering (indeterminate) lives in the popup.
 export function toggleAllFilters(filters) {
-  return allFilters(filters, !everyFilterOn(filters));
+  let normal = normalizeWindowFilters(filters);
+  return allFilters(normal, !everyFilterOn(normal));
 }
 
-// 'on' | 'off' | 'mixed' - drives checked / indeterminate on the pinned row.
-// Describes the categories only; the Hidden gate has its own checkbox.
 export function filterSummary(filters) {
-  if (everyFilterOn(filters))
+  let normal = normalizeWindowFilters(filters);
+  if (everyFilterOn(normal))
     return 'on';
-  if (noFilterOn(filters))
+  if (noFilterOn(normal))
     return 'off';
 
   return 'mixed';
 }
 
-function hasSessionReference(frame) {
-  let references = frame?.content?.references;
-  if (!Array.isArray(references))
-    return false;
+// Short label for the button's title, e.g. "All frames" or "Sessions + 2 more",
+// so a person can tell what is hidden without opening the popup.
+export function filterButtonSummary(filters) {
+  let normal = normalizeWindowFilters(filters);
+  let selected = CATEGORY_KEYS.filter((key) => normal[key] === true);
+  let labelFor = (key) => FILTER_ROWS.find((row) => row.key === key)?.label || key;
 
-  return references.some((reference) => reference?.type === 'session'
-    && typeof reference.id === 'string'
-    && reference.id.trim() !== '');
+  let parts = [];
+  if (selected.length === CATEGORY_KEYS.length)
+    parts.push('All frames');
+  else if (selected.length === 0)
+    parts.push('No frames');
+  else if (selected.length === 1)
+    parts.push(labelFor(selected[0]));
+  else
+    parts.push(`${labelFor(selected[0])} + ${selected.length - 1} more`);
+
+  if (normal[DELETED_ROW.key] === true)
+    parts.push('with deleted');
+
+  return parts.join(', ');
 }
 
-// Every category a frame belongs to, excluding the hidden gate. A frame can be
-// in several.
-export function classifyFrame(frame) {
-  if (!frame)
-    return [];
+// The wire format the frames endpoint understands: one `f_<key>` flag per row
+// that differs from its default, plus `q` for the search. Sending only deltas
+// keeps the URL short and keeps "no params" meaning "the default view", which
+// is also the server's fast path.
+export function frameFilterSearchParams(filters, query = '') {
+  let normal = normalizeWindowFilters(filters);
+  let defaults = defaultFrameWindowFilters();
+  let params = new URLSearchParams();
 
-  let keys = new Set();
-  let type = frame.type;
-  let authorType = frame.authorType;
-
-  if (authorType === 'user' || type === 'UserMessage' || type === 'UserDraft')
-    keys.add('user');
-  if (authorType === 'agent' || type === 'AgentMessage' || type === 'AgentProgress')
-    keys.add('agent');
-  if (type === 'Question')
-    keys.add('question');
-  if (type === 'ToolCall' || type === 'ToolResult')
-    keys.add('tools');
-  if (type === 'CommandResult')
-    keys.add('commands');
-  if (type === 'CompactionFrame')
-    keys.add('compaction');
-  if (hasSessionReference(frame))
-    keys.add('child-sessions');
-
-  // Return in popup display order so callers never depend on Set insertion
-  // order, and so a frame's primary category leads.
-  return FILTER_KEYS.filter((key) => keys.has(key));
-}
-
-// True when the filter set would render this frame. The hidden gate is applied
-// first; an unclassifiable frame is shown whenever any filter is enabled, so a
-// future frame type is never invisible by accident, while clearing every row
-// still empties the thread.
-export function frameMatchesFilters(frame, filters) {
-  if (!frame)
-    return false;
-
-  let normal = normalizeFrameFilters(filters);
-  if (frame.hidden === true && normal[HIDDEN_ROW.key] !== true)
-    return false;
-
-  let keys = classifyFrame(frame);
-  if (keys.length === 0)
-    return CATEGORY_KEYS.some((key) => normal[key] === true);
-
-  return keys.some((key) => normal[key] === true);
-}
-
-// Apply the categories to an already-visibility-filtered list.
-export function applyFrameFilters(frames, filters) {
-  let normal = normalizeFrameFilters(filters);
-  return (Array.isArray(frames) ? frames : []).filter((frame) => frameMatchesFilters(frame, normal));
-}
-
-// Should the thread renderer keep frames marked hidden? Only when the user has
-// asked for them, so the untouched default view is unchanged for people who
-// never open the popup.
-export function wantsHiddenFrames(filters) {
-  return normalizeFrameFilters(filters)[HIDDEN_ROW.key] === true;
-}
-
-// Per-row counts for the popup. Counts describe the data, not the current
-// selection: a hidden user message counts toward both User and Hidden, because
-// it genuinely is both.
-export function filterCounts(frames) {
-  let counts = {};
-  for (let key of FILTER_KEYS)
-    counts[key] = 0;
-
-  for (let frame of Array.isArray(frames) ? frames : []) {
-    if (!frame)
-      continue;
-
-    if (frame.hidden === true)
-      counts[HIDDEN_ROW.key] += 1;
-
-    for (let key of classifyFrame(frame)) {
-      if (isKnownKey(key))
-        counts[key] += 1;
-    }
+  for (let key of FILTER_KEYS) {
+    if (normal[key] !== defaults[key])
+      params.set(`f_${key}`, normal[key] === true ? '1' : '0');
   }
 
-  return counts;
+  let normalizedQuery = normalizeFrameQuery(query);
+  if (normalizedQuery !== '')
+    params.set('q', normalizedQuery);
+
+  return params;
 }
 
-// Stable signature of a filter set, so the shell can skip repainting the thread
-// when a click did not actually change anything.
-export function frameFiltersSignature(filters) {
-  let normal = normalizeFrameFilters(filters);
-  return FILTER_KEYS.map((key) => (normal[key] ? '1' : '0')).join('');
+// Stable identity for the filter set plus query, used to decide whether a
+// reload is actually needed. Changing a checkbox must refetch; re-rendering the
+// same state must not.
+export function frameFiltersSignature(filters, query = '') {
+  let normal = normalizeWindowFilters(filters);
+  let parts = FILTER_KEYS.map((key) => `${key}:${normal[key] === true ? 1 : 0}`);
+  parts.push(`q:${normalizeFrameQuery(query)}`);
+  return parts.join(',');
+}
+
+// --- compatibility aliases -------------------------------------------------
+//
+// The popup and its specs were written against the previous client-side module,
+// which used these names. They are kept as thin aliases of the shared
+// implementation rather than reimplemented, so there is still exactly one
+// predicate in the codebase.
+
+export const classifyFrame = frameFilterCategories;
+export const filterCounts = frameFilterCounts;
+export const wantsDeletedFrames = (filters) => normalizeWindowFilters(filters).deleted === true;
+export const frameMatchesFilters = (frame, filters, query = '') => (
+  frameMatchesWindowFilters(frame, filters, query)
+);
+
+// Does a frame pass the current filter set? Used only to explain an empty
+// already-loaded window; it never decides what the server sends.
+export function applyFrameFilters(frames, filters, query = '') {
+  let normal = normalizeWindowFilters(filters);
+  return (Array.isArray(frames) ? frames : []).filter((frame) => frameMatchesWindowFilters(frame, normal, query));
 }
