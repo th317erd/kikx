@@ -291,3 +291,30 @@ test('framesWouldRender answers whether anything matched', () => {
   assert.equal(framesWouldRender(frames, { ...defaultFrameFilters(), tools: false }), false);
   assert.equal(framesWouldRender([], defaultFrameFilters()), false);
 });
+
+// Shift is a TOGGLE for the whole set. It used to be hard-coded to all-on, and
+// because all-on is the default state, pressing Shift on a fresh popup changed
+// nothing at all -- the gesture read as dead. The existing Shift test missed it
+// by always isolating a row with Ctrl first.
+test('Shift+Click turns everything off when everything is already on', () => {
+  let app = makeApp();
+  let popup = mount(app);
+
+  assert.equal(everyFilterOn(app._state.frameFilters), true, 'the popup starts with every category on');
+
+  click(popup.querySelector('[data-filter-key="tools"] .kikx-frame-filter__label'), { shiftKey: true });
+
+  assert.equal(everyFilterOn(app._state.frameFilters), false, 'Shift+Click must clear the set it was already showing');
+});
+
+test('Shift+Click alternates the whole set on and off', () => {
+  let app = makeApp();
+  let popup = mount(app);
+  let row = () => popup.querySelector('[data-filter-key="tools"] .kikx-frame-filter__label');
+
+  click(row(), { shiftKey: true });
+  assert.equal(everyFilterOn(app._state.frameFilters), false, 'first press clears');
+
+  click(row(), { shiftKey: true });
+  assert.equal(everyFilterOn(app._state.frameFilters), true, 'second press restores');
+});

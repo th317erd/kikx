@@ -231,6 +231,47 @@ class StagehandFrameRuntime extends EventEmitter {
     };
   }
 
+  // Whole-session frame counts, the server answer behind the filter popup's
+  // badges. The real runtime derives these from frame PATHS without reading
+  // bodies; the fixture has the frames in memory, so it can tally them
+  // directly. It must exist here at all: without it the route 500s and the
+  // client renders a null badge for every row, which looks identical to "the
+  // counts are broken" rather than "the fixture is incomplete".
+  //
+  // Deleted is deliberately null: in production it is a body field, and the
+  // popup renders no badge rather than a confidently wrong one. The fixture
+  // mirrors that shape so the popup's null handling is exercised.
+  async countSessionFrames(sessionID) {
+    let frames = this.framesBySessionID.get(sessionID) || [];
+    let counts = { user: 0, agent: 0, question: 0, session: 0, tools: 0, commands: 0, compaction: 0, deleted: null };
+    for (let frame of frames) {
+      if (!frame || frame.hidden === true || frame.phantom === true)
+        continue;
+
+      let type = typeof frame.type === 'string' ? frame.type : '';
+      if (type === 'UserMessage' || type === 'UserDraft')
+        counts.user += 1;
+      else if (type === 'AgentMessage' || type === 'AgentProgress')
+        counts.agent += 1;
+      else if (type === 'Question')
+        counts.question += 1;
+      else if (type === 'CompactionFrame')
+        counts.compaction += 1;
+      else if (type === 'SessionFrame' || type === 'SessionCreatedFrame')
+        counts.session += 1;
+
+      // Tools by shape, matching the shared taxonomy: any *ToolFrame plus the
+      // two generic names. Commands are a subset of tools.
+      let isTool = type === 'ToolCall' || type === 'ToolResult' || type.endsWith('ToolFrame');
+      if (isTool)
+        counts.tools += 1;
+      if (type === 'ShellToolFrame' || type === 'CommandResult')
+        counts.commands += 1;
+    }
+
+    return { counts, total: frames.length, scanned: frames.length, truncated: false };
+  }
+
   async listSessionPreviews(sessionIDs = [], options = {}) {
     let previewCount = Number.isInteger(options.previewCount) ? options.previewCount : 5;
     return sessionIDs.map((sessionID) => {

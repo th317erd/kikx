@@ -269,7 +269,10 @@ export class KikxFrameFilterPopup extends HTMLElement {
     if (event.ctrlKey === true || event.metaKey === true)
       next = onlyFilter(filters, key);
     else if (event.shiftKey === true)
-      next = allFilters(filters, true);
+      // Shift is a toggle for the whole set, not "turn on". Hard-coding true
+      // meant that once everything was on -- the default -- Shift+Click could
+      // only ever set the same all-on value again, so the gesture looked inert.
+      next = allFilters(filters, !everyFilterOn(filters));
     else
       next = toggleFilter(filters, key);
 

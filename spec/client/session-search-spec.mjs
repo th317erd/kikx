@@ -28,8 +28,9 @@ import { installDom } from './support/mini-dom.mjs';
 register(new URL('./support/frame-item-loader.mjs', import.meta.url).href, import.meta.url);
 installDom();
 
-const { applyWindowQuery } = await import('../../src/client/components/kikx-navigation.mjs');
+const { applyWindowQuery, setFrameFilters } = await import('../../src/client/components/kikx-navigation.mjs');
 const { defaultFrameFilters, stateHasFilters } = await import('../../src/client/lib/frame-filters.mjs');
+const { toggleFilter } = await import('../../src/client/lib/frame-filters.mjs');
 
 // A stand-in app: only the members applyWindowQuery touches, plus a record of
 // every frame load so we can tell "refetched" from "re-rendered".
@@ -45,6 +46,9 @@ function makeApp({ selectedSessionID = '', frames = [] } = {}) {
     loads: [],
     renders: 0,
     shellSyncs: 0,
+    // 0 = run the deferred query inline, so the assertions below stay
+    // synchronous. A dedicated test below covers the real timer.
+    _queryDebounceMs: 0,
   };
   app._loadFrames = async (sessionID) => {
     app.loads.push(sessionID);
@@ -145,4 +149,65 @@ test('the clear control is only offered when something is actually filtered', ()
 
   // Soft-deleted sessions can be on screen even with every category enabled.
   assert.equal(stateHasFilters({ ...state, showDeletedSessions: true }), true);
+});
+
+test('a typing burst collapses into one scan, not one per keystroke', async () => {
+  let app = makeApp({ selectedSessionID: 'ses_1' });
+  app._queryDebounceMs = 25;
+
+  // Six keystrokes, faster than the debounce window.
+  for (let value of [ 'd', 'de', 'dep', 'depl', 'deplo', 'deploy' ])
+    applyWindowQuery(app, value);
+
+  assert.equal(app.loads.length, 0, 'nothing is fetched while the typist is still typing');
+
+  await new Promise((resolve) => setTimeout(resolve, 80));
+
+  assert.equal(app.loads.length, 1, 'exactly one scan for the whole burst');
+  assert.equal(app._state.sessionSearch, 'deploy', 'the last value is the one that gets fetched');
+});
+
+test('pausing between words fetches each settled query once', async () => {
+  let app = makeApp({ selectedSessionID: 'ses_1' });
+  app._queryDebounceMs = 25;
+
+  applyWindowQuery(app, 'deploy');
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(app.loads.length, 1);
+
+  applyWindowQuery(app, 'deploy frame');
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(app.loads.length, 2, 'a second settled query is a second scan');
+});
+
+test('a popup filter change discards a query that was still pending', async () => {
+  let app = makeApp({ selectedSessionID: 'ses_1' });
+  app._queryDebounceMs = 30;
+
+  applyWindowQuery(app, 'deploy');
+  assert.equal(app.loads.length, 0);
+
+  // The row click reloads immediately and is authoritative; the queued query
+  // must not land afterwards and refetch under a stale filter set.
+  setFrameFilters(app, toggleFilter(defaultFrameFilters(), 'tools'));
+  let afterClick = app.loads.length;
+
+  await new Promise((resolve) => setTimeout(resolve, 90));
+
+  assert.equal(app.loads.length, afterClick, 'the pending query must not fire after a filter reload');
+});
+
+test('typing back to the already-loaded query does not scan again', async () => {
+  let app = makeApp({ selectedSessionID: 'ses_1' });
+  app._queryDebounceMs = 25;
+
+  applyWindowQuery(app, 'deploy');
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(app.loads.length, 1);
+
+  applyWindowQuery(app, 'deploy!');
+  applyWindowQuery(app, 'deploy');
+  await new Promise((resolve) => setTimeout(resolve, 80));
+
+  assert.equal(app.loads.length, 1, 'the burst settled back on the loaded query, so nothing to do');
 });

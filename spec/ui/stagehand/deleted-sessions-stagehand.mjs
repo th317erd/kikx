@@ -74,7 +74,7 @@ test('Stagehand filters sessions, reveals soft-deleted ones with the eye, and re
 
     // The centered search bar and its floating eye live in the window header.
     assert.equal(await page.locator('.kikx-window__header .kikx-session-search__input').count(), 1, 'search input is in the header');
-    assert.equal(await page.locator('.kikx-window__header .kikx-session-search__eye').count(), 1, 'eye toggle is in the header');
+    assert.equal(await page.locator('.kikx-window__header .kikx-frame-filter__button').count(), 1, 'the frame-filter control is in the header');
     assert.equal(await page.locator('kikx-session-card .kikx-session-card.is-deleted').count(), 0, 'no deleted session is shown by default');
 
     // 1) Typing filters by title as you go.
@@ -88,7 +88,7 @@ test('Stagehand filters sessions, reveals soft-deleted ones with the eye, and re
     await waitForCardTitles(page, [ 'Alpha Session', 'Beta Session' ]);
 
     // 2) The eye reveals the soft-deleted session, tinted, with a Recycle action.
-    await page.click('.kikx-session-search__eye');
+    await revealDeletedSessions(page);
     await waitForCardTitles(page, [ 'Alpha Session', 'Beta Session', 'Gamma Deleted' ]);
 
     let deletedState = await page.evaluate(() => {
@@ -101,7 +101,7 @@ test('Stagehand filters sessions, reveals soft-deleted ones with the eye, and re
         icon: action?.getAttribute('icon') || '',
         duration: action?.getAttribute('duration') || '',
         label: action?.getAttribute('label') || '',
-        eyeOn: document.querySelector('.kikx-session-search__eye')?.classList.contains('is-on') || false,
+        eyeOn: document.querySelector('.kikx-frame-filter__row[data-filter-key="deleted"] .kikx-frame-filter__checkbox')?.checked === true,
       };
     });
     assert.equal(deletedState.tinted, true, 'the deleted card is reddish-tinted');
@@ -180,4 +180,41 @@ function visibleFrame(id, text, order, sessionID) {
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// "Show deleted sessions" lives in the frame-filter popup now: one control for
+// every kind of visibility, instead of an eye bolted onto the search field that
+// could disagree with the popup's own Deleted row. Open the popup, then tick
+// the row.
+async function revealDeletedSessions(page) {
+  let open = await page.evaluate(() => {
+    let button = document.querySelector('.kikx-frame-filter__button');
+    if (!button)
+      return 'NO_BUTTON';
+    if (button.getAttribute('aria-expanded') !== 'true')
+      button.click();
+    return 'OK';
+  });
+  if (open !== 'OK')
+    throw new Error('frame-filter button is missing from the header');
+
+  // The row is painted synchronously when the panel opens, but allow a frame in
+  // case the popup is rebuilt.
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    let clicked = await page.evaluate(() => {
+      let row = document.querySelector('.kikx-frame-filter__row[data-filter-key="deleted"]');
+      if (!row)
+        return 'NO_ROW';
+      if (row.querySelector('.kikx-frame-filter__checkbox')?.checked === true)
+        return 'ALREADY_ON';
+      (row.querySelector('.kikx-frame-filter__label') || row).click();
+      return 'OK';
+    });
+    if (clicked === 'OK' || clicked === 'ALREADY_ON')
+      return;
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  throw new Error('the Deleted row never appeared in the frame-filter popup');
 }

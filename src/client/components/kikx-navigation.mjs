@@ -108,6 +108,8 @@ export function setFrameFilters(app, filters) {
   // last *applied* signature rather than against itself. Comparing
   // `(next, query)` with `(current, query)` used the same query on both sides,
   // so a query change alone was invisible here and the thread never refetched.
+  cancelPendingWindowQuery(app);
+
   let query = app._state.sessionSearch || '';
   let signature = frameFiltersSignature(next, query);
   if (app._frameLoadSignature === signature)
@@ -128,6 +130,36 @@ export function setFrameFilters(app, filters) {
     app._loadDeletedSessions?.();
 
   reloadVisibleWindow(app);
+}
+
+// Typing produces one input event per keystroke, and each one that survives the
+// signature guard costs a full server scan of the session -- the live one is
+// 18k frames and takes ~5 s. A person typing "deploy" fired six scans, queued
+// six requests, and the answers could land out of order. Collapse a burst into
+// a single scan once the typist pauses. Popup row clicks stay immediate: a
+// click is one deliberate action and should not wait on a timer.
+const QUERY_DEBOUNCE_MS = 250;
+
+function cancelPendingWindowQuery(app) {
+  if (!app._queryDebounceTimer)
+    return;
+  clearTimeout(app._queryDebounceTimer);
+  app._queryDebounceTimer = 0;
+}
+
+function scheduleWindowQuery(app, run) {
+  cancelPendingWindowQuery(app);
+  // A zero delay runs inline so the behaviour is exercisable without timers.
+  let delay = typeof app._queryDebounceMs === 'number' ? app._queryDebounceMs : QUERY_DEBOUNCE_MS;
+  if (delay <= 0) {
+    run();
+    return;
+  }
+
+  app._queryDebounceTimer = setTimeout(() => {
+    app._queryDebounceTimer = 0;
+    run();
+  }, delay);
 }
 
 // Reload the selected session's window under the current selection, then
@@ -185,6 +217,7 @@ export function applyWindowQuery(app, value) {
   app._state.sessionSearch = query;
 
   if (!app._state.selectedSessionID) {
+    cancelPendingWindowQuery(app);
     if (!app._syncSessionShell())
       app._requestRender();
     paintSearchClear(app);
@@ -192,11 +225,25 @@ export function applyWindowQuery(app, value) {
   }
 
   let signature = frameFiltersSignature(normalizeFrameFilters(app._state.frameFilters), query);
-  if (app._frameLoadSignature === signature)
+  if (app._frameLoadSignature === signature) {
+    cancelPendingWindowQuery(app);
     return;
+  }
 
-  app._frameLoadSignature = signature;
-  reloadVisibleWindow(app);
+  scheduleWindowQuery(app, () => {
+    // Recompute at fire time: later keystrokes may have moved the target, and
+    // the signature is only committed when a fetch actually starts so the
+    // in-flight dedupe above stays truthful.
+    let pending = frameFiltersSignature(
+      normalizeFrameFilters(app._state.frameFilters),
+      app._state.sessionSearch || '',
+    );
+    if (app._frameLoadSignature === pending)
+      return;
+
+    app._frameLoadSignature = pending;
+    reloadVisibleWindow(app);
+  });
 }
 
 export function onSessionSearchInput(app, value) {
