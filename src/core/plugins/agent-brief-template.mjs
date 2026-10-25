@@ -61,7 +61,7 @@ const BRIEF_TOOL_LINES_COMMON = [
   '  help:      help (lists all tools; each tool has its own help)',
   '  work:      read-file, write-file, exec, exec-script, exec-list, exec-status, exec-read,',
   '             exec-grep, fetch, search, ocr, feedback-report',
-  '  tags:      tag-create, tag-list, tag-get, tag-update, tag-delete (any target_type/target_id)',
+  '  tags:      tag-create, tag-list, tag-get/tag-read, tag-update, tag-delete (any target_type/target_id)',
   '  ask:       question-list (filters: scope tree/session/all, status, query,',
   '             session/agent/group/priority), question-get, question-create',
   '             (needs the openDigest from question-list), question-answer and',

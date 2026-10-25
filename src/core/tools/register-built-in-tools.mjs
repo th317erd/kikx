@@ -15,6 +15,7 @@ import {
   TagDeleteTool,
   TagGetTool,
   TagListTool,
+  TagReadTool,
   TagUpdateTool,
 } from './tag-tools.mjs';
 import { OcrTool } from './ocr-tool.mjs';
@@ -124,6 +125,7 @@ export const BUILT_IN_TOOLS = [
   [ 'tag-create', TagCreateTool ],
   [ 'tag-list', TagListTool ],
   [ 'tag-get', TagGetTool ],
+  [ 'tag-read', TagReadTool ],
   [ 'tag-update', TagUpdateTool ],
   [ 'tag-delete', TagDeleteTool ],
   [ 'todo-get', TodoGetTool ],

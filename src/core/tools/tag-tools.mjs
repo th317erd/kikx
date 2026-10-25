@@ -94,6 +94,14 @@ export class TagGetTool extends TagTool {
   static help = 'Use tag-get when you know the exact target_type, target_id, and name.';
 }
 
+export class TagReadTool extends TagGetTool {
+  static featureName = 'get';
+  static frameType = 'TagReadToolFrame';
+  static displayName = 'Read tag';
+  static description = 'Read one indexed tag by target and name (alias of tag-get).';
+  static help = 'Use tag-read as the descriptive alias for tag-get.';
+}
+
 export class TagUpdateTool extends TagTool {
   static featureName = 'update';
   static frameType = 'TagUpdateToolFrame';

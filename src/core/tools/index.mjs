@@ -16,6 +16,7 @@ export {
   TagDeleteTool,
   TagGetTool,
   TagListTool,
+  TagReadTool,
   TagUpdateTool,
 } from './tag-tools.mjs';
 export { ExecScriptTool } from './exec-script-tool.mjs';

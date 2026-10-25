@@ -43,6 +43,7 @@ const TOOL_ICONS = new Map([
   [ 'tag-create', 'info' ],
   [ 'tag-delete', 'info' ],
   [ 'tag-get', 'info' ],
+  [ 'tag-read', 'info' ],
   [ 'tag-list', 'info' ],
   [ 'tag-update', 'info' ],
   [ 'database-search', 'database' ],
@@ -137,6 +138,7 @@ const COMPACT_HEADER_LABELS = new Map([
   [ 'tag-create', 'Tag' ],
   [ 'tag-delete', 'Tag' ],
   [ 'tag-get', 'Tag' ],
+  [ 'tag-read', 'Tag' ],
   [ 'tag-list', 'Tags' ],
   [ 'tag-update', 'Tag' ],
   [ 'exec-status', 'Exec Status' ],
@@ -768,6 +770,7 @@ function toolDescription(toolName, input, status = 'running', frame = null) {
       return title ? `Report feedback ${title}` : 'Report feedback';
     case 'tag-create':
     case 'tag-get':
+    case 'tag-read':
     case 'tag-update':
     case 'tag-delete':
       return tagDescription(toolName, input);
