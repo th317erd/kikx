@@ -3960,3 +3960,15 @@ kikx-frame-filter-popup:not(.is-all-on) .kikx-frame-filter__button {
 .kikx-agent-manager__footer .kikx-auth-status {
   margin-right: auto;
 }
+
+/* A failed load is not an empty session. This state used to be unreachable — the
+   thread fell through to "No messages yet" and claimed the session was empty when
+   in fact it could not be read. It now says what happened and offers a control, so
+   the box carries a warning tone rather than the neutral empty-state styling. */
+.kikx-thread__empty--error {
+  gap: 6px;
+}
+
+.kikx-thread__empty--error p {
+  color: #f2b8b5;
+}

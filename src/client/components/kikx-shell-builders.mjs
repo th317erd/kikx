@@ -584,6 +584,14 @@ export function buildStatusBar(app) {
 // as a DOM node (body.replaceChildren(...)) and as a builder child (the DSL
 // passes pre-built nodes through unchanged), so the previous mixed return type
 // (a builder for some branches, an element for others) broke both call styles.
+
+// The one real way out of an empty thread. Calls the app handler that is
+// already bound (kikx-app.mjs:245) - no new plumbing, no second render path.
+function clearFrameFiltersAction(app) {
+  return button.type('button').class('kikx-inline-action')
+    .onClick(() => app._clearFrameFilters?.())('Show all frames');
+}
+
 export function buildFrameThread(app) {
   if (!app._state.selectedSessionID) {
     return div.class('kikx-thread__empty')(
@@ -596,13 +604,27 @@ export function buildFrameThread(app) {
   let frames = threadRenderFrames(allFrames, app._state.frameFilters)
     .filter((frame) => frame && !frame.deleted);
   if (frames.length === 0) {
+    // A failed load leaves no frames behind, so this state used to fall through
+    // to "No messages yet" and tell the user the session was empty when in fact
+    // it could not be read at all. The statusline is easy to miss, so say it
+    // here and offer a real way out.
+    if (app._state.statusKind === 'error') {
+      return div.class('kikx-thread__empty kikx-thread__empty--error')(
+        p('This session could not be loaded: ' + (app._state.status || 'unknown error')),
+        p.class('kikx-thread__empty-hint')('Nothing was lost - the frames are still stored. Showing all frames loads whatever did read successfully.'),
+        clearFrameFiltersAction(app),
+      ).build(document);
+    }
+
     // Frames exist but every filter is off: say so, rather than claiming the
-    // session is empty. The popup is the only way out of this state, so point
-    // at it.
+    // session is empty. A real control, not a sentence pointing at the header
+    // popup - prose is not an affordance, and this state previously offered the
+    // user nothing to press.
     if (hasAnyFrames(allFrames)) {
       return div.class('kikx-thread__empty kikx-thread__empty--filtered')(
         p('No frames match the current filters.'),
-        p.class('kikx-thread__empty-hint')('Open the frame filter (the eye in the header) and turn categories back on.'),
+        p.class('kikx-thread__empty-hint')('Every frame in this session is currently filtered out.'),
+        clearFrameFiltersAction(app),
       ).build(document);
     }
 
