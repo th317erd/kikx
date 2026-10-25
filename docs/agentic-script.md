@@ -15,14 +15,14 @@ Do not maintain a separate hand-copied prompt as the authoritative version. The 
 
 The monolith per-turn prompt is gone. Agents now receive two tiers:
 
-- **Brief A — once per (re)start** (session start, new agent, after compaction, coordinator change): version banner, compressed character, AGIS precepts, the communication contract, the tool map, tool notes, behavior rules, and (coordinator-only, with 3+ parties) the coordinator preamble.
-- **Brief B — every turn**: `Message from {sender} {timestamp}:`, the message, compact dynamic state (todo, cwd, coordinator flag, participants), an optional autonomous-run clue, the communication contract, and the turn-ending phrase.
+- **Brief A — once per (re)start** (session start, new agent, after compaction, coordinator change): version banner, compressed character, AGIS precepts, tool map, tool notes, behavior rules, and (coordinator-only, with 3+ parties) the coordinator preamble.
+- **Brief B — every turn**: the raw trigger message, compact dynamic state (todo, cwd, coordinator flag, participants), an optional autonomous-run clue, and the turn-ending phrase.
 
-The same communication contract is also part of the stable system prompt so it survives long provider tool loops.
+The stable system prompt carries the invariant authority/evidence/delegation/safety contract and the communication contract, so they survive long provider tool loops and do not depend on per-turn scaffolding.
 
-`buildModelMessages` emits `[system] + [Brief A user turn when required] + [history…] + [Brief B user turn]`. The trigger message appears exactly once, inside Brief B. Brief A is protected from budget trimming.
+`buildModelMessages` emits `[system] + [history…] + [Brief B user turn]`. On a `(re)start`, Brief A text is prepended *inside the same final user turn*, after the raw trigger text, when required. It is not a separate user message; this preserves the provider-cacheable history prefix. The trigger message appears exactly once.
 
-Brief A and Brief B are pure builders returning `{ text }`. Providers stay ignorant of the split. Stored constants — AGIS precepts, tool notes, behavior rules, coordinator preamble and the multiparty character note — live in `src/core/plugins/agent-precepts.mjs`. Per-tool help text lives on the tool definitions in `src/core/plugins/agent-tool-definitions.mjs` and in each registered plugin tool's static `help`.
+Brief A and Brief B are pure builders returning `{ text }`. Providers stay ignorant of the split. Stored constants — system invariants, the communication contract, AGIS precepts, tool notes, behavior rules, coordinator preamble, and the multiparty character note — live in `src/core/plugins/agent-precepts.mjs`. Per-tool help text lives on the tool definitions in `src/core/plugins/agent-tool-definitions.mjs` and in each registered plugin tool's static `help`.
 
 The briefs are **ephemeral**: they are assembled per request and never written to frames. Frames store only messages (and the model's `thinking`, which is stored but not re-projected). Only compaction summaries are projected into the model context by design.
 
@@ -30,12 +30,12 @@ The built briefs must never carry stop-inducing or FOMO language; the explicit d
 
 ## Turn Ending: the dual verb
 
-Every turn ends one of two ways, and the agent is always asked to pick. This is the whole per-turn contract (the queue-as-definition-of-done rule):
+Every turn ends one of two ways, and the agent is always asked to pick. This is the per-turn actionable-work rule:
 
-- **`end-turn`** — end the turn. After doing work, pass a substantive `text` report: outcome, changes, evidence/proof, failures/risks, remaining/next. Omit text only when ending silently with no new work to report.
-- **`continue-turn`** — end this turn with a visible progress report and schedule your next step back to you. Pass `text`, `nextAction` (the continuation prompt), and optional `delayMs`. Use when the queue is not empty.
+- **`end-turn`** — end the turn. After doing work, pass a required `summary`: one or two sentences on the goals completed, then 2–5 Markdown bullets of steps taken. Put evidence/proof, failures/risks, and remaining/next in optional `details`. Omit both only when ending silently with no new work to report.
+- **`continue-turn`** — end this turn with a visible progress report and schedule your next step back to you. Pass `text`, required `mood`/`moodWord`, and `nextAction` naming the next step, plus optional `delayMs`. Use only when you have actionable work to do right now.
 
-"Queue" means: open todos (with focus) + still-running async processes + the next action named on a `continue-turn`. The brief biases toward continuing: if the agent does not know the next step, it keeps working to plan it out rather than stopping. `continue-turn` is never refused.
+Waiting is not work. Open todos or running processes are owned by the runtime: a completion/reply wakes you, so do not poll. If clearly-required work remains but you do not yet know the step, keep planning; if you are only waiting, `end-turn` with the real wait condition. `continue-turn` is never refused, but it must name an actionable next step.
 
 The other control tools are `progress` (a visible non-final note before a new phase/related batch, before a long-running/destructive action, or after a meaningful result), `stop` (stop the loop immediately, no visible output), `set-character` (persist persona), `route` (coordinator hand-off, no visible output), and `help`.
 
@@ -59,7 +59,7 @@ An exec-wake genuinely brings new input; a `continue-turn` continuation brings n
 
 ## Routing
 
-Coordinator routing guidance is part of Brief A, not a separate per-turn prompt:
+Coordinator routing invariants are part of the stable system prompt; the detailed coordinator preamble is part of Brief A on (re)start:
 
 - the coordinator is the router for all traffic and the default handler for broad, unaddressed user messages
 - the coordinator routes (rather than answers) messages intended for another actor, using the `route` tool

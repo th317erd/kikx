@@ -121,10 +121,11 @@ test('Brief A carries the version banner, precepts, tools, and behavior', () => 
   assert.match(text, /Delegation: agent-list/);
   assert.match(text, /File reads: for a large file/);
   assert.match(text, /Behavior — MANDATORY:/);
-  assert.match(text, /Communication — MANDATORY when you are actively working a turn:/);
-  assert.match(text, /end the turn with a short summary of the goals completed/);
-  assert.match(text, /then a short bulleted list of steps taken: 2-5 bullets/);
-  assert.match(text, /When the user provides a new message, please immediately respond to acknowledge the user's message, and then continue with your work\./);
+  assert.match(text, /Keep working while actionable work remains\./);
+  assert.match(text, /web-fetch, web-search/);
+  assert.doesNotMatch(text, /exec-grep, fetch, search/);
+  assert.match(text, /Scripts: use exec-script for cohesive multi-step computation/);
+  assert.doesNotMatch(text, /Communication — MANDATORY when you are actively working a turn:/);
   // 2-party session (1 agent + 1 user): no coordinator preamble.
   assert.doesNotMatch(text, /COORDINATOR PREAMBLE/);
 });
@@ -183,8 +184,9 @@ test('Brief A includes the coordinator preamble only for the coordinator with 3+
   // 3 parties counting the user (D3) and the assigned coordinator.
   let coordinatorBrief = buildStartBrief(multiparty).text;
   assert.match(coordinatorBrief, /COORDINATOR PREAMBLE/);
-  assert.match(coordinatorBrief, /As the coordinator you should minimize the direct work you accomplish\./);
-  assert.match(coordinatorBrief, /spin up teams, plan, monitor, coordinate, and delegate to other bots\/teams\./);
+  assert.match(coordinatorBrief, /You remain accountable for the outcome, not just the assignment\./);
+  assert.match(coordinatorBrief, /Monitor measured state with session-get,/);
+  assert.match(coordinatorBrief, /Do not\s+abandon the goal, silently take over/);
   // A non-coordinator never gets it.
   assert.doesNotMatch(buildStartBrief({ ...multiparty, isCoordinator: false }).text, /COORDINATOR PREAMBLE/);
   // Two parties (1 user + 1 agent) suppress it entirely.
@@ -220,17 +222,17 @@ test('Brief B carries the coordinator delegation nudge only for coordinators', (
   };
 
   let coordinator = buildMessageBrief({ ...base, isCoordinator: true }).text;
-  assert.match(coordinator, /Minimize direct work; spin up teams, plan, monitor, coordinate,/);
-  assert.match(coordinator, /and delegate to other bots\/teams\./);
-  assert.match(coordinator, /Is this a big new ask from the user\?/);
-  assert.match(coordinator, /new child session/);
-  assert.match(coordinator, /proper character profiles/);
+  assert.match(coordinator, /Coordinator check: Read measured state for delegated work/);
+  assert.match(coordinator, /Unblock, narrow, reassign, or escalate; keep the goal moving\./);
+  assert.match(coordinator, /Is this a big new ask\s+from the user\?/);
+  assert.match(coordinator, /child session/);
+  assert.match(coordinator, /proper character\s+profiles/);
   assert.match(coordinator, /invite the right bots/);
 
   let worker = buildMessageBrief({ ...base, isCoordinator: false }).text;
-  assert.doesNotMatch(worker, /Minimize direct work/);
+  assert.doesNotMatch(worker, /Read measured state for delegated work/);
   assert.doesNotMatch(worker, /Is this a big new ask from the user\?/);
-  assert.doesNotMatch(worker, /new child session/);
+  assert.doesNotMatch(worker, /child session/);
 });
 
 test('Brief B renders microsecond frame timestamps as a sane ISO date', () => {
@@ -288,6 +290,9 @@ test('Brief B carries sender, message, and compact dynamic state', () => {
 
 test('the system prompt carries the communication contract', () => {
   assert.match(SESSION_SYSTEM_PROMPT, /Communication — MANDATORY when you are actively working a turn:/);
+  assert.match(SESSION_SYSTEM_PROMPT, /Invariant authority and execution contract:/);
+  assert.match(SESSION_SYSTEM_PROMPT, /Delegation transfers work, not accountability\./);
+  assert.match(SESSION_SYSTEM_PROMPT, /after two failed attempts/);
   assert.match(SESSION_SYSTEM_PROMPT, /Progress cadence:/);
   assert.match(SESSION_SYSTEM_PROMPT, /short summary of the goals completed/);
   assert.match(SESSION_SYSTEM_PROMPT, /short bulleted list of steps taken: 2-5 bullets/);
@@ -549,26 +554,25 @@ test('Brief B carries the dual-verb turn-ending phrase', () => {
   assert.match(brief, /end-turn — with a REQUIRED short summary of goals completed \(one or two sentences\) followed by a short bulleted list of steps taken, plus optional details/);
   assert.match(brief, /continue-turn — with a visible progress update, .*next concrete step — only when you have actionable work you can do right now\./);
   assert.match(brief, /Waiting is not working: never poll or loop to await a process, the user, or another agent — a completion or a reply will wake you\./);
-  assert.match(brief, /Communication — MANDATORY when you are actively working a turn:/);
-  assert.match(brief, /Before a long-running, destructive, or externally visible action, explain it first\./);
-  assert.match(brief, /A one-line status\s+is not enough in details\./);
-  assert.match(brief, /Prefer scripts: pre-consider all the steps you need to take next, and write one `exec-script` program to take those steps in a single shot\./);
-  assert.match(brief, /Provide the files and a start command; it can run Python, Bash, Node, or another local interpreter\./);
-  assert.match(brief, /Pragmatize the steps and the work\./);
+  assert.doesNotMatch(brief, /Communication — MANDATORY when you are actively working a turn:/);
+  assert.doesNotMatch(brief, /Prefer scripts:/);
 });
 
-test('the exec-script reminder reaches the final assembled model turn', () => {
+test('the invariant authority contract reaches the model system prompt', () => {
   let messages = buildModelMessages({
     frame: { id: 'msg_1', type: 'UserMessage', authorType: 'user', authorID: 'usr_1', content: { text: 'go' } },
     agent: { id: 'agent_1' },
     frames: [],
   });
-  let final = messages.at(-1);
+  let system = messages[0];
+  let brief = messages.at(-1);
 
-  assert.equal(final.role, 'user');
-  assert.match(final.content, /Prefer scripts:/);
-  assert.match(final.content, /`exec-script`/);
-  assert.match(final.content, /Pragmatize the steps and the work\./);
+  assert.equal(system.role, 'system');
+  assert.match(system.content, /Follow the newest explicit user request within system safety and project constraints\./);
+  assert.match(system.content, /Delegation transfers work, not accountability\./);
+  assert.match(system.content, /Anti-churn: after two failed attempts/);
+  assert.equal(brief.role, 'user');
+  assert.doesNotMatch(brief.content, /Prefer scripts:/);
 });
 
 test('Brief B shows an autonomous-run clue only on self-triggered turns', () => {
@@ -622,7 +626,8 @@ test('Brief B warns when context is compacting or was trimmed', () => {
   }).text;
   assert.match(compacting, /!!!WARNING!!! Context compaction is underway/);
   assert.match(compacting, /KNOWN TO BE MISSING FROM YOUR MEMORY/);
-  assert.match(compacting, /schedule a short timer to await compaction/);
+  assert.match(compacting, /runtime will resume you when it completes/);
+  assert.doesNotMatch(compacting, /schedule a short timer/);
 
   let trimmed = buildMessageBrief({
     ...base,

@@ -1,19 +1,20 @@
 'use strict';
 
 // Two-tier brief builders (P2). Pure functions: each returns `{ text }` and has
-// no side effects. Brief A is sent ONCE per (re)start; Brief B every turn and
-// every tool round. Providers stay ignorant of the split — the model-context
-// assembly decides the emitted message shape.
+// no side effects. Brief A is produced ONCE per (re)start and is embedded inside
+// the final Brief B user turn; Brief B is produced every turn and every tool
+// round. Providers stay ignorant of the split — model-context assembly decides
+// the emitted message shape.
 
 import {
   AGIS_PRECEPTS_LINES,
-  COMMUNICATION_CONTRACT_LINES,
   COORDINATOR_DELEGATION_NUDGE_LINES,
   COORDINATOR_PREAMBLE_LINES,
   MULTIPARTY_CHARACTER_NOTE_LINES,
   PRE_START_READ_LINES,
   STANDARD_BEHAVIOR_LINES,
   STANDARD_TOOL_NOTES_LINES,
+  USER_MESSAGE_ACK_LINE,
   packageVersion,
 } from './agent-precepts.mjs';
 import {
@@ -60,7 +61,7 @@ const BRIEF_TOOL_LINES_COMMON = [
   '             session-control (coordinator suspension recovery)',
   '  help:      help (lists all tools; each tool has its own help)',
   '  work:      read-file, write-file, exec, exec-script, exec-list, exec-status, exec-read,',
-  '             exec-grep, fetch, search, ocr, feedback-report',
+  '             exec-grep, web-fetch, web-search, ocr, feedback-report',
   '  tags:      tag-create, tag-list, tag-get/tag-read, tag-update, tag-delete (any target_type/target_id)',
   '  ask:       question-list (filters: scope tree/session/all, status, query,',
   '             session/agent/group/priority), question-get, question-create',
@@ -82,15 +83,13 @@ function buildBriefToolLines(_context = {}) {
 // another agent) is never a reason to keep turning — each will wake you. This is
 // the whole per-turn contract for ending a turn.
 export const TURN_ENDING_LINES = [
-  'When the user provides a new message, please immediately respond to acknowledge the user\'s message, and then continue with your work.',
+  USER_MESSAGE_ACK_LINE,
   'End every turn one of two ways:',
   '- end-turn — with a REQUIRED short summary of goals completed (one or two sentences) followed by a short bulleted list of steps taken, plus optional details — when the request is satisfied, or when you are pausing/waiting after work. Put evidence, proof, risks, and remaining/next in details. Omit both only when you did no visible work and have nothing new to report.',
   '- continue-turn — with a visible progress update, a mood score from -3 to +3 plus a one-word mood label, and the next concrete step — only when you have actionable work you can do right now.',
   'Waiting is not working: never poll or loop to await a process, the user, or another agent — a completion or a reply will wake you. If clearly-required work remains but you do not yet know the step, keep planning.',
   'Stay aligned with the task the user gave you — vision → mission → current todos. If what you\'re doing isn\'t the user-assigned work, stop.',
 ];
-
-export const EXEC_SCRIPT_REMINDER_LINE = 'Prefer scripts: pre-consider all the steps you need to take next, and write one `exec-script` program to take those steps in a single shot. Provide the files and a start command; it can run Python, Bash, Node, or another local interpreter. Pragmatize the steps and the work. Use this especially when a task would otherwise become a long chain of separate `exec` calls; do not force a script when one simple command is clearly enough.';
 
 function buildMessageBriefAnswerLine(_context = {}) {
   return TURN_ENDING_LINES.join('\n');
@@ -138,8 +137,6 @@ export function buildStartBrief(context = {}) {
   lines.push('');
   lines.push(...buildBriefPreceptLines(context));
   lines.push('');
-  lines.push(...COMMUNICATION_CONTRACT_LINES);
-  lines.push('');
   lines.push(...buildBriefToolLines(context));
   lines.push('');
   lines.push(...STANDARD_TOOL_NOTES_LINES);
@@ -169,7 +166,7 @@ function buildCompactionWarningLines(context = {}) {
   return [
     '',
     `!!!WARNING!!! ${headline} Data is KNOWN TO BE MISSING FROM YOUR MEMORY.`,
-    'This is usually not critical. If you need the missing context, you may schedule a short timer to await compaction before proceeding.',
+    'This is usually not critical. Do not poll or schedule a timer to await compaction; the runtime will resume you when it completes.',
   ];
 }
 
@@ -204,11 +201,7 @@ export function buildMessageBrief(context = {}) {
       ...(context.suspensionWarning ? [ '', context.suspensionWarning ] : []),
       ...buildCompactionWarningLines(context),
       '',
-      ...COMMUNICATION_CONTRACT_LINES,
-      '',
       buildMessageBriefAnswerLine(context),
-      '',
-      EXEC_SCRIPT_REMINDER_LINE,
     ].join('\n'),
   };
 }

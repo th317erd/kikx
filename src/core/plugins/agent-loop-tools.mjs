@@ -40,8 +40,9 @@ export function createLoopToolDefinitions(context = {}) {
 }
 
 export function createLoopTools(state, context) {
-  // `end-turn` sends a visible report when `text` is present, or ends the turn
-  // silently when it is omitted/empty (this replaces the old null-response).
+  // `end-turn` sends a visible report when `summary`/`details` are present, or
+  // ends the turn silently when both are omitted/empty (replacing the old
+  // null-response).
   let endTurn = (content) => {
     state.finalized = true;
     state.continuation = null;

@@ -20,13 +20,15 @@ import {
   buildMessageBrief,
   buildStartBrief,
 } from './agent-script-template.mjs';
-import { COMMUNICATION_CONTRACT_LINES } from './agent-precepts.mjs';
+import { COMMUNICATION_CONTRACT_LINES, SYSTEM_INVARIANT_LINES } from './agent-precepts.mjs';
 
 export { isCompactionFrame } from '../frames/frame-types/frame-type-helpers.mjs';
 
 const DEFAULT_SESSION_SYSTEM_PROMPT = [
   'You are an agent participating in a Kikx session. Use the cached session history as conversational memory. Respond only to the newest user message unless the user asks about prior context.',
   'When history has been compacted, treat the summary as historical context: continue the current work from the newest user request, do not restart from scratch, and do not treat the summary as a new assignment. If the newest request conflicts with remembered state, the newest request wins.',
+  '',
+  ...SYSTEM_INVARIANT_LINES,
   '',
   ...COMMUNICATION_CONTRACT_LINES,
 ].join('\n');
@@ -55,12 +57,15 @@ export function frameToModelTurn(frame, options = {}) {
 
 // Build the full ordered message list for a provider request (two-tier, P3):
 //
-//   [system]                        — stable session base
-//   [Brief A as a user turn]        — ONLY when shouldSendStartBrief (P4)
+//   [system]                        — stable authority, invariants, communication
 //   [history…]                      — projected frame turns, trigger skipped
-//   [Brief B as the final user turn]
+//   [Brief B as the final user turn] — raw trigger text first; Brief A text is
+//                                    prepended inside this same user turn when
+//                                    shouldSendStartBrief (P4) is true.
 //
-// The trigger/message text appears exactly once, inside Brief B.
+// Brief A is intentionally embedded after the raw user text rather than emitted
+// as a separate user message: this preserves the byte-identical history prefix
+// providers cache across turns. The trigger/message text appears exactly once.
 export function buildModelMessages(params = {}, options = {}) {
   let frames = Array.isArray(params.frames) ? params.frames : [];
   let messages = [];

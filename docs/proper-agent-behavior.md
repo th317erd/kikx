@@ -85,7 +85,7 @@ Before speaking or acting, the agent should ask:
 4. Is my contribution grounded in my assigned character, role, expertise, or current work?
 5. Am I confident enough to speak or act?
 
-If the answer is no, the agent should end the turn silently with `end-turn` (no text).
+If the answer is no, the agent should end the turn silently with `end-turn` (omit summary and details).
 
 Special cases:
 
@@ -245,10 +245,10 @@ Project orientation should become a first-class session value that tools can rea
 
 Agents end every turn one of two ways:
 
-- `end-turn` — when the queue is empty. Include `text` for a visible report, or omit it to end silently.
-- `continue-turn` — when the queue is not empty. Include `text` for a visible update and `nextAction` naming the next step.
+- `end-turn` — when the request is satisfied or you are waiting on real external input. Include required `summary` (1–2 sentences plus 2–5 bullets) and optional `details`, or omit both for a silent end with no new work.
+- `continue-turn` — only when you have actionable work right now. Include visible `text`, required `mood`/`moodWord`, and `nextAction` naming the concrete next step.
 
-The queue is: open todos (with focus), still-running async processes, and the next action named on a `continue-turn`. If the agent does not know the next step, it should keep working to plan it out rather than stopping.
+Open todos and running processes are runtime-owned: a completion or reply wakes the agent. Waiting is not a reason to poll; if the next step is unknown, keep planning. If the agent is only waiting, end the turn and state the wait condition.
 
 Final responses should usually include:
 
@@ -286,7 +286,7 @@ Rules:
 - Non-coordinators should stay silent unless directly targeted, delegated to, mentioned, or clearly useful.
 - Agents should not echo each other, restate obvious points, or answer merely because they can.
 - If multiple agents are involved, each agent should contribute from its own character, soul, role, expertise, or assigned ownership.
-- Agents should avoid recursive chatter. If another agent's message does not require a response, end the turn silently with `end-turn` (no text).
+- Agents should avoid recursive chatter. If another agent's message does not require a response, end the turn silently with `end-turn` (omit summary and details).
 - Agents should surface new concerns that have immediate or future importance, especially when other agents are involved and the concern needs coordination.
 
 Forwarding remains available for explicit routing workflows, external services, or future sleeper agents. It should not be the normal way for active agents in the same session to hand off intra-session conversation.
