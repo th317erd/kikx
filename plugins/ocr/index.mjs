@@ -20,6 +20,7 @@ export function setup(provide) {
       static displayName = 'Host OCR command';
       static description = 'OCR agent provider that runs a configured local command such as bot-ocr.';
       static agentType = 'host-ocr-command';
+      static supportsOcr = true;
       static serviceType = 'host-command';
       static configFields = [
         {

@@ -31,8 +31,8 @@ export class OcrTool extends PluginInterface {
   };
   static help = [
     'Use ocr to send one or more local image/PDF paths to the configured OCR agents.',
-    'Agents are selected by the ocr_score tag, highest first; a failed agent falls through to the next one.',
-    'OCR agents may be regular agents or plugin-driven host commands. The result includes the text and which agent handled it.',
+    'Agents are selected by the ocr_score tag, highest first; a failed agent falls through to the next one. If no tagged agent is OCR-capable, the bundled host OCR command is used as a final fallback.',
+    'OCR agents may be regular agents or plugin-driven host commands. Regular agents receive a restricted OCR tool set (exec/exec-script/read-file/output tools) and an OCR-only system prompt; the result includes the text and which agent handled it.',
     'The expanded OcrFrame shows the question, image(s), and OCR response. Images load through the authenticated image proxy; sessions can disable that proxy with the ocr.image_proxy preference.',
   ].join(' ');
 

@@ -453,6 +453,20 @@ test('buildModelMessages sends Brief A only once across a multi-turn restart bou
   assert.equal(startBriefMessages(third).length, 1);
 });
 
+test('buildModelMessages accepts a one-shot system prompt for nested workers', () => {
+  let messages = buildModelMessages({
+    frame: { id: 'ocr', type: 'UserMessage', content: { text: 'ocr' } },
+    agent: { id: 'agent_1' },
+    frames: [],
+    systemPrompt: 'You are an OCR worker.',
+    rawPrompt: true,
+    prompt: 'Read the image.',
+  });
+  assert.equal(messages[0].role, 'system');
+  assert.equal(messages[0].content, 'You are an OCR worker.');
+  assert.equal(messages.at(-1).content, 'Read the image.');
+});
+
 test('buildModelMessages keeps raw one-shot/compaction prompts verbatim', () => {
   let messages = buildModelMessages({
     prompt: 'compaction instructions',

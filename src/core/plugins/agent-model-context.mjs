@@ -71,7 +71,11 @@ export function buildModelMessages(params = {}, options = {}) {
   let messages = [];
   let currentFrameID = params.frame?.id || null;
   let currentAgentID = params.agent?.id || '';
-  let systemPrompt = typeof options.systemPrompt === 'string' ? options.systemPrompt : DEFAULT_SESSION_SYSTEM_PROMPT;
+  let systemPrompt = typeof options.systemPrompt === 'string'
+    ? options.systemPrompt
+    : (typeof params.systemPrompt === 'string' && params.systemPrompt.trim() !== ''
+      ? params.systemPrompt
+      : DEFAULT_SESSION_SYSTEM_PROMPT);
   let isRawPrompt = params.rawPrompt === true || params.compaction === true || params.oneShot === true;
   // Which compaction priority levels this model's window can afford (P7). An
   // unknown window yields every level, so this never filters when unsure.

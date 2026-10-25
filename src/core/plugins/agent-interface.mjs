@@ -44,6 +44,7 @@ import {
   buildOcrPrompt,
   normalizeOcrImages,
   normalizeOcrResult,
+  OCR_AGENT_SYSTEM_PROMPT,
 } from '../ocr/ocr-request.mjs';
 
 export { normalizeConfigFields } from './agent-normalizers.mjs';
@@ -338,10 +339,11 @@ export class AgentInterface extends PluginInterface {
       frames: [],
       sessionFrames: [],
       prompt: textPrompt,
+      systemPrompt: request.systemPrompt || OCR_AGENT_SYSTEM_PROMPT,
       rawPrompt: true,
       responseFrameID: '',
-      tools: {},
-      toolDefinitions: [],
+      tools: request.tools || {},
+      toolDefinitions: request.toolDefinitions || [],
       services: request.services || this.context?.services || {},
     };
     let texts = [];

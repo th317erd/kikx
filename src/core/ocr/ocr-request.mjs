@@ -2,6 +2,12 @@
 
 const IMAGE_PATH_PATTERN = /(?:^|[\s"'`])((?:\/|\.{1,2}\/|~\/)?[^\s"'`]+\.(?:png|jpe?g|webp|gif|bmp|tiff?|pdf))(?=$|[\s"'`,;])/gi;
 
+export const OCR_AGENT_SYSTEM_PROMPT = [
+  'You are an OCR worker. Use the provided tools to inspect the image(s) and run OCR when needed.',
+  'Return only the OCR text plus a concise description of the image/layout. Do not emit progress tags, plans, tool XML, or commentary about your internal process.',
+  'If the image cannot be read, return a short explicit failure. Do not invent text or claim work the tool output does not show.',
+].join(' ');
+
 export function normalizeOcrImages(value) {
   let list = Array.isArray(value)
     ? value

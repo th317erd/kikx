@@ -372,6 +372,8 @@ export async function createServer(options = {}) {
       agentManager: context.require('agentManager'),
       tagsStore: context.require('tagsStore'),
       pluginRegistry: context.require('pluginRegistry'),
+      toolExecutor: context.require('toolExecutor'),
+      context,
       logger: options.logger || console,
     }));
   }

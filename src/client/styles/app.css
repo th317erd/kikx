@@ -3929,6 +3929,7 @@ kikx-frame-filter-popup:not(.is-all-on) .kikx-frame-filter__button {
 
 .kikx-ocr-frame__image-card {
   display: grid;
+  justify-items: center;
   gap: 4px;
   min-width: 0;
   margin: 0;
@@ -3936,8 +3937,9 @@ kikx-frame-filter-popup:not(.is-all-on) .kikx-frame-filter__button {
 
 .kikx-ocr-frame__image {
   display: block;
-  width: 100%;
-  max-height: 70vh;
+  width: auto;
+  max-width: min(100%, 520px);
+  max-height: 360px;
   object-fit: contain;
   border: 1px solid #303941;
   border-radius: 7px;

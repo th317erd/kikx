@@ -3,6 +3,7 @@
 import { elements, cleanupBindings } from '../lib/aeor-ui.mjs';
 import { OCR_IMAGE_PROXY_PREFERENCE } from '../../shared/session-preferences.mjs';
 import { getSessionPreference } from '../state/kikx-state.mjs';
+import { apiHeaders, refreshAuthToken } from './kikx-data.mjs';
 
 const { div, p, span, strong } = elements;
 const DEFAULT_OUTPUT_BYTES = 1024 * 1024;
@@ -113,6 +114,7 @@ export class KikxOcrFrame extends HTMLElement {
   renderImage(imagePath, index) {
     let figure = document.createElement('figure');
     figure.className = 'kikx-ocr-frame__image-card';
+    figure.dataset.imagePath = imagePath;
 
     let image = document.createElement('img');
     image.className = 'kikx-ocr-frame__image';
@@ -145,6 +147,7 @@ export class KikxOcrFrame extends HTMLElement {
       if (getSessionPreference(this._appState, this.sessionID, OCR_IMAGE_PROXY_PREFERENCE, true) === false) {
         image.src = FALLBACK_IMAGE;
         image.title = 'Image proxy disabled by session preference';
+        setImageCaption(image, 'Image proxy disabled by session preference');
         return;
       }
 
@@ -153,7 +156,7 @@ export class KikxOcrFrame extends HTMLElement {
         url.searchParams.set('path', imagePath);
         if (this.sessionID)
           url.searchParams.set('session_id', this.sessionID);
-        let response = await fetch(url, { headers: authHeaders(this._appState) });
+        let response = await authenticatedFetch(this._appState, url);
         if (!response.ok)
           throw new Error(`HTTP ${response.status}`);
         let blob = await response.blob();
@@ -165,13 +168,18 @@ export class KikxOcrFrame extends HTMLElement {
         this._objectURLs.push(objectURL);
         image.src = objectURL;
         let status = response.headers.get('X-Kikx-Image-Proxy');
-        if (status === 'disabled')
-          image.title = 'Image proxy disabled by session preference';
+        if (status && status !== 'ok') {
+          let message = imageStatusLabel(status);
+          image.title = message;
+          setImageCaption(image, message);
+        }
       } catch (error) {
         if (token !== this._loadToken)
           return;
         image.src = FALLBACK_IMAGE;
-        image.title = error?.message || 'Image failed to load';
+        let message = error?.message || 'Image failed to load';
+        image.title = message;
+        setImageCaption(image, 'Image failed to load');
       }
     }));
   }
@@ -199,7 +207,7 @@ export class KikxOcrFrame extends HTMLElement {
     try {
       let url = new URL(`/api/v1/tool-outputs/${encodeURIComponent(outputID)}`, globalThis.location?.origin || 'http://localhost');
       url.searchParams.set('maxBytes', String(DEFAULT_OUTPUT_BYTES));
-      let response = await fetch(url, { headers: authHeaders(this._appState) });
+      let response = await authenticatedFetch(this._appState, url);
       let body = await response.json().catch(() => ({}));
       if (!response.ok)
         throw new Error(body?.error?.message || `HTTP ${response.status}`);
@@ -236,8 +244,67 @@ export class KikxOcrFrame extends HTMLElement {
   }
 }
 
-function authHeaders(appState = {}) {
-  return appState?.authToken ? { Authorization: `Bearer ${appState.authToken}` } : {};
+function setImageCaption(image, message) {
+  let caption = image?.closest?.('.kikx-ocr-frame__image-card')?.querySelector?.('.kikx-ocr-frame__caption');
+  if (!caption)
+    return;
+  let path = caption.dataset.path || caption.textContent;
+  caption.dataset.path = path;
+  caption.textContent = `${path} — ${message}`;
+}
+
+function imageStatusLabel(status) {
+  switch (status) {
+    case 'disabled':
+      return 'Image proxy disabled by session preference';
+    case 'not-an-image':
+      return 'Not a supported image file';
+    case 'missing':
+      return 'Image file was not found';
+    case 'invalid-path':
+      return 'Invalid image path';
+    case 'blocked-path':
+      return 'Image path is not permitted';
+    case 'preference-unavailable':
+      return 'Image policy could not be checked';
+    case 'no-session':
+      return 'No session was provided for the image request';
+    default:
+      return 'Image could not be loaded';
+  }
+}
+
+const authAppByState = new WeakMap();
+
+async function authenticatedFetch(appState = {}, url, options = {}) {
+  let app = authAppFor(appState);
+  let response = await fetch(url, {
+    ...options,
+    headers: apiHeaders(app, options.headers),
+  });
+  if (response.status !== 401)
+    return response;
+
+  let refreshed = await refreshAuthToken(app);
+  if (!refreshed)
+    return response;
+
+  return await fetch(url, {
+    ...options,
+    headers: apiHeaders(app, options.headers),
+  });
+}
+
+function authAppFor(appState) {
+  if (!appState || typeof appState !== 'object')
+    return { _state: appState || {} };
+
+  let app = authAppByState.get(appState);
+  if (!app) {
+    app = { _state: appState };
+    authAppByState.set(appState, app);
+  }
+  return app;
 }
 
 function resultFromContent(content = {}) {
