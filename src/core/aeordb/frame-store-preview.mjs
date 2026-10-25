@@ -227,7 +227,7 @@ export class FrameStorePreviewBase extends FrameStoreScheduledBase {
       throw new TypeError('countSessionFrames() requires sessionID');
 
     let interactionsPath = `${this.rootPath}/sessions/${encodeSegment(sessionID)}/interactions`;
-    return await countSessionFrames(this, sessionID, {
+    return await countSessionFrames(this, {
       interactionsPath,
       listOptions: { depth: -1, glob: '**/frames/*.json' },
     });

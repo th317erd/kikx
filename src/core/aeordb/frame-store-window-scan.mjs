@@ -4,6 +4,7 @@ import { readJSONFiles } from './aeordb-file-utils.mjs';
 import { frameOrderFromPath, sortFramePathsByOrder } from './frame-store-ordering.mjs';
 import { encodeSegment } from './frame-store-paths.mjs';
 import {
+  countFilterMatches,
   frameMatchesWindowFilters,
   frameTypesForFilters,
   pathMatchesTypes,
@@ -30,7 +31,7 @@ const MAX_COUNT_SCAN_FRAMES = 200000;
 // honest no matter how the clamp moves.
 const COUNT_PAGE_SIZE = 1000;
 
-export async function countSessionFrames(store, sessionID, deps = {}) {
+export async function countSessionFrames(store, deps = {}) {
   let interactionsPath = deps.interactionsPath;
   let listOptions = deps.listOptions || { depth: -1, glob: '**/frames/*.json' };
 
@@ -55,25 +56,42 @@ export async function countSessionFrames(store, sessionID, deps = {}) {
   if (total === 0)
     return { counts: countFilterMatches([]), total: 0, scanned: 0, truncated: false };
 
+  // We are told how many frames exist, so walk to the cap rather than guessing
+  // from page sizes. Treating "a page came back shorter than requested" as the
+  // end of the listing silently under-counts whenever the transport's own page
+  // limit is below `COUNT_PAGE_SIZE`: every page looks like the last one, the
+  // walk stops early, and the caller is handed a fraction of the session. The
+  // loop below instead advances by what it actually received and stops only on
+  // an empty page, the cap, or a page that told us nothing new -- all of which
+  // terminate.
   let cap = Math.min(total, MAX_COUNT_SCAN_FRAMES);
   let paths = [];
+  let seen = new Set();
+  let cursor = 0;
 
   while (paths.length < cap) {
     let want = Math.min(COUNT_PAGE_SIZE, cap - paths.length);
     let page = await store.listDirectoryPaths(interactionsPath, {
       ...listOptions,
       limit: want,
-      offset: paths.length,
+      offset: cursor,
     });
 
     if (page.length === 0)
       break;
 
-    paths.push(...page);
+    cursor += page.length;
 
-    // A short page is the end of the listing. A full page means there may be
-    // more, so keep going until the cap or an empty/short page.
-    if (page.length < want)
+    let before = paths.length;
+    for (let path of page) {
+      if (seen.has(path))
+        continue;
+
+      seen.add(path);
+      paths.push(path);
+    }
+
+    if (paths.length === before)
       break;
   }
 
@@ -83,8 +101,11 @@ export async function countSessionFrames(store, sessionID, deps = {}) {
     counts: countFilterMatches(framePaths),
     total,
     scanned: framePaths.length,
-    // Honest truncation: only true when the cap actually stopped the walk.
-    truncated: paths.length < total && cap === paths.length,
+    // Honest truncation: true whenever the counts describe fewer frames than
+    // the session holds, whether that is the explicit cap or a page that came
+    // back short. Reporting `false` here after stopping on a short page would
+    // let an incomplete count pass as a complete one.
+    truncated: paths.length < total,
   };
 }
 
