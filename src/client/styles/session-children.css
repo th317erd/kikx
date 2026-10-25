@@ -48,19 +48,28 @@
  * which is the "stacking" the owner objected to. Fixed-width inline-level cards
  * wrap into a grid at any width without a column template.
  *
- * The card stays `inline-flex` rather than literal `inline-block` for one
- * reason: its own internals are a flex column with a `gap` (header / body /
- * toolbar), and `inline-block` would drop that gap and with it the card's
- * internal rhythm. It is still an inline-level box, so the cards share a line
- * and wrap exactly as inline-block children would. */
+ * Two boxes matter here and only one of them is the card.
+ *
+ * `<kikx-session-card>` is a custom-element HOST with no class of its own; the
+ * bordered, padded card is an inner `div.kikx-session-card` the component builds
+ * itself. Styling the host alone looks right in the DOM and is wrong on screen:
+ * the inner div is block-level, so it fills the host, each host takes the whole
+ * line, and the cards stack -- the exact defect this change exists to fix. So
+ * the host is made the inline-level, fixed-width box AND the inner card is
+ * forced to fill it. Both rules are required; either alone re-creates stacking.
+ *
+ * The inline box is `inline-flex` rather than literal `inline-block` because the
+ * card's internals are a flex column with a `gap` (header / body / toolbar), and
+ * `inline-block` on the inner div would drop that gap. It is still an
+ * inline-level box, so cards share a line and wrap exactly as the owner asked.
+ */
 .kikx-thread__children .kikx-session-grid {
   display: block;
 }
 
-/* Specificity (0,3,0) is deliberate: it must win over both `.kikx-session-card`
-   (display:flex) and `.kikx-session-card--add` (display:grid) in app.css without
-   depending on which stylesheet the browser happened to apply last. */
-.kikx-thread__children .kikx-session-grid > .kikx-session-card,
+/* The host: an inline-level, fixed-width grid item that wraps.
+   Specificity (0,2,1) beats `.kikx-session-card--add`'s (0,1,0) in app.css. */
+.kikx-thread__children .kikx-session-grid > kikx-session-card,
 .kikx-thread__children .kikx-session-grid > .kikx-session-card--add {
   display: inline-flex;
   flex-direction: column;
@@ -70,8 +79,18 @@
   vertical-align: top;
 }
 
-/* The add card's own centring, preserved now that it shares a row instead of
-   being a grid item. */
+/* The inner card the component renders into that host. Without this the host is
+   narrow but its contents stay block-level and full-width, so the visual card
+   still occupies a line of its own. `height: 100%` keeps a short card and a tall
+   card in the same row aligned to the same top edge. */
+.kikx-thread__children .kikx-session-grid > kikx-session-card > .kikx-session-card {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* The add card is a real <button> with the class directly on it, so it needs its
+   own centring now that it shares a row instead of being a grid item. */
 .kikx-thread__children .kikx-session-grid > .kikx-session-card--add {
   align-items: center;
   justify-content: center;

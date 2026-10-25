@@ -107,7 +107,26 @@ test('Puppeteer shows the thread and its child sessions in one view, with no rep
       // thread. `compareDocumentPosition` is the only honest way to ask
       // "is this row between them" without depending on a sibling index.
       let follows = (a, b) => Boolean(a && b && (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING));
-      let cardsStyle = cards.length > 0 ? getComputedStyle(cards[0]) : null;
+      // Measure LAYOUT, not just the host's display value. The card is a custom
+      // element whose visual box is an inner div the component renders itself, so
+      // a host-only check passes even when the inner div is block-level and each
+      // card silently occupies a whole line. That is precisely how the stacking
+      // defect survived a green test once already. Two cards sharing a row means
+      // their tops agree AND their left edges differ.
+      let boxes = cards.map((card) => {
+        let r = card.getBoundingClientRect();
+        let inner = card.querySelector('.kikx-session-card');
+        let ir = inner?.getBoundingClientRect();
+        return {
+          top: Math.round(r.top),
+          left: Math.round(r.left),
+          width: Math.round(r.width),
+          hostDisplay: getComputedStyle(card).display,
+          innerDisplay: inner ? getComputedStyle(inner).display : null,
+          innerWidth: ir ? Math.round(ir.width) : null,
+          innerMatchesHostWidth: ir ? Math.abs(ir.width - r.width) <= 2 : null,
+        };
+      });
 
       return {
         present: true,
@@ -117,7 +136,7 @@ test('Puppeteer shows the thread and its child sessions in one view, with no rep
         addText: add?.textContent?.trim() || '',
         afterHeader: follows(header, region),
         beforeThread: follows(region, threadBody),
-        display: cardsStyle?.display || null,
+        boxes,
         parentID,
       };
     }, PARENT_ID);
@@ -133,10 +152,36 @@ test('Puppeteer shows the thread and its child sessions in one view, with no rep
     assert.equal(kids.hasAdd, true, 'the inline row keeps an Add card, so creation never disappears');
     assert.match(kids.addText, /Add\s+\S+/, 'the Add card carries a create label');
 
-    // 3) Cards flow rather than stack: an inline-level box, not a block.
-    assert.ok(
-      kids.display && kids.display !== 'block' && kids.display !== 'grid',
-      `child cards are inline-level so they flow as a grid (saw display: ${kids.display})`,
+    // 3) Cards flow rather than stack. This is measured, not inferred: the two
+    //    child cards must sit at the same top offset with different left edges,
+    //    i.e. beside each other on one row. Before this was measured, a host-only
+    //    `display` check passed while the real cards were stacking.
+    assert.equal(kids.boxes.length, 2, 'both child cards are measurably laid out');
+    for (let box of kids.boxes) {
+      assert.match(
+        box.hostDisplay,
+        /^inline/,
+        `the card host is an inline-level box (saw ${box.hostDisplay})`,
+      );
+      assert.ok(
+        box.width > 0 && box.width < 400,
+        `the card host is a fixed-width grid item, not a full-width row (saw ${box.width}px)`,
+      );
+      assert.equal(
+        box.innerMatchesHostWidth,
+        true,
+        `the inner card fills its host, so the visual card is the measured box (host ${box.width}px vs inner ${box.innerWidth}px)`,
+      );
+    }
+    assert.equal(
+      kids.boxes[0].top,
+      kids.boxes[1].top,
+      `the child cards share a row -- equal tops (saw ${kids.boxes.map((b) => b.top).join(' vs ')})`,
+    );
+    assert.notEqual(
+      kids.boxes[0].left,
+      kids.boxes[1].left,
+      `the child cards sit beside each other, not stacked (saw left ${kids.boxes.map((b) => b.left).join(' vs ')})`,
     );
 
     // 4) There is no second view to be trapped in: no toggle, no popup footer.
