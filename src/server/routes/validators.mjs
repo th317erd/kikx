@@ -36,6 +36,22 @@ export function validateAgentBody(body, options = {}) {
 
   if (body.enabled != null && typeof body.enabled !== 'boolean')
     throw httpError(400, 'enabled must be a boolean');
+
+  if (body.tags != null) {
+    if (!Array.isArray(body.tags))
+      throw httpError(400, 'tags must be an array');
+
+    for (let tag of body.tags) {
+      if (!tag || typeof tag !== 'object' || Array.isArray(tag))
+        throw httpError(400, 'each tag must be an object');
+      if (typeof tag.name !== 'string' || tag.name.trim() === '')
+        throw httpError(400, 'tag.name must be a non-empty string');
+      if (tag.target_type != null && typeof tag.target_type !== 'string')
+        throw httpError(400, 'tag.target_type must be a string');
+      if (tag.target_id != null && typeof tag.target_id !== 'string')
+        throw httpError(400, 'tag.target_id must be a string');
+    }
+  }
 }
 
 export function validateTeamBody(body, options = {}) {

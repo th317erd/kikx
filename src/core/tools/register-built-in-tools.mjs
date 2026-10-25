@@ -10,6 +10,14 @@ import {
   QuestionGetTool,
 } from './question-tools.mjs';
 import { ExecTool } from './exec-tool.mjs';
+import {
+  TagCreateTool,
+  TagDeleteTool,
+  TagGetTool,
+  TagListTool,
+  TagUpdateTool,
+} from './tag-tools.mjs';
+import { OcrTool } from './ocr-tool.mjs';
 import { ExecScriptTool } from './exec-script-tool.mjs';
 import { FeedbackReportTool } from './feedback-tool.mjs';
 import {
@@ -72,6 +80,7 @@ export const BUILT_IN_TOOLS = [
   [ 'write-file', WriteFileTool ],
   [ 'exec', ExecTool ],
   [ 'exec-script', ExecScriptTool ],
+  [ 'ocr', OcrTool ],
   [ 'exec-list', ExecListTool ],
   [ 'exec-status', ExecStatusTool ],
   [ 'exec-read', ExecReadTool ],
@@ -112,6 +121,11 @@ export const BUILT_IN_TOOLS = [
   [ 'question-answer', QuestionAnswerTool ],
   [ 'question-dismiss', QuestionDismissTool ],
   [ 'ask-user', AskUserTool ],
+  [ 'tag-create', TagCreateTool ],
+  [ 'tag-list', TagListTool ],
+  [ 'tag-get', TagGetTool ],
+  [ 'tag-update', TagUpdateTool ],
+  [ 'tag-delete', TagDeleteTool ],
   [ 'todo-get', TodoGetTool ],
   [ 'todo-add', TodoAddTool ],
   [ 'todo-update', TodoUpdateTool ],

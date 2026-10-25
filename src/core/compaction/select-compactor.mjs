@@ -17,6 +17,7 @@
 
 import { resolveCoordinatorAgentID } from '../agents/agent-route/normalize.mjs';
 import { resolveEffectiveContextWindow } from './effective-windows.mjs';
+import { tagNumber } from '../tags/tag-definitions.mjs';
 
 // Reasons returned in the result, one per rung plus the empty case.
 export const COMPACTOR_REASON = {
@@ -38,7 +39,16 @@ export function selectCompactor({ session, participantAgentsWithMeta, agentManag
   if (sessionCompactionAgentID && byID.has(sessionCompactionAgentID))
     return { agentID: sessionCompactionAgentID, reason: COMPACTOR_REASON.SESSION };
 
-  // 2. User-designated compaction bots (top-3, newest first). The list is the
+  // 2. Typed `compaction_score` tags on participants. Higher scores win; this
+  // is the generic tag layer that replaces the old role-specific list when set.
+  let tagged = participants
+    .map((participant) => ({ ...participant, score: tagNumber(agentTag(participant.agent, 'compaction_score')) }))
+    .filter((participant) => participant.score > 0)
+    .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
+  if (tagged.length > 0)
+    return { agentID: tagged[0].id, reason: COMPACTOR_REASON.DESIGNATED };
+
+  // 3. User-designated compaction bots (top-3, newest first). The list is the
   // parallel-but-independent crown clone: a rolling top-3 keyed on
   // `compactionCrownedClock`. `listCompactionBots()` is synchronous (the manager
   // keeps a refreshed in-memory snapshot), so selection stays a pure function.
@@ -52,7 +62,7 @@ export function selectCompactor({ session, participantAgentsWithMeta, agentManag
     }
   }
 
-  // 3. Session coordinator — only when one is explicitly assigned to a
+  // 4. Session coordinator — only when one is explicitly assigned to a
   // participant. `resolveCoordinatorAgentID` falls back to the first participant
   // when unset; that fallback is not a designation, so rung 4 must still be
   // reachable for sessions without a coordinator.
@@ -63,7 +73,7 @@ export function selectCompactor({ session, participantAgentsWithMeta, agentManag
       return { agentID: coordinatorAgentID, reason: COMPACTOR_REASON.COORDINATOR };
   }
 
-  // 4. Largest effective window. Ties break by participant order (stable).
+  // 5. Largest effective window. Ties break by participant order (stable).
   let largest = null;
   for (let participant of participants) {
     if (largest == null || participant.window > largest.window)
@@ -85,6 +95,12 @@ function callListCompactionBots(agentManager) {
   } catch (_error) {
     return null;
   }
+}
+
+function agentTag(agent, name) {
+  let tags = Array.isArray(agent?.tags) ? agent.tags : [];
+  let tag = tags.find((item) => item?.name === name && (!item.target_type || item.target_type === 'agent'));
+  return tag?.value;
 }
 
 function normalizeParticipants(entries, { pluginRegistry, catalog } = {}) {

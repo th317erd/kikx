@@ -27,6 +27,7 @@ const TOOL_ICONS = new Map([
   [ 'write-file', 'quill' ],
   [ 'exec', 'gear' ],
   [ 'exec-script', 'terminal' ],
+  [ 'ocr', 'eyeball' ],
   [ 'exec-grep', 'search' ],
   [ 'web-search', 'search' ],
   [ 'web-fetch', 'fetch' ],
@@ -39,6 +40,11 @@ const TOOL_ICONS = new Map([
   [ 'todo-get', 'check' ],
   [ 'todo-update', 'check' ],
   [ 'feedback-report', 'mail' ],
+  [ 'tag-create', 'info' ],
+  [ 'tag-delete', 'info' ],
+  [ 'tag-get', 'info' ],
+  [ 'tag-list', 'info' ],
+  [ 'tag-update', 'info' ],
   [ 'database-search', 'database' ],
   [ 'database-fetch', 'database' ],
   [ 'output-grep', 'search' ],
@@ -127,6 +133,12 @@ const COMPACT_HEADER_LABELS = new Map([
   [ 'output-read', 'Read Output' ],
   [ 'write-file', 'Write File' ],
   [ 'exec-script', 'Script' ],
+  [ 'ocr', 'OCR' ],
+  [ 'tag-create', 'Tag' ],
+  [ 'tag-delete', 'Tag' ],
+  [ 'tag-get', 'Tag' ],
+  [ 'tag-list', 'Tags' ],
+  [ 'tag-update', 'Tag' ],
   [ 'exec-status', 'Exec Status' ],
   [ 'exec-list', 'Exec List' ],
   [ 'exec-grep', 'Exec Search' ],
@@ -698,6 +710,12 @@ function toolDescription(toolName, input, status = 'running', frame = null) {
       let target = start || entry;
       return target ? `Run script ${target}` : 'Run script';
     }
+    case 'ocr': {
+      let images = Array.isArray(input.images) ? input.images : [];
+      return images.length > 0
+        ? `OCR ${images.length} image${images.length === 1 ? '' : 's'}`
+        : 'OCR request';
+    }
     case 'web-search':
       return query ? `Search for ${query}` : 'Search the web';
     case 'web-fetch':
@@ -748,6 +766,13 @@ function toolDescription(toolName, input, status = 'running', frame = null) {
       return 'Clear todo focus';
     case 'feedback-report':
       return title ? `Report feedback ${title}` : 'Report feedback';
+    case 'tag-create':
+    case 'tag-get':
+    case 'tag-update':
+    case 'tag-delete':
+      return tagDescription(toolName, input);
+    case 'tag-list':
+      return 'List tags';
     case 'output-read':
       return id ? `Read stored output ${id}` : 'Read stored output';
     case 'output-grep':
@@ -876,6 +901,18 @@ function findTodoTitleInState(state, id, parentID) {
     }
   }
   return '';
+}
+
+function tagDescription(toolName, input = {}) {
+  let targetType = text(input.target_type);
+  let targetID = text(input.target_id);
+  let name = text(input.name);
+  let target = targetType && targetID ? `${targetType}/${targetID}` : targetID || targetType;
+  let verb = toolName === 'tag-create' ? 'Create tag'
+    : toolName === 'tag-delete' ? 'Delete tag'
+      : toolName === 'tag-update' ? 'Update tag'
+        : 'Read tag';
+  return target || name ? `${verb} ${[ target, name ].filter(Boolean).join(' ')}` : verb;
 }
 
 function teamDescription(verb, input) {

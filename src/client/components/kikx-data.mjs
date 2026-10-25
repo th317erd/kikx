@@ -16,6 +16,7 @@ import {
   setAccount,
   setAccountFormFromAccount,
   setAgentProviders,
+  setAgentTagDefinitions,
   setAgents,
   setClientComponents,
   setPreviewsLoading,
@@ -326,11 +327,13 @@ export async function restoreSession(app, sessionID) {
 
 export async function loadAgents(app) {
   try {
-    let [ providersResult, agentsResult ] = await Promise.all([
+    let [ providersResult, tagsResult, agentsResult ] = await Promise.all([
       getJSON(app, '/api/v1/agent-providers'),
+      getJSON(app, '/api/v1/tag-definitions'),
       getJSON(app, '/api/v1/agents'),
     ]);
     setAgentProviders(providersResult.data.providers || [], app._state);
+    setAgentTagDefinitions(tagsResult.data.tags || [], app._state);
     setAgents(agentsResult.data.agents || [], app._state);
     if (!app._state.agentFormPluginID)
       resetAgentForm(app._state);

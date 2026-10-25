@@ -40,6 +40,11 @@ import {
   resolvePromptContent,
 } from './agent-model-context.mjs';
 import { PluginInterface } from './plugin-interface.mjs';
+import {
+  buildOcrPrompt,
+  normalizeOcrImages,
+  normalizeOcrResult,
+} from '../ocr/ocr-request.mjs';
 
 export { normalizeConfigFields } from './agent-normalizers.mjs';
 
@@ -303,6 +308,54 @@ export class AgentInterface extends PluginInterface {
       state.forwardDispatched = true;
       await dispatchForwards(context, state);
     }
+  }
+
+  // Generic OCR contract. Providers may override this (the host-command OCR
+  // provider runs a local executable); the default asks the provider as a
+  // one-shot text request so a regular vision-capable agent can also serve as
+  // an OCR bot.
+  async runOcr(request = {}) {
+    let images = normalizeOcrImages(request.images);
+    let textPrompt = buildOcrPrompt({ images, prompt: request.prompt });
+    let agent = request.agent || this.context?.agent || null;
+    let session = request.session || this.context?.session || { id: 'ocr' };
+    let frame = request.frame || {
+      id: `ocr-${Date.now()}`,
+      type: 'UserMessage',
+      sessionID: session.id || null,
+      authorType: 'user',
+      authorID: 'ocr',
+      content: { text: textPrompt },
+    };
+    let params = {
+      ...request,
+      frame,
+      userFrame: frame,
+      session,
+      agent,
+      config: request.config || agent?.config || {},
+      secrets: request.secrets || agent?.secrets || {},
+      frames: [],
+      sessionFrames: [],
+      prompt: textPrompt,
+      rawPrompt: true,
+      responseFrameID: '',
+      tools: {},
+      toolDefinitions: [],
+      services: request.services || this.context?.services || {},
+    };
+    let texts = [];
+    for await (let output of this.ask(textPrompt, params)) {
+      if (output?.type === 'AgentMessage' && typeof output.content?.text === 'string' && output.content.text.trim() !== '')
+        texts.push(output.content.text);
+    }
+    return normalizeOcrResult({
+      text: texts.join('\n').trim(),
+      agentID: agent?.id || null,
+      agentName: agent?.name || null,
+      providerID: this.constructor.pluginID || this.constructor.pluginId || null,
+      images,
+    });
   }
 
   async ask() {

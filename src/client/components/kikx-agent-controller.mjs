@@ -10,6 +10,7 @@ import {
 import { buildAgentManagerBody, findAgentConfigSection } from './kikx-modals.mjs';
 import { cssEscape } from './kikx-app-helpers.mjs';
 import { nonEmptyValues } from './agent-form-helpers.mjs';
+import { buildAgentTags } from '../state/agent-state-utils.mjs';
 import { readAgentGutsValues, validateAgentGuts } from './agent-config-form-registry.mjs';
 
 export function openAgentManager(app) {
@@ -85,6 +86,7 @@ export async function onAgentFormSubmit(app, event) {
     pluginID: app._state.agentFormPluginID,
     config,
     secrets: nonEmptyValues(secrets),
+    tags: buildAgentTags(app._state.agentTagDefinitions, app._state.agentFormTags),
   };
 
   app._state.agentFormErrors = {};

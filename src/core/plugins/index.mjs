@@ -40,3 +40,11 @@ export {
   hasNonTextContent,
 } from './agent-context-budget.mjs';
 export { PluginRegistry } from './plugin-registry.mjs';
+export {
+  CORE_TAG_DEFINITIONS,
+  normalizeTagInputList,
+  registerBuiltInTagDefinitions,
+  tagNumber,
+  validateTagValue,
+} from '../tags/tag-definitions.mjs';
+export { TagsStore } from '../tags/tag-store.mjs';

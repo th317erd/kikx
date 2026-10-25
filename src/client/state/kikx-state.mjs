@@ -3,7 +3,9 @@
 import { ReactiveState } from '../lib/aeor-ui.mjs';
 import {
   defaultConfigForProvider,
+  defaultTagValues,
   mergeAgentConfigWithProviderDefaults,
+  tagValuesFromAgent,
 } from './agent-state-utils.mjs';
 import {
   boundSessionFrameCaches,
@@ -65,9 +67,11 @@ export const kikxState = new ReactiveState({
   agentFormName: '',
   agentFormPluginID: '',
   agentFormSecrets: {},
+  agentFormTags: {},
   agentIDs: [],
   agentEditorOpen: false,
   agentProviders: [],
+  agentTagDefinitions: [],
   agentStatus: '',
   agentStatusKind: 'pending',
   authEmail: '',
@@ -411,6 +415,14 @@ export function setAgentProviders(providers, state = kikxState) {
   state.agentProviders = Array.isArray(providers) ? providers.slice() : [];
 }
 
+export function setAgentTagDefinitions(definitions, state = kikxState) {
+  state.agentTagDefinitions = Array.isArray(definitions) ? definitions.slice() : [];
+  state.agentFormTags = {
+    ...defaultTagValues(state.agentTagDefinitions),
+    ...(state.agentFormTags || {}),
+  };
+}
+
 export function setClientComponents(components, state = kikxState) {
   let frameComponents = {};
   let toolComponents = {};
@@ -507,6 +519,7 @@ export function resetAgentForm(state = kikxState) {
   state.agentFormPluginID = provider?.pluginID || '';
   state.agentFormConfig = defaultConfigForProvider(provider);
   state.agentFormSecrets = {};
+  state.agentFormTags = defaultTagValues(state.agentTagDefinitions);
   state.agentFormErrors = {};
 }
 
@@ -526,6 +539,7 @@ export function setAgentFormFromAgent(agent, state = kikxState) {
   state.agentFormPluginID = agent.pluginID || '';
   state.agentFormConfig = mergeAgentConfigWithProviderDefaults(provider, agent.config);
   state.agentFormSecrets = {};
+  state.agentFormTags = tagValuesFromAgent(agent, state.agentTagDefinitions);
   state.agentFormErrors = {};
 }
 

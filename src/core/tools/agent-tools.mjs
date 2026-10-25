@@ -93,6 +93,19 @@ export class AgentCreateTool extends AgentTool {
         type: 'boolean',
         description: 'Whether the agent is enabled. Defaults to true.',
       },
+      tags: {
+        type: 'array',
+        description: 'Optional typed tags, for example leadership_score, compaction_score, or ocr_score.',
+        items: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            value: { description: 'Typed tag value.' },
+          },
+          required: [ 'name', 'value' ],
+          additionalProperties: true,
+        },
+      },
     },
     required: [ 'name', 'pluginID' ],
     additionalProperties: false,
@@ -116,6 +129,7 @@ export class AgentCreateTool extends AgentTool {
       config: normalizeOptionalObject(params.config, 'config'),
       secrets: normalizeOptionalObject(params.secrets, 'secrets'),
       enabled: params.enabled === undefined ? true : params.enabled === true,
+      ...(params.tags !== undefined ? { tags: params.tags } : {}),
     });
 
     return {
@@ -171,6 +185,19 @@ export class AgentUpdateTool extends AgentTool {
         type: 'boolean',
         description: 'Enable or disable the agent.',
       },
+      tags: {
+        type: 'array',
+        description: 'Typed tag changes. Set value to null to remove a tag.',
+        items: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            value: { description: 'Typed tag value, or null to remove.' },
+          },
+          required: [ 'name' ],
+          additionalProperties: true,
+        },
+      },
     },
     required: [ 'agent' ],
     additionalProperties: false,
@@ -214,6 +241,9 @@ export class AgentUpdateTool extends AgentTool {
     if (params.enabled !== undefined)
       patch.enabled = params.enabled === true;
 
+    if (params.tags !== undefined)
+      patch.tags = params.tags;
+
     if (Object.keys(patch).length === 0)
       throw new Error('agent-update requires at least one field to change');
 
@@ -237,6 +267,7 @@ function sanitizeAgent(agent = {}) {
     enabled: agent.enabled !== false,
     crownedAt: agent.crownedAt || null,
     crownedClock: agent.crownedClock || null,
+    tags: Array.isArray(agent.tags) ? agent.tags.map((tag) => ({ ...tag })) : [],
     createdAt: agent.createdAt || null,
     updatedAt: agent.updatedAt || null,
   };

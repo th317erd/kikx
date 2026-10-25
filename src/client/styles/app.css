@@ -3279,6 +3279,29 @@ button.kikx-window__title:focus-visible {
   min-height: 36px;
 }
 
+.kikx-agent-form__tags-heading {
+  margin-top: 6px;
+  color: #dce3ea;
+  font-size: calc(13px * 1.25);
+  font-weight: 700;
+}
+
+.kikx-agent-tags {
+  padding-top: 2px;
+}
+
+.kikx-agent-tags__help {
+  color: #8c98a4;
+  font-size: calc(11px * 1.25);
+  line-height: 1.35;
+}
+
+.kikx-agent-tags__checkbox {
+  width: 20px;
+  min-height: 20px;
+  justify-self: start;
+}
+
 .kikx-default-config__empty {
   margin: 0;
   color: #97a3ae;

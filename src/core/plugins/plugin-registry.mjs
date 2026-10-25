@@ -5,6 +5,7 @@ import { AgentInterface } from './agent-interface.mjs';
 import { ClassRegistry } from './class-registry.mjs';
 import { normalizeConfigFields } from './agent-normalizers.mjs';
 import { DatabaseConnectionBase } from '../database/database-connection-base.mjs';
+import { normalizeTagDefinition } from '../tags/tag-definitions.mjs';
 
 // PluginRegistry extends the universal ClassRegistry: tools/providers/selectors/
 // components live here, and *any* class can be registered and overridden via the
@@ -20,6 +21,7 @@ export class PluginRegistry extends ClassRegistry {
     this._frameComponents = new Map();
     this._toolComponents = new Map();
     this._agentConfigForms = new Map();
+    this._tagDefinitions = new Map();
     this._pluginPaths = new Map();
   }
 
@@ -220,6 +222,26 @@ export class PluginRegistry extends ClassRegistry {
   // A plugin's own agent create/edit form, keyed by the agent provider's
   // pluginID. The client renders this element in place of the generic
   // config fields.
+  registerTagDefinition(name, definition = {}) {
+    let normalized = normalizeTagDefinition({ ...definition, name: definition.name || name }, name);
+    if (!normalized.name)
+      throw new TypeError('Tag definition name must be a non-empty string');
+
+    if (this._tagDefinitions.has(normalized.name))
+      this.logger.warn?.(`Tag definition "${normalized.name}" is being overridden`);
+
+    this._tagDefinitions.set(normalized.name, normalized);
+    return normalized;
+  }
+
+  getTagDefinition(name) {
+    return this._tagDefinitions.get(name) || null;
+  }
+
+  listTagDefinitions() {
+    return Array.from(this._tagDefinitions.values()).map((definition) => ({ ...definition }));
+  }
+
   registerAgentConfigForm(pluginID, descriptor = {}) {
     let normalized = normalizeComponentDescriptor(descriptor, {
       kind: 'agent-config-form',

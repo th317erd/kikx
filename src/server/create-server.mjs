@@ -53,6 +53,8 @@ import {
   registerAgentRouting,
 } from '../core/agents/index.mjs';
 import { CompactionService } from '../core/compaction/index.mjs';
+import { registerBuiltInTagDefinitions, TagsStore } from '../core/tags/index.mjs';
+import { OcrService } from '../core/ocr/index.mjs';
 import { QuestionAnswerService, QuestionsStore } from '../core/questions/index.mjs';
 import { repairQuestionIndex } from '../core/questions/question-index-repair.mjs';
 import { registerQuestionScheduleRouting } from '../core/questions/question-schedule-plugin.mjs';
@@ -171,6 +173,11 @@ export async function createServer(options = {}) {
   if (!context.has('builtInToolsRegistered')) {
     registerBuiltInTools(context.require('pluginRegistry'));
     context.set('builtInToolsRegistered', true);
+  }
+
+  if (!context.has('builtInTagDefinitionsRegistered')) {
+    registerBuiltInTagDefinitions(context.require('pluginRegistry'));
+    context.set('builtInTagDefinitionsRegistered', true);
   }
 
   if (!context.has('webBrowser')) {
@@ -345,10 +352,27 @@ export async function createServer(options = {}) {
     ));
   }
 
+  if (!context.has('tagsStore')) {
+    context.set('tagsStore', new TagsStore({
+      db: context.require('db'),
+      pluginRegistry: context.require('pluginRegistry'),
+    }));
+  }
+
   if (!context.has('agentManager')) {
     context.set('agentManager', new AgentManager({
       db: context.require('db'),
       pluginRegistry: context.require('pluginRegistry'),
+      tagsStore: context.require('tagsStore'),
+    }));
+  }
+
+  if (!context.has('ocrService')) {
+    context.set('ocrService', new OcrService({
+      agentManager: context.require('agentManager'),
+      tagsStore: context.require('tagsStore'),
+      pluginRegistry: context.require('pluginRegistry'),
+      logger: options.logger || console,
     }));
   }
 

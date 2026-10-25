@@ -11,6 +11,16 @@ import { matchAgentCompactionCrownRoute, matchAgentCrownRoute, matchAgentRoute }
 import { validateAgentBody } from './validators.mjs';
 
 export async function handleAgentRoutes({ request, response, url, context }) {
+  if (request.method === 'GET' && url.pathname === '/api/v1/tag-definitions') {
+    let agentManager = context.require('agentManager');
+    writeJSON(response, 200, {
+      data: {
+        tags: agentManager.listTagDefinitions(),
+      },
+    });
+    return true;
+  }
+
   if (request.method === 'GET' && url.pathname === '/api/v1/agent-providers') {
     let agentManager = context.require('agentManager');
     writeJSON(response, 200, {

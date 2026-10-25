@@ -104,6 +104,7 @@ export function sanitizeAgent(agent = {}) {
     pluginID: agent.pluginID || null,
     enabled: agent.enabled !== false,
     character: typeof agent.character === 'string' ? agent.character : '',
+    tags: Array.isArray(agent.tags) ? agent.tags.map((tag) => ({ ...tag })) : [],
     createdAt: agent.createdAt || null,
     updatedAt: agent.updatedAt || null,
   };

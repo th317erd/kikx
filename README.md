@@ -12,7 +12,7 @@ The old Mythix/Mythix ORM/Solr application is archived in `old-app/` for referen
 - Internal slash commands such as `/invite` and `/compact`, routed before agent providers.
 - Teams of actors: teams may include agents and real users, and `/invite` can invite a whole team.
 - Agentic loop primitives for responding, null responses, forwarding, progress updates, continuation scheduling, todo lists, per-session cwd, and completion self-review.
-- Tool system with persisted tool results, typed tool frames, range/grep/search access for large outputs, web search/fetch, database search/fetch, file read/write, async shell and temporary-script execution, process inspection, session/team management, todo management, and feedback reporting.
+- Tool system with persisted tool results, typed tool frames, range/grep/search access for large outputs, web search/fetch, database search/fetch, file read/write, async shell and temporary-script execution, OCR routing, indexed tags on any entity, process inspection, session/team management, todo management, and feedback reporting.
 - Browser client with magic-link auth, sessions, agents, teams, account profile editing, markdown rendering, custom tool-frame components, token/status display, SSE updates, and no shadow DOM.
 - Asynchronous context compaction using `CompactionFrame` records and a manual `/compact` command.
 
@@ -163,6 +163,10 @@ The built-in tool execution service stores every tool result in the configured d
 Long-running shell work is managed by the async process system. `exec` starts managed processes, waits briefly for very short commands, stores output, exposes process inspection/kill/read/grep tools, and wakes the agent when long work completes.
 
 `exec-script` uses that same managed process pipeline for temporary one-shot programs. It writes arbitrary `files[]` to a fresh directory under the system temp root, then runs the supplied `start` shell command in that directory, so the agent can use Python, Bash, Node, or any other local interpreter. A legacy Node shorthand (`script`, `entry`, `args`) is also supported. An optional `package.json` triggers npm dependency installation when declared; the result has the usual exit code/stdout/stderr. This replaces long chains of `exec` calls when a task needs real control flow or several files; set `keepTempDir` when you need to inspect the generated workspace after failure.
+
+Tags are indexed `{ target_type, target_id, name, value }` records for any entity. The core registers typed role tags (`leadership_score`, `compaction_score`, `ocr_score`) and plugins can register more with `registerTagDefinition`. `tag-create`, `tag-list`, `tag-get`, `tag-update`, and `tag-delete` expose them as tools; the agent create/edit dialog renders registered agent-tag definitions as typed controls. Higher positive role scores are selected first, with the legacy crown/compaction lists kept as fallbacks.
+
+OCR runs through tag-selected agents. `ocr` sends local image/PDF paths to the highest-scoring `ocr_score` agent and falls back to the next one on failure. Regular provider agents use their normal `runOcr` fallback; the bundled `plugins/ocr` provider (`host-ocr-command`) runs a configured command such as `bot-ocr`. Add `plugins/ocr` to `KIKX_PLUGIN_PATHS` to load it.
 
 ## Agentic Script
 

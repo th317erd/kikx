@@ -11,7 +11,15 @@ export {
 } from './question-tools.mjs';
 export { CwdClearTool, CwdGetTool, CwdSetTool } from './cwd-tools.mjs';
 export { ExecTool } from './exec-tool.mjs';
+export {
+  TagCreateTool,
+  TagDeleteTool,
+  TagGetTool,
+  TagListTool,
+  TagUpdateTool,
+} from './tag-tools.mjs';
 export { ExecScriptTool } from './exec-script-tool.mjs';
+export { OcrTool } from './ocr-tool.mjs';
 export { FeedbackReportTool } from './feedback-tool.mjs';
 export { LocalCommandExecutionService } from './local-command-execution-service.mjs';
 export { LocalFileAccessService } from './local-file-access-service.mjs';

@@ -16,6 +16,7 @@ import {
   compactionBotRankByAgentID,
 } from './compaction-bot-helpers.mjs';
 import { findAgentConfigFormElement, resolveAgentConfigFormTag } from './agent-config-form-registry.mjs';
+import { buildAgentTagSection } from './agent-tag-form.mjs';
 import './kikx-default-agent-config-form.mjs';
 
 const { div, p, span, button, form, label, ul, li, strong, option } = elements;
@@ -175,6 +176,7 @@ export function buildAgentEditor(app) {
                   )),
               ),
             ...buildAgentConfigSection(app, provider),
+            ...buildAgentTagSection(app),
             div.class('modal-footer-actions')(
               ...(app._state.agentFormMode === 'edit'
                 ? [ buildAgentDeleteButton(app) ]

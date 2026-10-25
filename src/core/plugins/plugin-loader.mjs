@@ -143,6 +143,7 @@ function createPluginSetupContext({ registry, commandRegistry, context, pluginPa
     registerFrameComponent: (...args) => registry.registerFrameComponent(...args),
     registerToolComponent: (...args) => registry.registerToolComponent(...args),
     registerAgentConfigForm: (...args) => registry.registerAgentConfigForm(...args),
+    registerTagDefinition: (...args) => registry.registerTagDefinition(...args),
     registerDatabaseDriver: (...args) => registry.registerDatabaseDriver(...args),
   };
 
