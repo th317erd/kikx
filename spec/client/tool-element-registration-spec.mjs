@@ -17,6 +17,7 @@ const { registry: customElements } = installDom();
 // `defineToolElement()` at module scope, so any throw during evaluation is a
 // failure this spec must see rather than swallow.
 const moduleNamespace = await import('../../src/client/components/tool-renderers/built-in-tool-uses.mjs');
+const scriptToolUse = await import('../../src/client/components/tool-renderers/script-tool-use.mjs');
 
 const EXPECTED_TAGS = [
   'kikx-cwd-tool-use',
@@ -68,6 +69,58 @@ test('no two tag names share one constructor', () => {
     );
     byConstructor.set(ctor, tagName);
   }
+});
+
+test('the script renderer exposes the start command and every source file', () => {
+  let entries = scriptToolUse.scriptSourceEntries({
+    start: 'bash probe.sh',
+    files: [
+      { path: 'probe.sh', content: 'echo probe\n', encoding: 'utf8' },
+      { path: 'payload.bin', content: 'AAEC', encoding: 'base64' },
+    ],
+  });
+
+  assert.deepEqual(entries, [
+    { label: 'start', content: 'bash probe.sh' },
+    { label: 'probe.sh', content: 'echo probe\n' },
+    { label: 'payload.bin', content: '[base64]\nAAEC' },
+  ]);
+
+  assert.deepEqual(scriptToolUse.scriptSourceEntries({
+    script: 'console.log(1)',
+    packageJson: { type: 'module' },
+  }), [
+    { label: 'index.mjs', content: 'console.log(1)' },
+    { label: 'package.json', content: '{\n  "type": "module"\n}' },
+  ]);
+});
+
+test('the script result card can expand to the start command and source files', () => {
+  let ScriptToolUse = customElements.get('kikx-script-tool-use');
+  let instance = new ScriptToolUse();
+  instance._frame = {
+    id: 'script-result',
+    type: 'ScriptToolFrame',
+    content: {
+      toolName: 'exec-script',
+      phase: 'result',
+      status: 'success',
+      input: {
+        start: 'bash probe.sh',
+        files: [ { path: 'probe.sh', content: 'echo probe\n' } ],
+      },
+    },
+  };
+
+  let section = instance.renderToolSpecificSections();
+  assert.ok(section, 'expected a script source disclosure');
+  assert.equal(section.querySelector('summary')?.textContent, 'View script source');
+
+  section.open = true;
+  section.dispatchEvent(new Event('toggle'));
+  assert.match(section.textContent, /bash probe\.sh/);
+  assert.match(section.textContent, /probe\.sh/);
+  assert.match(section.textContent, /echo probe/);
 });
 
 test('question-list has its own renderer, not the read-file one', () => {

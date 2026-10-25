@@ -14,12 +14,12 @@ import {
   OutputReadUse,
   QuestionListUse,
   ReadFileUse,
-  ScriptToolUse,
   SessionToolUse,
   ShellToolUse,
   WebSearchUse,
   WriteFileUse,
 } from './tool-use-base.mjs';
+import { ScriptToolUse } from './script-tool-use.mjs';
 import { TodoToolUse } from './todo-tool-use.mjs';
 
 defineToolElement('kikx-cwd-tool-use', CwdToolUse);
