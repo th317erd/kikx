@@ -196,6 +196,60 @@ test('Puppeteer shows the thread and its child sessions in one view, with no rep
     assert.equal(absent.childSessionsAction, 0, 'the popup footer child-sessions action is gone');
     assert.equal(absent.threadRegions, 1, 'exactly one session view renders');
 
+    // 4b) The session window must be ONE view, and a view with two scrollbars
+    //     and a divider between them is two views wearing a row's clothes. The
+    //     child row previously declared `max-height: 40vh; overflow: auto` plus
+    //     a `border-bottom`, which put an independent scroller above the
+    //     `.kikx-frame-list` scroller and read on screen as a split view.
+    //
+    //     Asserted on computed style, not on a screenshot, and not on actual
+    //     overflow: a short fixture thread would not overflow, so a
+    //     scrollHeight-based check would pass for the wrong reason. What is
+    //     being forbidden is the declaration of a second pane.
+    let panes = await page.evaluate(() => {
+      let scrollersIn = (root) => {
+        let found = [];
+        if (!root)
+          return found;
+        for (let el of [ root, ...root.querySelectorAll('*') ]) {
+          let style = getComputedStyle(el);
+          if (style.overflowY === 'auto' || style.overflowY === 'scroll')
+            found.push(el.className || el.tagName.toLowerCase());
+        }
+        return found;
+      };
+
+      let region = document.querySelector('.kikx-thread__children');
+      let regionStyle = region ? getComputedStyle(region) : null;
+      // The thread's own scrolling is NOT asserted here. A `.kikx-chat-view--mini`
+      // list is `overflow: hidden` by design (app.css), and this fixture is not
+      // guaranteed to be the full mode, so an overflow check would be measuring
+      // the fixture rather than the split view. That the thread renders below the
+      // row is already asserted above via `thread.frameCount`.
+      let threadList = document.querySelector('.kikx-frame-list');
+
+      return {
+        // Two questions, asked separately, because they are different claims.
+        hasThreadList: Boolean(threadList),
+        // 2. The child row is not a pane: it neither declares its own scroller
+        //    nor contains one, and it draws no divider.
+        regionScrollers: scrollersIn(region),
+        regionOverflowY: regionStyle ? regionStyle.overflowY : null,
+        regionMaxHeight: regionStyle ? regionStyle.maxHeight : null,
+        regionBorderBottom: regionStyle ? regionStyle.borderBottomWidth : null,
+      };
+    });
+
+    assert.equal(panes.hasThreadList, true, 'the session view still renders its frame list');
+    assert.deepEqual(panes.regionScrollers, [],
+      `the child row is not a scroll pane (saw scrollers ${JSON.stringify(panes.regionScrollers)})`);
+    assert.equal(panes.regionOverflowY, 'visible',
+      `the child row is not its own scroll pane (saw overflow-y: ${panes.regionOverflowY})`);
+    assert.equal(panes.regionMaxHeight, 'none',
+      `the child row is not height-capped into a pane (saw max-height: ${panes.regionMaxHeight})`);
+    assert.equal(panes.regionBorderBottom, '0px',
+      `the child row draws no divider, so nothing reads as a split (saw ${panes.regionBorderBottom})`);
+
     // 5) The create control in the header is a real, clickable button placed
     //    after the eyeball, at this level.
     let header = await page.evaluate(() => {

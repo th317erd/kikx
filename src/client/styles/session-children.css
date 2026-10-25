@@ -21,15 +21,27 @@
   grid-template-rows: auto auto minmax(0, 1fr) auto auto;
 }
 
-/* The row itself: bounded, because a session may have many children and the
-   thread below it must keep its share of the window. It is the only scroller
-   here; the `.kikx-workspace__grid` wrapper the builder nests inside it is reset
-   below so the two do not scroll independently. */
+/* The row itself is NOT a pane.
+ *
+ * It used to be `max-height: 40vh; overflow: auto` with a `border-bottom`
+ * divider. That made the session window hold two independent scroll
+ * containers -- `.kikx-frame-list` below and this row above -- stacked with a
+ * rule between them, which reads as a split view. The owner's model is that
+ * everything lives inside the session view, so a second bordered scroller with
+ * its own scrollbar is a view by another name, not a row.
+ *
+ * So: no own scroller, no divider, no cap. The cards flow and wrap as their
+ * own content, and the thread below is the single scrolling surface (the
+ * `.kikx-thread` track for the body is `minmax(0, 1fr)`, so a tall child row
+ * takes space from the thread rather than overflowing the window).
+ *
+ * Known trade-off, stated rather than hidden: a session with very many direct
+ * children would push the thread down. Bounding that belongs in the row's own
+ * design (collapse/limit), not in a scrollbar that re-creates the pane.
+ */
 .kikx-thread__children {
-  max-height: 40vh;
   padding: 12px 18px 0;
-  overflow: auto;
-  border-bottom: 1px solid #232a31;
+  min-height: 0;
 }
 
 .kikx-thread__children .kikx-workspace__grid {
