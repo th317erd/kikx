@@ -106,6 +106,13 @@ export const kikxState = new ReactiveState({
   frameCountsBySessionID: {},
   frameFilters: null,
   sessionPagingByID: {},
+  // Why a session's frame window could not be loaded, keyed by session id.
+  // The global `status` cannot carry this: the reload path repaints after a
+  // failure without touching it, so an error there is silently swallowed and
+  // the thread falls through to "No messages yet" — telling the user a session
+  // is empty when the server refused to serve it. Keyed by session so a failure
+  // in one window cannot caption another.
+  frameLoadErrorsBySessionID: {},
   magicCode: params.get('code') || '',
   managingAgents: false,
   agentFilter: 'all',

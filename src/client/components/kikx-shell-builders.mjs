@@ -608,9 +608,11 @@ export function buildFrameThread(app) {
     // to "No messages yet" and tell the user the session was empty when in fact
     // it could not be read at all. The statusline is easy to miss, so say it
     // here and offer a real way out.
-    if (app._state.statusKind === 'error') {
+    let loadError = app._state.frameLoadErrorsBySessionID?.[app._state.selectedSessionID]
+      || (app._state.statusKind === 'error' ? app._state.status : null);
+    if (loadError) {
       return div.class('kikx-thread__empty kikx-thread__empty--error')(
-        p('This session could not be loaded: ' + (app._state.status || 'unknown error')),
+        p('This session could not be loaded: ' + (loadError || 'unknown error')),
         p.class('kikx-thread__empty-hint')('Nothing was lost - the frames are still stored. Showing all frames loads whatever did read successfully.'),
         clearFrameFiltersAction(app),
       ).build(document);

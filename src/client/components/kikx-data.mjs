@@ -464,6 +464,27 @@ function frameWindowPaging(data = {}, limit = DEFAULT_FRAME_WINDOW_LIMIT) {
   };
 }
 
+// Per-session frame-window failures. `null` clears the record, so a session
+// that loads successfully after a failure stops being captioned as broken.
+function setFrameLoadError(app, sessionID, message) {
+  let state = app?._state;
+  if (!state || !sessionID)
+    return;
+
+  let current = state.frameLoadErrorsBySessionID || {};
+  if (message == null) {
+    if (!(sessionID in current))
+      return;
+
+    let next = { ...current };
+    delete next[sessionID];
+    // Top-level reassignment: ReactiveState only notifies on that.
+    state.frameLoadErrorsBySessionID = next;
+    return;
+  }
+
+  state.frameLoadErrorsBySessionID = { ...current, [sessionID]: message };
+}
 // Fetch a frame window. With no `before`, the server returns the NEWEST page
 // (anchored to the bottom). With `before`, it returns the page just older than
 // that raw order; those heads are PREPENDED without discarding loaded newer
@@ -472,14 +493,26 @@ export async function loadFrames(app, sessionID, options = {}) {
   let limit = Number.isInteger(options.limit) ? options.limit : DEFAULT_FRAME_WINDOW_LIMIT;
   // Read the filter state at request time rather than capturing it, so a window
   // loaded after a checkbox change carries the new selection.
-  let result = await getJSON(app, frameWindowURL(sessionID, {
-    limit,
-    before: options.before,
-    after: options.after,
-    start: options.start,
-    filters: options.filters ?? app?._state?.frameFilters,
-    query: options.query ?? app?._state?.sessionSearch,
-  }));
+  let result;
+  try {
+    result = await getJSON(app, frameWindowURL(sessionID, {
+      limit,
+      before: options.before,
+      after: options.after,
+      start: options.start,
+      filters: options.filters ?? app?._state?.frameFilters,
+      query: options.query ?? app?._state?.sessionSearch,
+    }));
+  } catch (error) {
+    // Record why, then rethrow so existing callers keep their behaviour. The
+    // global status is not enough: the reload path below repaints after a
+    // failure without touching it, so the reason would be lost and the thread
+    // would claim the session is empty.
+    setFrameLoadError(app, sessionID, error?.message || String(error));
+    throw error;
+  }
+
+  setFrameLoadError(app, sessionID, null);
   let frames = result.data?.frames || [];
   let paging = frameWindowPaging(result.data, limit);
 
