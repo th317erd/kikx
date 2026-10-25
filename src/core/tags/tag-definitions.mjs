@@ -68,9 +68,10 @@ export const CORE_TAG_DEFINITIONS = [
     group: 'Agent roles',
     pluginID: 'core',
     agentAction: {
-      icon: 'ocr',
+      icon: 'eyeball',
       className: 'kikx-agent-list__ocr-bot',
       activeClass: 'is-ocr-bot',
+      rankClass: 'kikx-agent-list__ocr-bot--rank-',
       label: 'Set as OCR bot',
       activeLabel: 'OCR bot',
       onValue: 10,

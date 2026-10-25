@@ -26,7 +26,7 @@ const TOOL_ICONS = new Map([
   [ 'output-read', 'eyeball' ],
   [ 'write-file', 'quill' ],
   [ 'exec', 'gear' ],
-  [ 'exec-script', 'terminal' ],
+  [ 'exec-script', 'hash' ],
   [ 'ocr', 'eyeball' ],
   [ 'exec-grep', 'search' ],
   [ 'web-search', 'search' ],

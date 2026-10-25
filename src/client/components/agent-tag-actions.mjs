@@ -36,7 +36,62 @@ export function agentTagActionRank(agent, definition, ranks = {}) {
     return ranks.masterRankByID?.get(agent?.id) || 0;
   if (definition.agentAction?.legacyToggle === 'compaction')
     return ranks.compactionBotRankByID?.get(agent?.id) || 0;
-  return 0;
+  return ranks.tagRankByID?.[definition.name]?.get(agent?.id) || 0;
+}
+
+// Rank tag-only priority actions (OCR is the first one) by their numeric value.
+// This is what makes repeated clicks on different rows define a visible order.
+export function agentTagRankByID(agents = [], name) {
+  let ranked = (Array.isArray(agents) ? agents : [])
+    .map((agent) => ({ id: agent?.id, value: agentTagValue(agent, name) }))
+    .filter((entry) => entry.id && entry.value > 0)
+    .sort((a, b) => b.value - a.value || String(a.id).localeCompare(String(b.id)));
+  return new Map(ranked.map((entry, index) => [ entry.id, index + 1 ]));
+}
+
+// Compute the tag updates for a newest-click-wins priority list. Clicking an
+// inactive bot makes it #1 and shifts the rest down; clicking an active bot
+// clears it and shifts the rest up. `maxValue` (normally 10) bounds the list.
+export function priorityTagUpdates(agents = [], definition, clickedAgentID, options = {}) {
+  let maxValue = Number(definition?.agentAction?.onValue);
+  if (!Number.isFinite(maxValue) || maxValue <= 0)
+    maxValue = 10;
+  if (options.maxValue != null)
+    maxValue = Math.max(1, Math.trunc(Number(options.maxValue) || maxValue));
+
+  let ordered = (Array.isArray(agents) ? agents : [])
+    .map((agent) => ({ id: agent?.id, value: agentTagValue(agent, definition.name) }))
+    .filter((entry) => entry.id && entry.value > 0)
+    .sort((a, b) => b.value - a.value || String(a.id).localeCompare(String(b.id)))
+    .map((entry) => entry.id);
+
+  let wasActive = ordered.includes(clickedAgentID);
+  let next = ordered.filter((id) => id !== clickedAgentID);
+  if (!wasActive)
+    next.unshift(clickedAgentID);
+  next = next.slice(0, maxValue);
+
+  let affected = new Set([ ...ordered, clickedAgentID ]);
+  let updates = [];
+  for (let id of affected) {
+    let index = next.indexOf(id);
+    let value = index >= 0 ? maxValue - index : 0;
+    let current = agents.find((agent) => agent?.id === id);
+    if (current && agentTagValue(current, definition.name) === value)
+      continue;
+    updates.push({
+      target_type: 'agent',
+      target_id: id,
+      name: definition.name,
+      value,
+    });
+  }
+
+  return {
+    active: !wasActive,
+    rank: next.indexOf(clickedAgentID) + 1,
+    updates,
+  };
 }
 
 export function agentTagActionClassName(agent, definition, ranks = {}) {

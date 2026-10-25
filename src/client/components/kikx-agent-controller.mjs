@@ -11,7 +11,7 @@ import { buildAgentManagerBody, findAgentConfigSection } from './kikx-modals.mjs
 import { cssEscape } from './kikx-app-helpers.mjs';
 import { nonEmptyValues } from './agent-form-helpers.mjs';
 import { buildAgentTags } from '../state/agent-state-utils.mjs';
-import { agentTagActionActive } from './agent-tag-actions.mjs';
+import { agentTagActionActive, priorityTagUpdates } from './agent-tag-actions.mjs';
 import { readAgentGutsValues, validateAgentGuts } from './agent-config-form-registry.mjs';
 
 export function openAgentManager(app) {
@@ -174,27 +174,47 @@ export async function toggleAgentTagAction(app, agent, tagName) {
       reconcileCompactionBots(app, result.data.compactionBots);
     }
 
-    let tag = { target_type: 'agent', target_id: current.id, name: tagName, value: nextValue };
-    try {
-      let tagResult = await app._putJSON(
-        `/api/v1/tags/agent/${encodeURIComponent(current.id)}/${encodeURIComponent(tagName)}`,
-        { value: nextValue },
-      );
-      tag = tagResult?.data?.tag || tag;
-    } catch (error) {
-      // Older servers and test doubles may not expose the tag REST route yet.
-      // Legacy crown/compaction actions still work, so keep the icon usable.
-      if (!legacyToggle)
-        throw error;
+    if (!legacyToggle) {
+      let priority = priorityTagUpdates(getAgents(app._state), definition, current.id);
+      let tags = Array.isArray(latest.tags) ? latest.tags.slice() : [];
+      for (let update of priority.updates) {
+        let tag;
+        try {
+          let tagResult = await app._putJSON(
+            `/api/v1/tags/agent/${encodeURIComponent(update.target_id)}/${encodeURIComponent(tagName)}`,
+            { value: update.value },
+          );
+          tag = tagResult?.data?.tag || update;
+        } catch (error) {
+          // Older servers and test doubles may not expose the tag REST route.
+          tag = update;
+        }
+        tags = upsertLocalTag(tags, tag);
+      }
+      upsertAgent({ ...latest, tags }, app._state);
+      app._state.agentStatus = priority.active
+        ? `Set ${definition.agentAction.activeLabel || definition.label || definition.name} #${priority.rank}`
+        : `Cleared ${definition.agentAction.activeLabel || definition.label || definition.name}`;
+    } else {
+      let tag = { target_type: 'agent', target_id: current.id, name: tagName, value: nextValue };
+      try {
+        let tagResult = await app._putJSON(
+          `/api/v1/tags/agent/${encodeURIComponent(current.id)}/${encodeURIComponent(tagName)}`,
+          { value: nextValue },
+        );
+        tag = tagResult?.data?.tag || tag;
+      } catch (error) {
+        // Older servers and test doubles may not expose the tag REST route yet.
+        // Legacy crown/compaction actions still work, so keep the icon usable.
+      }
+      upsertAgent({
+        ...latest,
+        tags: upsertLocalTag(latest.tags, tag),
+      }, app._state);
+      app._state.agentStatus = active
+        ? `Cleared ${definition.agentAction.activeLabel || definition.label || definition.name}`
+        : `Set ${definition.agentAction.activeLabel || definition.label || definition.name}`;
     }
-    upsertAgent({
-      ...latest,
-      tags: upsertLocalTag(latest.tags, tag),
-    }, app._state);
-
-    app._state.agentStatus = active
-      ? `Cleared ${definition.agentAction.activeLabel || definition.label || definition.name}`
-      : `Set ${definition.agentAction.activeLabel || definition.label || definition.name}`;
     app._state.agentStatusKind = 'ready';
     if (!repaintAgentManagerBody(app))
       app._render();

@@ -138,9 +138,9 @@ test('exec-script uses a script header and keeps the entry in the body', () => {
     content: { toolName: 'exec-script', status: 'running', input: { entry: 'src/main.mjs' } },
   };
 
-  assert.deepEqual(compactFrameHeader(frame), { label: 'Script', icon: 'terminal' });
+  assert.deepEqual(compactFrameHeader(frame), { label: 'Script', icon: 'hash' });
   assert.equal(compactFrameBodyDescription(frame), 'Run script src/main.mjs');
-  assert.equal(compactFrameSummary(frame).icon, 'terminal');
+  assert.equal(compactFrameSummary(frame).icon, 'hash');
 
   let arbitrary = {
     id: 'script-2',

@@ -3288,6 +3288,24 @@ button.kikx-window__title:focus-visible {
   color: #c084fc;
   background: rgba(192, 132, 252, 0.10);
 }
+.kikx-agent-list__ocr-bot--rank-1 {
+  color: #e879f9;
+  background: rgba(232, 121, 249, 0.12);
+  opacity: 1;
+}
+
+.kikx-agent-list__ocr-bot--rank-2 {
+  color: #c084fc;
+  background: rgba(192, 132, 252, 0.09);
+  opacity: 0.84;
+}
+
+.kikx-agent-list__ocr-bot--rank-3 {
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.08);
+  opacity: 0.72;
+}
+
 
 .kikx-agent-list__ocr-bot.is-busy,
 .kikx-agent-list__tag-action.is-busy {

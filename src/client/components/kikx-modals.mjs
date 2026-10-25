@@ -17,6 +17,7 @@ import {
   agentTagActionRank,
   agentTagActionTitle,
   agentTagActions,
+  agentTagRankByID,
 } from './agent-tag-actions.mjs';
 import { findAgentConfigFormElement, resolveAgentConfigFormTag } from './agent-config-form-registry.mjs';
 import { buildAgentTagSection } from './agent-tag-form.mjs';
@@ -84,7 +85,11 @@ export function buildAgentManagerBody(app) {
   let masterRankByID = masterRankByAgentID(allAgents);
   let compactionBotRankByID = compactionBotRankByAgentID(allAgents);
   let actionDefinitions = agentTagActions(app._state.agentTagDefinitions);
-  let actionRanks = { masterRankByID, compactionBotRankByID };
+  let tagRankByID = Object.fromEntries(actionDefinitions.map((definition) => [
+    definition.name,
+    agentTagRankByID(allAgents, definition.name),
+  ]));
+  let actionRanks = { masterRankByID, compactionBotRankByID, tagRankByID };
 
   return [
     div.class('kikx-agent-filters')(
