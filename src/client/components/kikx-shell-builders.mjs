@@ -2,6 +2,7 @@
 
 import { elements, $ } from '../lib/aeor-ui.mjs';
 import { createIcon } from '../lib/icons.mjs';
+import { stateHasFilters } from '../lib/frame-filters.mjs';
 import { buildScrollLockFloatingButton, buildScrollLockToolbar } from './kikx-scroll-lock.mjs';
 import { activateComposerDraftSession } from './composer-drafts.mjs';
 import './kikx-composer-history.mjs';
@@ -452,15 +453,28 @@ export function buildSessionSearch(app) {
   input.type = 'search';
   input.className = 'kikx-session-search__input';
   input.name = 'session-search';
-  input.placeholder = 'Search sessions';
-  input.setAttribute('aria-label', 'Search sessions by title');
+  input.placeholder = 'Search';
+  input.setAttribute('aria-label', 'Search sessions and frames');
   input.value = app._state.sessionSearch || '';
   input.addEventListener('input', (event) => app._onSessionSearchInput(event.target.value));
   input.addEventListener('keydown', (event) => event.stopPropagation());
 
+  // Clearing is a filter control, not a searchbox affordance: one press has to
+  // drop the text query *and* every row in the frame-filter popup, so a person
+  // never has to hunt through a menu to get back to "show me everything".
+  let clear = document.createElement('button');
+  clear.type = 'button';
+  clear.className = 'kikx-session-search__clear';
+  clear.title = 'Clear all filters';
+  clear.setAttribute('aria-label', 'Clear all filters');
+  clear.setAttribute('data-search-action', 'clear-filters');
+  clear.appendChild(createIcon('circle-x'));
+  clear.addEventListener('click', () => app._clearFrameFilters?.());
+  clear.hidden = !stateHasFilters(app._state);
+
   let container = document.createElement('div');
   container.className = 'kikx-session-search';
-  container.append(input);
+  container.append(input, clear);
   return container;
 }
 

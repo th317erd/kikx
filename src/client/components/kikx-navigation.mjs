@@ -17,6 +17,8 @@ import {
 import { stackFromSearchParams, stackToURL } from '../state/navigation-stack.mjs';
 import {
   DELETED_ROW,
+  allFilters,
+  stateHasFilters,
   frameFiltersSignature,
   normalizeFrameFilters,
   toggleFilter,
@@ -102,10 +104,16 @@ export function toggleShowDeleted(app) {
 // example Ctrl+Click on an already-isolated row).
 export function setFrameFilters(app, filters) {
   let next = normalizeFrameFilters(filters);
+  // The signature must include the query, and must be compared against the
+  // last *applied* signature rather than against itself. Comparing
+  // `(next, query)` with `(current, query)` used the same query on both sides,
+  // so a query change alone was invisible here and the thread never refetched.
   let query = app._state.sessionSearch || '';
-  if (frameFiltersSignature(next, query) === frameFiltersSignature(app._state.frameFilters, query))
+  let signature = frameFiltersSignature(next, query);
+  if (app._frameLoadSignature === signature)
     return;
 
+  app._frameLoadSignature = signature;
   app._state.frameFilters = next;
 
   // The Deleted row also governs the session grid's soft-deleted bucket. These
@@ -119,9 +127,17 @@ export function setFrameFilters(app, filters) {
   if (showDeleted && !wasShowingDeleted)
     app._loadDeletedSessions?.();
 
-  // Reload the selected session's window under the new selection, then repaint.
-  // The frame cache must be dropped first: it holds frames chosen by the old
-  // filter, and merging a filtered window into them would mix two selections.
+  reloadVisibleWindow(app);
+}
+
+// Reload the selected session's window under the current selection, then
+// repaint. The frame cache must be dropped first: it holds frames chosen by the
+// old filter, and merging a filtered window into them would mix two selections.
+//
+// Shared by the popup's rows and the header search box, because both are the
+// same concern: the server does the filtering, so any change to what is visible
+// has to come back over the wire.
+function reloadVisibleWindow(app) {
   let sessionID = app._state.selectedSessionID;
   if (sessionID && typeof app._loadFrames === 'function') {
     app._state.framesBySessionID = { ...app._state.framesBySessionID, [sessionID]: [] };
@@ -135,12 +151,56 @@ export function setFrameFilters(app, filters) {
   app._render();
 }
 
-// Update the title filter. Repaint only the grid (and the eye) rather than the
-// whole shell so the search field keeps focus while the user types.
+// The clear button is built into the header, but the grid-only repaint path
+// below never rebuilds the header, so its visibility has to be nudged by hand
+// or it would keep advertising a stale state while the user types.
+function paintSearchClear(app) {
+  let clear = app.querySelector?.('.kikx-session-search__clear');
+  if (clear)
+    clear.hidden = !stateHasFilters(app._state);
+}
+
+// Clear every filter at once: the header search text and every popup row,
+// including the Deleted reveal. This is the single "show me everything"
+// gesture, so it is deliberately blunt — it takes no arguments and leaves
+// nothing switched off.
+export function clearFrameFilters(app) {
+  let next = allFilters(normalizeFrameFilters(app._state.frameFilters), true);
+  next[DELETED_ROW.key] = false;
+  app._state.sessionSearch = '';
+  setFrameFilters(app, next);
+}
+
+// The header search is one box with two meanings, decided by where the user is:
+//
+//   * On the grid there is no thread window, so it stays the cheap live title
+//     filter and repaints only the grid -- typing must not rebuild the shell or
+//     the field loses its caret.
+//   * Inside a session there is no grid to filter, so it becomes a frame query.
+//     That has to go to the server: the client holds one bounded page, so a
+//     local predicate would report "no matches" while matches sat unread.
+//     Before this, typing inside a session did nothing at all.
+export function applyWindowQuery(app, value) {
+  let query = typeof value === 'string' ? value : '';
+  app._state.sessionSearch = query;
+
+  if (!app._state.selectedSessionID) {
+    if (!app._syncSessionShell())
+      app._requestRender();
+    paintSearchClear(app);
+    return;
+  }
+
+  let signature = frameFiltersSignature(normalizeFrameFilters(app._state.frameFilters), query);
+  if (app._frameLoadSignature === signature)
+    return;
+
+  app._frameLoadSignature = signature;
+  reloadVisibleWindow(app);
+}
+
 export function onSessionSearchInput(app, value) {
-  app._state.sessionSearch = typeof value === 'string' ? value : '';
-  if (!app._syncSessionShell())
-    app._requestRender();
+  applyWindowQuery(app, value);
 }
 
 // A pure toggle: on shows only sub-session cards, off shows all messages.

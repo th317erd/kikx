@@ -171,6 +171,44 @@ test('the click does not also toggle the checkbox natively', () => {
   assert.equal(event.defaultPrevented, true, 'the browser default is suppressed so state is the only source of truth');
 });
 
+// The checkbox is not the click target a person actually hits. The row is a
+// <label>, so its text and its badge are the biggest targets on screen - and
+// they are precisely the ones that used to route through label activation,
+// which forwards a synthetic click to the input with the modifier flags gone.
+// These three lock the row-level listener that keeps Ctrl and Shift intact.
+test('Ctrl+Click on the row text focuses that row', () => {
+  let app = makeApp();
+  let popup = mount(app);
+  click(popup.querySelector('[data-filter-key="question"] .kikx-frame-filter__label'), { ctrlKey: true });
+
+  let filters = app._state.frameFilters;
+  assert.equal(filters.question, true);
+  assert.equal(filters.user, false, 'the other rows are forced off');
+  assert.equal(filters.tools, false);
+});
+
+test('Shift+Click on the row badge turns everything on', () => {
+  // Counts are required for a badge to exist at all: a row without a server
+  // count renders no number, which is why this fixture supplies them.
+  let app = makeApp([], { user: 1, agent: 1, question: 1, session: 0, tools: 1, commands: 1, compaction: 0, deleted: null });
+  let popup = mount(app);
+
+  click(popup.querySelector('[data-filter-key="user"] .kikx-frame-filter__label'), { ctrlKey: true });
+  assert.equal(everyFilterOn(app._state.frameFilters), false);
+
+  click(popup.querySelector('[data-filter-key="tools"] .kikx-frame-filter__count'), { shiftKey: true });
+  assert.equal(everyFilterOn(app._state.frameFilters), true);
+});
+
+test('a plain click on the row text flips only that row', () => {
+  let app = makeApp();
+  let popup = mount(app);
+  click(popup.querySelector('[data-filter-key="agent"] .kikx-frame-filter__label'));
+
+  assert.equal(app._state.frameFilters.agent, false);
+  assert.equal(app._state.frameFilters.user, true);
+});
+
 test('the pinned row toggles everything off, then back on', () => {
   let app = makeApp();
   let popup = mount(app);

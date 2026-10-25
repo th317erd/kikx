@@ -135,7 +135,14 @@ export class KikxFrameFilterPopup extends HTMLElement {
     let pinned = document.createElement('div');
     pinned.className = 'kikx-frame-filter__pinned';
     this._master = rowControl({ label: 'All frames', key: 'all', kind: 'master' });
-    this._master.input.addEventListener('click', (event) => {
+    // Click semantics live on the ROW, not on the checkbox. The row is a
+    // <label>, so a click on its text or badge activates the checkbox through
+    // the label. That activation is a synthetic click on the input with the
+    // modifier flags dropped, so Ctrl+Click and Shift+Click on the row arrived
+    // indistinguishable from a plain click and did nothing. Listening on the
+    // label keeps the real event, with its modifiers, and preventDefault stops
+    // the label from forwarding a second, modifier-free click to the input.
+    this._master.row.addEventListener('click', (event) => {
       event.preventDefault();
       this._apply(toggleAllFilters(this._filters));
     });
@@ -155,7 +162,7 @@ export class KikxFrameFilterPopup extends HTMLElement {
         key: entry.key,
         count: counts ? counts[entry.key] : null,
       });
-      control.input.addEventListener('click', (event) => {
+      control.row.addEventListener('click', (event) => {
         event.preventDefault();
         this._handleRowClick(entry.key, event);
       });
@@ -175,7 +182,7 @@ export class KikxFrameFilterPopup extends HTMLElement {
       key: DELETED_ROW.key,
       count: hasFrames && counts ? counts[DELETED_ROW.key] : null,
     });
-    gateControl.input.addEventListener('click', (event) => {
+    gateControl.row.addEventListener('click', (event) => {
       event.preventDefault();
       this._handleRowClick(DELETED_ROW.key, event);
     });

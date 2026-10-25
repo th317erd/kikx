@@ -2679,6 +2679,7 @@ kikx-typing-indicator {
 }
 
 .kikx-session-search__input {
+  flex: 1 1 auto;
   width: 100%;
   padding: 6px 34px 6px 12px;
   border: 1px solid #2a3138;
@@ -2698,8 +2699,9 @@ kikx-typing-indicator {
   outline: none;
 }
 
-/* The floating eye toggle sits inside the field's right edge. */
-.kikx-session-search__eye {
+/* Clear-all sits at the field's right edge. It is a button, not decoration:
+   hidden while nothing is filtered, and pressing it also resets the popup. */
+.kikx-session-search__clear {
   position: absolute;
   right: 4px;
   display: inline-flex;
@@ -2711,23 +2713,20 @@ kikx-typing-indicator {
   border: 1px solid transparent;
   border-radius: 999px;
   background: transparent;
+  color: #8b96a3;
   cursor: pointer;
-  font-size: calc(14px * 1.25);
   line-height: 1;
-  filter: grayscale(1);
-  opacity: 0.7;
 }
 
-.kikx-session-search__eye:hover,
-.kikx-session-search__eye:focus-visible {
+.kikx-session-search__clear:hover,
+.kikx-session-search__clear:focus-visible {
   border-color: #3c444d;
+  color: #e8edf2;
   outline: none;
 }
 
-/* Eye on: "show deleted sessions" is active. */
-.kikx-session-search__eye.is-on {
-  filter: none;
-  opacity: 1;
+.kikx-session-search__clear[hidden] {
+  display: none;
 }
 
 /* The editable session name, relocated off the header center. */

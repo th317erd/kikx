@@ -121,8 +121,10 @@ import {
 import { cancelFrameListScrollAnimation } from './kikx-frame-scroll-lock.mjs';
 import {
   applySessionDeepLink,
+  applyWindowQuery,
   beginSessionNameEdit,
   cancelSessionNameEdit,
+  clearFrameFilters,
   clearHeroNames,
   commitSessionName,
   expandCurrent,
@@ -244,6 +246,8 @@ export class KikxApp extends HTMLElement {
     this._beginSessionNameEdit = (sessionID, currentTitle) => beginSessionNameEdit(this, sessionID, currentTitle);
     this._onSessionNameKeydown = (event, sessionID) => onSessionNameKeydown(this, event, sessionID);
     this._onSessionSearchInput = (value) => onSessionSearchInput(this, value);
+    this._applyWindowQuery = (value) => applyWindowQuery(this, value);
+    this._clearFrameFilters = () => clearFrameFilters(this);
     this._cancelSessionNameEdit = () => cancelSessionNameEdit(this);
     this._commitSessionName = async (sessionID) => commitSessionName(this, sessionID);
     this._buildRunnerShell = () => buildRunnerShell(this);

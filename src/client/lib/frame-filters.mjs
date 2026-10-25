@@ -117,6 +117,21 @@ export function everyFilterOn(filters) {
   return CATEGORY_KEYS.every((key) => normal[key] === true);
 }
 
+// True when anything at all is narrowing the shell: the search text, a
+// category the popup switched off, or the Deleted reveal. The header's clear
+// button is only meaningful when this is true, so it stays out of the way
+// otherwise instead of sitting there as a dead control.
+export function stateHasFilters(state = {}) {
+  if (normalizeFrameQuery(state?.sessionSearch) !== '')
+    return true;
+  if (state?.showDeletedSessions === true)
+    return true;
+  if (state?.frameFilters?.[DELETED_ROW.key] === true)
+    return true;
+
+  return !everyFilterOn(state?.frameFilters);
+}
+
 export function noFilterOn(filters) {
   let normal = normalizeWindowFilters(filters);
   return CATEGORY_KEYS.every((key) => normal[key] === false);
