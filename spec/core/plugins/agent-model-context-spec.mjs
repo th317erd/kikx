@@ -181,7 +181,10 @@ test('Brief A includes the coordinator preamble only for the coordinator with 3+
   };
 
   // 3 parties counting the user (D3) and the assigned coordinator.
-  assert.match(buildStartBrief(multiparty).text, /COORDINATOR PREAMBLE/);
+  let coordinatorBrief = buildStartBrief(multiparty).text;
+  assert.match(coordinatorBrief, /COORDINATOR PREAMBLE/);
+  assert.match(coordinatorBrief, /As the coordinator you should minimize the direct work you accomplish\./);
+  assert.match(coordinatorBrief, /spin up teams, plan, monitor, coordinate, and delegate to other bots\/teams\./);
   // A non-coordinator never gets it.
   assert.doesNotMatch(buildStartBrief({ ...multiparty, isCoordinator: false }).text, /COORDINATOR PREAMBLE/);
   // Two parties (1 user + 1 agent) suppress it entirely.
@@ -217,12 +220,15 @@ test('Brief B carries the coordinator delegation nudge only for coordinators', (
   };
 
   let coordinator = buildMessageBrief({ ...base, isCoordinator: true }).text;
+  assert.match(coordinator, /Minimize direct work; spin up teams, plan, monitor, coordinate,/);
+  assert.match(coordinator, /and delegate to other bots\/teams\./);
   assert.match(coordinator, /Is this a big new ask from the user\?/);
   assert.match(coordinator, /new child session/);
   assert.match(coordinator, /proper character profiles/);
   assert.match(coordinator, /invite the right bots/);
 
   let worker = buildMessageBrief({ ...base, isCoordinator: false }).text;
+  assert.doesNotMatch(worker, /Minimize direct work/);
   assert.doesNotMatch(worker, /Is this a big new ask from the user\?/);
   assert.doesNotMatch(worker, /new child session/);
 });

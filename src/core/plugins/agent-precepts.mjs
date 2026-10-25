@@ -147,15 +147,18 @@ export const COORDINATOR_PREAMBLE_LINES = [
   'both route and answer. Turn-taking: a short "you"/"your" follow-up targets the last',
   'speaker unless the user redirects or clearly focuses another actor. Route+silence',
   'is the safe default.',
+  'As the coordinator you should minimize the direct work you accomplish. Instead you',
+  'should spin up teams, plan, monitor, coordinate, and delegate to other bots/teams.',
 ];
 
 // Coordinator-only decision nudge, injected into Brief B every turn. It is
 // deliberately advisory: child sessions isolate broad work; invitations keep
 // collaborators side-by-side in the current session.
 export const COORDINATOR_DELEGATION_NUDGE_LINES = [
-  'Coordinator check: Is this a big new ask from the user? If so, consider starting',
-  'a new child session and building a team with the proper character profiles to',
-  'tackle the problem. Or, if side-by-side work fits better, invite the right bots',
+  'Coordinator check: Minimize direct work; spin up teams, plan, monitor, coordinate,',
+  'and delegate to other bots/teams. Is this a big new ask from the user? If so,',
+  'consider starting a new child session and building a team with the proper character profiles',
+  'to tackle the problem. Or, if side-by-side work fits better, invite the right bots',
   'into this session.',
 ];
 
