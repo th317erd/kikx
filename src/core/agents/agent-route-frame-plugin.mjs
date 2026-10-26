@@ -18,6 +18,7 @@ import { totalTokensUsed } from './agent-route/usage.mjs';
 import { normalizeContinuation } from './agent-route/continuation.mjs';
 import { AgentRouteFramePluginBase } from './agent-route/agent-route-frame-plugin-base.mjs';
 import { runProviderWithRetry } from './provider-retry.mjs';
+import { framePriority } from '../../shared/frame-priority.mjs';
 
 export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
   static pluginID = 'internal:agent-router';
@@ -175,7 +176,7 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
     };
 
     if (typeof frameRouter?.runSerial === 'function')
-      frameRouter.runSerial(sessionID, runPinned);
+      frameRouter.runSerial(sessionID, runPinned, { priority: framePriority(frame) });
     else if (typeof frameRouter?.runBackground === 'function')
       frameRouter.runBackground(runPinned);
     else

@@ -603,8 +603,8 @@ export class FrameRuntime extends EventEmitter {
         sessionID: session.id,
         // Persist-then-route: the router is driven only after the store confirms
         // the committed frames are durable, so no turn acts on unpersisted state.
-        onCommitted: ({ commit }) => {
-          this.frameRouter?.enqueueCommit?.(frameEngine, commit, session, routerOptions);
+        onCommitted: ({ commit, frames }) => {
+          this.frameRouter?.enqueueCommit?.(frameEngine, commit, session, routerOptions, frames);
         },
       }),
     ];

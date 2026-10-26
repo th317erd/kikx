@@ -7,6 +7,7 @@ import { FrameEngine } from '../../src/core/frames/index.mjs';
 import { CommandRegistry } from '../../src/core/commands/index.mjs';
 import { BaseFramePlugin, FrameRouter, SelectorCompiler } from '../../src/core/routing/index.mjs';
 import { SlashCommandFramePlugin } from '../../src/core/commands/index.mjs';
+import { FRAME_PRIORITY } from '../../src/shared/frame-priority.mjs';
 
 test('SelectorCompiler matches PascalCase frame types and nested properties', () => {
   let matcher = SelectorCompiler.compile('Type:ToolCall[content.toolName=shell:execute]');
@@ -356,3 +357,72 @@ async function didResolve(promise) {
     tick().then(() => false),
   ]);
 }
+
+test('FrameRouter delivers conversation frames before queued command frames', async () => {
+  let events = [];
+  let router = new FrameRouter({ logger: quietLogger() });
+  let frames = new FrameEngine();
+  let release;
+  let blocker = new Promise((resolve) => { release = resolve; });
+
+  class PriorityPlugin extends BaseFramePlugin {
+    async process(next) {
+      events.push(`${this.context.newFrame.type}:${this.context.newFrame.id}`);
+      if (this.context.newFrame.id === 'command-1')
+        await blocker;
+      await next(this.context);
+    }
+  }
+
+  router.registerSelector('Type:*', PriorityPlugin, 'priority');
+  router.connectTo(frames);
+
+  frames.merge([{ id: 'command-1', type: 'ShellToolFrame', hidden: false }]);
+  await tick();
+  frames.merge([{ id: 'command-2', type: 'ShellToolFrame', hidden: false }]);
+  frames.merge([{ id: 'user-1', type: 'UserMessage', authorType: 'user', hidden: false }]);
+  frames.merge([{ id: 'agent-1', type: 'AgentMessage', hidden: false }]);
+  frames.merge([{ id: 'command-3', type: 'ShellToolFrame', hidden: false }]);
+
+  release();
+  await router.flush();
+
+  assert.deepEqual(events, [
+    'ShellToolFrame:command-1',
+    'UserMessage:user-1',
+    'AgentMessage:agent-1',
+    'ShellToolFrame:command-2',
+    'ShellToolFrame:command-3',
+  ]);
+});
+
+
+test('session turns prioritize a queued conversation message over command wakes', async () => {
+  let events = [];
+  let router = new FrameRouter({ logger: quietLogger() });
+  let release;
+  let blocker = new Promise((resolve) => { release = resolve; });
+
+  let first = router.runSerial('s1', async () => {
+    events.push('command-1');
+    await blocker;
+  }, { priority: FRAME_PRIORITY.command });
+  await tick();
+
+  let command2 = router.runSerial('s1', async () => {
+    events.push('command-2');
+  }, { priority: FRAME_PRIORITY.command });
+  let message = router.runSerial('s1', async () => {
+    events.push('message');
+  }, { priority: FRAME_PRIORITY.message });
+
+  let flushed = false;
+  let flush = router.flush().then(() => { flushed = true; });
+  await tick();
+  assert.equal(flushed, false, 'flush must wait for queued session turns too');
+
+  release();
+  await Promise.all([ first, command2, message, flush ]);
+  assert.deepEqual(events, [ 'command-1', 'message', 'command-2' ]);
+  assert.equal(flushed, true);
+});

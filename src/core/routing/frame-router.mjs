@@ -1,5 +1,6 @@
 'use strict';
 
+import { FRAME_PRIORITY, framePriority, insertByFramePriority } from '../../shared/frame-priority.mjs';
 import { SelectorCompiler } from './selector-compiler.mjs';
 
 export class FrameRouter {
@@ -13,7 +14,8 @@ export class FrameRouter {
     // Per-session serial chains for agent runs. Agent (LLM) work is kept off the
     // global commit queue so one slow agent does not block other sessions, while
     // still running one-at-a-time within a session (coordinator first, then
-    // recipients).
+    // recipients). Each chain holds a priority queue, so a conversation message
+    // queued behind a command wake runs first once the current turn yields.
     this._sessionChains = new Map();
   }
 
@@ -35,11 +37,11 @@ export class FrameRouter {
   }
 
   connectTo(frameEngine, session = null, options = {}) {
-    let handler = ({ commit }) => {
+    let handler = ({ commit, frames }) => {
       if (commit.silent)
         return;
 
-      this.enqueue(frameEngine, commit, session, options);
+      this.enqueue(frameEngine, commit, session, options, frames);
     };
 
     frameEngine.on('commit', handler);
@@ -50,15 +52,30 @@ export class FrameRouter {
   // persist-then-route entry point: the frame store calls it after the commit's
   // write resolves, so the router (and every agent turn it drives) only ever acts
   // on state that a reboot could reconstruct.
-  enqueueCommit(frameEngine, commit, session = null, options = {}) {
+  enqueueCommit(frameEngine, commit, session = null, options = {}, frames = null) {
     if (!commit || commit.silent)
       return;
 
-    this.enqueue(frameEngine, commit, session, options);
+    this.enqueue(frameEngine, commit, session, options, frames);
   }
 
-  enqueue(frameEngine, commit, session = null, options = {}) {
-    this._queue.push({ frameEngine, commit, session, options });
+  enqueue(frameEngine, commit, session = null, options = {}, frames = null) {
+    let priority = commitPriority(frameEngine, commit, frames);
+    let frameIDs = commitFrameIDs(commit, frames);
+    let minIndex = 0;
+    for (let index = 0; index < this._queue.length; index++) {
+      if (frameIDsOverlap(this._queue[index].frameIDs, frameIDs))
+        minIndex = index + 1;
+    }
+
+    insertByFramePriority(this._queue, {
+      frameEngine,
+      commit,
+      session,
+      options,
+      priority,
+      frameIDs,
+    }, { minIndex });
 
     if (!this._processing)
       this._processQueue();
@@ -76,27 +93,51 @@ export class FrameRouter {
     return promise;
   }
 
-  // Run a task on the session's serial chain: agent work for one session runs
-  // one-at-a-time and in submission order, without blocking other sessions or
-  // the global commit queue.
-  runSerial(sessionID, task) {
+  // Run a task on the session's serial chain. Tasks are ordered by frame
+  // priority, then FIFO: a queued user/agent message runs before a queued
+  // command wake. The currently running turn is never preempted; at most one
+  // command has to finish first.
+  runSerial(sessionID, task, options = {}) {
     let key = sessionID || '';
-    let previous = this._sessionChains.get(key) || Promise.resolve();
-    let next = previous
-      .catch(() => {})
-      .then(() => task());
+    let state = this._sessionChains.get(key);
+    if (!state) {
+      state = { pumping: false, queue: [] };
+      this._sessionChains.set(key, state);
+    }
 
-    this._sessionChains.set(key, next);
-    // `.finally()` returns a derived promise that rejects when `next` rejects.
-    // Nothing observes it, so a failing agent turn would surface as an
-    // unhandled rejection (and, on modern Node, tear down the process). Observe
-    // it explicitly; the real rejection is reported through `runBackground`.
-    next.finally(() => {
-      if (this._sessionChains.get(key) === next)
-        this._sessionChains.delete(key);
-    }).catch(() => {});
+    let promise = new Promise((resolve, reject) => {
+      insertByFramePriority(state.queue, {
+        task,
+        resolve,
+        reject,
+        priority: Number.isFinite(options.priority) ? options.priority : FRAME_PRIORITY.unknown,
+      });
+    });
+    // The caller (agent routing) does not await each turn; observe rejection so
+    // a failed turn is reported by runBackground without becoming unhandled.
+    promise.catch(() => {});
+    this._pumpSessionChain(key, state);
+    return promise;
+  }
 
-    return this.runBackground(next);
+  async _pumpSessionChain(key, state) {
+    if (state.pumping)
+      return;
+
+    state.pumping = true;
+    while (state.queue.length > 0) {
+      let item = state.queue.shift();
+      try {
+        item.resolve(await this.runBackground(item.task()));
+      } catch (error) {
+        item.reject(error);
+      }
+      this._resolveFlushWaiters();
+    }
+    state.pumping = false;
+    if (this._sessionChains.get(key) === state)
+      this._sessionChains.delete(key);
+    this._resolveFlushWaiters();
   }
 
   async flush(options = {}) {
@@ -244,7 +285,15 @@ export class FrameRouter {
   _isFlushReady(waitForBackground) {
     return !this._processing
       && this._queue.length === 0
-      && (!waitForBackground || this._backgroundTasks.size === 0);
+      && (!waitForBackground || (this._backgroundTasks.size === 0 && !this._hasQueuedSessionTasks()));
+  }
+
+  _hasQueuedSessionTasks() {
+    for (let state of this._sessionChains.values()) {
+      if (state.queue.length > 0)
+        return true;
+    }
+    return false;
   }
 }
 
@@ -257,6 +306,43 @@ export class BaseFramePlugin {
   async process(next) {
     await next(this.context);
   }
+}
+
+function commitPriority(frameEngine, commit, frames = null) {
+  let list = Array.isArray(frames) && frames.length > 0 ? frames : null;
+  if (list) {
+    let priority = FRAME_PRIORITY.unknown;
+    for (let frame of list)
+      priority = Math.min(priority, framePriority(frame));
+    return priority;
+  }
+
+  let priority = FRAME_PRIORITY.unknown;
+  for (let change of commit?.changes || []) {
+    try {
+      let history = frameEngine.getVersionHistory(change.frameID);
+      let { frame } = resolveCommitFrame(history, commit);
+      if (frame)
+        priority = Math.min(priority, framePriority(frame));
+    } catch (_error) {}
+  }
+  return priority;
+}
+
+function commitFrameIDs(commit, frames = null) {
+  if (Array.isArray(frames) && frames.length > 0)
+    return new Set(frames.map((frame) => frame?.id).filter(Boolean));
+  return new Set((commit?.changes || []).map((change) => change?.frameID).filter(Boolean));
+}
+
+function frameIDsOverlap(left, right) {
+  if (!left?.size || !right?.size)
+    return false;
+  for (let id of right) {
+    if (left.has(id))
+      return true;
+  }
+  return false;
 }
 
 function resolveCommitFrame(history, commit) {
