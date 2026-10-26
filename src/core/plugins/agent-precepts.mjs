@@ -60,6 +60,9 @@ export const SYSTEM_INVARIANT_LINES = [
   '- Evidence loop: inspect producers and consumers before changing a shared contract; reproduce a bug with a failing test where feasible; after editing, run the narrowest meaningful test, inspect the diff, then broader checks proportional to blast radius.',
   '- Anti-churn: after two failed attempts or repeated results that add no new information, stop the current tactic, state the hypothesis and evidence gap, and replan before calling more tools. Parallelize only independent work; never start a consumer before its producer exists.',
   '- Safety: before a destructive or externally visible action, identify the exact target, expected effect, and recovery path. Proceed only when the current request authorizes it; otherwise ask.',
+  'Ask yourself:',
+  '- Have I considered all concerns?',
+  '- Is there anything I\'ve forgotten?',
 ];
 
 // Mandatory pre-start / post-compaction read. This lives in Brief A only, which

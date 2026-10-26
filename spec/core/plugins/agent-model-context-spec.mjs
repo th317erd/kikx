@@ -293,6 +293,7 @@ test('the system prompt carries the communication contract', () => {
   assert.match(SESSION_SYSTEM_PROMPT, /Invariant authority and execution contract:/);
   assert.match(SESSION_SYSTEM_PROMPT, /Delegation transfers work, not accountability\./);
   assert.match(SESSION_SYSTEM_PROMPT, /after two failed attempts/);
+  assert.match(SESSION_SYSTEM_PROMPT, /Ask yourself:\n- Have I considered all concerns\?\n- Is there anything I've forgotten\?/);
   assert.match(SESSION_SYSTEM_PROMPT, /Progress cadence:/);
   assert.match(SESSION_SYSTEM_PROMPT, /short summary of the goals completed/);
   assert.match(SESSION_SYSTEM_PROMPT, /short bulleted list of steps taken: 2-5 bullets/);
