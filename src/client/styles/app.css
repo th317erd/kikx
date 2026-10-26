@@ -690,14 +690,14 @@ kikx-app {
 .kikx-user-message__prompt {
   min-width: 0;
   padding-top: 6px;
-  border-top: 1px solid rgba(125, 211, 208, 0.16);
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
 }
 
 .kikx-user-message__prompt-summary {
   width: fit-content;
   padding: 2px 4px;
   border-radius: 4px;
-  color: #7f9398;
+  color: #8b9aa5;
   cursor: pointer;
   font-size: calc(11px * 1.25);
   line-height: 1.4;
@@ -708,7 +708,7 @@ kikx-app {
 .kikx-user-message__prompt-summary:hover,
 .kikx-user-message__prompt-summary:focus-visible,
 .kikx-user-message__prompt[open] .kikx-user-message__prompt-summary {
-  color: #a9d9d6;
+  color: #c2d0da;
   opacity: 1;
 }
 
@@ -744,7 +744,7 @@ kikx-app {
 }
 
 .kikx-user-message__prompt-message--user {
-  border-left-color: #3d7775;
+  border-left-color: #587483;
 }
 
 .kikx-user-message__prompt-message--assistant {
@@ -774,16 +774,16 @@ kikx-app {
 .kikx-user-message__prompt-content--user-fallback {
   padding: 6px 8px;
   border-radius: 4px;
-  background: rgba(125, 211, 208, 0.08);
-  box-shadow: inset 2px 0 #7dd3d0;
+  background: rgba(148, 163, 184, 0.08);
+  box-shadow: inset 2px 0 #7d8f9c;
 }
 
 .kikx-user-message__prompt-user-text {
   padding: 0 0.15em;
   border-radius: 3px;
-  background: rgba(125, 211, 208, 0.18);
-  box-shadow: 0 0 0 1px rgba(125, 211, 208, 0.32);
-  color: #c8fffb;
+  background: rgba(148, 163, 184, 0.16);
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.28);
+  color: #e3ebf1;
 }
 
 .kikx-user-message__prompt-empty {
@@ -862,6 +862,10 @@ kikx-app {
   margin-block: 1em;
 }
 
+/* Fundamental frame shell: outer radius, border width, header hatch, type/status
+   surfaces and body text colour live in frame-colors.css and apply to every
+   full message frame. Rules below are placement or content-specific only. */
+
 .kikx-frame {
   position: relative;
   display: grid;
@@ -904,9 +908,9 @@ kikx-app {
 }
 
 .kikx-frame--UserMessage {
+  /* Placement is the only user-specific shell concern. Everything visual is
+     inherited from the shared frame shell and its status/type tokens. */
   justify-self: end;
-  border-color: #294c51;
-  background: #101d20;
 }
 
 .kikx-frame--BeginTyping {
@@ -918,15 +922,6 @@ kikx-app {
 .kikx-frame--AgentThinking {
   border-color: #3b434b;
   background: #15191d;
-}
-
-.kikx-frame--AgentMessage {
-  border-color: #3c3858;
-  background: #181722;
-}
-
-.kikx-frame--AgentMessageDelta {
-  border-color: #46525d;
 }
 
 .kikx-frame--animating {
@@ -962,15 +957,6 @@ kikx-app {
 
 .kikx-frame__meta-main strong {
   color: #f2d488;
-}
-
-.kikx-frame--UserMessage .kikx-frame__meta-main strong {
-  color: #7dd3d0;
-}
-
-.kikx-frame--AgentMessage .kikx-frame__meta-main strong,
-.kikx-frame--AgentMessageDelta .kikx-frame__meta-main strong {
-  color: #c7b7ff;
 }
 
 .kikx-frame--Question .kikx-frame__meta-main strong {
@@ -3996,27 +3982,27 @@ kikx-frame-filter-popup:not(.is-all-on) .kikx-frame-filter__button {
   outline: none;
 }
 
-/* The answer half of an agent question wake. The enclosing UserMessage is
-   already the operator's mint bubble; this inset puts the actual decision in a
-   labelled, high-contrast panel so it cannot be mistaken for the agent's Q. */
+/* The answer half of an agent question wake. The enclosing frame already marks
+   the operator's turn; this inset puts the actual decision in a labelled panel
+   so it cannot be mistaken for the agent's Q. */
 .kikx-user-message__context {
-  color: #a9cfcb;
+  color: #aab7c1;
   opacity: 0.82;
 }
 
 .kikx-user-message__answer {
   margin-top: 2px;
   padding: 10px 12px;
-  border: 0;
+  border: 1px solid rgba(148, 163, 184, 0.14);
   border-radius: 8px;
-  background: rgba(94, 234, 212, 0.10);
-  color: #f1fffd;
+  background: rgba(148, 163, 184, 0.06);
+  color: #edf2f7;
 }
 
 .kikx-user-message__answer::before {
   display: block;
   margin-bottom: 4px;
-  color: #5eead4;
+  color: #c2d0da;
   content: 'Your response';
   font-size: calc(10px * 1.25);
   font-weight: 800;
@@ -4030,6 +4016,6 @@ kikx-frame-filter-popup:not(.is-all-on) .kikx-frame-filter__button {
 }
 
 .kikx-user-message__after {
-  color: #9fc7c4;
+  color: #aab7c1;
   opacity: 0.78;
 }
