@@ -87,6 +87,16 @@ test('shell header focus skips mundane echo/cd/setup prefixes', () => {
   });
 });
 
+test('shell focus skips privilege wrappers and their option arguments', () => {
+  assert.equal(shellCommandFocusWord('sudo apt install ripgrep'), 'apt');
+  assert.equal(shellCommandFocusWord('sudo -u root apt install ripgrep'), 'apt');
+  assert.equal(shellCommandFocusWord('sudo -E apt install ripgrep'), 'apt');
+  assert.equal(shellCommandFocusWord('sudo --user=root apt install ripgrep'), 'apt');
+  assert.equal(shellCommandFocusWord('sudo -n -u root systemctl restart kikx'), 'systemctl restart');
+  assert.equal(shellCommandFocusWord('echo heading && sudo -u root ls /tmp'), 'ls');
+  assert.equal(shellCommandFocusWord('doas -u root rc-service kikx restart'), 'rc-service');
+});
+
 test('shell focus keeps a useful subcommand for known commands', () => {
   assert.equal(shellCommandFocusWord('git diff --stat'), 'git diff');
   assert.equal(shellCommandFocusWord('git status --short'), 'git status');

@@ -235,6 +235,16 @@ const SHELL_SUBCOMMAND_COMMANDS = new Set([
   'yarn',
 ]);
 const SHELL_RUN_COMMANDS = new Set([ 'npm', 'pnpm', 'yarn' ]);
+const SHELL_PRIVILEGE_PREFIXES = new Set([ 'sudo', 'doas', 'pkexec' ]);
+const SHELL_PRIVILEGE_OPTIONS_WITH_ARGUMENT = new Map([
+  [ 'sudo', new Set([
+    '-u', '-g', '-p', '-C', '-T', '-h', '-r', '-t', '-U', '-D', '-R',
+    '--user', '--group', '--prompt', '--close-from', '--host', '--role',
+    '--type', '--other-user', '--chdir', '--chroot',
+  ]) ],
+  [ 'doas', new Set([ '-u', '-C' ]) ],
+  [ 'pkexec', new Set([ '--user' ]) ],
+]);
 const TIMEOUT_DURATION = /^\d+(?:\.\d+)?[smhd]?$/;
 const MUNDANE_SHELL_COMMANDS = new Set([
   'echo',
@@ -507,6 +517,14 @@ function firstCommandWordFromParts(parts, start = 0) {
       continue;
     if (word.startsWith('$'))
       return 'shell';
+    if (SHELL_PRIVILEGE_PREFIXES.has(word)) {
+      let next = skipPrivilegePrefix(parts, index + 1, word);
+      if (next >= parts.length)
+        return word;
+      index = next - 1;
+      continue;
+    }
+
     if (word === 'timeout' || word === 'command') {
       let next = skipTimeoutPrefix(parts, index + 1);
       if (next >= parts.length)
@@ -518,6 +536,25 @@ function firstCommandWordFromParts(parts, start = 0) {
     return word;
   }
   return '';
+}
+
+function skipPrivilegePrefix(parts, start, command) {
+  let optionsWithArgument = SHELL_PRIVILEGE_OPTIONS_WITH_ARGUMENT.get(command) || new Set();
+  let index = start;
+  while (index < parts.length) {
+    let word = cleanShellWord(parts[index]);
+    if (word === '--') {
+      index += 1;
+      break;
+    }
+    if (!word.startsWith('-'))
+      break;
+
+    let option = word.split('=', 1)[0];
+    let takesArgument = !word.includes('=') && optionsWithArgument.has(option);
+    index += takesArgument ? 2 : 1;
+  }
+  return index;
 }
 
 function skipTimeoutPrefix(parts, start) {
