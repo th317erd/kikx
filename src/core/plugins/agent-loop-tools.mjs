@@ -199,14 +199,6 @@ export function createRegisteredToolHandlers(context = {}) {
       continue;
 
     handlers[toolName] = async (input = {}) => {
-      // A user/actor message that arrived while the previous tool was running
-      // must win before the next side effect. Returning a LoopControl makes the
-      // provider tool loop stop and hand the turn back to core, which sees the
-      // steering flag and starts the new message's turn.
-      let interrupt = pendingTurnInterrupt(context);
-      if (interrupt)
-        return interrupt;
-
       return await toolExecutor.executeTool({
         toolName,
         ToolClass,
@@ -217,19 +209,6 @@ export function createRegisteredToolHandlers(context = {}) {
   }
 
   return handlers;
-}
-
-function pendingTurnInterrupt(context = {}) {
-  let runtime = context.frameRuntime || context.services?.frameRuntime;
-  let sessionID = context.session?.id || context.frame?.sessionID;
-  let agentID = context.agent?.id;
-  if (!runtime || !sessionID || !agentID)
-    return null;
-  if (runtime.hasAgentCancellation?.(sessionID, agentID) === true)
-    return { type: 'LoopControl', action: 'break', reason: 'cancelled' };
-  if (runtime.hasAgentSteering?.(sessionID, agentID) === true)
-    return { type: 'LoopControl', action: 'break', reason: 'steering' };
-  return null;
 }
 
 export function resolveToolExecutor(context = {}) {

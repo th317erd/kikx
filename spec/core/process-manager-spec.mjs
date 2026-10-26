@@ -304,27 +304,3 @@ test('ProcessManager suspends a command that started during a suspension race', 
   assert.equal(started.status, 'suspended');
   assert.deepEqual(child.killSignals, [ 'SIGSTOP' ]);
 });
-
-test('a queued message ends the exec grace wait instead of blocking the agent', async () => {
-  let child = createFakeChild();
-  let manager = createShutdownManager(child);
-  manager.frameRuntime = {
-    isAgentSuspended() { return false; },
-    hasAgentSteering() { return true; },
-  };
-
-  let startedAt = Date.now();
-  let started = await manager.start({ command: 'sleep 60' }, {
-    agent: { id: 'agent_1' },
-    session: { id: 'ses_1' },
-    frame: { id: 'frame_1' },
-  }, {
-    graceMs: 1000,
-    autoWake: false,
-    returnCompletionIfReady: true,
-  });
-  let elapsed = Date.now() - startedAt;
-
-  assert.equal(started.status, 'running');
-  assert.ok(elapsed < 500, `the grace wait should end at the message boundary, not the full timeout (waited ${elapsed}ms)`);
-});
