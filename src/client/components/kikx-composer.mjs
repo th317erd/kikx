@@ -6,6 +6,8 @@ import { ensureAutoScrollAfterSend } from './kikx-frame-scroll-lock.mjs';
 import {
   cancelComposerDraftSave,
   clearComposerDraftWithServer,
+  getComposerDraftController,
+  markComposerDraftSent,
   replaceComposerText,
   syncComposerDraft,
 } from './composer-drafts.mjs';
@@ -34,6 +36,7 @@ export async function onSubmit(app, event) {
   app._state.status = 'Committing message...';
   app._state.statusKind = 'pending';
   let sessionID = app._state.selectedSessionID;
+  let submittedDraftID = getComposerDraftController(app, sessionID)?.draftID || null;
   // The draft is being replaced by a committed message. Cancel its debounce and
   // delete it in the background; waiting for the draft round-trip before the
   // POST made a send feel like it took seconds. `clearComposerDraftWithServer`
@@ -47,7 +50,12 @@ export async function onSubmit(app, event) {
     let result = await app._postJSON(`/api/v1/sessions/${encodeURIComponent(sessionID)}/messages`, {
       text: draft,
       authorDisplayName: app._state.account?.name || null,
+      ...(submittedDraftID ? { draftID: submittedDraftID } : {}),
     });
+    // Delivery is the terminal state for this draft. Record it before rendering
+    // so a reload cannot rehydrate the acknowledged text from localStorage or a
+    // late/resurrected server draft row.
+    markComposerDraftSent(sessionID, { draftID: submittedDraftID, text: submittedDraft });
     upsertSession(result.data.session, app._state);
     // Do not wait for the reload window or the SSE echo to discover our own
     // message. Put it into state now so the render can include it immediately.

@@ -1,6 +1,8 @@
 'use strict';
 
 const STORAGE_PREFIX = 'kikx.composerDraft.';
+const SENT_STORAGE_PREFIX = 'kikx.composerSentDraft.';
+const MAX_SENT_DRAFTS = 10;
 const DRAFT_SAVE_DEBOUNCE_MS = 250;
 
 export function readLocalComposerDraft(sessionID) {
@@ -47,6 +49,56 @@ export function removeLocalComposerDraft(sessionID) {
   } catch (_error) {}
 }
 
+function readSentComposerDrafts(sessionID) {
+  if (!sessionID)
+    return [];
+  try {
+    let raw = globalThis.localStorage?.getItem(`${SENT_STORAGE_PREFIX}${sessionID}`);
+    if (!raw)
+      return [];
+    let values = JSON.parse(raw);
+    return Array.isArray(values)
+      ? values.filter((value) => value && (value.draftID || value.text))
+      : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+function draftMatchesSent(sessionID, draft) {
+  if (!draft)
+    return false;
+  return readSentComposerDrafts(sessionID).some((sent) => {
+    if (sent.draftID && draft.draftID)
+      return sent.draftID === draft.draftID;
+    return Boolean(sent.text) && sent.text === draft.text;
+  });
+}
+
+// A delivered message is the terminal state of its composer draft. Remember the
+// draft id locally so a delayed PUT, a stale server row, or a cached copy can
+// never resurrect the text after the message has been acknowledged.
+export function markComposerDraftSent(sessionID, { draftID = null, text = '' } = {}) {
+  if (!sessionID)
+    return;
+  try {
+    let sent = readSentComposerDrafts(sessionID)
+      .filter((entry) => !(draftID && entry.draftID === draftID));
+    sent.push({
+      draftID: draftID || null,
+      text: typeof text === 'string' ? text : '',
+      sentAt: Date.now(),
+    });
+    globalThis.localStorage?.setItem(
+      `${SENT_STORAGE_PREFIX}${sessionID}`,
+      JSON.stringify(sent.slice(-MAX_SENT_DRAFTS)),
+    );
+    let local = readLocalComposerDraft(sessionID);
+    if (local && ((draftID && local.draftID === draftID) || (!draftID && local.text === text)))
+      removeLocalComposerDraft(sessionID);
+  } catch (_error) {}
+}
+
 export function listLocalComposerDrafts(sessionID) {
   let draft = readLocalComposerDraft(sessionID);
   return draft ? [ draft ] : [];
@@ -61,7 +113,14 @@ export function createComposerDraftController(sessionID) {
     timer: null,
     saveChain: Promise.resolve(true),
     loadToken: 0,
+    revision: 0,
+    pendingSaves: 0,
   };
+}
+
+function bumpComposerDraftRevision(controller) {
+  if (controller)
+    controller.revision = (controller.revision || 0) + 1;
 }
 
 export function getComposerDraftController(app, sessionID) {
@@ -90,44 +149,102 @@ export async function activateComposerDraftSession(app, sessionID = app._state.s
   app._activeComposerDraftSessionID = sessionID;
   let controller = getComposerDraftController(app, sessionID);
   let token = ++controller.loadToken;
+  let revision = controller.revision || 0;
   let local = readLocalComposerDraft(sessionID);
-  if (local) {
-    controller.draftID = local.draftID;
-    controller.text = local.text;
-    controller.savedText = '';
-    setComposerText(app, local.text, sessionID);
-  } else {
-    controller.draftID = null;
-    controller.text = '';
-    controller.savedText = '';
-    setComposerText(app, '', sessionID);
+  // Delivery is final. Do not let a delayed save or a stale server row bring a
+  // sent message back as an editable draft.
+  if (local && draftMatchesSent(sessionID, local)) {
+    removeLocalComposerDraft(sessionID);
+    if (controller.draftID === local.draftID || controller.text === local.text) {
+      controller.draftID = null;
+      controller.text = '';
+      controller.savedText = '';
+    }
+    local = null;
   }
+
+  // The server is the source of truth once it answers. The local copy is only
+  // an offline/reconnect fallback; it must not be painted first, because that
+  // produces a visible resurrection of text that was already sent.
+  if (controller.text.trim() !== '')
+    setComposerText(app, controller.text, sessionID);
+  else
+    setComposerText(app, '', sessionID);
 
   try {
     let result = await app._getJSON(`/api/v1/sessions/${encodeURIComponent(sessionID)}/composer/drafts?limit=50`);
     if (token !== controller.loadToken || app._state.selectedSessionID !== sessionID)
       return null;
+    // The user typed while the request was in flight. Their text wins over any
+    // server or cached copy; syncComposerDraft already persisted it locally.
+    if (revision !== (controller.revision || 0))
+      return result?.data?.drafts?.[0] || null;
+
     let drafts = result?.data?.drafts || [];
     let latest = drafts[0] || null;
-    if (local && local.updatedAt >= Number(latest?.updatedAt || 0)) {
-      if (controller.draftID && controller.text.trim() !== '')
-        queueComposerDraftSave(app, sessionID, { immediate: true });
-      return latest;
+
+    if (latest && draftMatchesSent(sessionID, latest)) {
+      // The server still has a row we know was delivered (for example, the
+      // message POST succeeded but the follow-up DELETE was lost). Remove it
+      // instead of restoring it.
+      removeLocalComposerDraft(sessionID);
+      controller.draftID = null;
+      controller.text = '';
+      controller.savedText = '';
+      setComposerText(app, '', sessionID);
+      app._deleteJSON(`/api/v1/sessions/${encodeURIComponent(sessionID)}/composer/drafts/${encodeURIComponent(latest.draftID)}`).catch(() => null);
+      return null;
     }
+
     if (latest?.text) {
-      controller.draftID = latest.draftID || null;
-      controller.text = latest.text;
+      let useLocal = local
+        && local.draftID
+        && latest.draftID
+        && local.draftID === latest.draftID
+        && local.text !== latest.text
+        && local.updatedAt > Number(latest.updatedAt || 0);
+      controller.draftID = useLocal ? local.draftID : (latest.draftID || null);
+      controller.text = useLocal ? local.text : latest.text;
       controller.savedText = latest.text;
       writeLocalComposerDraft(sessionID, {
         draftID: controller.draftID,
         text: controller.text,
       });
-      setComposerText(app, latest.text, sessionID);
+      setComposerText(app, controller.text, sessionID);
+      if (useLocal)
+        queueComposerDraftSave(app, sessionID, { immediate: true });
+      return latest;
     }
-    return latest;
+
+    // A successful empty response is authoritative: there is no draft on the
+    // server. Drop the local fallback instead of leaving a stale message to be
+    // painted on the next reload or view switch.
+    removeLocalComposerDraft(sessionID);
+    if (controller.text.trim() !== '') {
+      if (!controller.draftID)
+        controller.draftID = createDraftID();
+      writeLocalComposerDraft(sessionID, {
+        draftID: controller.draftID,
+        text: controller.text,
+      });
+      queueComposerDraftSave(app, sessionID);
+    } else {
+      controller.draftID = null;
+      controller.savedText = '';
+      setComposerText(app, '', sessionID);
+    }
+    return null;
   } catch (_error) {
     // Network outage: the local copy is the recovery source. Keep it in the
     // composer and retry when the user next types or replaces it.
+    if (revision !== (controller.revision || 0))
+      return null;
+    if (local && controller.text.trim() === '') {
+      controller.draftID = local.draftID;
+      controller.text = local.text;
+      controller.savedText = '';
+      setComposerText(app, local.text, sessionID);
+    }
     return null;
   }
 }
@@ -138,6 +255,7 @@ export function syncComposerDraft(app, text) {
     return;
 
   let controller = getComposerDraftController(app, sessionID);
+  bumpComposerDraftRevision(controller);
   controller.text = typeof text === 'string' ? text : '';
   if (controller.text.trim() === '') {
     writeLocalComposerDraft(sessionID, null);
@@ -181,6 +299,7 @@ export function queueComposerDraftSave(app, sessionID, { immediate = false } = {
   if (!draftID && text.trim() !== '')
     draftID = controller.draftID = createDraftID();
 
+  controller.pendingSaves = (controller.pendingSaves || 0) + 1;
   controller.saveChain = controller.saveChain
     .catch(() => false)
     .then(async () => {
@@ -202,6 +321,9 @@ export function queueComposerDraftSave(app, sessionID, { immediate = false } = {
       app._state.status = `Draft not saved: ${error.message}`;
       app._state.statusKind = 'error';
       return false;
+    })
+    .finally(() => {
+      controller.pendingSaves = Math.max(0, (controller.pendingSaves || 0) - 1);
     });
   return controller.saveChain;
 }
@@ -229,6 +351,7 @@ export async function replaceComposerText(app, text, { draftID = null, savedText
     return false;
 
   let controller = getComposerDraftController(app, sessionID);
+  bumpComposerDraftRevision(controller);
   controller.text = typeof text === 'string' ? text : '';
   controller.draftID = draftID || (controller.text.trim() !== '' ? createDraftID() : null);
   controller.savedText = savedText == null ? '' : savedText;
@@ -254,17 +377,30 @@ export async function clearComposerDraftWithServer(app, sessionID = app._state.s
   if (!sessionID)
     return;
   let controller = getComposerDraftController(app, sessionID);
-  let draftID = controller?.draftID;
+  if (!controller) {
+    removeLocalComposerDraft(sessionID);
+    return;
+  }
+
+  let draftID = controller.draftID;
   cancelComposerDraftSave(app, sessionID);
+  bumpComposerDraftRevision(controller);
   controller.text = '';
   controller.savedText = '';
+  // Rotate immediately. If the user starts typing while the old save/delete is
+  // still in flight, the new text gets a fresh id and cannot be deleted by the
+  // old cleanup.
+  controller.draftID = null;
   removeLocalComposerDraft(sessionID);
-  if (draftID) {
-    await app._deleteJSON(`/api/v1/sessions/${encodeURIComponent(sessionID)}/composer/drafts/${encodeURIComponent(draftID)}`).catch(() => null);
-  }
-  // Another draft may have started while the delete was in flight.
-  if (controller.draftID === draftID && controller.text.trim() === '')
-    controller.draftID = null;
+  if (!draftID)
+    return;
+
+  // A debounced PUT may already be in flight. Deleting first is a race: the PUT
+  // can land after the DELETE and recreate the sent draft. If nothing is
+  // pending, issue the DELETE immediately so sends are not delayed.
+  if ((controller.pendingSaves || 0) > 0)
+    await controller.saveChain.catch(() => false);
+  await app._deleteJSON(`/api/v1/sessions/${encodeURIComponent(sessionID)}/composer/drafts/${encodeURIComponent(draftID)}`).catch(() => null);
 }
 
 export async function deleteComposerHistoryEntry(app, entry) {
@@ -280,6 +416,7 @@ export async function deleteComposerHistoryEntry(app, entry) {
       ? controller?.draftID === entry.draftID
       : (controller?.draftID == null && controller?.text === entry.text);
     if (activeDraft) {
+      bumpComposerDraftRevision(controller);
       controller.text = '';
       controller.savedText = '';
       controller.draftID = null;

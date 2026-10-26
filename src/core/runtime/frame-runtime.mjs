@@ -452,6 +452,21 @@ export class FrameRuntime extends EventEmitter {
       if (!manifestSave)
         manifestSave = this.queueSessionManifestSave(entry);
       await manifestSave;
+
+      // A message that acknowledges a composer draft makes that draft obsolete.
+      // Delete it as part of the message commit so a lost client DELETE or an
+      // in-flight draft PUT cannot leave the sent text to be restored on reload.
+      if (input.draftID && frame.authorID) {
+        try {
+          await this.deleteComposerDraft(sessionID, {
+            draftID: input.draftID,
+            userID: frame.authorID,
+          });
+        } catch (error) {
+          this.logger?.warn?.('FrameRuntime failed to clear a submitted composer draft', error);
+        }
+      }
+
       // A steering message is already queued for the active run; waiting on
       // background agent work here would block the HTTP response until that
       // turn ends, which is exactly the latency steering is meant to avoid.

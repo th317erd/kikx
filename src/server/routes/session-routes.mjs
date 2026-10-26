@@ -403,10 +403,12 @@ export async function handleSessionRoutes({ request, response, url, context }) {
       if (!body.text || typeof body.text !== 'string' || body.text.trim() === '')
         throw httpError(400, 'text is required');
 
+      let draftID = normalizeMessageDraftID(body.draftID);
       let account = await getRequestAccount(context, request);
       let messageInput = {
         text: body.text,
         userID: account?.id || body.userID || body.authorID || null,
+        ...(draftID ? { draftID } : {}),
         // The frame is committed and flushed before this point. Do not make
         // the HTTP response wait for the agent router to pick it up; the client
         // already has the durable frame and SSE will deliver the agent output.
@@ -426,6 +428,17 @@ export async function handleSessionRoutes({ request, response, url, context }) {
   }
 
   return false;
+}
+
+function normalizeMessageDraftID(value) {
+  if (value == null || value === '')
+    return null;
+  if (typeof value !== 'string')
+    throw httpError(400, 'draftID must be a string');
+  let draftID = value.trim();
+  if (!/^[A-Za-z0-9_-]{1,100}$/.test(draftID))
+    throw httpError(400, 'draftID must be a short URL-safe identifier');
+  return draftID;
 }
 
 async function withEffectivePreferences(frameRuntime, session) {

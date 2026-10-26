@@ -1801,6 +1801,33 @@ test('FrameRuntime persists composer drafts and searches user message history', 
   assert.match(redactedFrame.content.text, /^<REDACTED BY usr_1 AT /);
 });
 
+test('appendUserMessage clears the composer draft it commits', async () => {
+  let aeordb = createClient();
+  let runtime = createRuntime({
+    aeordb,
+    ids: [ 'ses_1', ...Array.from({ length: 20 }, (_value, index) => `id_${index}`) ],
+  });
+  await runtime.createSession({ title: 'Committed draft' });
+  await runtime.upsertComposerDraft('ses_1', {
+    userID: 'usr_1',
+    draftID: 'draft_commit',
+    text: 'this is about to be sent',
+  });
+
+  await runtime.appendUserMessage('ses_1', {
+    text: 'this is about to be sent',
+    userID: 'usr_1',
+    draftID: 'draft_commit',
+  });
+
+  let drafts = await runtime.listComposerDrafts('ses_1', { userID: 'usr_1' });
+  assert.deepEqual(drafts.drafts, [], 'the committed draft must not come back after a reload');
+
+  let history = await runtime.listComposerHistory('ses_1', { userID: 'usr_1', limit: 10 });
+  assert.deepEqual(history.entries.map((entry) => entry.text), [ 'this is about to be sent' ]);
+  assert.equal(history.entries[0].kind, 'message');
+});
+
 test('appendUserMessage never waits for the router from inside a routing pass', async () => {
   let aeordb = createClient();
   let runtime = createRuntime({
