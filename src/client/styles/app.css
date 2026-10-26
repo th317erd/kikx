@@ -4007,10 +4007,9 @@ kikx-frame-filter-popup:not(.is-all-on) .kikx-frame-filter__button {
 .kikx-user-message__answer {
   margin-top: 2px;
   padding: 10px 12px;
-  border: 2px solid #5eead4;
-  border-radius: 10px;
-  background: #072b2a;
-  box-shadow: inset 4px 0 0 #5eead4;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(94, 234, 212, 0.10);
   color: #f1fffd;
 }
 
