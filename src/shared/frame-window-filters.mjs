@@ -404,19 +404,42 @@ export function frameQueryMatchesText(text, query) {
   if (haystack === '')
     return false;
 
-  let segments = needle.split('*').map((segment) => segment.trim()).filter(Boolean);
-  if (segments.length === 0)
+  // Explicit `*` keeps the old ordered-wildcard semantics.
+  if (needle.includes('*')) {
+    let segments = needle.split('*').map((segment) => segment.trim()).filter(Boolean);
+    if (segments.length === 0)
+      return true;
+
+    let cursor = 0;
+    for (let segment of segments) {
+      let index = haystack.indexOf(segment, cursor);
+      if (index === -1)
+        return false;
+
+      cursor = index + segment.length;
+    }
+    return true;
+  }
+
+  // Plain queries are fuzzy: every whitespace-separated token must match,
+  // either as a substring or as an in-order character subsequence. This keeps
+  // "rename" exact-fast while letting "frmfltr" find "frame filter".
+  let tokens = needle.split(/\s+/).filter(Boolean);
+  return tokens.every((token) => fuzzyTokenMatches(haystack, token));
+}
+
+function fuzzyTokenMatches(haystack, token) {
+  if (haystack.includes(token))
     return true;
 
   let cursor = 0;
-  for (let segment of segments) {
-    let index = haystack.indexOf(segment, cursor);
+  for (let char of token) {
+    let index = haystack.indexOf(char, cursor);
     if (index === -1)
       return false;
 
-    cursor = index + segment.length;
+    cursor = index + 1;
   }
-
   return true;
 }
 

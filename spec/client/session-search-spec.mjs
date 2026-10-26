@@ -46,6 +46,7 @@ function makeApp({ selectedSessionID = '', frames = [] } = {}) {
     loads: [],
     renders: 0,
     shellSyncs: 0,
+    threadSyncs: 0,
     // 0 = run the deferred query inline, so the assertions below stay
     // synchronous. A dedicated test below covers the real timer.
     _queryDebounceMs: 0,
@@ -55,6 +56,7 @@ function makeApp({ selectedSessionID = '', frames = [] } = {}) {
     app._state.framesBySessionID = { ...app._state.framesBySessionID, [sessionID]: [] };
     return [];
   };
+  app._syncFrameThread = () => { app.threadSyncs += 1; };
   app._render = () => { app.renders += 1; };
   app._requestRender = () => { app.renders += 1; };
   app._syncSessionShell = () => { app.shellSyncs += 1; return true; };
@@ -80,9 +82,10 @@ test('typing inside a session asks the server for a filtered window', () => {
   assert.equal(app._state.sessionSearch, 'deploy');
   assert.deepEqual(app.loads, ['ses_1'], 'the window must be refetched server-side');
   assert.equal(app.shellSyncs, 0, 'a session window has no grid to sync');
+  assert.equal(app.renders, 0, 'typing must not rebuild the header and steal the caret');
 });
 
-test('the cached page is dropped before the refetch, so two selections never mix', () => {
+test('the previous page stays mounted while the replacement window fetches', () => {
   let app = makeApp({ selectedSessionID: 'ses_1', frames: [ { id: 'a' }, { id: 'b' } ] });
   app._loadFrames = async (sessionID) => {
     app.loads.push({ sessionID, frames: [ ...app._state.framesBySessionID[sessionID] ] });
@@ -91,8 +94,9 @@ test('the cached page is dropped before the refetch, so two selections never mix
 
   applyWindowQuery(app, 'x');
 
-  assert.deepEqual(app.loads, [ { sessionID: 'ses_1', frames: [] } ],
-    'the old page must be gone before the new fetch starts');
+  assert.deepEqual(app.loads, [ { sessionID: 'ses_1', frames: [ { id: 'a' }, { id: 'b' } ] } ],
+    'the old view must stay mounted until the filtered result replaces it');
+  assert.equal(app.renders, 0, 'the header/search input must not be rebuilt');
 });
 
 test('a query that does not change costs nothing', () => {

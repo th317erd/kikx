@@ -253,11 +253,14 @@ test('pathMatchesTypes excludes only what it can prove', () => {
 
 // --- the generalized search ----------------------------------------------
 
-test('frameQueryMatchesText is a case-insensitive substring when there is no wildcard', () => {
+test('frameQueryMatchesText is case-insensitive fuzzy matching when there is no wildcard', () => {
   assert.equal(frameQueryMatchesText('Rename the session', 'rename'), true);
   assert.equal(frameQueryMatchesText('Rename the session', 'RENAME'), true);
   assert.equal(frameQueryMatchesText('Rename the session', 'delete'), false);
   assert.equal(frameQueryMatchesText('anything', ''), true);
+  assert.equal(frameQueryMatchesText('frame filter popup', 'frmfltr'), true);
+  assert.equal(frameQueryMatchesText('Rename the session', 'rn ss'), true);
+  assert.equal(frameQueryMatchesText('frame filter popup', 'frm zzz'), false);
 });
 
 test('frameQueryMatchesText honours * as a wildcard in order', () => {

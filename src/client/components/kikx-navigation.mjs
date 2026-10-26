@@ -171,10 +171,18 @@ function scheduleWindowQuery(app, run) {
 function reloadVisibleWindow(app) {
   let sessionID = app._state.selectedSessionID;
   if (sessionID && typeof app._loadFrames === 'function') {
-    app._state.framesBySessionID = { ...app._state.framesBySessionID, [sessionID]: [] };
-    app._loadFrames(sessionID).then(
-      () => app._render(),
-      () => app._render(),
+    // Keep the existing thread mounted while the filtered window is fetched.
+    // A full _render() rebuilds the header search input and destroys its
+    // selection, which is what stole the caret on every debounced query.
+    app._loadFrames(sessionID, { render: false }).then(
+      () => {
+        if (app._state.selectedSessionID === sessionID)
+          app._syncFrameThread?.(sessionID, { force: true });
+      },
+      () => {
+        if (app._state.selectedSessionID === sessionID)
+          app._syncFrameThread?.(sessionID, { force: true });
+      },
     );
     return;
   }

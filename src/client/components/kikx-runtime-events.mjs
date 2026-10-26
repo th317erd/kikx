@@ -11,6 +11,7 @@ import { addFrameToBatch, addTouchedFrameIDs, renderedFrameIDsFor } from './fram
 import { refreshSubSessionCards } from './kikx-sub-session-frame.mjs';
 import { pruneMissingSessionsFromStack } from './kikx-navigation.mjs';
 import { CONNECTED_STATUS, setConnectionStatus } from './runtime-events-connection.mjs';
+import { frameMatchesWindowFilters } from '../../shared/frame-window-filters.mjs';
 
 export {
   CONNECTED_STATUS,
@@ -169,6 +170,16 @@ export function scheduleRuntimeReconcile(app, sessionID = '') {
       // unlocked mode belongs to the user until the 3s bottom-rest re-pin.
     });
   });
+}
+
+export function incomingFrameMatchesWindow(frame, sessionID, state = {}) {
+  // The header query and popup filters describe the selected thread. Events for
+  // other sessions must still update their previews/cards, so do not apply the
+  // selected thread's narrowing to them.
+  if (!sessionID || sessionID !== state?.selectedSessionID)
+    return true;
+
+  return frameMatchesWindowFilters(frame, state?.frameFilters, state?.sessionSearch || '');
 }
 
 function frameRuntimeEventKey(data) {
@@ -362,9 +373,19 @@ function processFrameRuntimeEvents(app) {
     }
 
     guardClientOperation('kikx-runtime-events.batchEntry', () => {
+      // Thinking is driven by the raw event stream, not by the visible filter
+      // set: an agent must still look busy even when its output does not match
+      // the current query.
+      applyThinkingFrame(app._thinking, data.frame, data.sessionID);
+
+      // A live frame enters the selected thread only if it matches the same
+      // shared predicate the server used for the window. Otherwise a query
+      // would be silently bypassed the moment the next message arrived.
+      if (!incomingFrameMatchesWindow(data.frame, data.sessionID, app._state))
+        return;
+
       addFrameToBatch(framesBySessionID, data.sessionID, data.frame);
       addTouchedFrameIDs(touchedFrameIDsBySessionID, data.sessionID, renderedFrameIDsFor(data.frame));
-      applyThinkingFrame(app._thinking, data.frame, data.sessionID);
     }, { sessionID: data.sessionID, frameID });
   }
 
