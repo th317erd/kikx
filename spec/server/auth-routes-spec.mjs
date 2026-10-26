@@ -124,7 +124,11 @@ async function invoke({ method = 'POST', path, body = null, headers = {}, identi
   });
   try {
     let handled = await handleAuthRoutes({ request, response, url: new URL(`http://localhost${path}`), context });
-    return { handled, response, body: response.body == null ? null : response.json(), authService };
+    let contentType = String(response.headers?.['Content-Type'] || '');
+    let body = response.body == null
+      ? null
+      : (contentType.startsWith('text/html') ? String(response.body) : response.json());
+    return { handled, response, body, authService };
   } catch (error) {
     return {
       handled: true,
@@ -312,4 +316,52 @@ test('DELETE /api/v1/auth/api-keys/:id requires a valid token', async () => {
 test('unrelated routes are not handled', async () => {
   let result = await invoke({ method: 'GET', path: '/api/v1/other' });
   assert.equal(result.handled, false);
+});
+
+test('a browser magic-link visit stores the session and redirects instead of returning JSON', async () => {
+  let result = await invoke({
+    method: 'GET',
+    path: '/api/v1/auth/magic-link/verify?code=abc123&redirect=%2Fhome%3Ftab%3D1',
+    headers: { accept: 'text/html,application/xhtml+xml' },
+  });
+
+  assert.equal(result.response.statusCode, 200);
+  assert.match(result.response.headers['Content-Type'], /^text\/html/);
+  assert.match(result.response.body, /sessionStorage\.setItem\('kikx\.auth\.session'/);
+  assert.match(result.response.body, /localStorage\.setItem\('kikx\.auth\.shared'/);
+  assert.match(result.response.body, /"token":"access"/);
+  assert.match(result.response.body, /location\.replace\("\/home\?tab=1"\)/);
+  assert.doesNotMatch(result.response.body, /"data":\{"token"/);
+});
+
+test('the magic-link browser handoff rejects an off-origin redirect', async () => {
+  let result = await invoke({
+    method: 'GET',
+    path: '/api/v1/auth/magic-link/verify?code=abc123&redirect=https%3A%2F%2Fevil.example',
+    headers: { accept: 'text/html' },
+  });
+
+  assert.equal(result.response.statusCode, 200);
+  assert.match(result.response.body, /location\.replace\("\/"\)/);
+  assert.doesNotMatch(result.response.body, /evil\.example/);
+});
+
+test('the magic-link browser handoff escapes script-breaking token content', async () => {
+  let authService = createFakeAuthService();
+  authService.verifyMagicLink = async () => ({
+    token: '</script><script>alert(1)</script>',
+    refresh_token: 'refresh',
+    expires_at: 123,
+    user: { id: 'usr_1' },
+  });
+  let result = await invoke({
+    method: 'GET',
+    path: '/api/v1/auth/magic-link/verify?code=abc123',
+    headers: { accept: 'text/html' },
+    authService,
+  });
+
+  assert.equal(result.response.statusCode, 200);
+  assert.doesNotMatch(result.response.body, /<\/script><script>alert/);
+  assert.match(result.response.body, /\\u003c\/script\\u003e/);
 });
