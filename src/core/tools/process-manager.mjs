@@ -37,7 +37,7 @@ import {
 } from './process-manager-queries.mjs';
 import {
   forceCloseCaptureStreams,
-  waitForCompletion,
+  waitForCompletionOrInterrupt,
   waitForRecords,
 } from './process-manager-streams.mjs';
 import {
@@ -213,14 +213,23 @@ export class ProcessManager {
     });
 
     let graceMs = normalizeNonNegativeInteger(options.graceMs ?? this.defaultExecGraceMs, this.defaultExecGraceMs);
+    let interruptedWait = false;
     if (graceMs > 0 && options.returnCompletionIfReady !== false) {
-      let completed = await waitForCompletion(record.completionPromise, graceMs);
-      if (completed)
+      let outcome = await waitForCompletionOrInterrupt(record.completionPromise, graceMs, {
+        isInterrupted: () => Boolean(
+          frameRuntime?.hasAgentSteering?.(sessionID, agentID)
+          || frameRuntime?.hasAgentCancellation?.(sessionID, agentID),
+        ),
+      });
+      if (outcome.completed)
         return await createCompletedExecResult(record);
+      interruptedWait = outcome.interrupted;
 
       if (!isLiveProcessStatus(record.status))
         return await createCompletedExecResult(record);
     }
+    if (interruptedWait)
+      record.interruptedWait = true;
 
     if (options.autoWake !== false) {
       this.setWake(record, executionParams, context, buildDefaultWakePrompt(record));
