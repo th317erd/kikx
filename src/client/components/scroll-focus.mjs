@@ -1,5 +1,6 @@
 'use strict';
 
+import { scheduleAnimationFrame } from './kikx-app-helpers.mjs';
 import {
   captureFrameListFocus,
   frameItemTopWithinList,
@@ -84,6 +85,91 @@ export function scrollFocusToTop(app, frameList, frameID, options = {}) {
   return true;
 }
 
+// A new bottom focus must survive its frame-entry animation. At the moment the
+// frame is inserted it may be only a few pixels tall, so a one-shot alignment
+// clamps to the old bottom and then the frame grows off-screen. Keep the new
+// focus pending and re-aim it while its layout settles. Once stable, stop.
+export function startFocusAlignment(app, frameList, frameID, { bottom = false } = {}) {
+  cancelFocusAlignment(app);
+  app._pendingScrollFocus = {
+    frameID,
+    bottom,
+    startedAt: Date.now(),
+    stableFrames: 0,
+    lastHeight: -1,
+    frameScheduled: false,
+  };
+  stepFocusAlignment(app, frameList);
+}
+
+export function stepFocusAlignment(app, frameList = app.querySelector?.('.kikx-frame-list')) {
+  let pending = app._pendingScrollFocus;
+  if (!pending || !frameList)
+    return false;
+
+  let item = findFrameItem(frameList, pending.frameID);
+  if (!item) {
+    if (Date.now() - pending.startedAt > 1500) {
+      cancelFocusAlignment(app);
+      return false;
+    }
+    scheduleFocusAlignmentStep(app, frameList, pending);
+    return true;
+  }
+
+  let itemTop = frameItemTopWithinList(frameList, item);
+  let itemHeight = Number(item.offsetHeight) || Number(item.getBoundingClientRect?.().height) || 0;
+  let max = Math.max(0, frameList.scrollHeight - frameList.clientHeight);
+  // If the whole frame fits, clamp to the bottom so it is fully visible. If it
+  // cannot fit, min() picks the frame top and aligns that with the viewport top.
+  let target = Math.min(Math.max(0, itemTop), max);
+  app._ignoreFrameScrollUntil = Date.now() + 150;
+  frameList.scrollTop = target;
+
+  if (Math.abs(itemHeight - pending.lastHeight) < 0.5)
+    pending.stableFrames += 1;
+  else
+    pending.stableFrames = 0;
+  pending.lastHeight = itemHeight;
+
+  // The frame entry animation is a height transition. Until it clears, the
+  // frame's final height is unknown, so keep re-aiming instead of declaring a
+  // few-pixel insertion height "stable" and then letting the frame grow off
+  // screen.
+  let animating = item.classList?.contains('kikx-frame--animating') === true
+    || item.classList?.contains('kikx-frame--entering') === true;
+  if ((!animating && pending.stableFrames >= 2) || Date.now() - pending.startedAt > 1500) {
+    app._pendingScrollFocus = null;
+    app._scrollFocusFrameID = pending.frameID;
+    let focus = captureFrameListFocus(frameList, pending.frameID);
+    if (focus) {
+      focus.bottom = pending.bottom === true;
+      app._lastScrollFocus = focus;
+    }
+    updateMessageHash(app, pending.frameID, { atBottom: pending.bottom === true });
+    return true;
+  }
+
+  scheduleFocusAlignmentStep(app, frameList, pending);
+  return true;
+}
+
+export function cancelFocusAlignment(app) {
+  app._pendingScrollFocus = null;
+}
+
+function scheduleFocusAlignmentStep(app, frameList, pending) {
+  if (pending.frameScheduled)
+    return;
+  pending.frameScheduled = true;
+  scheduleAnimationFrame(() => {
+    if (app._pendingScrollFocus !== pending)
+      return;
+    pending.frameScheduled = false;
+    stepFocusAlignment(app, frameList);
+  });
+}
+
 // In bottom mode the last frame is the focus. Move to its top only when that
 // focus id changed (a new message) or on the first placement. If the same last
 // frame is still streaming and growing, do not move it: the user is looking at
@@ -96,15 +182,25 @@ export function alignLastFrameFocus(app, frameList, options = {}) {
   let previous = app._scrollFocusFrameID || '';
   let initial = options.initial === true;
   let changed = previous !== frameID;
+  if (app._pendingScrollFocus?.frameID === frameID) {
+    stepFocusAlignment(app, frameList);
+    return true;
+  }
+
   app._scrollFocusFrameID = frameID;
   if (!initial && !changed) {
     updateMessageHash(app, frameID, { atBottom: options.bottom === true });
     return false;
   }
 
+  if (options.bottom === true) {
+    startFocusAlignment(app, frameList, frameID, { bottom: true });
+    return true;
+  }
+
   return scrollFocusToTop(app, frameList, frameID, {
     animate: initial ? false : options.animate !== false,
-    bottom: options.bottom === true,
+    bottom: false,
   });
 }
 

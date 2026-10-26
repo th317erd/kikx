@@ -13,9 +13,11 @@ import { captureFrameListAnchor, restoreFrameListAnchor } from './frame-scroll-a
 import {
   alignBottomFocus,
   alignLastFrameFocus,
+  cancelFocusAlignment,
   captureScrollFocus,
   lastFrameID,
   restoreScrollFocus,
+  stepFocusAlignment,
 } from './scroll-focus.mjs';
 import {
   breakScrollLockFromUser,
@@ -85,6 +87,7 @@ export function afterRender(app, snapshot = {}) {
   let hashRestored = Boolean(hashID && String(app._hashRestoredSessionID || '').startsWith(`${sessionID}:${hashID}:`));
   if (sessionChanged) {
     app._sentinelSuppressed = false;
+    cancelFocusAlignment(app);
     app._lastScrollFocus = null;
     app._scrollFocusFrameID = '';
   }
@@ -116,7 +119,7 @@ export function afterRender(app, snapshot = {}) {
   app._focusComposerAfterRender = false;
 
   let renderedFrameList = app.querySelector('.kikx-frame-list');
-  let focusRestored = snapshot.scrollFocus && !sessionChanged
+  let focusRestored = snapshot.scrollFocus && !sessionChanged && !app._pendingScrollFocus
     ? restoreScrollFocus(app, renderedFrameList, snapshot.scrollFocus)
     : false;
 
@@ -281,9 +284,11 @@ function syncFrameThreadBody(app, sessionID, options) {
   if (frames.length === 0 || !view) {
     let previousFrameList = app.querySelector('.kikx-frame-list');
     let locked = isScrollLockedForSession(app, sessionID);
-    let previousFocus = captureScrollFocus(app, previousFrameList, {
-      bottom: locked && getScrollLockModeForSession(app, sessionID) === 'bottom',
-    });
+    let previousFocus = app._pendingScrollFocus
+      ? null
+      : captureScrollFocus(app, previousFrameList, {
+        bottom: locked && getScrollLockModeForSession(app, sessionID) === 'bottom',
+      });
     disconnectFrameListObserver(app);
     // buildFrameThread() always returns a built element, so swap it in directly.
     // (The old `.build(document)` call assumed it was always a builder; the
@@ -344,9 +349,11 @@ function syncFrameThreadBody(app, sessionID, options) {
   let previousFrameCount = previousFrames.length;
   let previousLastFrameID = previousFrames.at(-1)?.id || '';
   let frameList = view.frameList;
-  let focus = captureScrollFocus(app, frameList, { bottom: locked && lockMode === 'bottom' });
+  let focus = app._pendingScrollFocus
+    ? null
+    : captureScrollFocus(app, frameList, { bottom: locked && lockMode === 'bottom' });
   let result = view.syncFrames(frames, app._state, locked ? { ...options, followLatest: true } : options);
-  if (frameList)
+  if (frameList && focus)
     restoreScrollFocus(app, frameList, focus);
   if (previousLastFrameID
     && frames.length > previousFrameCount
@@ -602,6 +609,11 @@ export function onFrameContentResize(app) {
   // ResizeObserver runs after layout and before paint. Restoring the focus
   // anchor here is a synchronous snap: the content may change size, but the
   // frame the user is looking at keeps the same viewport offset.
+  if (app._pendingScrollFocus) {
+    stepFocusAlignment(app, frameList);
+    return;
+  }
+
   let focus = app._lastScrollFocus;
   if (focus)
     restoreScrollFocus(app, frameList, focus);
@@ -647,8 +659,10 @@ export function onFrameListScroll(app, event) {
     updateMessageHashFromScroll(app, frameList);
     // A user scroll redefines the focus frame. Layout-only scroll events do not:
     // they are exactly what the focus anchor is supposed to suppress.
-    if (userGesture)
+    if (userGesture) {
+      cancelFocusAlignment(app);
       captureScrollFocus(app, frameList, { bottom: false });
+    }
     if (!nearBottom)
       app._bottomLockIntent = false;
   }
