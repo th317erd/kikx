@@ -535,6 +535,7 @@ function scrollList(items, { listTop = 0, scrollTop = 0, scrollHeight = 3000, cl
   };
   for (let item of items) {
     item.offsetParent = null;
+    item.offsetHeight = item.height || 100;
     item.getBoundingClientRect = () => ({
       top: listTop + item.offsetTop - list.scrollTop,
       bottom: listTop + item.offsetTop + (item.height || 100) - list.scrollTop,
@@ -616,4 +617,54 @@ test('a new bottom focus frame moves to its top once', () => {
 
   onFrameContentResize(app);
   assert.equal(frameList.scrollTop, 1200, 'the same focus id is not moved again');
+});
+
+
+test('a new bottom focus survives its entry animation and ends fully aligned', () => {
+  resetStorage();
+  let queue = [];
+  setAnimationFrameScheduler((callback) => queue.push(callback));
+  try {
+    let animating = new Set([ 'kikx-frame--animating', 'kikx-frame--entering' ]);
+    let items = [
+      { dataset: { frameId: 'm1' }, offsetTop: 0, height: 100 },
+      {
+        dataset: { frameId: 'm2' },
+        offsetTop: 500,
+        height: 4,
+        classList: { contains: (name) => animating.has(name) },
+      },
+    ];
+    let frameList = scrollList(items, { scrollTop: 0, scrollHeight: 604, clientHeight: 400 });
+    let app = {
+      _state: { selectedSessionID: 's1' },
+      _lastScrollFocus: { frameID: 'm1', offset: 0, bottom: true },
+      _scrollFocusFrameID: 'm1',
+      querySelector(selector) {
+        return selector === '.kikx-frame-list' ? frameList : null;
+      },
+    };
+    setScrollLockedForSession(app, true, 's1');
+    setScrollLockModeForSession(app, 'bottom', 's1');
+
+    onFrameContentResize(app);
+    assert.equal(frameList.scrollTop, 204, 'the early four-pixel insertion aligns to the old bottom');
+    assert.ok(app._pendingScrollFocus, 'alignment stays pending while the frame is animating');
+
+    items[1].height = 600;
+    items[1].offsetHeight = 600;
+    frameList.scrollHeight = 1200;
+    queue.shift()(16);
+    assert.equal(frameList.scrollTop, 500, 'the pending alignment re-aims at the frame top once it no longer fits');
+    assert.ok(app._pendingScrollFocus);
+
+    animating.clear();
+    queue.shift()(32);
+    queue.shift()(48);
+    assert.equal(app._pendingScrollFocus, null);
+    assert.equal(frameList.scrollTop, 500);
+    assert.equal(items[1].getBoundingClientRect().top, 0, 'the tall frame top is aligned with the viewport top');
+  } finally {
+    setAnimationFrameScheduler(null);
+  }
 });
