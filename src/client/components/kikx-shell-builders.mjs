@@ -273,9 +273,7 @@ export function buildRunnerShell(app) {
 }
 
 // The work area. The root renders the project grid; an entered session renders
-// its own thread, and its children render inside that same window. There is no
-// second surface a session can switch into, so there is no state in which the
-// children are reachable and the conversation is not.
+// its own thread. Child sessions are not rendered as an inline row in the thread.
 export function buildWindow(app, entry) {
   let sessionID = entry.sessionID;
 
@@ -396,12 +394,6 @@ export function buildWorkspaceGrid(app) {
   );
 }
 
-// The inline child-session row. It reuses the project grid narrowed by
-// parentSessionID, so children need no component and no view of their own.
-export function buildChildSessionsRegion(app, sessionID) {
-  return div.class('kikx-thread__children')(buildSessionGrid(app, sessionID));
-}
-
 export function buildSessionGrid(app, parentSessionID) {
   let grid = document.createElement('kikx-session-grid');
   // getVisibleSessions applies the title filter and (while the eye is on) the
@@ -512,14 +504,6 @@ export function buildThreadSection(app, sessionID) {
       title: app._selectedSession()?.title || 'No session',
       sessionID,
     }),
-    // Child sessions belong to this window, so they render inside it: one row of
-    // cards between the header and the thread, with its Add card in the same row.
-    // They are not a separate view you travel to and back from -- the grid-of-dots
-    // toggle made them exactly that, and it offered no route back to this thread.
-    // The row is always rendered for a session, because its Add card is the inline
-    // route to creating a child; hiding it on a childless session would hide
-    // creation itself.
-    sessionID ? buildChildSessionsRegion(app, sessionID) : null,
     div.class('kikx-thread__body')(
       buildFrameThread(app),
       sessionID ? buildScrollLockFloatingButton(app, sessionID) : null,
