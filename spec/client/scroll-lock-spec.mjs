@@ -522,3 +522,98 @@ test('a rebuilt bottom-locked frame list snaps instead of animating from zero', 
   assert.equal(frameList.scrollTop, 800, 'the rebuilt list lands on the tail immediately');
   assert.equal(app._frameListScrollAnimation, null, 'no follow animation starts from the reset top');
 });
+
+
+function scrollList(items, { listTop = 0, scrollTop = 0, scrollHeight = 3000, clientHeight = 600 } = {}) {
+  let list = {
+    scrollTop,
+    scrollHeight,
+    clientHeight,
+    getBoundingClientRect: () => ({ top: listTop }),
+    querySelectorAll: () => items,
+    querySelector: () => null,
+  };
+  for (let item of items) {
+    item.offsetParent = null;
+    item.getBoundingClientRect = () => ({
+      top: listTop + item.offsetTop - list.scrollTop,
+      bottom: listTop + item.offsetTop + (item.height || 100) - list.scrollTop,
+    });
+  }
+  return list;
+}
+
+test('a content resize preserves the focus frame offset instead of moving the viewport', () => {
+  resetStorage();
+  let items = [
+    { dataset: { frameId: 'above' }, offsetTop: 0, height: 50 },
+    { dataset: { frameId: 'focus' }, offsetTop: 600, height: 100 },
+  ];
+  let frameList = scrollList(items, { listTop: 100, scrollTop: 550 });
+  let app = {
+    _state: { selectedSessionID: 's1' },
+    _lastScrollFocus: { frameID: 'focus', offset: 50, bottom: false },
+    querySelector(selector) {
+      return selector === '.kikx-frame-list' ? frameList : null;
+    },
+  };
+  setScrollLockedForSession(app, false, 's1');
+
+  items[0].height = 150;
+  items[1].offsetTop = 700;
+  onFrameContentResize(app);
+
+  assert.equal(frameList.scrollTop, 650);
+  assert.equal(items[1].getBoundingClientRect().top - frameList.getBoundingClientRect().top, 50,
+    'the focused frame must keep the same viewport offset');
+});
+
+test('bottom focus does not move while the same last frame is growing', () => {
+  resetStorage();
+  let items = [
+    { dataset: { frameId: 'm1' }, offsetTop: 100, height: 100 },
+    { dataset: { frameId: 'm2' }, offsetTop: 700, height: 100 },
+  ];
+  let frameList = scrollList(items, { scrollTop: 600 });
+  let app = {
+    _state: { selectedSessionID: 's1' },
+    _lastScrollFocus: { frameID: 'm2', offset: 100, bottom: true },
+    _scrollFocusFrameID: 'm2',
+    querySelector(selector) {
+      return selector === '.kikx-frame-list' ? frameList : null;
+    },
+  };
+  setScrollLockedForSession(app, true, 's1');
+  setScrollLockModeForSession(app, 'bottom', 's1');
+
+  onFrameContentResize(app);
+  assert.equal(frameList.scrollTop, 600, 'same focus id: growth must not move it');
+});
+
+test('a new bottom focus frame moves to its top once', () => {
+  resetStorage();
+  let items = [
+    { dataset: { frameId: 'm1' }, offsetTop: 100, height: 100 },
+    { dataset: { frameId: 'm2' }, offsetTop: 700, height: 100 },
+    { dataset: { frameId: 'm3' }, offsetTop: 1200, height: 100 },
+  ];
+  let frameList = scrollList(items, { scrollTop: 600 });
+  let app = {
+    _state: { selectedSessionID: 's1' },
+    _lastScrollFocus: { frameID: 'm2', offset: 100, bottom: true },
+    _scrollFocusFrameID: 'm2',
+    _runtimeEventsResyncInFlight: true,
+    querySelector(selector) {
+      return selector === '.kikx-frame-list' ? frameList : null;
+    },
+  };
+  setScrollLockedForSession(app, true, 's1');
+  setScrollLockModeForSession(app, 'bottom', 's1');
+
+  onFrameContentResize(app);
+  assert.equal(frameList.scrollTop, 1200, 'a new focus id aligns to its top immediately during a resync');
+  assert.equal(app._scrollFocusFrameID, 'm3');
+
+  onFrameContentResize(app);
+  assert.equal(frameList.scrollTop, 1200, 'the same focus id is not moved again');
+});
