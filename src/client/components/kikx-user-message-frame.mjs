@@ -63,6 +63,16 @@ export class KikxUserMessageFrame extends HTMLElement {
       return;
 
     this._text = text;
+    let wake = splitQuestionWake(text);
+    if (wake) {
+      this._textElement.replaceChildren(
+        renderWakeSection('kikx-user-message__context', wake.intro),
+        renderWakeSection('kikx-user-message__answer', wake.answer),
+        wake.suffix ? renderWakeSection('kikx-user-message__after', wake.suffix) : null,
+      );
+      return;
+    }
+
     let rendered = renderMarkdownToElement(document, text, {
       className: 'kikx-user-message__text kikx-markdown',
     });
@@ -119,6 +129,39 @@ export class KikxUserMessageFrame extends HTMLElement {
       this._promptBody.appendChild(section);
     }
   }
+}
+
+// Question answers arrive as a UserMessage containing both the agent's Q and
+// the person's A. Keeping that whole exchange as one undifferentiated blob is
+// what made the user's actual decision hard to find. Split the known wake shape
+// so the A section can carry the operator styling and the Q/references stay
+// contextual.
+function splitQuestionWake(text) {
+  let source = String(text || '');
+  let answerMarker = source.indexOf('\nA: ');
+  if (answerMarker < 0)
+    return null;
+
+  let intro = source.slice(0, answerMarker).trim();
+  let rest = source.slice(answerMarker + 1).trimStart();
+  let suffixMatch = /\n\n(?:References from when you asked:|Continue from here\.|If you already acted on the default|Nobody confirmed this\.|This answer arrived while you were working)/.exec(rest);
+  let answer = suffixMatch ? rest.slice(0, suffixMatch.index).trim() : rest.trim();
+  let suffix = suffixMatch ? rest.slice(suffixMatch.index).trim() : '';
+
+  if (!intro.includes('\nQ: ') || !answer.startsWith('A: '))
+    return null;
+
+  return { intro, answer, suffix };
+}
+
+function renderWakeSection(className, text) {
+  let section = document.createElement('div');
+  section.className = className;
+  let rendered = renderMarkdownToElement(document, text, {
+    className: `${className} kikx-markdown`,
+  });
+  section.replaceChildren(...rendered.childNodes);
+  return section;
 }
 
 function readModelPrompt(frame) {

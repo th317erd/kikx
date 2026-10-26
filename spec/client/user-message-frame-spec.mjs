@@ -83,3 +83,46 @@ test('a user message without a captured prompt still expands with an explanation
   element._renderPrompt();
   assert.match(element.querySelector('.kikx-user-message__prompt-body').textContent, /No sent prompt was captured/);
 });
+
+test('question-answer wakes separate the agent question from the highlighted user answer', () => {
+  let text = [
+    'The user answered your question (you asked 4m ago):',
+    '',
+    'Q: Which installer shape should we use?',
+    '1. Squashfs payload',
+    '2. Installer is the appliance',
+    '',
+    'A: Keep the squashfs payload and the rollback story.',
+    '',
+    'References from when you asked:',
+    '- file bot-docs/plans/installer.md: Installer design',
+    '',
+    'Continue from here.',
+  ].join('\n');
+  let element = document.createElement('kikx-user-message-frame');
+  document.body.appendChild(element);
+  element.updateFrame(userFrame({ text }), {});
+
+  let context = element.querySelector('.kikx-user-message__context');
+  let answer = element.querySelector('.kikx-user-message__answer');
+  let after = element.querySelector('.kikx-user-message__after');
+
+  assert.ok(context);
+  assert.ok(answer);
+  assert.ok(after);
+  assert.match(context.textContent, /Q: Which installer shape/);
+  assert.doesNotMatch(context.textContent, /Keep the squashfs payload/);
+  assert.match(answer.textContent, /A: Keep the squashfs payload/);
+  assert.doesNotMatch(answer.textContent, /Q: Which installer shape/);
+  assert.match(after.textContent, /References from when you asked/);
+  assert.match(after.textContent, /Continue from here\./);
+});
+
+test('ordinary user messages are not split into answer panels', () => {
+  let element = document.createElement('kikx-user-message-frame');
+  document.body.appendChild(element);
+  element.updateFrame(userFrame({ text: 'A: this is just ordinary text? yes.' }), {});
+
+  assert.equal(element.querySelector('.kikx-user-message__answer'), null);
+  assert.match(element.querySelector('.kikx-user-message__text').textContent, /ordinary text/);
+});

@@ -3995,3 +3995,42 @@ kikx-frame-filter-popup:not(.is-all-on) .kikx-frame-filter__button {
   color: #ffffff;
   outline: none;
 }
+
+/* The answer half of an agent question wake. The enclosing UserMessage is
+   already the operator's mint bubble; this inset puts the actual decision in a
+   labelled, high-contrast panel so it cannot be mistaken for the agent's Q. */
+.kikx-user-message__context {
+  color: #a9cfcb;
+  opacity: 0.82;
+}
+
+.kikx-user-message__answer {
+  margin-top: 2px;
+  padding: 10px 12px;
+  border: 2px solid #5eead4;
+  border-radius: 10px;
+  background: #072b2a;
+  box-shadow: inset 4px 0 0 #5eead4;
+  color: #f1fffd;
+}
+
+.kikx-user-message__answer::before {
+  display: block;
+  margin-bottom: 4px;
+  color: #5eead4;
+  content: 'Your response';
+  font-size: calc(10px * 1.25);
+  font-weight: 800;
+  letter-spacing: 0.10em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.kikx-user-message__answer.kikx-markdown {
+  gap: 0.4rem;
+}
+
+.kikx-user-message__after {
+  color: #9fc7c4;
+  opacity: 0.78;
+}
