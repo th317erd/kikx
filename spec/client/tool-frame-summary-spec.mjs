@@ -199,6 +199,21 @@ test('stripInjectedCwdPrefix removes only the leading shell cwd wrapper', () => 
   assert.equal(stripInjectedCwdPrefix('cd /tmp &&'), 'cd /tmp &&', 'never reduce a command to empty');
 });
 
+test('session-control names the target session in the tool line', () => {
+  assert.equal(
+    compactFrameBodyDescription(toolFrame('session-control', { action: 'suspend', target: 'Kikx-Node-Eng', session_id: 'ses_child' })),
+    'Suspend Kikx-Node-Eng in ses_child',
+  );
+  assert.equal(
+    compactFrameBodyDescription(toolFrame('session-control', { action: 'list', session_id: 'ses_child' })),
+    'List agents in ses_child',
+  );
+  assert.equal(
+    compactFrameBodyDescription(toolFrame('session-list', { query: 'OCR' })),
+    'Find session OCR',
+  );
+});
+
 test('other tool frames derive a short verb and subject', () => {
   assert.equal(
     compactFrameSummary(toolFrame('web-search', { query: 'hottest pokemon' })).description,

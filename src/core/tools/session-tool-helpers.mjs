@@ -183,6 +183,20 @@ export function requireTargetSessionID(sessionID) {
   return normalized;
 }
 
+// Write/control tools must not silently fall back to the current session. A
+// missing target is a recoverable failure that tells the model exactly how to
+// find the intended session instead of posting into the wrong one.
+export function missingExplicitSessionTargetError(toolName, currentSessionID) {
+  let current = normalizeOptionalString(currentSessionID);
+  let error = new Error(
+    `${toolName} requires an explicit session_id.`
+    + (current ? ` Current session is ${current}.` : '')
+    + ' Call session-list with query=<title or id fragment> to resolve the intended target, then retry with that session_id. Nothing was written.',
+  );
+  error.status = 400;
+  return error;
+}
+
 export function normalizeStringArray(values) {
   if (!Array.isArray(values))
     return [];

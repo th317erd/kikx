@@ -128,3 +128,34 @@ test('the help tool includes plugin-registered tools', () => {
   assert.equal(described.content.found, true);
   assert.equal(described.content.help, 'Echo one value back to the caller.');
 });
+
+
+test('write tools make an explicit session target part of the model schema', () => {
+  let ToolClass = class {
+    static description = 'Write into one session.';
+    static help = 'Resolve the session id first.';
+    static requiresTargetSessionID = true;
+    static inputSchema = {
+      type: 'object',
+      properties: {
+        text: { type: 'string' },
+      },
+      required: [ 'text' ],
+      additionalProperties: false,
+    };
+  };
+  let definitions = createLoopToolDefinitions({
+    isCoordinator: true,
+    session: { id: 'ses_1', generation: 0 },
+    pluginRegistry: {
+      getTools() {
+        return new Map([ [ 'session-message', ToolClass ] ]);
+      },
+    },
+  });
+  let definition = definitions.find((entry) => entry.name === 'session-message');
+  assert.ok(definition, 'the write tool is exposed');
+  assert.deepEqual(definition.parameters.required, [ 'text', 'session_id' ]);
+  assert.match(definition.parameters.properties.session_id.description, /Required target Kikx session ID/);
+  assert.match(definition.parameters.properties.session_id.description, /session-list/);
+});

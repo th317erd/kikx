@@ -766,7 +766,7 @@ function toolDescription(toolName, input, status = 'running', frame = null) {
     case 'agent-update':
       return inputField(input, 'agent') ? `Edit agent ${inputField(input, 'agent')}` : 'Edit agent';
     case 'session-list':
-      return 'List sessions';
+      return query ? `Find session ${query}` : 'List sessions';
     case 'session-create':
       return title ? `Create session ${title}` : 'Create session';
     case 'session-invite-agents':
@@ -831,8 +831,17 @@ function toolDescription(toolName, input, status = 'running', frame = null) {
       return processID ? `Suspend exec task ${processID}` : 'Suspend exec task';
     case 'exec-resume':
       return processID ? `Resume exec task ${processID}` : 'Resume exec task';
-    case 'session-control':
+    case 'session-control': {
+      let action = inputField(input, 'action');
+      let target = inputField(input, 'target');
+      if (action === 'list')
+        return sessionID ? `List agents in ${sessionID}` : 'List session agents';
+      if (action === 'suspend')
+        return target ? `Suspend ${target}${sessionID ? ` in ${sessionID}` : ''}` : 'Suspend session agent';
+      if (action === 'resume')
+        return target ? `Resume ${target}${sessionID ? ` in ${sessionID}` : ''}` : 'Resume session agent';
       return 'Session control';
+    }
     case 'database-search':
       return query ? `Search database for ${query}` : 'Search database';
     case 'database-fetch':

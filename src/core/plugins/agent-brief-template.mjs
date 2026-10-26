@@ -58,7 +58,7 @@ const BRIEF_TOOL_LINES_COMMON = [
   '             (keep working, wake later), progress',
   '  route:     route (coordinator only)',
   '  control:   stop, set-character, exec-suspend, exec-resume, exec-kill;',
-  '             session-control (coordinator suspension recovery)',
+  '             session-control (coordinator; current or descendant session)',
   '  help:      help (lists all tools; each tool has its own help)',
   '  work:      read-file, write-file, exec, exec-script, exec-list, exec-status, exec-read,',
   '             exec-grep, web-fetch, web-search, ocr, feedback-report',
@@ -68,8 +68,8 @@ const BRIEF_TOOL_LINES_COMMON = [
   '             (needs the openDigest from question-list), question-answer and',
   '             question-dismiss (coordinator-only), ask-user (legacy create).',
   '             wait = end your turn; continue = keep working and steer.',
-  '  session:   session-create, session-invite-agents, session-message,',
-  '             session-frames, session-search, agent-list',
+  '  session:   session-create, session-invite-agents (explicit session_id),',
+  '             session-message (explicit session_id), session-frames, session-search, agent-list',
   '  state:     todo-*, cwd-*',
 ];
 
@@ -242,7 +242,7 @@ function buildDelegationBriefLines(sessionGeneration) {
 
   return [
     '- Delegation: for sub-agent work use session-create(includeSelf), then',
-    '  session-invite-agents, session-message, session-frames; audit names/paths',
+    '  session-invite-agents, session-message (explicit session_id), session-frames; audit names/paths',
     '  against the current routed message before any handoff.',
   ];
 }

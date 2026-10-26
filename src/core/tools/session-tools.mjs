@@ -10,6 +10,7 @@ import {
   clampInteger,
   findReusableChildSession,
   frameReferenceFromPath,
+  missingExplicitSessionTargetError,
   normalizeNonNegativeInteger,
   normalizeOptionalString,
   normalizeRequiredString,
@@ -57,6 +58,20 @@ class SessionTool extends PluginInterface {
 
   targetSessionID(params = {}) {
     return normalizeOptionalString(params._sessionID || params.session_id || params.sessionID || this.context.session?.id);
+  }
+
+  explicitTargetSessionID(params = {}) {
+    // `_sessionID` is injected by ToolExecutionService and defaults to the
+    // source session. It is not proof that the model supplied a target.
+    return normalizeOptionalString(params.session_id || params.sessionID);
+  }
+
+  requireExplicitTargetSessionID(params = {}) {
+    let sessionID = this.explicitTargetSessionID(params);
+    if (!sessionID)
+      throw missingExplicitSessionTargetError(this.constructor.featureName, this.context.session?.id);
+
+    return sessionID;
   }
 
   sourceSession() {
@@ -155,20 +170,37 @@ export class SessionListTool extends SessionTool {
         minimum: 0,
         description: 'Session list offset.',
       },
+      query: {
+        type: 'string',
+        description: 'Optional title or session-ID fragment. Use this before targeting another session.',
+      },
     },
     additionalProperties: false,
   };
-  static help = 'Use session-list to find existing session IDs and titles. Every tool also accepts session_id to make the visible tool call happen in that target session.';
+  static help = 'Use session-list with query=<title or id fragment> to resolve an exact session ID. currentSessionID is included in the result. A session_id passed to a write/control tool is the actual target, not just a recording location.';
 
   async _execute(params = {}) {
     let limit = clampInteger(params.limit, DEFAULT_SESSION_LIST_LIMIT, 1, MAX_SESSION_LIST_LIMIT);
     let offset = clampInteger(params.offset, 0, 0, Number.MAX_SAFE_INTEGER);
-    let sessions = await this.frameRuntime().listSessions({ limit, offset });
+    let query = normalizeOptionalString(params.query);
+    let sessions = await this.frameRuntime().listSessions(
+      query ? { limit: MAX_SESSION_LIST_LIMIT, offset: 0 } : { limit, offset },
+    );
+    if (query) {
+      let needle = query.toLowerCase();
+      sessions = sessions.filter((session) => {
+        let id = String(session.id || '').toLowerCase();
+        let title = String(session.title || '').toLowerCase();
+        return id.includes(needle) || title.includes(needle);
+      }).slice(offset, offset + limit);
+    }
+
     return {
       sessions: sessions.map((session) => sanitizeSession(session)),
       count: sessions.length,
       limit,
       offset,
+      query,
       currentSessionID: this.context.session?.id || null,
     };
   }
@@ -211,7 +243,7 @@ export class SessionCreateTool extends SessionTool {
     },
     additionalProperties: false,
   };
-  static help = 'Use session-create to create a new session. Set includeSelf when you should participate in that new session. For delegated sub-agent work, set initialMessage to a compact orienting handoff with project name, cwd, parent goal, current status, constraints, and the first assignment. Agent-created child sessions reuse an existing same-title child under the same parent/creator by default; set reuseExisting false only when you intentionally need a separate duplicate-title session.';
+  static help = 'Use session-create to create a new session. Set includeSelf when you should participate in that new session. Before including an agent, check session-list: do not make one agent coordinator of two concurrent sessions. For delegated sub-agent work, set initialMessage to a compact orienting handoff with project name, cwd, parent goal, current status, constraints, and the first assignment. Agent-created child sessions reuse an existing same-title child under the same parent/creator by default; set reuseExisting false only when you intentionally need a separate duplicate-title session.';
 
   async _execute(params = {}) {
     this.assertFirstGenerationDelegation('session-create');
@@ -306,6 +338,7 @@ export class SessionCreateTool extends SessionTool {
 export class SessionInviteAgentsTool extends SessionTool {
   static featureName = 'session-invite-agents';
   static displayName = 'Invite agents';
+  static requiresTargetSessionID = true;
   static description = 'Invite one or more configured agents into a Kikx session.';
   static frameType = 'SessionInviteAgentsToolFrame';
   static inputSchema = {
@@ -333,7 +366,7 @@ export class SessionInviteAgentsTool extends SessionTool {
   async _execute(params = {}) {
     this.assertFirstGenerationDelegation('session-invite-agents');
 
-    let sessionID = requireTargetSessionID(this.targetSessionID(params));
+    let sessionID = requireTargetSessionID(this.requireExplicitTargetSessionID(params));
     let refs = normalizeStringArray(params.agents || params.agentRefs || params.agentIDs);
     if (params.includeSelf === true && this.context.agent?.id)
       refs.push(this.context.agent.id);
@@ -524,7 +557,8 @@ export class SessionSearchTool extends SessionTool {
 export class SessionMessageTool extends SessionTool {
   static featureName = 'session-message';
   static displayName = 'Post session message';
-  static description = 'Post a visible agent message into the current or target Kikx session.';
+  static requiresTargetSessionID = true;
+  static description = 'Post a visible agent message into an explicit target Kikx session.';
   static frameType = 'SessionMessageToolFrame';
   static inputSchema = {
     type: 'object',
@@ -537,12 +571,12 @@ export class SessionMessageTool extends SessionTool {
     required: [ 'text' ],
     additionalProperties: false,
   };
-  static help = 'Use session-message with session_id to post a visible agent-authored message into another session. This is different from end-turn, which ends your current routed turn.';
+  static help = 'Use session-message to post a visible agent-authored message into another session. session_id is REQUIRED: resolve it with session-list query=<title or id fragment> first, then pass the returned ID. Omitting session_id is an error and posts nothing — it never falls back to the current session. This is different from end-turn, which ends your current routed turn.';
 
   async _execute(params = {}) {
     let text = normalizeRequiredString(params.text, 'text');
     let runtime = this.frameRuntime();
-    let sessionID = requireTargetSessionID(this.targetSessionID(params));
+    let sessionID = requireTargetSessionID(this.requireExplicitTargetSessionID(params));
     // Only resolve the agent manager when the text contains a real mention;
     // plain messages (and email addresses) must keep working in contexts that
     // do not expose one.

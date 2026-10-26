@@ -2,6 +2,7 @@
 
 import { PluginInterface } from '../plugins/index.mjs';
 import { builtInToolComponent } from './tool-client-components.mjs';
+import { normalizeOptionalString } from './session-tool-helpers.mjs';
 
 export class SessionControlTool extends PluginInterface {
   static pluginID = 'internal:session-control';
@@ -22,11 +23,16 @@ export class SessionControlTool extends PluginInterface {
         type: 'string',
         description: 'Agent id or exact name for resume/suspend.',
       },
+      session_id: {
+        type: 'string',
+        minLength: 1,
+        description: 'Target session ID. Defaults to the current session. Cross-session control is limited to the current session and its descendants.',
+      },
     },
     required: [ 'action' ],
     additionalProperties: false,
   };
-  static help = 'Coordinator-only recovery tool. Use list to see suspended agents, then resume or suspend an agent by id/name. Commands are controlled with exec-list/exec-status/exec-resume/exec-kill.';
+  static help = 'Coordinator-only recovery tool. Use list to see suspended agents, then resume or suspend an agent by id/name. Pass session_id to inspect or control a descendant session; the current session is the default. Suspension cancels queued work and freezes running commands at the next yield, but cannot preempt a provider call that is already blocked. Commands are controlled with exec-list/exec-status/exec-resume/exec-kill.';
 
   async _execute(params = {}) {
     if (this.context?.isCoordinator !== true)
@@ -35,13 +41,21 @@ export class SessionControlTool extends PluginInterface {
     let frameRuntime = this.context.frameRuntime || this.context.services?.frameRuntime || resolveService(this.context, 'frameRuntime');
     let agentManager = this.context.agentManager || this.context.services?.agentManager || resolveService(this.context, 'agentManager');
     let processManager = this.context.processManager || this.context.services?.processManager || resolveService(this.context, 'processManager');
-    let sessionID = this.context.session?.id;
-    if (!frameRuntime || !sessionID)
+    let sourceSessionID = this.context.session?.id;
+    let sessionID = normalizeOptionalString(params.session_id || params.sessionID || sourceSessionID);
+    if (!frameRuntime || !sourceSessionID || !sessionID)
       throw new Error('session-control requires an active session');
+
+    let sessionEntry = await resolveControlledSession({
+      frameRuntime,
+      sourceSessionID,
+      targetSessionID: sessionID,
+    });
+    let session = sessionEntry.session;
 
     let action = String(params.action || '').trim().toLowerCase();
     if (action === 'list')
-      return await listAgents({ frameRuntime, agentManager, sessionID });
+      return await listAgents({ frameRuntime, agentManager, sessionID, session });
 
     let target = typeof params.target === 'string' ? params.target.trim() : '';
     if (!target)
@@ -49,6 +63,9 @@ export class SessionControlTool extends PluginInterface {
     if (!agentManager?.resolveAgent)
       throw new Error('session-control requires an agent manager');
     let agent = await agentManager.resolveAgent(target);
+    let participantAgentIDs = Array.isArray(session?.participantAgentIDs) ? session.participantAgentIDs : [];
+    if (!participantAgentIDs.includes(agent.id))
+      throw new Error(`${agent.name || agent.id} is not a participant in ${session?.title || sessionID}`);
 
     if (action === 'resume') {
       let resumed = false;
@@ -63,12 +80,14 @@ export class SessionControlTool extends PluginInterface {
         resumed = frameRuntime.resumeAgent?.(sessionID, agent.id) === true;
       }
       return {
+        sessionID,
+        sessionTitle: session?.title || sessionID,
         agentID: agent.id,
         agentName: agent.name || agent.id,
         resumed,
         message: resumed
-          ? `${agent.name || agent.id} is resumed. Any routed message can wake it with the suspension recovery warning.`
-          : `${agent.name || agent.id} was not suspended.`,
+          ? `${agent.name || agent.id} is resumed in ${session?.title || sessionID}. Any routed message can wake it with the suspension recovery warning.`
+          : `${agent.name || agent.id} was not suspended in ${session?.title || sessionID}.`,
       };
     }
 
@@ -78,11 +97,13 @@ export class SessionControlTool extends PluginInterface {
       let suspendedCommandIDs = await processManager?.suspendSession?.(sessionID, { agentID: agent.id }) || [];
       await frameRuntime.persistSessionSuspension?.(sessionID);
       return {
+        sessionID,
+        sessionTitle: session?.title || sessionID,
         agentID: agent.id,
         agentName: agent.name || agent.id,
         suspended: true,
         suspendedCommandIDs,
-        message: `${agent.name || agent.id} is suspended.`,
+        message: `${agent.name || agent.id} is suspended in ${session?.title || sessionID}. Future tool calls are frozen and queued work is cancelled; a provider call already in progress can only stop at its next yield.`,
       };
     }
 
@@ -90,9 +111,9 @@ export class SessionControlTool extends PluginInterface {
   }
 }
 
-async function listAgents({ frameRuntime, agentManager, sessionID }) {
+async function listAgents({ frameRuntime, agentManager, sessionID, session }) {
   let suspend = frameRuntime.getSessionSuspension?.(sessionID);
-  let session = frameRuntime.requireSessionEntry?.(sessionID)?.session || null;
+  session ||= (await frameRuntime.ensureSessionEntry?.(sessionID, { loadFrames: false }))?.session || null;
   let participantAgentIDs = Array.isArray(session?.participantAgentIDs) ? session.participantAgentIDs : [];
   let suspended = new Set(suspend?.suspendedAgentIDs || []);
   let active = new Set(frameRuntime.listActiveAgentRuns?.(sessionID) || []);
@@ -112,6 +133,8 @@ async function listAgents({ frameRuntime, agentManager, sessionID }) {
     });
   }
   return {
+    sessionID,
+    sessionTitle: session?.title || sessionID,
     sessionSuspended: Boolean(suspend),
     restarted: suspend?.restarted === true,
     coordinatorAgentID,
@@ -119,6 +142,27 @@ async function listAgents({ frameRuntime, agentManager, sessionID }) {
     activeAgentIDs: [ ...active ],
     agents,
   };
+}
+
+async function resolveControlledSession({ frameRuntime, sourceSessionID, targetSessionID }) {
+  let entry = await frameRuntime.ensureSessionEntry(targetSessionID, { loadFrames: false });
+  if (entry?.framesLoaded !== true && typeof frameRuntime.hydrateSessionSuspension === 'function')
+    await frameRuntime.hydrateSessionSuspension(entry, []);
+  if (targetSessionID === sourceSessionID)
+    return entry;
+
+  let seen = new Set();
+  let cursor = normalizeOptionalString(entry?.session?.parentSessionID);
+  while (cursor && !seen.has(cursor)) {
+    if (cursor === sourceSessionID)
+      return entry;
+
+    seen.add(cursor);
+    let parent = await frameRuntime.ensureSessionEntry(cursor, { loadFrames: false });
+    cursor = normalizeOptionalString(parent?.session?.parentSessionID);
+  }
+
+  throw new Error('session-control may only target the current session or one of its descendants');
 }
 
 function resolveService(context = {}, name) {

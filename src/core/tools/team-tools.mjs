@@ -3,6 +3,7 @@
 import { PluginInterface } from '../plugins/index.mjs';
 import { builtInToolComponent } from './tool-client-components.mjs';
 import { wakeInvitedAgent } from './session-invite-wake.mjs';
+import { missingExplicitSessionTargetError } from './session-tool-helpers.mjs';
 
 const DEFAULT_TEAM_LIST_LIMIT = 50;
 const MAX_TEAM_LIST_LIMIT = 200;
@@ -302,6 +303,7 @@ export class TeamRemoveMemberTool extends TeamTool {
 export class SessionInviteTeamTool extends TeamTool {
   static featureName = 'session-invite-team';
   static displayName = 'Invite team';
+  static requiresTargetSessionID = true;
   static description = 'Invite every actor member of a team into the current or target Kikx session.';
   static frameType = 'SessionInviteTeamToolFrame';
   static inputSchema = {
@@ -319,12 +321,15 @@ export class SessionInviteTeamTool extends TeamTool {
     required: [ 'team' ],
     additionalProperties: false,
   };
-  static help = 'Use session-invite-team with session_id to invite all team members into a target session. Agent members become participant agents; user members become participant users. Newly invited agents are woken with a hidden context-review turn by default; set wake:false to add them silently.';
+  static help = 'Use session-invite-team to invite all team members into a target session. session_id is REQUIRED: resolve it with session-list query=<title or id fragment> first. Agent members become participant agents; user members become participant users. Newly invited agents are woken with a hidden context-review turn by default; set wake:false to add them silently.';
 
   async _execute(params = {}) {
     this.assertFirstGenerationDelegation('session-invite-team');
 
-    let sessionID = requireTargetSessionID(this.targetSessionID(params));
+    let explicitTarget = normalizeOptionalString(params.session_id || params.sessionID);
+    if (!explicitTarget)
+      throw missingExplicitSessionTargetError(this.constructor.featureName, this.context.session?.id);
+    let sessionID = requireTargetSessionID(explicitTarget);
     let team = await this.teamManager().resolveTeam(normalizeRequiredString(params.team, 'team'));
     let runtime = this.frameRuntime();
     let invitedAgents = [];
