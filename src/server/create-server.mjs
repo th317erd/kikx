@@ -394,6 +394,12 @@ export async function createServer(options = {}) {
   if (!context.has('questionsStore')) {
     context.set('questionsStore', new QuestionsStore({
       db: context.require('db'),
+      // Lazy on purpose: frameRuntime is registered BELOW this block, so
+      // binding context.require('frameRuntime') or a captured instance here
+      // would capture undefined and restore the silent 'no descendants' bug.
+      // context.get() returns undefined until it is set; the store resolves
+      // this function again on every tree-scoped read.
+      sessionLister: () => context.get('frameRuntime'),
     }));
   }
 

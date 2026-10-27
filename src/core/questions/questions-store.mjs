@@ -36,6 +36,11 @@ import {
   visibleQuestionDigest,
 } from './question-dedupe.mjs';
 
+import {
+  listSessionsForTree,
+  tryListSessionsForTree,
+} from './question-session-tree.mjs';
+
 const DEFAULT_ROOT_PATH = '/kikx';
 
 
@@ -57,6 +62,7 @@ export class QuestionsStore {
       rootPath = DEFAULT_ROOT_PATH,
       clock = () => Date.now(),
       idGenerator = () => randomUUID(),
+      sessionLister = null,
     } = options;
 
     if (!db)
@@ -67,6 +73,11 @@ export class QuestionsStore {
     this.rootPath = normalizeRoot(rootPath);
     this.clock = clock;
     this.idGenerator = idGenerator;
+    // Lazy, never snapshotted: `frameRuntime` is registered in create-server.mjs
+    // AFTER `questionsStore`, so capturing the runtime here would capture
+    // `undefined` and silently restore the old "no descendants" behaviour. A
+    // function is the only wiring that cannot go stale.
+    this.sessionLister = sessionLister;
     // AeorDB has no conditional write, so idempotency depends on serialising
     // read-modify-write per question inside this single process.
     this.locks = new Map();
@@ -341,9 +352,36 @@ export class QuestionsStore {
     let priority = normalizeOptionalString(filters.priority).toLowerCase();
 
     let root = rootSessionID || (includeDescendants ? sessionID : '');
-    let visibleSessionIDs = root
-      ? new Set(resolveVisibleSessionIDs(root, await this.listSessionTree()))
-      : null;
+    // Only a tree-scoped read needs the tree. Asking for the tree we cannot see
+    // must throw, but asking about one named session must not: the HTTP route
+    // always passes `includeDescendants = Boolean(rootSessionID) || ...`, so
+    // before this guard every plain `?sessionID=...` listing walked the tree
+    // and narrowing the read would have turned it into an error.
+    let wantsTree = includeDescendants || Boolean(rootSessionID);
+
+    // Tolerant mode is OPT-IN and off by default. The default is to throw,
+    // because the primary caller of a tree-scoped listOpen is the Inbox: a
+    // silent narrowing there is exactly the false all-clear that hid two live
+    // decisions from the owner. A caller that can genuinely forward a warning
+    // to its own consumer (queryQuestions -> the question-list tool response)
+    // opts in and MUST read `sessionTreeWarning` off the result.
+    let tolerateUnavailableTree = filters.allowUnavailableSessionTree === true;
+    let sessionTreeWarning = null;
+    let visibleSessionIDs = null;
+
+    if (root && wantsTree) {
+      if (tolerateUnavailableTree) {
+        let tree = await tryListSessionsForTree({
+          resolver: this.sessionLister,
+          frameStore: this.frameStore,
+          aeordb: this.aeordb,
+        });
+        sessionTreeWarning = tree.warning;
+        visibleSessionIDs = new Set(resolveVisibleSessionIDs(root, tree.sessions));
+      } else {
+        visibleSessionIDs = new Set(resolveVisibleSessionIDs(root, await this.listSessionTree()));
+      }
+    }
 
     if (visibleSessionIDs)
       summaries = summaries.filter((entry) => visibleSessionIDs.has(entry.sessionID));
@@ -366,6 +404,9 @@ export class QuestionsStore {
       ids: summaries.map((entry) => entry.id),
       summaries: summaries.map(cloneJSON),
       updatedAt: index.updatedAt || null,
+      // null when the tree was actually read. Non-null means these results
+      // cover fewer sessions than the caller asked for; never drop it.
+      sessionTreeWarning,
     };
   }
 
@@ -387,7 +428,16 @@ export class QuestionsStore {
     if (!root)
       throw new TypeError('listVisibleQuestions requires sessionID');
 
-    let visibleSessionIDs = resolveVisibleSessionIDs(root, await this.listSessionTree());
+    // Tolerant on purpose: this digest is a precondition on the caller's OWN
+    // session, and "self only" is a correct answer for it even when the wider
+    // tree is unreadable. Degrading silently is what caused the original bug,
+    // so the narrowing is reported as `sessionTreeWarning` instead of hidden.
+    let tree = await tryListSessionsForTree({
+      resolver: this.sessionLister,
+      frameStore: this.frameStore,
+      aeordb: this.aeordb,
+    });
+    let visibleSessionIDs = resolveVisibleSessionIDs(root, tree.sessions);
     let index = await this.readOpenIndex();
     let pending = selectVisiblePendingQuestions(index.summaries, visibleSessionIDs);
     let normalizedStatus = normalizeOptionalString(status) || 'open';
@@ -413,6 +463,10 @@ export class QuestionsStore {
       openDigest: visibleQuestionDigest(pending),
       questions,
       total: questions.length,
+      // null when the session tree was actually read. Non-null means the answer
+      // above covers this session only because descendants could not be
+      // enumerated; consumers that render an Inbox must surface it.
+      sessionTreeWarning: tree.warning,
     };
   }
 
@@ -473,19 +527,40 @@ export class QuestionsStore {
   }
 
   /**
-   * Sessions, for the parent/child walk. Best-effort: a store without a session
-   * tree degrades to "just this session", which is strictly narrower, never wider.
+   * Sessions, for the parent/child walk.
+   *
+   * This used to be best-effort and returned `[]` when no lister was wired or
+   * the lister threw. That is how every tree-scoped read silently collapsed to
+   * "exactly the session you named": the empty list is indistinguishable from a
+   * real root with no children, so a coordinator's Inbox showed nothing from its
+   * descendants and looked correct doing it. It now throws
+   * `SessionTreeUnavailableError`; see question-session-tree.mjs for the wiring
+   * rules. Callers that legitimately do not need the tree must not call this.
    */
   async listSessionTree() {
-    let lister = this.frameStore || this.aeordb?.frameStore || null;
-    if (typeof lister?.listSessions !== 'function')
-      return [];
+    return await listSessionsForTree({
+      resolver: this.sessionLister,
+      frameStore: this.frameStore,
+      aeordb: this.aeordb,
+    });
+  }
 
-    try {
-      return await lister.listSessions({ limit: 5000 });
-    } catch (_error) {
-      return [];
-    }
+  /**
+   * The tolerant read of listSessionTree, for callers that can forward a
+   * warning to their own consumer.
+   *
+   * listSessionTree itself stays strict: it is the primitive, and making it
+   * degrade again is how this whole bug happened. Surfaces that cannot show a
+   * warning (the Inbox) must keep using the strict one. Surfaces that can
+   * (queryQuestions -> question-list tool -> the asking agent) call this and
+   * MUST propagate the returned warning.
+   */
+  async listSessionTreeTolerant() {
+    return await tryListSessionsForTree({
+      resolver: this.sessionLister,
+      frameStore: this.frameStore,
+      aeordb: this.aeordb,
+    });
   }
 
   async listForAgent(agentID) {

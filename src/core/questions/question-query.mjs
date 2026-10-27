@@ -13,12 +13,28 @@ export async function queryQuestions(store, filters = {}) {
   if (scope !== 'all' && rootSessionID === '')
     throw new TypeError('question-list requires session_id unless scope is all');
 
-  let sessions = await store.listSessionTree();
-  let sessionIDs = scope === 'all'
-    ? uniqueSessions(sessions)
-    : resolveVisibleSessionIDs(rootSessionID, sessions);
-  if (scope === 'session')
+  // scope=session names exactly one session, so it must not depend on the tree
+  // at all; scope=all and scope=tree genuinely need it. Resolving the tree
+  // unconditionally is what made scope=all answer [] on a store that could not
+  // see the tree: uniqueSessions([]) -> [] -> every question filtered out.
+  // Tree-scoped here, this is agent-facing: the tool returns this object to the
+  // asking agent, so a warning can actually reach a reader. It therefore uses
+  // the tolerant read and REPORTS the narrowing rather than throwing, which is
+  // what keeps a malformed fixture or a not-yet-registered runtime from making
+  // question-list unusable. scope=session never needs the tree.
+  let sessionTreeWarning = null;
+  let sessionIDs;
+  if (scope === 'session') {
     sessionIDs = [ rootSessionID ];
+  } else {
+    let tree = typeof store.listSessionTreeTolerant === 'function'
+      ? await store.listSessionTreeTolerant()
+      : { sessions: await store.listSessionTree(), warning: null };
+    sessionTreeWarning = tree.warning;
+    sessionIDs = scope === 'all'
+      ? uniqueSessions(tree.sessions)
+      : resolveVisibleSessionIDs(rootSessionID, tree.sessions);
+  }
 
   let query = normalizeString(filters.query || filters.q).toLowerCase();
   let agentID = normalizeString(filters.agentID || filters.agent_id);
@@ -33,10 +49,10 @@ export async function queryQuestions(store, filters = {}) {
   if (status === 'open') {
     let open = await store.listOpen({
       ...(scope === 'all'
-        ? {}
+        ? { includeDescendants: false, allowUnavailableSessionTree: true }
         : scope === 'session'
           ? { sessionID: rootSessionID }
-          : { rootSessionID, includeDescendants: true }),
+          : { rootSessionID, includeDescendants: true, allowUnavailableSessionTree: true }),
       agentID,
       groupID,
       priority,
@@ -50,7 +66,7 @@ export async function queryQuestions(store, filters = {}) {
       let full = await store.listOpen({
         ...(scope === 'session'
           ? { sessionID: rootSessionID }
-          : { rootSessionID, includeDescendants: true }),
+          : { rootSessionID, includeDescendants: true, allowUnavailableSessionTree: true }),
       });
       openDigest = visibleQuestionDigest(full.summaries.filter((summary) => sessionSet.has(summary.sessionID)));
     }
@@ -82,6 +98,11 @@ export async function queryQuestions(store, filters = {}) {
     limit,
     hasMore: offset + page.length < total,
     openDigest,
+    // Non-null means these results cover fewer sessions than requested because
+    // the session tree could not be enumerated. The question-list tool hands
+    // this object straight back to the asking agent, so this is a real,
+    // surfaced warning - not the old silent empty tree.
+    ...(sessionTreeWarning ? { sessionTreeWarning } : {}),
     questions: page.map(publicQuestion),
   };
 }
