@@ -122,6 +122,8 @@ test('Brief A carries the version banner, precepts, tools, and behavior', () => 
   assert.match(text, /File reads: for a large file/);
   assert.match(text, /Behavior — MANDATORY:/);
   assert.match(text, /Keep working while actionable work remains\./);
+  assert.match(text, /Ask only when missing\s+knowledge or authority materially changes the action/);
+  assert.match(text, /Do not let a named gap substitute for the next\s+authorized action/);
   assert.match(text, /web-fetch, web-search/);
   assert.doesNotMatch(text, /exec-grep, fetch, search/);
   assert.match(text, /Scripts: use exec-script for cohesive multi-step computation/);
@@ -294,6 +296,13 @@ test('the system prompt carries the communication contract', () => {
   assert.match(SESSION_SYSTEM_PROMPT, /Delegation transfers work, not accountability\./);
   assert.match(SESSION_SYSTEM_PROMPT, /after two failed attempts/);
   assert.match(SESSION_SYSTEM_PROMPT, /Ask yourself:\n- Have I considered all concerns\?\n- Is there anything I've forgotten\?/);
+  assert.match(SESSION_SYSTEM_PROMPT, /Communicate decisions, evidence, limits, and next actions/);
+  assert.match(SESSION_SYSTEM_PROMPT, /Do not narrate a\s+private reasoning transcript/);
+  assert.match(SESSION_SYSTEM_PROMPT, /A passing test is evidence for what it exercised/);
+  assert.match(SESSION_SYSTEM_PROMPT, /Follow-through:/);
+  assert.match(SESSION_SYSTEM_PROMPT, /Stop when the requested outcome has sufficient evidence/);
+  assert.match(SESSION_SYSTEM_PROMPT, /Questions: ask only when missing knowledge or authority materially changes/);
+  assert.match(SESSION_SYSTEM_PROMPT, /do not ask again for routine steps already authorized/);
   assert.match(SESSION_SYSTEM_PROMPT, /Progress cadence:/);
   assert.match(SESSION_SYSTEM_PROMPT, /short summary of the goals completed/);
   assert.match(SESSION_SYSTEM_PROMPT, /short bulleted list of steps taken: 2-5 bullets/);
@@ -301,6 +310,7 @@ test('the system prompt carries the communication contract', () => {
   assert.match(SESSION_SYSTEM_PROMPT, /If you are not the active responder in a multi-party session, stay silent/);
   assert.match(SESSION_SYSTEM_PROMPT, /When history has been compacted/);
   assert.match(SESSION_SYSTEM_PROMPT, /do not restart from scratch/);
+  assert.match(SESSION_SYSTEM_PROMPT, /recover the current objective, latest accepted correction, owed work, and next step/);
   assert.match(SESSION_SYSTEM_PROMPT, /newest request wins/);
 });
 
@@ -569,6 +579,7 @@ test('Brief B carries the dual-verb turn-ending phrase', () => {
   assert.match(brief, /end-turn — with a REQUIRED short summary of goals completed \(one or two sentences\) followed by a short bulleted list of steps taken, plus optional details/);
   assert.match(brief, /continue-turn — with a visible progress update, .*next concrete step — only when you have actionable work you can do right now\./);
   assert.match(brief, /Waiting is not working: never poll or loop to await a process, the user, or another agent — a completion or a reply will wake you\./);
+  assert.match(brief, /A passing test, commit, push, restart, or accepted send proves only its own milestone/);
   assert.doesNotMatch(brief, /Communication — MANDATORY when you are actively working a turn:/);
   assert.doesNotMatch(brief, /Prefer scripts:/);
 });

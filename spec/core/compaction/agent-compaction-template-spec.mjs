@@ -87,3 +87,11 @@ test('default compaction instructions append a realign/reorient hook', () => {
   assert.match(instructions, /vision and mission/);
 });
 
+
+
+test('default compaction instructions preserve the latest correction and unverified work', () => {
+  let instructions = buildDefaultCompactionInstructions();
+  assert.match(instructions, /latest accepted correction and the authorized scope/);
+  assert.match(instructions, /evidence already observed, what remains unverified/);
+  assert.match(instructions, /Distinguish requested outcomes from hypothetical improvements/);
+});

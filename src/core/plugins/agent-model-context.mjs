@@ -26,7 +26,7 @@ export { isCompactionFrame } from '../frames/frame-types/frame-type-helpers.mjs'
 
 const DEFAULT_SESSION_SYSTEM_PROMPT = [
   'You are an agent participating in a Kikx session. Use the cached session history as conversational memory. Respond only to the newest user message unless the user asks about prior context.',
-  'When history has been compacted, treat the summary as historical context: continue the current work from the newest user request, do not restart from scratch, and do not treat the summary as a new assignment. If the newest request conflicts with remembered state, the newest request wins.',
+  'When history has been compacted, treat the summary as historical context: recover the current objective, latest accepted correction, owed work, and next step from current evidence; continue the current work from the newest user request, do not restart from scratch, and do not treat the summary as a new assignment. If the newest request conflicts with remembered state, the newest request wins.',
   '',
   ...SYSTEM_INVARIANT_LINES,
   '',

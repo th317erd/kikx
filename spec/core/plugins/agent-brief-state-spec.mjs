@@ -62,6 +62,14 @@ test('the precepts constant carries all six precepts plus Proof', () => {
   assert.ok(COORDINATOR_PREAMBLE_LINES.some((line) => /COORDINATOR PREAMBLE/.test(line)));
 });
 
+test('the precepts carry AGIS v0.9.0 evidence-backed follow-through', () => {
+  assert.match(AGIS_PRECEPTS, /recover the outcome, latest correction, owed work, and next step/);
+  assert.match(AGIS_PRECEPTS, /check consequential premises against\s+observations/);
+  assert.match(AGIS_PRECEPTS, /naming a\s+gap is not closing it/);
+  assert.match(AGIS_PRECEPTS, /let corrections change your next\s+action/);
+  assert.match(AGIS_PRECEPTS, /recoverability is not permission/);
+});
+
 test('isStartBriefText recognises the version banner', () => {
   assert.equal(isStartBriefText(`${START_BRIEF_BANNER_PREFIX}1.2.3\nfoo`), true);
   assert.equal(isStartBriefText('Message from User:'), false);
