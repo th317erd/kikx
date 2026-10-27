@@ -19,7 +19,7 @@ export function buildEndTurnNotice({ agentID, sessionID, summary } = {}) {
     `Bot ${bot} in session ${session} has stopped. It is either finished with its work, or needs assistance. Please check in on it. It finished its turn with the message:`,
     message,
     '',
-    'Coordinator validation required: prove that all of the bot\'s work is complete and that no gaps remain. List the hypotheticals, unknowns, impossible cases, not-thought-of cases, and edge cases that you tested, verified, and have proof for, as a bulleted list of all checks you performed. If you cannot prove a claim, steer the bot or resume the work.',
+    'Coordinator validation required: prove that all of the bot\'s work is complete and that no gaps remain. Perform the checks needed, then list the hypotheticals, unknowns, impossible cases, not-thought-of cases, and edge cases that you tested or verified, with proof for each, as a bulleted list of all checks you performed. If you cannot prove a claim, steer the bot or resume the work.',
   ].join('\n');
 }
 
