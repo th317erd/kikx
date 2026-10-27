@@ -5,6 +5,7 @@ import { builtInToolComponent } from './tool-client-components.mjs';
 import { hasCoordinatorAuthority, resolveSessionCoordinator } from '../agents/coordinator-scope.mjs';
 import { describeHaltResult, haltSessionTree } from '../agents/coordinator-tree-halt.mjs';
 import { resolveSubtreeSessionIDs } from '../agents/session-subtree.mjs';
+import { normalizeOptionalString } from './session-tool-helpers.mjs';
 
 export class SessionControlTool extends PluginInterface {
   static pluginID = 'internal:session-control';
@@ -25,22 +26,24 @@ export class SessionControlTool extends PluginInterface {
         type: 'string',
         description: 'Agent id or exact name for resume/suspend.',
       },
-      sessionID: {
+      session_id: {
         type: 'string',
-        description: 'Session to act on. Defaults to the calling agent\'s session. '
+        minLength: 1,
+        description: 'Target session ID. Defaults to the current session. '
           + 'A coordinator may name its own session or any descendant of it; naming a '
           + 'parent or an unrelated session is refused.',
       },
       includeSubtree: {
         type: 'boolean',
-        description: 'For suspend: also suspend every descendant session of sessionID. Defaults to true.',
+        description: 'For suspend: also suspend every descendant session of session_id. Defaults to true.',
       },
     },
     required: [ 'action' ],
     additionalProperties: false,
   };
   static help = 'Coordinator-only recovery tool. Use list to see suspended agents, then resume or suspend an agent by id/name. '
-    + 'sessionID lets a coordinator reach its own session or a descendant (never an ancestor); includeSubtree fans a suspend out over the whole subtree. '
+    + 'Pass session_id to reach the current session or any descendant of it (never a parent or an unrelated branch); includeSubtree fans a suspend out over that subtree. '
+    + 'Suspension cancels queued work and freezes running commands at the next yield, but cannot preempt a provider call that is already blocked. '
     + 'Commands are controlled with exec-list/exec-status/exec-resume/exec-kill.';
 
   async _execute(params = {}) {
@@ -48,12 +51,10 @@ export class SessionControlTool extends PluginInterface {
     let agentManager = this.context.agentManager || this.context.services?.agentManager || resolveService(this.context, 'agentManager');
     let processManager = this.context.processManager || this.context.services?.processManager || resolveService(this.context, 'processManager');
     let currentSessionID = this.context.session?.id;
-    if (!frameRuntime || !currentSessionID)
-      throw new Error('session-control requires an active session');
-
-    let actorAgentID = this.context.agent?.id || null;
-    let namedSessionID = typeof params.sessionID === 'string' ? params.sessionID.trim() : '';
+    let namedSessionID = normalizeOptionalString(params.session_id || params.sessionID);
     let sessionID = namedSessionID || currentSessionID;
+    if (!frameRuntime || !currentSessionID || !sessionID)
+      throw new Error('session-control requires an active session');
 
     // One lookup. `getSession` is the runtime's cached read; the older
     // `requireSessionEntry` shape is still honoured so a caller (and the existing
@@ -61,6 +62,60 @@ export class SessionControlTool extends PluginInterface {
     let getSession = (id) => frameRuntime.getSession?.(id)
       || frameRuntime.requireSessionEntry?.(id)?.session
       || null;
+
+    let actorAgentID = this.context.agent?.id || null;
+    let selfCoordinator = this.context?.isCoordinator === true;
+    // The tool context does not always name the acting agent (a boot-time context
+    // and most fixtures carry only `isCoordinator`). Since `isCoordinator` already
+    // asserts that the caller IS this session's coordinator, the session's own
+    // recorded coordinator is the honest identity for the authority walk. Without
+    // this fallback the halt path refused its own coordinator and returned an
+    // empty, successful-looking result.
+    let actingAgentID = this.context.agent?.id || null;
+    if (!actingAgentID && selfCoordinator) {
+      actingAgentID = getSession(currentSessionID)?.coordinatorAgentID || null;
+      if (!actingAgentID && typeof frameRuntime.ensureSessionEntry === 'function') {
+        try {
+          let own = await frameRuntime.ensureSessionEntry(currentSessionID, { loadFrames: false });
+          actingAgentID = own?.session?.coordinatorAgentID || null;
+        } catch (_error) {
+          actingAgentID = null;
+        }
+      }
+    }
+
+    // Hydrate the target and check it is on this coordinator's own branch, so the
+    // participant list and title below are readable even after the session was
+    // evicted from the runtime cache.
+    let sessionEntry;
+    try {
+      sessionEntry = await resolveControlledSession({
+        frameRuntime,
+        sourceSessionID: currentSessionID,
+        targetSessionID: sessionID,
+      });
+    } catch (ancestryError) {
+      // An ancestor or an unrelated branch. Both rules agree on the REFUSAL --
+      // authority flows down the tree, never up -- but the terse ancestry text
+      // does not say who DOES hold authority, which is the actionable half.
+      // Re-throw through the authority refusal, then restate the canonical rule
+      // so every caller (old wording and new) matches one message.
+      let refusalAuthority = hasCoordinatorAuthority({
+        agentID: this.context.agent?.id || null,
+        targetSessionID: sessionID,
+        getSession,
+      });
+      let detail = buildAuthorityRefusal({
+        actorAgentID: this.context.agent?.id || null,
+        sessionID,
+        currentSessionID,
+        authority: refusalAuthority,
+        getSession,
+      });
+      throw new Error(detail
+        + ' session-control may only target the current session or one of its descendants.');
+    }
+    let session = sessionEntry?.session || getSession(sessionID) || null;
 
     // Subtree fan-out is opt-in for a caller that does not name a session, so an
     // unchanged call keeps the single-session behaviour it always had. Naming a
@@ -73,17 +128,17 @@ export class SessionControlTool extends PluginInterface {
     // A coordinator commands its own session and every descendant; naming a
     // parent, a sibling branch or an unrelated session is refused with a reason.
     let authority = hasCoordinatorAuthority({
-      agentID: actorAgentID,
+      agentID: actingAgentID,
       targetSessionID: sessionID,
       getSession,
     });
 
     // The legacy self-check is kept as a floor so an agent that is somehow not
     // recorded as coordinator anywhere still cannot drive its own session through
-    // this tool unless the context says it may.
-    let selfCoordinator = this.context?.isCoordinator === true;
+    // this tool unless the context says it may. (`selfCoordinator` is computed
+    // above, next to `actingAgentID`.)
 
-    if (!authority.allowed && !(selfCoordinator && sessionID === currentSessionID)) {
+    if (!authority.allowed && !selfCoordinator) {
       throw new Error(buildAuthorityRefusal({
         actorAgentID,
         sessionID,
@@ -98,25 +153,15 @@ export class SessionControlTool extends PluginInterface {
     if (action === 'list') {
       // F3: if a coordinator may halt a subtree it must also be able to see what
       // is running there, otherwise "stop" can report success over a live run.
-      let includeSubtree = params.includeSubtree !== false;
       return await listAgents({
         frameRuntime,
         agentManager,
         sessionID,
+        session,
         actorAgentID,
-        includeSubtree,
+        includeSubtree: params.includeSubtree !== false,
         getSession,
       });
-    }
-
-    if (!selfCoordinator && authority.reason === 'not-coordinator') {
-      throw new Error(buildAuthorityRefusal({
-        actorAgentID,
-        sessionID,
-        currentSessionID,
-        authority,
-        getSession,
-      }));
     }
 
     if (action === 'suspend') {
@@ -136,17 +181,19 @@ export class SessionControlTool extends PluginInterface {
           let suspendedCommandIDs = await processManager?.suspendSession?.(sessionID, { agentID: agent.id }) || [];
           await frameRuntime.persistSessionSuspension?.(sessionID);
           return {
+            sessionID,
+            sessionTitle: session?.title || sessionID,
             agentID: agent.id,
             agentName: agent.name || agent.id,
             suspended: true,
             suspendedCommandIDs,
-            message: `${agent.name || agent.id} is suspended.`,
+            message: `${agent.name || agent.id} is suspended in ${session?.title || sessionID}.`,
           };
         }
       }
 
       let result = await haltSessionTree({
-        actorAgentID,
+        actorAgentID: actingAgentID,
         targetSessionID: sessionID,
         currentSessionID,
         includeSubtree,
@@ -160,13 +207,24 @@ export class SessionControlTool extends PluginInterface {
         },
       });
 
-      // The legacy flat fields are preserved for the own-session case so a caller
-      // that reads `suspendedCommandIDs` or `suspended` does not have to change.
-      let flatCommandIDs = (result.suspendedCommandIDs || [])
-        .flatMap((entry) => entry.commandIDs || []);
+      // One contract: `suspendedCommandIDs` is a flat list of command ids, exactly
+      // as the single-session path already returns. The per-session breakdown stays
+      // on `result.sessions[]`, so flattening here loses nothing.
+      let commandEntries = (result.suspendedCommandIDs || []).map((entry) => ({
+        sessionID: entry?.sessionID || sessionID,
+        commandIDs: Array.isArray(entry?.commandIDs) ? entry.commandIDs : [],
+      }));
+      let flatCommandIDs = commandEntries.flatMap((entry) => entry.commandIDs);
 
       return {
         ...result,
+        sessionID,
+        sessionTitle: session?.title || sessionID,
+        sessions: (result.cancelled || []).map((entry, index) => ({
+          sessionID: entry?.sessionID || sessionID,
+          cancelledAgentIDs: entry?.agentIDs || [],
+          suspendedCommandIDs: commandEntries[index]?.commandIDs || [],
+        })),
         suspendedCommandIDs: flatCommandIDs,
         suspended: (result.cancelled || []).some((entry) => entry.agentIDs.length > 0),
         message: describeHaltResult(result),
@@ -179,6 +237,9 @@ export class SessionControlTool extends PluginInterface {
     if (!agentManager?.resolveAgent)
       throw new Error('session-control requires an agent manager');
     let agent = await agentManager.resolveAgent(target);
+    let participantAgentIDs = Array.isArray(session?.participantAgentIDs) ? session.participantAgentIDs : [];
+    if (!participantAgentIDs.includes(agent.id))
+      throw new Error(`${agent.name || agent.id} is not a participant in ${session?.title || sessionID}`);
 
     if (action === 'resume') {
       let resumed = false;
@@ -193,12 +254,14 @@ export class SessionControlTool extends PluginInterface {
         resumed = frameRuntime.resumeAgent?.(sessionID, agent.id) === true;
       }
       return {
+        sessionID,
+        sessionTitle: session?.title || sessionID,
         agentID: agent.id,
         agentName: agent.name || agent.id,
         resumed,
         message: resumed
-          ? `${agent.name || agent.id} is resumed. Any routed message can wake it with the suspension recovery warning.`
-          : `${agent.name || agent.id} was not suspended.`,
+          ? `${agent.name || agent.id} is resumed in ${session?.title || sessionID}. Any routed message can wake it with the suspension recovery warning.`
+          : `${agent.name || agent.id} was not suspended in ${session?.title || sessionID}.`,
       };
     }
 
@@ -210,6 +273,7 @@ async function listAgents({
   frameRuntime,
   agentManager,
   sessionID,
+  session = null,
   actorAgentID = null,
   includeSubtree = false,
   getSession = null,
@@ -246,11 +310,11 @@ async function listAgents({
   let reported = [];
   for (let candidateID of reachable) {
     let suspend = frameRuntime.getSessionSuspension?.(candidateID);
-    let session = lookup(candidateID);
-    let participantAgentIDs = Array.isArray(session?.participantAgentIDs) ? session.participantAgentIDs : [];
+    let targetSession = candidateID === sessionID && session ? session : lookup(candidateID);
+    let participantAgentIDs = Array.isArray(targetSession?.participantAgentIDs) ? targetSession.participantAgentIDs : [];
     let suspended = new Set(suspend?.suspendedAgentIDs || []);
     let active = new Set(frameRuntime.listActiveAgentRuns?.(candidateID) || []);
-    let coordinatorAgentID = suspend?.coordinatorAgentID || session?.coordinatorAgentID || null;
+    let coordinatorAgentID = suspend?.coordinatorAgentID || targetSession?.coordinatorAgentID || null;
     let agents = [];
     for (let agentID of participantAgentIDs) {
       let agent = null;
@@ -275,9 +339,9 @@ async function listAgents({
       agents,
     });
   }
-
   let primary = reported[0] || {
     sessionID,
+    sessionTitle: session?.title || sessionID,
     sessionSuspended: false,
     restarted: false,
     coordinatorAgentID: null,
@@ -323,6 +387,27 @@ function buildAuthorityRefusal({ actorAgentID, sessionID, currentSessionID, auth
     text = `session-control is only available to the session coordinator. ${text}`;
 
   return text;
+}
+
+async function resolveControlledSession({ frameRuntime, sourceSessionID, targetSessionID }) {
+  let entry = await frameRuntime.ensureSessionEntry(targetSessionID, { loadFrames: false });
+  if (entry?.framesLoaded !== true && typeof frameRuntime.hydrateSessionSuspension === 'function')
+    await frameRuntime.hydrateSessionSuspension(entry, []);
+  if (targetSessionID === sourceSessionID)
+    return entry;
+
+  let seen = new Set();
+  let cursor = normalizeOptionalString(entry?.session?.parentSessionID);
+  while (cursor && !seen.has(cursor)) {
+    if (cursor === sourceSessionID)
+      return entry;
+
+    seen.add(cursor);
+    let parent = await frameRuntime.ensureSessionEntry(cursor, { loadFrames: false });
+    cursor = normalizeOptionalString(parent?.session?.parentSessionID);
+  }
+
+  throw new Error('session-control may only target the current session or one of its descendants');
 }
 
 function resolveService(context = {}, name) {

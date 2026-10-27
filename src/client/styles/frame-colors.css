@@ -116,9 +116,11 @@
 }
 
 .kikx-frame--UserMessage {
+  /* Only the type hue and a quiet author tint are role-specific. Status,
+     radius, border, header hatch, body surface and text colour come from the
+     shared frame shell. */
   --kikx-frame-type-color: #4d8fb5;
-  --kikx-frame-status-color: oklch(from #8b949e calc(l - 0.06) c h);
-  --kikx-frame-status-foreground-color: #ffffff;
+  --kikx-frame-author-color: #d3e4ef;
 }
 
 /* Questions are a first-class frame type, not a detached embedded card. */
@@ -285,6 +287,7 @@
   .kikx-frame--AgentMessage,
   .kikx-frame--AgentMessageDelta,
   .kikx-frame--AgentProgress,
+  .kikx-frame--UserMessage,
   .kikx-frame--ToolCall,
   .kikx-frame--ToolResult
 ) .kikx-frame__meta-main strong,
@@ -452,52 +455,4 @@
      22.5px line box, so the single-line header keeps its 23.13px height.
      At `inherit` the pill is 24px and grows the header to 24.5px. */
   font-size: 0.85em;
-}
-
-/* User messages are the operator's voice, not another log row. Give them a
-   bright mint bubble with a decisive border and a right-hand tail corner; the
-   author name becomes a solid pill. The contrast has to survive the dense,
-   multi-agent thread without relying on colour alone, so the border width,
-   radius and background all differ from agent/tool frames. */
-.kikx-frame--UserMessage {
-  --kikx-frame-type-color: #2dd4bf;
-  --kikx-frame-status-color: #2dd4bf;
-  --kikx-frame-status-foreground-color: #052b28;
-  --kikx-frame-solid-color: #0b2427;
-  --kikx-frame-border-color: #5eead4;
-  --kikx-frame-border-width: 2px;
-  --kikx-frame-radius: 18px 18px 5px 18px;
-  max-width: min(86%, 1040px);
-  box-shadow:
-    0 10px 28px rgba(0, 0, 0, 0.38),
-    0 0 0 1px rgba(94, 234, 212, 0.12);
-}
-
-.kikx-frame--UserMessage .kikx-frame__meta {
-  /* No separate header plate: a full-bleed gradient header inside a bright
-     rounded bubble is what produced the square-corner bleed. The bubble is
-     already the visual container; the header needs only a divider. */
-  border-bottom: 1px solid rgba(94, 234, 212, 0.20);
-  border-radius: 0;
-  background: transparent;
-}
-
-.kikx-frame--UserMessage .kikx-frame__meta::before {
-  display: none;
-}
-
-.kikx-frame--UserMessage .kikx-frame__meta-main strong {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: #5eead4;
-  color: #052b28;
-  text-shadow: none;
-}
-
-.kikx-frame--UserMessage .kikx-frame__content {
-  color: #eafffc;
-}
-
-.kikx-frame--UserMessage .kikx-user-message__prompt {
-  border-top-color: rgba(94, 234, 212, 0.24);
 }

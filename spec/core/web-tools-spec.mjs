@@ -1299,6 +1299,24 @@ test('Session tools list, create, inspect frames, and post messages through Fram
   let listed = await new SessionListTool(context).execute({ limit: 1 });
   assert.deepEqual(listed.sessions.map((session) => session.id), [ 'ses_1' ]);
 
+  let searchedSessions = await new SessionListTool(context).execute({ query: 'targ' });
+  assert.deepEqual(searchedSessions.sessions.map((session) => session.id), [ 'ses_2' ]);
+  assert.equal(searchedSessions.query, 'targ');
+  assert.equal(searchedSessions.currentSessionID, 'ses_1');
+
+  await assert.rejects(
+    () => new SessionMessageTool(context).execute({ text: 'This must not fall back to ses_1.' }),
+    /session-message requires an explicit session_id.*Current session is ses_1/,
+  );
+  await assert.rejects(
+    () => new SessionMessageTool(context).execute({ text: 'Injected _sessionID is not an explicit target.', _sessionID: 'ses_1' }),
+    /session-message requires an explicit session_id/,
+  );
+  await assert.rejects(
+    () => new SessionInviteAgentsTool(context).execute({ agents: [ 'Agent Two' ] }),
+    /session-invite-agents requires an explicit session_id.*Current session is ses_1/,
+  );
+
   let created = await new SessionCreateTool(context).execute({
     title: 'Branch',
     includeSelf: true,

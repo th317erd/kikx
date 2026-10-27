@@ -1,5 +1,7 @@
 'use strict';
 
+import { framePriority } from '../../shared/frame-priority.mjs';
+
 const DEFAULT_WORKER_INTERVAL_MS = 1000;
 const SCHEDULER_AUTHOR_ID = 'internal:scheduled-frame-queue';
 
@@ -382,13 +384,10 @@ function normalizeWorkerInterval(value) {
 }
 
 function compareScheduledEntries(a, b) {
-  // Human messages outrank autonomous process completions. A steering prompt
-  // must not sit behind a wake for work the old turn already finished.
-  let priority = (entry) => (
-    entry.frame?.type === 'UserMessage' && entry.frame?.authorType === 'user' ? 0 : 1
-  );
-
-  return priority(a) - priority(b)
+  // The same frame priority language as the router queue: conversation
+  // messages outrank commands, and a steering prompt never sits behind a wake
+  // for work the old turn already finished.
+  return framePriority(a.frame) - framePriority(b.frame)
     || compareEntries(a, b);
 }
 

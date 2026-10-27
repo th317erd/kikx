@@ -53,6 +53,7 @@ import {
   registerAgentRouting,
 } from '../core/agents/index.mjs';
 import { CompactionService } from '../core/compaction/index.mjs';
+import { SessionMergeService, SessionMergeStore } from '../core/merge/index.mjs';
 import { registerBuiltInTagDefinitions, TagsStore } from '../core/tags/index.mjs';
 import { OcrService } from '../core/ocr/index.mjs';
 import { QuestionAnswerService, QuestionsStore } from '../core/questions/index.mjs';
@@ -468,6 +469,20 @@ export async function createServer(options = {}) {
       hardLimitRatio,
       logger: options.logger || console,
     }));
+  }
+
+  if (!context.has('sessionMergeService')) {
+    let aeordb = context.require('aeordb');
+    let sessionMergeService = new SessionMergeService({
+      frameRuntime: context.require('frameRuntime'),
+      compactionService: context.require('compactionService'),
+      store: new SessionMergeStore({ db: aeordb }),
+      logger: options.logger || console,
+    });
+    context.set('sessionMergeService', sessionMergeService);
+    sessionMergeService.recoverStaleJobs().catch((error) => {
+      (options.logger || console).warn?.('Kikx session merge recovery failed', error);
+    });
   }
 
   if (!context.has('processManager')) {

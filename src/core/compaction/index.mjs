@@ -48,5 +48,5 @@ export {
   renderCompactionSections,
   selectCompactionLevels,
 } from './compaction-summary.mjs';
-export { CompactionService } from './compaction-service.mjs';
+export { CompactionService, collectCompactionText } from './compaction-service.mjs';
 

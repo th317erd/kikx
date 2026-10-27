@@ -37,6 +37,7 @@ import {
 } from './process-tools.mjs';
 import { ReadFileTool } from './read-file-tool.mjs';
 import { SessionControlTool } from './session-control-tool.mjs';
+import { SessionMergeStatusTool, SessionMergeTool } from './session-merge-tools.mjs';
 import {
   AgentListTool,
   SessionCreateTool,
@@ -90,6 +91,8 @@ export const BUILT_IN_TOOLS = [
   [ 'exec-suspend', ExecSuspendTool ],
   [ 'exec-resume', ExecResumeTool ],
   [ 'session-control', SessionControlTool ],
+  [ 'session-merge', SessionMergeTool ],
+  [ 'session-merge-status', SessionMergeStatusTool ],
   [ 'cwd-get', CwdGetTool ],
   [ 'cwd-set', CwdSetTool ],
   [ 'cwd-clear', CwdClearTool ],

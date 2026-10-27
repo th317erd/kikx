@@ -51,6 +51,8 @@ export function setScrollLockModeForSession(app, mode, sessionID = app?._state?.
   if (!sessionID)
     return 'top';
   let next = mode === 'bottom' ? 'bottom' : 'top';
+  if (next !== 'bottom')
+    app._pendingScrollFocus = null;
   try {
     storage()?.setItem?.(modeKey(sessionID), next);
   } catch (_error) {}
@@ -63,6 +65,8 @@ export function setScrollLockedForSession(app, locked, sessionID = app?._state?.
     return false;
 
   let next = locked === true;
+  if (!next)
+    app._pendingScrollFocus = null;
   try {
     storage()?.setItem?.(key(sessionID), next ? '1' : '0');
   } catch (_error) {}

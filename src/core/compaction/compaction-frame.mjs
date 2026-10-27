@@ -33,6 +33,7 @@ export function buildCompactionFrame({
   message = '',
   warnings = [],
   errors = [],
+  merge = null,
 }) {
   let frameIDs = compactionWindow.frames.map((frame) => frame.id);
   let boundaryFrame = compactionWindow.frames.at(-1);
@@ -71,6 +72,7 @@ export function buildCompactionFrame({
       contextTokens: compactionWindow.tokens,
       warnings: normalizedWarnings,
       errors: normalizedErrors,
+      ...(merge ? { merge } : {}),
       createdAt: now,
     },
     content: {
@@ -83,6 +85,7 @@ export function buildCompactionFrame({
       errors: normalizedErrors,
       manual,
       requestedByFrameID,
+      ...(merge ? { merge } : {}),
       compactorAgentID: compactorAgent?.id || null,
       frameCount: frameIDs.length,
       frameIDs,

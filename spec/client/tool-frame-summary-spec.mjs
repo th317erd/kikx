@@ -199,6 +199,36 @@ test('stripInjectedCwdPrefix removes only the leading shell cwd wrapper', () => 
   assert.equal(stripInjectedCwdPrefix('cd /tmp &&'), 'cd /tmp &&', 'never reduce a command to empty');
 });
 
+test('session-control names the target session in the tool line', () => {
+  assert.equal(
+    compactFrameBodyDescription(toolFrame('session-control', { action: 'suspend', target: 'Kikx-Node-Eng', session_id: 'ses_child' })),
+    'Suspend Kikx-Node-Eng in ses_child',
+  );
+  assert.equal(
+    compactFrameBodyDescription(toolFrame('session-control', { action: 'list', session_id: 'ses_child' })),
+    'List agents in ses_child',
+  );
+  assert.equal(
+    compactFrameBodyDescription(toolFrame('session-list', { query: 'OCR' })),
+    'Find session OCR',
+  );
+});
+
+test('session merge tools name the target and merge id', () => {
+  assert.equal(
+    compactFrameBodyDescription(toolFrame('session-merge', { target_session_id: 'target', session_ids: [ 'a', 'b' ] })),
+    'Merge 2 into target',
+  );
+  assert.equal(
+    compactFrameBodyDescription(toolFrame('session-merge-status', { merge_id: 'merge_1' })),
+    'Merge status merge_1',
+  );
+  assert.equal(
+    compactFrameBodyDescription(toolFrame('session-merge-status', {})),
+    'List session merges',
+  );
+});
+
 test('other tool frames derive a short verb and subject', () => {
   assert.equal(
     compactFrameSummary(toolFrame('web-search', { query: 'hottest pokemon' })).description,

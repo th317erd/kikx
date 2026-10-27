@@ -11,6 +11,15 @@ import { getScrollLockModeForSession, isScrollLockedForSession } from './kikx-sc
 import { ANCHOR_THRESHOLD } from './frame-scroll-constants.mjs';
 import { captureFrameListAnchor, restoreFrameListAnchor } from './frame-scroll-anchor.mjs';
 import {
+  alignBottomFocus,
+  alignLastFrameFocus,
+  cancelFocusAlignment,
+  captureScrollFocus,
+  lastFrameID,
+  restoreScrollFocus,
+  stepFocusAlignment,
+} from './scroll-focus.mjs';
+import {
   breakScrollLockFromUser,
   cancelFrameListScrollAnimation,
   clearBottomHashMarker,
@@ -18,7 +27,7 @@ import {
   lastFrameItemID,
   maybeRestoreMessageHash,
   messageHashID,
-  scheduleLatestMessageTop,
+  updateMessageHash,
   updateMessageHashFromScroll,
 } from './kikx-frame-scroll-lock.mjs';
 
@@ -39,6 +48,9 @@ export function captureRenderSnapshot(app) {
 
   let composer = app.querySelector('textarea[name="message"]');
   let composerFocused = app.contains(document.activeElement) && document.activeElement === composer;
+  let locked = isScrollLockedForSession(app, sessionID);
+  let bottomMode = locked && getScrollLockModeForSession(app, sessionID) === 'bottom';
+  let scrollFocus = captureScrollFocus(app, frameList, { bottom: bottomMode });
 
   return {
     composerFocused,
@@ -53,6 +65,7 @@ export function captureRenderSnapshot(app) {
     composerSelectionEnd: composerFocused ? composer.selectionEnd : null,
     composerSelectionDirection: composerFocused ? composer.selectionDirection : 'none',
     frameListNearBottom: app._frameListAnchoredToBottom,
+    scrollFocus,
     viewFrameCount: Array.isArray(view?.frames) ? view.frames.length : 0,
     viewLastFrameID: Array.isArray(view?.frames) ? (view.frames.at(-1)?.id || '') : '',
     forceScrollToBottom: app._forceScrollToBottomAfterRender,
@@ -72,8 +85,12 @@ export function afterRender(app, snapshot = {}) {
     clearBottomHashMarker(app);
   let hashID = messageHashID();
   let hashRestored = Boolean(hashID && String(app._hashRestoredSessionID || '').startsWith(`${sessionID}:${hashID}:`));
-  if (sessionChanged)
+  if (sessionChanged) {
     app._sentinelSuppressed = false;
+    cancelFocusAlignment(app);
+    app._lastScrollFocus = null;
+    app._scrollFocusFrameID = '';
+  }
   app._hashAnchorPending = !locked && Boolean(hashID) && !hashRestored;
   // An explicit #message= anchor wins over the old bottom-follow default. On a
   // reload after the user broke the lock, restoring the top of that message is
@@ -101,6 +118,11 @@ export function afterRender(app, snapshot = {}) {
   app._forceScrollToBottomAfterRender = false;
   app._focusComposerAfterRender = false;
 
+  let renderedFrameList = app.querySelector('.kikx-frame-list');
+  let focusRestored = snapshot.scrollFocus && !sessionChanged && !app._pendingScrollFocus
+    ? restoreScrollFocus(app, renderedFrameList, snapshot.scrollFocus)
+    : false;
+
   if (locked) {
     let initialPlacement = app._lockedPlacementSessionID !== sessionID;
     if (initialPlacement) {
@@ -108,40 +130,36 @@ export function afterRender(app, snapshot = {}) {
       // emit a scroll event before the first render has settled. Treat that as
       // part of the initial placement, not as the user breaking the pin.
       app._ignoreFrameScrollUntil = Math.max(app._ignoreFrameScrollUntil || 0, Date.now() + 1000);
-      // First placement lands directly on the anchor. Animating in from the top
-      // of a reloaded list looks like a long, pointless scroll.
       if (lastFrameItemID(app))
         app._lockedPlacementSessionID = sessionID;
     }
     if (getScrollLockModeForSession(app, sessionID) === 'bottom') {
       app._frameListAnchoredToBottom = true;
-      let frameList = app.querySelector('.kikx-frame-list');
-      let beforeTop = Number(snapshot.frameListScrollTop) || 0;
-      // A full shell rebuild can replace the frame list and reset scrollTop to
-      // zero even though the user was at the bottom. Starting the eased follow
-      // loop there creates a multi-thousand-pixel animated jump. Detect that
-      // reset and place immediately instead.
-      let resetToTop = snapshot.frameListNearBottom === true
-        && beforeTop > 100
-        && frameList
-        && frameList.scrollTop < Math.min(100, beforeTop - 100);
-      // A send is an explicit "show me the tail now" action: place immediately,
-      // then let later streaming growth use the eased follow loop.
-      if (initialPlacement || snapshot.forceScrollToBottom === true || resetToTop)
+      // The focus restore above already kept the frame the user was looking at
+      // exactly still. Only a new focus frame (or first placement/send) is
+      // allowed to move. A reconnect resync snaps; ordinary new messages ease.
+      if (lastFrameID(renderedFrameList)) {
+        alignBottomFocus(app, renderedFrameList, {
+          initial: initialPlacement || snapshot.forceScrollToBottom === true || !focusRestored,
+          animate: app._runtimeEventsResyncInFlight !== true,
+        });
+      } else {
         scrollFramesToBottomImmediate(app);
-      else
-        scrollFramesToBottom(app);
+      }
     } else {
       app._frameListAnchoredToBottom = false;
-      scheduleLatestMessageTop(app, { animate: !initialPlacement });
+      alignLastFrameFocus(app, renderedFrameList, {
+        initial: initialPlacement || !focusRestored,
+        animate: !initialPlacement,
+      });
     }
   } else if (shouldScrollToBottom) {
     app._frameListAnchoredToBottom = true;
     scrollFramesToBottomImmediate(app);
-  } else if (shouldRestoreFrameScroll) {
+  } else if (shouldRestoreFrameScroll && !focusRestored) {
     restoreFrameListScroll(app, snapshot);
   } else if (sessionChanged || !snapshot.frameListPresent) {
-    maybeRestoreMessageHash(app);
+    maybeRestoreMessageHash(app, (frameList, { bottom }) => captureScrollFocus(app, frameList, { bottom }));
   }
 
   if (shouldFocusComposer) {
@@ -264,6 +282,13 @@ function syncFrameThreadBody(app, sessionID, options) {
   let frames = threadRenderFrames(getSelectedFrames(app._state), app._state.frameFilters);
   let view = body.querySelector('kikx-chat-view');
   if (frames.length === 0 || !view) {
+    let previousFrameList = app.querySelector('.kikx-frame-list');
+    let locked = isScrollLockedForSession(app, sessionID);
+    let previousFocus = app._pendingScrollFocus
+      ? null
+      : captureScrollFocus(app, previousFrameList, {
+        bottom: locked && getScrollLockModeForSession(app, sessionID) === 'bottom',
+      });
     disconnectFrameListObserver(app);
     // buildFrameThread() always returns a built element, so swap it in directly.
     // (The old `.build(document)` call assumed it was always a builder; the
@@ -273,19 +298,24 @@ function syncFrameThreadBody(app, sessionID, options) {
     body.replaceChildren(buildFrameThread(app));
     countRebuild('thread');
     connectFrameListObserver(app);
-    if (isScrollLockedForSession(app, sessionID)) {
+    let nextFrameList = app.querySelector('.kikx-frame-list');
+    let focusRestored = previousFocus && restoreScrollFocus(app, nextFrameList, previousFocus);
+    if (locked) {
       let initialPlacement = app._lockedPlacementSessionID !== sessionID;
       if (initialPlacement)
         app._lockedPlacementSessionID = sessionID;
       if (getScrollLockModeForSession(app, sessionID) === 'bottom') {
         app._frameListAnchoredToBottom = true;
-        if (initialPlacement)
-          scrollFramesToBottomImmediate(app);
-        else
-          scrollFramesToBottom(app);
+        alignBottomFocus(app, nextFrameList, {
+          initial: initialPlacement || !focusRestored,
+          animate: !initialPlacement,
+        });
       } else {
         app._frameListAnchoredToBottom = false;
-        scheduleLatestMessageTop(app, { animate: !initialPlacement });
+        alignLastFrameFocus(app, nextFrameList, {
+          initial: initialPlacement || !focusRestored,
+          animate: !initialPlacement,
+        });
       }
     } else if (app._frameListAnchoredToBottom) {
       scrollFramesToBottomImmediate(app);
@@ -295,19 +325,21 @@ function syncFrameThreadBody(app, sessionID, options) {
 
   if (options.prepend === true) {
     let frameList = view.frameList;
-    let anchor = captureFrameListAnchor(frameList);
+    let locked = isScrollLockedForSession(app, sessionID);
+    let lockMode = getScrollLockModeForSession(app, sessionID);
+    let focus = captureScrollFocus(app, frameList, { bottom: locked && lockMode === 'bottom' });
     let beforeScrollTop = frameList?.scrollTop ?? 0;
     let beforeScrollHeight = frameList?.scrollHeight ?? 0;
     view.syncFrames(frames, app._state, { ...options, animate: false });
     if (frameList) {
       app._ignoreFrameScrollUntil = Date.now() + 200;
-      if (!restoreFrameListAnchor(frameList, anchor)) {
+      if (!focus || !restoreScrollFocus(app, frameList, focus)) {
         let growth = frameList.scrollHeight - beforeScrollHeight;
         frameList.scrollTop = Math.max(0, beforeScrollTop + growth);
       }
     }
-    if (isScrollLockedForSession(app, sessionID))
-      scheduleLatestMessageTop(app, { animate: true });
+    if (locked && lockMode !== 'bottom')
+      alignLastFrameFocus(app, frameList, { animate: true });
     return;
   }
 
@@ -316,8 +348,13 @@ function syncFrameThreadBody(app, sessionID, options) {
   let previousFrames = Array.isArray(view.frames) ? view.frames : [];
   let previousFrameCount = previousFrames.length;
   let previousLastFrameID = previousFrames.at(-1)?.id || '';
-  let beforeScrollTop = view.frameList?.scrollTop ?? 0;
+  let frameList = view.frameList;
+  let focus = app._pendingScrollFocus
+    ? null
+    : captureScrollFocus(app, frameList, { bottom: locked && lockMode === 'bottom' });
   let result = view.syncFrames(frames, app._state, locked ? { ...options, followLatest: true } : options);
+  if (frameList && focus)
+    restoreScrollFocus(app, frameList, focus);
   if (previousLastFrameID
     && frames.length > previousFrameCount
     && (frames.at(-1)?.id || '') !== previousLastFrameID)
@@ -328,21 +365,16 @@ function syncFrameThreadBody(app, sessionID, options) {
     if (initialPlacement)
       app._lockedPlacementSessionID = sessionID;
     app._frameListAnchoredToBottom = true;
-    let afterScrollTop = view.frameList?.scrollTop ?? 0;
-    let resetToTop = beforeScrollTop > 100 && afterScrollTop < Math.min(100, beforeScrollTop - 100);
-    // Keep the tail attached, but ease toward it. Re-targeting each frame lets
-    // streamed markdown grow without the viewport snapping in visible steps.
-    // A rebuilt/shrunk window resets scrollTop; snap that case immediately.
-    if (initialPlacement || resetToTop)
-      scrollFramesToBottomImmediate(app);
-    else
-      scrollFramesToBottom(app);
+    alignBottomFocus(app, frameList, {
+      initial: initialPlacement,
+      animate: app._runtimeEventsResyncInFlight !== true,
+    });
   } else if (result.insertedNew && locked) {
     let initialPlacement = app._lockedPlacementSessionID !== sessionID;
     if (initialPlacement)
       app._lockedPlacementSessionID = sessionID;
     app._frameListAnchoredToBottom = false;
-    scheduleLatestMessageTop(app, { animate: !initialPlacement });
+    alignLastFrameFocus(app, frameList, { animate: !initialPlacement });
   } else if (result.insertedNew && !locked && view.windowEnd < frames.length) {
     // Unlocked mode must not scroll, but the new frame cannot be left outside
     // the rendered window forever. Grow the window end below the viewport; the
@@ -351,7 +383,7 @@ function syncFrameThreadBody(app, sessionID, options) {
   }
 
   if (!locked)
-    maybeRestoreMessageHash(app);
+    maybeRestoreMessageHash(app, (frameList, { bottom }) => captureScrollFocus(app, frameList, { bottom }));
 }
 
 export function connectFrameListObserver(app) {
@@ -526,7 +558,8 @@ function followFrameListToBottom(app, frameList) {
     if (Math.abs(distance) <= 0.5) {
       frameList.scrollTop = target;
       app._frameListScrollAnimation = null;
-      updateMessageHashFromScroll(app, frameList);
+      updateMessageHash(app, lastFrameID(frameList), { atBottom: true });
+      captureScrollFocus(app, frameList, { bottom: true });
       return;
     }
 
@@ -551,7 +584,8 @@ export function scrollFramesToBottomImmediate(app, frameList = app.querySelector
   cancelFrameListScrollAnimation(app);
   app._ignoreFrameScrollUntil = Date.now() + 200;
   frameList.scrollTop = Math.max(0, frameList.scrollHeight - frameList.clientHeight);
-  updateMessageHashFromScroll(app, frameList);
+  updateMessageHash(app, lastFrameID(frameList), { atBottom: true });
+  captureScrollFocus(app, frameList, { bottom: true });
 }
 
 export function restoreFrameListScroll(app, snapshot = {}) {
@@ -568,25 +602,34 @@ export function restoreFrameListScroll(app, snapshot = {}) {
 }
 
 export function onFrameContentResize(app) {
+  let frameList = app.querySelector('.kikx-frame-list');
+  if (!frameList)
+    return;
+
+  // ResizeObserver runs after layout and before paint. Restoring the focus
+  // anchor here is a synchronous snap: the content may change size, but the
+  // frame the user is looking at keeps the same viewport offset.
+  if (app._pendingScrollFocus) {
+    stepFocusAlignment(app, frameList);
+    return;
+  }
+
+  let focus = app._lastScrollFocus;
+  if (focus)
+    restoreScrollFocus(app, frameList, focus);
+
   let sessionID = app._state.selectedSessionID;
-  if (!sessionID
-    || !isScrollLockedForSession(app, sessionID)
-    || getScrollLockModeForSession(app, sessionID) !== 'bottom')
-    return;
-
-  if (app._frameContentResizeScheduled === true)
-    return;
-  app._frameContentResizeScheduled = true;
-  scheduleAnimationFrame(() => {
-    app._frameContentResizeScheduled = false;
-    if (!isScrollLockedForSession(app, sessionID)
-      || getScrollLockModeForSession(app, sessionID) !== 'bottom')
-      return;
-
-    let frameList = app.querySelector('.kikx-frame-list');
-    if (frameList)
+  if (sessionID
+    && isScrollLockedForSession(app, sessionID)
+    && getScrollLockModeForSession(app, sessionID) === 'bottom') {
+    if (lastFrameID(frameList)) {
+      alignBottomFocus(app, frameList, {
+        animate: app._runtimeEventsResyncInFlight !== true,
+      });
+    } else {
       scrollFramesToBottom(app);
-  });
+    }
+  }
 }
 
 export function onFrameListScroll(app, event) {
@@ -614,6 +657,12 @@ export function onFrameListScroll(app, event) {
       breakScrollLockFromUser(app);
     }
     updateMessageHashFromScroll(app, frameList);
+    // A user scroll redefines the focus frame. Layout-only scroll events do not:
+    // they are exactly what the focus anchor is supposed to suppress.
+    if (userGesture) {
+      cancelFocusAlignment(app);
+      captureScrollFocus(app, frameList, { bottom: false });
+    }
     if (!nearBottom)
       app._bottomLockIntent = false;
   }

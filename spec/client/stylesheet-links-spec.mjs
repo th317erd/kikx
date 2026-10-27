@@ -200,6 +200,23 @@ test('inline code uses the shared compact line box in markdown summaries', async
 });
 
 
+test('user messages inherit the shared frame shell instead of overriding its fundamentals', async () => {
+  let appCSS = await readFile(path.join(STYLES_DIR, 'app.css'), 'utf8');
+  let colorCSS = await readFile(path.join(STYLES_DIR, 'frame-colors.css'), 'utf8');
+
+  // UserMessage may choose its role hue and placement, but radius, border,
+  // status colour, header hatch and body surface belong to every frame.
+  assert.match(colorCSS, /\.kikx-frame--UserMessage \{[^}]*--kikx-frame-type-color: #4d8fb5/);
+  assert.doesNotMatch(colorCSS, /--kikx-frame-radius:\s*18px 18px 5px 18px/);
+  assert.doesNotMatch(colorCSS, /--kikx-frame-border-color:\s*#5eead4/);
+  assert.doesNotMatch(colorCSS, /--kikx-frame-solid-color:\s*#0b2427/);
+  assert.doesNotMatch(colorCSS, /\.kikx-frame--UserMessage \.kikx-frame__meta::before \{[^}]*display: none/);
+  assert.match(colorCSS, /\.kikx-frame--UserMessage \.kikx-frame__meta,[\s\S]*?background: var\(--kikx-frame-surface\)/);
+  assert.match(appCSS, /\.kikx-frame--UserMessage \{[^}]*justify-self: end;/);
+  assert.doesNotMatch(appCSS, /\.kikx-frame--UserMessage \{[^}]*background:/);
+  assert.doesNotMatch(appCSS, /\.kikx-frame--UserMessage \{[^}]*border-color:/);
+});
+
 test('timestamps stay quiet until hover and disappear from minimized rows', async () => {
   let css = await readFile(path.join(STYLES_DIR, 'app.css'), 'utf8');
   assert.match(css, /\.kikx-frame__timestamp \{[^}]*opacity: 0\.4/);

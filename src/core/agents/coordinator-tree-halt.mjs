@@ -303,6 +303,12 @@ export async function haltSessionTree({
     // No participants recorded and no named target: there is nobody to freeze. Skip
     // rather than call suspendSession with an empty list, which would mark the
     // session suspended while gating no agent.
+    // Per-agent suspension first: this is what adds the agent to the suspension
+    // set, so a later tool call is actually gated. Session-level suspendSession
+    // below only records the session-wide flag.
+    if (targetAgentID)
+      frameRuntime?.suspendAgent?.(sessionID, targetAgentID);
+
     if (effectiveAgentIDs.length > 0) {
       frameRuntime?.suspendSession?.(sessionID, {
         agentIDs: effectiveAgentIDs,

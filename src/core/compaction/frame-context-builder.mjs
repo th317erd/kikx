@@ -82,6 +82,17 @@ export class FrameContextBuilder {
     };
   }
 
+  // Project the durable context after the newest boundary compaction. Used by
+  // session merging, which needs the same memory a normal agent turn would see.
+  context(frames) {
+    let allFrames = normalizeFrameArray(frames);
+    let latestCompaction = findLatestBoundaryCompaction(allFrames);
+    return {
+      frames: buildContextFramesAfterCompaction(allFrames, latestCompaction),
+      latestCompaction,
+    };
+  }
+
   countFrameTokens(frames) {
     let total = 0;
     for (let frame of normalizeFrameArray(frames))

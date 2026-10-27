@@ -35,6 +35,7 @@ export {
 } from './process-tools.mjs';
 export { PuppeteerBrowserService } from './puppeteer-browser-service.mjs';
 export { ReadFileTool } from './read-file-tool.mjs';
+export { SessionMergeStatusTool, SessionMergeTool } from './session-merge-tools.mjs';
 export { DatabaseFetchTool, DatabaseSearchTool } from './database-tools.mjs';
 export {
   AgentListTool,

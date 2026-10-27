@@ -642,7 +642,7 @@ export class CompactionService {
   }
 }
 
-async function collectCompactionText(result) {
+export async function collectCompactionText(result) {
   let text = '';
 
   if (typeof result === 'string')

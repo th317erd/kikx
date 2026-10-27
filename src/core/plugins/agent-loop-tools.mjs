@@ -119,7 +119,10 @@ export function createLoopTools(state, context) {
 }
 
 export function shouldExposeLoopTool(toolName, context = {}) {
-  if (toolName === 'route' || toolName === 'session-control')
+  if (toolName === 'route'
+    || toolName === 'session-control'
+    || toolName === 'session-merge'
+    || toolName === 'session-merge-status')
     return context.isCoordinator === true;
 
   return true;
@@ -143,14 +146,14 @@ export function createRegisteredToolDefinitions(context = {}) {
         type: 'object',
         properties: {},
         additionalProperties: false,
-      })),
+      }), ToolClass),
     });
   }
 
   return definitions;
 }
 
-export function withCrossSessionToolParameter(schema) {
+export function withCrossSessionToolParameter(schema, ToolClass = null) {
   let output = (schema && typeof schema === 'object' && !Array.isArray(schema))
     ? schema
     : {};
@@ -163,11 +166,21 @@ export function withCrossSessionToolParameter(schema) {
     ? output.properties
     : {};
 
+  let requiresTarget = ToolClass?.requiresTargetSessionID === true;
   if (!output.properties.session_id) {
     output.properties.session_id = {
       type: 'string',
-      description: 'Optional target Kikx session ID. When set, this tool call/result is recorded in that session.',
+      minLength: 1,
+      description: requiresTarget
+        ? 'Required target Kikx session ID. This tool writes to or controls that session. Call session-list with query=<title or id fragment> to find the exact ID; do not omit it or guess.'
+        : 'Target Kikx session ID. The tool executes against that session; omit only to use the current session for read-only inspection. Use session-list to find an exact ID before changing another session.',
     };
+  }
+
+  if (requiresTarget) {
+    output.required = Array.isArray(output.required) ? output.required : [];
+    if (!output.required.includes('session_id'))
+      output.required.push('session_id');
   }
 
   if (output.additionalProperties == null)

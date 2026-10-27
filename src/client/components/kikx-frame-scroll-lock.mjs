@@ -13,6 +13,7 @@ import {
   setScrollLockedForSession,
   setScrollLockModeForSession,
 } from './kikx-scroll-lock.mjs';
+import { frameItemTopWithinList } from './frame-scroll-anchor.mjs';
 
 export function scrollToLatestMessageTop(app, options = {}) {
   let frameList = app.querySelector('.kikx-frame-list');
@@ -141,7 +142,7 @@ export function messageHashAtBottom() {
   return match ? match[1] === '1' : null;
 }
 
-export async function maybeRestoreMessageHash(app) {
+export async function maybeRestoreMessageHash(app, onPlaced = null) {
   let frameID = messageHashID();
   let sessionID = app._state.selectedSessionID;
   let bottomState = messageHashAtBottom();
@@ -199,6 +200,7 @@ export async function maybeRestoreMessageHash(app) {
       app._anchorRestoredScrollTop = frameList.scrollTop;
       app._anchorRestoreAt = Date.now();
       updateMessageHash(app, frameID, { atBottom: restoreBottom });
+      onPlaced?.(frameList, { bottom: restoreBottom });
       if (frameList.scrollHeight <= frameList.clientHeight + 1 && pagingHasOlder(app, sessionID))
         await app._fillOlderFrames?.(frameList);
       return true;
@@ -217,6 +219,7 @@ export async function maybeRestoreMessageHash(app) {
       app._anchorRestoredScrollTop = frameList.scrollTop;
       app._anchorRestoreAt = Date.now();
       updateMessageHash(app, lastID, { atBottom: true });
+      onPlaced?.(frameList, { bottom: true });
       if (frameList.scrollHeight <= frameList.clientHeight + 1 && pagingHasOlder(app, sessionID))
         await app._fillOlderFrames?.(frameList);
       return true;
@@ -248,6 +251,7 @@ export async function maybeRestoreMessageHash(app) {
       app._hashAnchorPending = false;
       app._sentinelSuppressed = true;
       updateMessageHash(app, frameID, { atBottom: false });
+      onPlaced?.(frameList, { bottom: false });
       return true;
     }
     return false;
@@ -387,7 +391,7 @@ function scrollItemTop(app, frameList, item, { animate = false } = {}) {
   // Prefer the layout offset. getBoundingClientRect() includes the enter
   // animation's transform, so recomputing from it mid-animation makes the
   // target chase the current scrollTop instead of converging on the card.
-  let resolveTarget = () => itemTopWithinList(frameList, item);
+  let resolveTarget = () => frameItemTopWithinList(frameList, item);
 
   if (animate) {
     animateFrameListScroll(app, frameList, resolveTarget);
@@ -396,29 +400,6 @@ function scrollItemTop(app, frameList, item, { animate = false } = {}) {
 
   cancelFrameListScrollAnimation(app);
   setFrameListScrollTop(app, frameList, clampedScrollTop(frameList, resolveTarget()), { programmatic: true });
-}
-
-function itemTopWithinList(frameList, item) {
-  if (Number.isFinite(item.offsetTop)) {
-    let stream = frameList.querySelector?.('.kikx-frame-stream');
-    if (!stream || item.offsetParent === stream || item.offsetParent == null)
-      return item.offsetTop + frameListTopInset(frameList);
-  }
-
-  let listRect = frameList.getBoundingClientRect();
-  let itemRect = item.getBoundingClientRect();
-  return frameList.scrollTop + itemRect.top - listRect.top;
-}
-
-// offsetTop excludes the first card's top margin, but that margin is part of
-// the scrollable content's visual inset (1em on full messages). Add it so
-// "top of the message" means the card border, not the invisible margin above it.
-function frameListTopInset(frameList) {
-  let first = frameList.querySelector?.('kikx-frame-item');
-  if (!first)
-    return 0;
-  let margin = Number.parseFloat(globalThis.getComputedStyle?.(first)?.marginTop || '0');
-  return Number.isFinite(margin) ? margin : 0;
 }
 
 function setFrameListScrollTop(app, frameList, top, { programmatic = false } = {}) {
