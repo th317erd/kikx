@@ -20,7 +20,7 @@ Measured during this pass. Where a belief was wrong, the correction is stated.
 | Claim | Status | Evidence |
 |---|---|---|
 | Three prong sessions exist as children of this session | **TRUE** | `session-get` → `60e952cb` (305 msg, coord `255f7273`), `37856013` (262 msg, coord `be00ce68`), `d87b91c9` (402 msg, coord `e5403bc7`) |
-| The three were merged into this session | **FALSE / NOT DONE** | `session-merge-status` → `{"merges":[]}`; `database-search` for `session_merge` in `cb551b14` matched only the search frame itself; no `*CompactionFrame*` file under the store root |
+| The three were merged into this session | **TRUE, but only 2 of 3 sources compacted** | `merge-409c7a37` `status:"complete"`; CompactionFrame `6d8e2d47` is 127,169 bytes at `interactions/compaction-c8658001-.../frames/0000000003061404-...`; `compactedSessionIDs` = root+Prong C+Prong A; **`untouchedSessionIDs` = `37856013` (Prong B)**, which was never summarized |
 | Prong A's toolbar is reachable from the app | **TRUE** | `kikx-shell-builders.mjs:32` and `:34` import it; `:260` calls `buildSidebarSessionObjects(app)` |
 | Prong B's ownership filter runs in the sidebar | **FALSE** | same call site passes one argument; `scopeFilter` defaults `null`; `filterSessionObjectItems` short-circuits at `kikx-sidebar-session-objects.mjs:83-87` |
 | Prong C's coordinator scope is reachable | **TRUE** | `coordinator-tree-halt.mjs:19`, `session-control-tool.mjs:7` import from `session-subtree.mjs` |
@@ -218,3 +218,52 @@ architectural (one shared rule), not conversational. `session-merge` reported `r
 depend on the merge having landed, and the prongs were messaged **in their own sessions** so the
 work proceeds regardless. If the owner wants the histories merged, that is a separate step to
 re-attempt; it is not a precondition for the symphony.
+
+---
+
+## 7. The merge, honestly — CORRECTED 2026-10-27T04:58Z
+
+**This section previously said the merge had NOT landed. That was wrong.** Kept here as a
+corrected record rather than deleted, because the reasoning error is instructive.
+
+### Verified now (measured, not inferred)
+
+Merge `merge-409c7a37-963d-4402-9ca9-88bcc375574b` — `status: "complete"`.
+
+- Record: `/kikx/session-merges/merge-409c7a37-963d-4402-9ca9-88bcc375574b.json`, 1,083 bytes
+- Compaction frame: `6d8e2d47-34c0-462c-93f4-7cc18e4aa1e8`, **127,169 bytes**, at
+  `/kikx/sessions/cb551b14-.../interactions/compaction-c8658001-6e3b-4dc2-b3d6-5c2d471ca1ac/frames/0000000003061404-CompactionFrame-6d8e2d47-....json`
+- `targetSessionID`: `cb551b14` (this session)
+- `sourceSessionIDs`: `37856013` (Prong B), `d87b91c9` (Prong C), `60e952cb` (Prong A)
+- `compactedSessionIDs`: `cb551b14`, `d87b91c9`, `60e952cb`
+- **`untouchedSessionIDs`: `37856013` (Prong B) — NOT compacted**
+- `closedSessionIDs`: `[]` — all four sessions still live
+
+### What this means
+
+Shared memory **does** exist in this session for root + Prong A + Prong C. Prong B's history was
+listed as a source but was never summarized: `_runJob` seeds `selected` from
+`planSessionCompactions()` and only grows it under budget pressure, so a requested source can be
+left untouched silently.
+
+### Why this section was wrong before
+
+`session-merge-status` is the only agent-facing way to check a merge outcome, and it cannot report
+a completed merge in either mode:
+
+- no args → `{"merges":[]}` — `listMerges()` reads the in-memory `_active` map plus a
+  `store.list()` that does not enumerate the merge-record namespace, so nothing survives a restart
+- with `merge_id` → all fields `null`, `compactionFrameID: null` — `store.get()` resolves but
+  `sanitizeJob()` fails to map the stored record's field names
+
+So "merge silently failed" and "tool cannot report" are indistinguishable. I concluded the former.
+The frame file was the disambiguation and I did not look for it. Filed as
+feedback `eff727c9c3b2fce52fdf1247` (high).
+
+**AeorDB correction:** the daemon is NOT retired. `:6830` is live on `127.0.0.1`, running
+`aeordb start -D /home/wyatt/.local/share/kikx/kikx.aeordb` (pid 1358773) — a different database
+from this project's `.aeordb/kikx.aeordb`. Earlier instruction to Prong A to "re-point the
+stagehand specs off a dead daemon" was based on a bad read.
+
+The prongs are still messaged **in their own sessions**, which remains correct: all four sessions
+are live and each prong's own context is intact.
