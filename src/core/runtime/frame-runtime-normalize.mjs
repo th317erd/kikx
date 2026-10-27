@@ -1,5 +1,7 @@
 'use strict';
 
+import { resolveLocalCoordinatorAgentID } from '../agents/coordinator-scope.mjs';
+
 const DEFAULT_SESSION_FRAME_LIMIT = 1000;
 export const MAX_SESSION_FRAME_LIMIT = 5000;
 
@@ -140,14 +142,42 @@ export function normalizeStringArray(values) {
   return normalized;
 }
 
+// Local, non-inheriting rule. This used to be a second copy of the exact body in
+// src/core/agents/agent-route/normalize.mjs:46; both now delegate to the one
+// named definition in src/core/agents/coordinator-scope.mjs, so they cannot drift.
+//
+// This function cannot see the session tree, so it cannot inherit from a parent
+// or promote across it. A caller that holds a tree wants
+// `resolveSessionCoordinator` there instead.
 export function normalizeCoordinatorAgentID(coordinatorAgentID, participantAgentIDs) {
-  if (typeof coordinatorAgentID === 'string') {
-    let trimmed = coordinatorAgentID.trim();
-    if (participantAgentIDs.includes(trimmed))
-      return trimmed;
-  }
+  return resolveLocalCoordinatorAgentID(
+    { coordinatorAgentID, participantAgentIDs },
+    participantAgentIDs,
+  );
+}
 
-  return participantAgentIDs[0] || null;
+/**
+ * The value to STORE on a session when it is created or when a bot joins.
+ *
+ * Deliberately not `normalizeCoordinatorAgentID`: an absent or non-participant
+ * coordinator becomes `null` rather than the first participant. Crowning the first
+ * invited bot at creation is what made every session appear to have a coordinator
+ * of its own, which in turn made inheritance unreachable and made it impossible
+ * for a session to hold bots that are not coordinators (owner requirement 1).
+ *
+ * A session with participants and no coordinator is now legal and intended; the
+ * tree resolver promotes one only when nothing above the session has one, and it
+ * records that promotion on the session it chose.
+ */
+export function normalizeStoredCoordinatorAgentID(coordinatorAgentID, participantAgentIDs) {
+  if (typeof coordinatorAgentID !== 'string')
+    return null;
+
+  let trimmed = coordinatorAgentID.trim();
+  if (!trimmed)
+    return null;
+
+  return participantAgentIDs.includes(trimmed) ? trimmed : null;
 }
 
 // Explicit-bot designation fields (compaction P2, ruling R8). Unlike

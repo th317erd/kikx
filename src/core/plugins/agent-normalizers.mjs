@@ -1,5 +1,7 @@
 'use strict';
 
+import { resolveLocalCoordinatorAgentID } from '../agents/coordinator-scope.mjs';
+
 export function normalizeForwardTargets(target) {
   let values = Array.isArray(target) ? target : [ target ];
   let targets = [];
@@ -161,14 +163,15 @@ export function normalizeStringArray(values) {
   return normalized;
 }
 
+// Third copy of the single-session fallback, found while wiring this change (the
+// brief named two). Called from agent-interface.mjs:228 to set `isCoordinator` on
+// every agent loop context, so leaving it as a separate body would let the loop
+// context disagree with the router about who commands a session.
 export function normalizeCoordinatorAgentID(coordinatorAgentID, participantAgentIDs) {
-  if (typeof coordinatorAgentID === 'string') {
-    let trimmed = coordinatorAgentID.trim();
-    if (participantAgentIDs.includes(trimmed))
-      return trimmed;
-  }
-
-  return participantAgentIDs[0] || null;
+  return resolveLocalCoordinatorAgentID(
+    { coordinatorAgentID, participantAgentIDs },
+    participantAgentIDs,
+  );
 }
 
 export function normalizeConfigFields(fields) {

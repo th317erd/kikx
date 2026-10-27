@@ -17,6 +17,7 @@ import {
 import {
   buildUserMessageContent,
   normalizeCoordinatorAgentID,
+  normalizeStoredCoordinatorAgentID,
   normalizeCount,
   normalizeDesignationAgentID,
   normalizeOptionalString,
@@ -93,7 +94,7 @@ export class FrameRuntime extends EventEmitter {
       messageCount: normalizeCount(input.messageCount),
       participantAgentIDs,
       participantUserIDs,
-      coordinatorAgentID: normalizeCoordinatorAgentID(input.coordinatorAgentID, participantAgentIDs),
+      coordinatorAgentID: normalizeStoredCoordinatorAgentID(input.coordinatorAgentID, participantAgentIDs),
       compactionAgentID: normalizeDesignationAgentID(input.compactionAgentID, participantAgentIDs, 'compactionAgentID'),
       createdAt: input.createdAt || now,
       updatedAt: input.updatedAt || now,
@@ -116,6 +117,9 @@ export class FrameRuntime extends EventEmitter {
     });
 
     let disconnect = this.connectFrameEngine(frameEngine, session);
+    // Resolve the tree BEFORE the first durable write, so a promoted coordinator
+    // is recorded in one write rather than appearing only after a later read.
+    await this.applyInitialCoordinator(session);
     await this.frameStore.saveSession(session);
     this.emitRuntimeEvent('session.saved', { sessionID: session.id, session });
 

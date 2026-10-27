@@ -1,5 +1,7 @@
 'use strict';
 
+import { resolveLocalCoordinatorAgentID } from '../coordinator-scope.mjs';
+
 export function normalizeOptionalString(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -43,14 +45,20 @@ export function uniqueStrings(values) {
   return unique;
 }
 
+// Local, non-inheriting resolution. The tree-aware answer -- which walks parent
+// sessions and force-promotes when no ancestor has a coordinator -- lives in
+// exactly one place, `resolveSessionCoordinator` in ../coordinator-scope.mjs.
+// This function has no session lookup in scope, so it can only answer the
+// single-session question: "is this session's own coordinator still a
+// participant, and if not, who is first in line?".
+//
+// Every caller that holds a tree must use `resolveSessionCoordinator` instead.
+// Keeping the rule identical here rather than deleting it is deliberate: the
+// three call sites that use it (routing, compaction) already treat the result as
+// a local designation, and compaction explicitly refuses to treat this fallback
+// as a designation (see select-compactor.mjs:66).
 export function resolveCoordinatorAgentID(session, participantAgentIDs) {
-  if (typeof session?.coordinatorAgentID === 'string') {
-    let coordinatorAgentID = session.coordinatorAgentID.trim();
-    if (participantAgentIDs.includes(coordinatorAgentID))
-      return coordinatorAgentID;
-  }
-
-  return participantAgentIDs[0] || null;
+  return resolveLocalCoordinatorAgentID(session, participantAgentIDs);
 }
 
 export function resolveService(services, name) {

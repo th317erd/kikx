@@ -27,5 +27,14 @@ export function registerInternalCommands({ pluginRegistry, commandRegistry }) {
   commandRegistry.registerCommand('set-compaction-bot', SetCompactionBotCommand);
   commandRegistry.registerCommand('clear-compaction-bot', ClearCompactionBotCommand);
   registerMentionRouting(pluginRegistry);
+  // Human commands.
   pluginRegistry.registerSelector('Type:UserMessage', SlashCommandFramePlugin, SlashCommandFramePlugin.pluginID);
+
+  // Bot commands. Requirement 4: /halt must cross session boundaries, and a bot
+  // has to be able to issue it. Registration alone is not the gate -- every
+  // agent-authored frame is checked against `hasCoordinatorAuthority` inside the
+  // plugin (checkAgentCommandAuthority), and only the halt family is exposed to
+  // bots at all. Registering only Type:UserMessage is what made a bot-issued
+  // /halt impossible to express.
+  pluginRegistry.registerSelector('Type:AgentMessage', SlashCommandFramePlugin, SlashCommandFramePlugin.pluginID);
 }

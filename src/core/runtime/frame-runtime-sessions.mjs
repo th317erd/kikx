@@ -12,10 +12,16 @@ import {
 import { FrameEngine } from '../frames/frame-engine.mjs';
 import { installRuntimeMethods } from './frame-runtime-mixins.mjs';
 import {
+  COORDINATOR_MAX_ANCESTOR_DEPTH,
+  parentSessionIDOf,
+  resolveSessionCoordinator,
+} from '../agents/coordinator-scope.mjs';
+import {
   latestFrameClock,
   maxFrameTimestamp,
   normalizeFrameLimit,
   normalizeCoordinatorAgentID,
+  normalizeStoredCoordinatorAgentID,
   normalizeOptionalString,
   normalizeRequiredString,
   normalizeStringArray,
@@ -525,7 +531,20 @@ const sessionMethods = {
       participantAgentIDs.push(agentID);
 
     entry.session.participantAgentIDs = participantAgentIDs;
-    entry.session.coordinatorAgentID = normalizeCoordinatorAgentID(entry.session.coordinatorAgentID, participantAgentIDs);
+    // Store the coordinator as-is unless it is no longer a participant. Inviting
+    // must not crown the newcomer: an existing coordinator stays, and a session that
+    // had none keeps none (it inherits, or is promoted by the tree resolver).
+    entry.session.coordinatorAgentID = normalizeStoredCoordinatorAgentID(
+      entry.session.coordinatorAgentID,
+      participantAgentIDs,
+    );
+
+    // Re-resolve against the tree after the participant list changed. This is
+    // what makes a root session that has just gained its first bot actually get
+    // a coordinator, and it is deliberately the full resolver: in a session
+    // below a coordinated ancestor, rules 1-2 answer before rule 3, so a child
+    // holding only non-coordinator bots is never crowned (owner requirement 1).
+    await this.applyTreeCoordinator(entry);
     let stamp = this.nextClockStamp();
     entry.session.updatedAt = input.updatedAt || input.invitedAt || stamp.at;
     entry.session.updatedClock = input.updatedClock || input.invitedClock || stamp.clock;
@@ -669,6 +688,84 @@ const sessionMethods = {
       this.queueSessionManifestSave(entry);
 
     return entry.session;
+  },
+
+  // Ancestors are hydrated before the tree resolver runs. A cold parent looks
+  // identical to a missing one to a cache-only `getSession`, and the resolver
+  // would then treat the chain as ended and promote locally -- crowning a child
+  // under an already-coordinated ancestor, the exact inversion P1 forbids.
+  // Bounded by the resolver's own depth cap, and cycle-guarded.
+  async hydrateAncestorSessions(startParentSessionID) {
+    let current = startParentSessionID;
+    let seen = new Set();
+    let depth = 0;
+
+    while (current && depth < COORDINATOR_MAX_ANCESTOR_DEPTH) {
+      if (seen.has(current))
+        return;
+      seen.add(current);
+
+      let entry = null;
+      try {
+        entry = await this.ensureSessionEntry(current, { loadFrames: false });
+      } catch (_error) {
+        // Dangling or unreadable parent: stop here and let the resolver report
+        // it as 'missing' instead of promoting on an unknown chain.
+        return;
+      }
+
+      current = parentSessionIDOf(entry?.session) || null;
+      depth += 1;
+    }
+  },
+
+  // Resolve and RECORD the coordinator for a session that is being created. The
+  // session is not in the cache yet, so the resolver's lookup falls back to it
+  // and the injector writes to that same object, which the caller then saves.
+  async applyInitialCoordinator(session) {
+    if (!session?.id)
+      return null;
+
+    await this.hydrateAncestorSessions(parentSessionIDOf(session));
+    return this.applyCoordinatorResolution({ sessionID: session.id, session });
+  },
+
+  // Resolve and RECORD the coordinator for a session that already has an entry.
+  async applyTreeCoordinator(entry) {
+    if (!entry?.session?.id)
+      return null;
+
+    await this.hydrateAncestorSessions(parentSessionIDOf(entry.session));
+    return this.applyCoordinatorResolution({ sessionID: entry.session.id });
+  },
+
+  // The one place a promotion is written. Synchronous on purpose: the resolver
+  // takes a synchronous injector, and rule 1 must observe its own write on the
+  // very next call, or two resolutions of the same session disagree.
+  applyCoordinatorResolution({ sessionID, session = null }) {
+    let persistCoordinator = (id, agentID) => {
+      let entry = this.sessions.get(id);
+      if (entry?.session) {
+        if (entry.session.coordinatorAgentID === agentID)
+          return true;
+        entry.session.coordinatorAgentID = agentID;
+        this.queueSessionManifestSave(entry);
+        return true;
+      }
+
+      if (session && session.id === id) {
+        session.coordinatorAgentID = agentID;
+        return true;
+      }
+
+      return false;
+    };
+
+    return resolveSessionCoordinator({
+      sessionID,
+      getSession: (id) => (session && session.id === id ? session : this.getSession(id)),
+      persistCoordinator,
+    });
   },
 
   queueSessionManifestSave(entry) {
