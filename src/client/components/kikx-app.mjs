@@ -29,7 +29,6 @@ import {
   buildFrameFilterPopup,
   buildThreadSection,
   buildWindow,
-  buildWindowHeader,
   buildWorkspaceGrid,
   createChatViewElement,
   createFrameItemElement,
@@ -248,7 +247,6 @@ export class KikxApp extends HTMLElement {
     this._buildRunnerShell = () => buildRunnerShell(this);
     this._buildWindow = (entry) => buildWindow(this, entry);
     this._scopeNoun = () => scopeNoun(this);
-    this._buildWindowHeader = (options) => buildWindowHeader(this, options);
     this._buildGridIcon = () => buildGridIcon();
     this._toggleDebugMode = () => {
       toggleDebugMode(this);

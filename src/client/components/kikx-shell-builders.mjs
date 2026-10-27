@@ -3,7 +3,7 @@
 import { elements, $ } from '../lib/aeor-ui.mjs';
 import { createIcon } from '../lib/icons.mjs';
 import { stateHasFilters } from '../lib/frame-filters.mjs';
-import { buildScrollLockFloatingButton, buildScrollLockToolbar } from './kikx-scroll-lock.mjs';
+import { buildScrollLockFloatingButton } from './kikx-scroll-lock.mjs';
 import { activateComposerDraftSession } from './composer-drafts.mjs';
 import './kikx-composer-history.mjs';
 import './kikx-participants-popup.mjs';
@@ -20,7 +20,6 @@ import {
   getSelectedSession,
   getSessionPreviews,
   getSessions,
-  getStackDepth,
   getVisibleSessions,
 } from '../state/kikx-state.mjs';
 import { hasAnyFrames, threadRenderFrames } from '../state/thinking-state.mjs';
@@ -283,55 +282,6 @@ export function scopeNoun(app) {
   return getScopeNoun(app._state);
 }
 
-// One window header for every level. The root grid has no Close; a nested
-// session window always offers Close (minimize / pop).
-//
-// Creating is not a mode, so it is not behind a view switch: every level carries
-// the same create button, immediately to the right of the eyeball. The eye
-// narrows what you are already looking at; this adds to where you are.
-export function buildWindowHeader(app, { title, sessionID = null } = {}) {
-  let nested = getStackDepth(app._state) > 1;
-  let backButton = nested
-    ? button
-      .type('button')
-      .class('kikx-icon-button kikx-window__close')
-      .title('Close session')
-      .ariaLabel('Close session')
-      .onClick(app._minimizeCurrent)(createIcon('chevron-left'))
-    : null;
-
-  return div.class('kikx-window__header')(
-    div.class('kikx-window__lead')(
-      backButton,
-      buildBreadcrumbTitle(app, title, sessionID),
-      sessionID ? buildScrollLockToolbar(app, sessionID) : null,
-    ),
-    buildSessionSearch(app),
-    div.class('kikx-window__actions')(
-      span.class.bindState((state) => `kikx-workspace__status kikx-auth-status--${state.previewsLoading ? 'pending' : 'ready'}`, ['previewsLoading', 'previewStatus'])(
-        span.textContent.bindState((state) => state.previewsLoading ? 'Loading previews…' : (state.previewStatus || ''), ['previewsLoading', 'previewStatus'])(),
-      ),
-      sessionID ? buildParticipantsPopup(app, sessionID) : null,
-      // One eyeball on every level, including the root Projects grid. The popup
-      // is where "show deleted" now lives, and the grid is exactly where
-      // soft-deleted sessions are listed, so a header without it would strand
-      // that control on the one screen that needs it.
-      buildFrameFilterPopup(app, sessionID),
-      // The label comes from the same scope noun the inline Add card uses, so the
-      // two can never disagree about what this level creates. A hardcoded
-      // "Add Session" would contradict the card's "Add Sub-Session" two levels in.
-      // The root takes its label from the level itself rather than the ambient
-      // depth: the root entry is always the bottom of the stack, but a header
-      // should not change its own name because of where the stack happens to be.
-      button
-        .type('button')
-        .class('kikx-window__add')
-        .title(sessionID ? 'Add a session inside this one' : 'Add a project')
-        .onClick(() => app._createSession())(`+ Add ${sessionID ? scopeNoun(app) : 'Project'}`),
-    ),
-  );
-}
-
 // 3x3 dot grid glyph, drawn as an inline SVG so no external asset or font is
 // required. No longer rendered: the header's frame-filter popup replaced the
 // grid-of-dots sub-session toggle. Kept (with buildGridIcon's spec) until the
@@ -385,7 +335,6 @@ export function buildParticipantsPopup(app, sessionID) {
 
 export function buildWorkspaceGrid(app) {
   return section.class('kikx-workspace')(
-    buildWindowHeader(app, { title: 'Projects' }),
     buildSessionGrid(app, null),
   );
 }
@@ -496,10 +445,6 @@ export function buildThreadSection(app, sessionID) {
   historyChevron.classList.add('kikx-composer-history-button__chevron');
 
   return section.class('kikx-thread')(
-    buildWindowHeader(app, {
-      title: app._selectedSession()?.title || 'No session',
-      sessionID,
-    }),
     div.class('kikx-thread__body')(
       buildFrameThread(app),
       sessionID ? buildScrollLockFloatingButton(app, sessionID) : null,
