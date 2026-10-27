@@ -5,6 +5,7 @@ import { parseMentionReferences, resolveMentionActors } from '../mentions/index.
 import { createLocatorSearchRequest, formatSearchResponse } from './database-tools.mjs';
 import { builtInToolComponent } from './tool-client-components.mjs';
 import { wakeInvitedAgent } from './session-invite-wake.mjs';
+import { planSessionFork } from '../context/session-fork.mjs';
 
 import {
   clampInteger,
@@ -240,10 +241,14 @@ export class SessionCreateTool extends SessionTool {
         type: 'boolean',
         description: 'For agent-created child sessions, reuse an existing same-title child under the same parent/creator. Defaults to true; set false only when a separate duplicate-title session is intentional.',
       },
+      freshContext: {
+        type: 'boolean',
+        description: 'For an agent-created child: true starts empty; false (default) copies the parent context into the child so the child starts with the same history prefix. Use true for a small, short-lived child of a very large parent.',
+      },
     },
     additionalProperties: false,
   };
-  static help = 'Use session-create to create a new session. Set includeSelf when you should participate; with includeSelf:true the calling agent becomes coordinator. A child does not inherit the parent transcript, so for delegated work set initialMessage to a compact orienting handoff (project, cwd, goal, current status, constraints, first assignment). Parent and child can then communicate explicitly with session-message using the other session ID; a child can reply to its parentSessionID. Agent-created child sessions reuse an existing same-title child under the same parent/creator by default; set reuseExisting false only for an intentional duplicate-title session.';
+  static help = 'Use session-create to create a new session. Set includeSelf when you should participate; with includeSelf:true the calling agent becomes coordinator. A delegated child starts with a copy of the parent context by default (freshContext:false); set freshContext:true for an intentionally empty child. initialMessage is still the explicit task handoff and is strongly recommended for delegated work. Parent and child can then communicate explicitly with session-message using the other session ID; a child can reply to its parentSessionID. Agent-created child sessions reuse an existing same-title child under the same parent/creator by default; set reuseExisting false only for an intentional duplicate-title session.';
 
   async _execute(params = {}) {
     this.assertFirstGenerationDelegation('session-create');
@@ -294,6 +299,28 @@ export class SessionCreateTool extends SessionTool {
       } : {}),
     });
 
+    let childEntry = await this.frameRuntime().ensureSessionEntry(session.id, { loadFrames: false });
+    let parentEntry = sourceSession?.id
+      ? await this.frameRuntime().ensureSessionEntry(sourceSession.id)
+      : null;
+    let forkPlan = planSessionFork({
+      parentFrames: parentEntry?.frameEngine?.toArray?.() || [],
+      childSessionID: session.id,
+      parentSessionID: sourceSession?.id || null,
+      freshContext: params.freshContext === true,
+      interactionID: this.context.frame?.interactionID || null,
+    });
+    if (forkPlan.seedFrames.length > 0) {
+      childEntry.frameEngine.merge(forkPlan.seedFrames, {
+        authorType: 'agent',
+        authorID: createdByAgentID || 'internal:session-fork',
+        silent: true,
+      });
+      await this.frameRuntime().frameStore?.flush?.();
+      this.frameRuntime().syncSessionManifestFromEngine?.(childEntry, { persist: true });
+      session = childEntry.session;
+    }
+
     let initialMessage = normalizeOptionalString(params.initialMessage);
     let initialFrame = null;
     if (initialMessage) {
@@ -312,6 +339,12 @@ export class SessionCreateTool extends SessionTool {
       session: sanitizeSession(session),
       created: true,
       reusedExisting: false,
+      fork: {
+        mode: forkPlan.mode,
+        inheritedCount: forkPlan.inheritedCount,
+        droppedFrameCount: forkPlan.droppedFrameCount,
+        sourceCompactionFrameID: forkPlan.sourceCompactionFrameID,
+      },
       initialFrame,
     };
   }

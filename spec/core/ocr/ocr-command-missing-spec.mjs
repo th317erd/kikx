@@ -41,7 +41,12 @@ function createArgumentTolerantCommand() {
 async function withEmptyPath(callback) {
   let empty = mkdtempSync(join(tmpdir(), 'kikx-ocr-emptypath-'));
   let original = process.env.PATH;
+  let originalHome = process.env.HOME;
   process.env.PATH = empty;
+  // The host OCR provider also probes the conventional per-user install paths.
+  // Point HOME at the same empty directory so this test is about a genuinely
+  // missing command, not about whether this developer has bot-ocr installed.
+  process.env.HOME = empty;
   try {
     return await callback();
   } finally {
@@ -49,6 +54,10 @@ async function withEmptyPath(callback) {
       delete process.env.PATH;
     else
       process.env.PATH = original;
+    if (originalHome === undefined)
+      delete process.env.HOME;
+    else
+      process.env.HOME = originalHome;
     rmSync(empty, { recursive: true, force: true });
   }
 }
