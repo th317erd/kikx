@@ -14,6 +14,9 @@ import {
 
 export function syncDraft(app, event) {
   app._state.draft = event.target.value;
+  // Do not run frame-list reconciliation/layout under a keystroke. The SSE
+  // queue is flushed after this short idle window instead of mid-character.
+  app._composerTypingUntil = Date.now() + 300;
   syncComposerDraft(app, app._state.draft);
 }
 

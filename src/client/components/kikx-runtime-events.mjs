@@ -307,6 +307,26 @@ function drainFrameRuntimeRefresh(app) {
 
 export function flushFrameRuntimeEvents(app) {
   app._frameRuntimeFlushScheduled = false;
+  if (app.isConnected === false)
+    return;
+
+  // Typing is the one interaction that must never wait behind a frame update.
+  // Keep the queue intact and flush once the composer has been idle briefly.
+  let typingUntil = Number(app._composerTypingUntil) || 0;
+  if (typingUntil > Date.now()) {
+    if (!app._frameRuntimeTypingTimer) {
+      app._frameRuntimeTypingTimer = setTimeout(() => {
+        app._frameRuntimeTypingTimer = null;
+        flushFrameRuntimeEvents(app);
+      }, Math.max(0, typingUntil - Date.now()) + 16);
+    }
+    return;
+  }
+  if (app._frameRuntimeTypingTimer) {
+    clearTimeout(app._frameRuntimeTypingTimer);
+    app._frameRuntimeTypingTimer = null;
+  }
+
   try {
     guardClientOperation('kikx-runtime-events.flush', () => {
       processFrameRuntimeEvents(app);
