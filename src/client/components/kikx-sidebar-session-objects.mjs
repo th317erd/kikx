@@ -26,6 +26,21 @@ import { guardClientOperation } from '../lib/error-boundary.mjs';
 
 const { div, span, button } = elements;
 
+// Owner item 2 (2026-10-27): "Agents and Teams should go up into the 'Session
+// View' items." The five controls therefore split into two clusters:
+//
+//   'view'   -- Agents and Teams. They are views into the session tree, so they
+//               sit with Workspace / Inbox / Activities, above the tree.
+//   'footer' -- the account chip, Account and Sign out. They are identity, they
+//               act on the whole scope rather than on one row, so they stay at
+//               the foot behind `margin-top: auto`.
+//
+// `group` is presentation only. `id`, `label`, `kind`, `scopeSessionID` and
+// `onSelect` are unchanged by this split: the label text is load-bearing
+// (`clickButtonByText(page, 'Teams'|'Agents')` in seven stagehand specs) and the
+// scope id is what Prong B's predicate consumes.
+export const SESSION_OBJECT_GROUPS = Object.freeze(['view', 'footer']);
+
 // `scopeSessionID === null` means "not scoped to a session" -- the user account
 // is the one item owner point 5 exempts. Everything else is scoped to the session
 // the sidebar is currently showing, which is what makes point 6 (trickle-down)
@@ -40,6 +55,7 @@ export function buildSessionObjectItems(app) {
     {
       id: 'account-chip',
       kind: 'chip',
+      group: 'footer',
       label: app?._state?.account?.name || 'User',
       // The account itself is global, by owner point 5's explicit carve-out.
       scopeSessionID: null,
@@ -48,6 +64,7 @@ export function buildSessionObjectItems(app) {
     {
       id: 'account',
       kind: 'button',
+      group: 'footer',
       label: 'Account',
       scopeSessionID,
       onSelect: () => app._openAccountEditor(),
@@ -55,6 +72,7 @@ export function buildSessionObjectItems(app) {
     {
       id: 'agents',
       kind: 'button',
+      group: 'view',
       label: 'Agents',
       scopeSessionID,
       onSelect: () => app._openAgentManager(),
@@ -62,6 +80,7 @@ export function buildSessionObjectItems(app) {
     {
       id: 'teams',
       kind: 'button',
+      group: 'view',
       label: 'Teams',
       scopeSessionID,
       onSelect: () => app._openTeamManager(),
@@ -69,6 +88,7 @@ export function buildSessionObjectItems(app) {
     {
       id: 'sign-out',
       kind: 'button',
+      group: 'footer',
       label: 'Sign out',
       scopeSessionID,
       onSelect: () => app._signOut(),
@@ -87,36 +107,55 @@ export function filterSessionObjectItems(items, scopeFilter = null, appState = n
   return items.filter((item) => scopeFilter(item, item.scopeSessionID, appState));
 }
 
-// Renders the cluster under a single class, `kikx-session-objects`, which owns
-// the sidebar layout in src/client/styles/topbar-unified.css.
+function itemsForGroup(items, group) {
+  if (group === null || group === undefined)
+    return [...items];
+
+  return items.filter((item) => item.group === group);
+}
+
+function renderItem(item) {
+  if (item.kind === 'chip')
+    return span.class('kikx-account-chip')(item.label);
+
+  return button
+    .type('button')
+    .class('kikx-sign-out-button')
+    .onClick(item.onSelect)(item.label);
+}
+
+// Renders one cluster under the class `kikx-session-objects`, which owns the
+// sidebar layout in src/client/styles/topbar-unified.css.
 //
-// History worth keeping: this cluster was born in the top bar and carried the
-// legacy `kikx-topbar__actions` class so seven stagehand specs that select
-// `.kikx-topbar__actions button` kept passing. That kept the specs green while
-// lying about which bar owned the controls, and a future cleanup of the dead
-// top-bar CSS would have silently broken them. The seven specs now select
-// `kikx-session-objects` directly (coordinator option (ii)), so this is the only
-// class name to honour.
+// `group` selects which descriptors to render: 'view', 'footer', or omitted for
+// all of them (the pre-split behaviour, so existing one-argument callers keep
+// working).
+//
+// Both clusters carry `kikx-session-objects` on purpose. Seven stagehand specs
+// select `.kikx-session-objects button` and then click by button text; they must
+// keep matching after the split without being edited, so the layout difference
+// rides on a modifier class (`kikx-session-objects--view` / `--footer`) instead
+// of on a different base class.
+//
+// Both clusters also go through `filterSessionObjectItems` -- the scope seam is
+// not bypassed for the new cluster, or Agents/Teams would leak past ownership
+// filtering while Account did not.
 //
 // Button text is load-bearing: `clickButtonByText(page, 'Teams'|'Agents')`.
-export function buildSidebarSessionObjects(app, { scopeFilter = null } = {}) {
+export function buildSidebarSessionObjects(app, { scopeFilter = null, group = null } = {}) {
+  let modifier = (group === null || group === undefined) ? '' : ` kikx-session-objects--${group}`;
+  let className = `kikx-session-objects${modifier}`;
+
   return guardClientOperation('kikx-sidebar.session-objects', () => {
-    let items = filterSessionObjectItems(
-      buildSessionObjectItems(app),
-      scopeFilter,
-      app?._state,
+    let items = itemsForGroup(
+      filterSessionObjectItems(
+        buildSessionObjectItems(app),
+        scopeFilter,
+        app?._state,
+      ),
+      group,
     );
 
-    let children = items.map((item) => {
-      if (item.kind === 'chip')
-        return span.class('kikx-account-chip')(item.label);
-
-      return button
-        .type('button')
-        .class('kikx-sign-out-button')
-        .onClick(item.onSelect)(item.label);
-    });
-
-    return div.class('kikx-session-objects')(...children).build(document);
-  }, { surface: 'sidebar' }) || div.class('kikx-session-objects')().build(document);
+    return div.class(className)(...items.map(renderItem)).build(document);
+  }, { surface: 'sidebar' }) || div.class(className)().build(document);
 }

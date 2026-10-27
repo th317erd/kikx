@@ -22,24 +22,58 @@
  * Owner point 1 -- one bar. The legacy pair stacked a 64px topbar above a
  * second full-width header, so the app lost ~120px of vertical space before any
  * content. One bar, one border.
+ *
+ * Owner item 1 (2026-10-27): "Breadcrumb should move to the right, to line up
+ * with the right side of the sidebar."
+ *
+ * The sidebar's right edge is the FIRST TRACK of `.kikx-main` (app.css:177-181),
+ * which is a fluid `minmax(220px, 280px)` -- so a hardcoded padding-left would
+ * drift at every width, and drift differently above and below the track's max.
+ * Declaring the identical track definition here makes column 2 begin exactly
+ * where the sidebar ends, at any width, with no magic number to keep in sync.
+ *
+ * THE GAP IS COPIED TOO, AND `.kikx-main` HAS NONE. It declares no `column-gap`,
+ * so adding one here would shift every column after the first by that amount and
+ * leave the crumb that many pixels to the right of the sidebar edge. That is a
+ * measured property, not a stylistic choice: the alignment test asserts the two
+ * edges agree within 1px.
+ *
+ * The bar has no horizontal padding for the same reason: padding shifts the grid
+ * inside the element's box, so each column pads itself instead.
  * ------------------------------------------------------------------------ */
 .kikx-topbar.kikx-window__header {
   min-height: 56px;
-  padding: 8px 16px;
-  gap: 16px;
-  /* brand | breadcrumb | search | actions -- the search takes the free centre */
-  display: flex;
   align-items: center;
-  justify-content: flex-start;
-  flex-wrap: nowrap;
   border-bottom: 1px solid #2f3439;
   background: #171a1d;
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(360px, 1fr);
+  column-gap: 0;
+  padding: 8px 0;
 }
 
-/* The brand block is the fixed left anchor; it must not shrink or the crumb
- * trail starts jumping as session titles change length. */
+/* The brand block is the fixed left anchor, alone in column 1. It must not
+ * shrink or the crumb trail starts jumping as session titles change length. */
 .kikx-topbar.kikx-window__header .kikx-brand {
-  flex: 0 0 auto;
+  grid-column: 1;
+  padding-left: 16px;
+  min-width: 0;
+}
+
+/* Everything that is not the brand shares column 2 as ONE flex row.
+ *
+ * This wrapper is load-bearing, not tidiness. As direct grid children, the
+ * crumb, the search and the trailing actions would each take the next free
+ * cell -- so the search would land in column 1 of a SECOND ROW, under the brand,
+ * and the owner's two-row bar would be back. Wrapping them keeps the bar one row
+ * at every width. */
+.kikx-topbar.kikx-window__header .kikx-topbar__rest {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  padding-right: 16px;
 }
 
 /* Owner point 3 -- back + breadcrumb as ONE control. The chevron and the crumb
@@ -130,26 +164,42 @@
  * Owner point 2 -- User / Account / Agents / Teams / Sign out moved OUT of the
  * top-right and INTO the session-tree overview pane.
  *
- * The cluster uses the single class `kikx-session-objects`. Seven stagehand specs
- * select that class and then click by button text; they were moved off the legacy
- * `kikx-topbar__actions` alias (coordinator option (ii)) so that a future cleanup
- * of the retired top-bar CSS cannot silently break the only browser proof that
- * Agents/Teams open.
+ * Owner item 2 (2026-10-27) then split that cluster in two: "Agents and Teams
+ * should go up into the 'Session View' items." So there are two clusters, and
+ * BOTH carry the base class `kikx-session-objects`:
  *
- * `margin-top: auto` is what makes them sit at the FOOT of the sidebar: the
- * session tree above them grows downward and pushes these to the bottom, which
- * is where "session objects" belong -- they act on the whole scope, not on one
- * row of the tree.
+ *   --view    Agents, Teams. Rendered beside Inbox and Activities, above the
+ *             tree, because they are views into the tree rather than identity.
+ *   --footer  the account chip, Account, Sign out. Pinned to the foot.
+ *
+ * The modifier is deliberately NOT a rename. Seven stagehand specs select
+ * `.kikx-session-objects button` and then click by button text; keeping the base
+ * class on both clusters is what lets them keep matching across the split
+ * without being edited, and the only browser proof that Agents/Teams open stays
+ * intact.
+ *
+ * `margin-top: auto` on the footer is what makes it sit at the FOOT: the session
+ * tree above grows downward and pushes the identity controls to the bottom,
+ * which is where they belong -- they act on the whole scope, not on one row.
  * ------------------------------------------------------------------------ */
 .kikx-session-objects {
-  margin-top: auto;
-  padding-top: 12px;
-  border-top: 1px solid #2f3439;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 2px;
   flex-wrap: nowrap;
+}
+
+.kikx-session-objects--view {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid #2f3439;
+}
+
+.kikx-session-objects--footer {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid #2f3439;
 }
 
 .kikx-session-objects .kikx-account-chip {
@@ -182,10 +232,44 @@
   background: #22272d;
 }
 
-/* The sidebar is a column so `margin-top: auto` on the object cluster has slack
+/* The sidebar is a column so `margin-top: auto` on the footer cluster has slack
  * to consume. Without this the cluster cannot be pushed to the foot at all. */
 .kikx-sessions {
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * Below the sidebar stacking breakpoint the sidebar spans the full width, so
+ * "line up with the sidebar's right edge" stops meaning anything and the crumb
+ * returns to the left.
+ *
+ * The breakpoint is 960px because that is where `.kikx-main` itself stacks
+ * (app.css:2308). Matching it exactly is what keeps the two layouts from
+ * disagreeing in the 901-960px band; a 900px query here would leave that band
+ * with a one-column sidebar under a still-two-column bar.
+ *
+ * This reverts to `display: flex`, NOT to a single-column grid: one column would
+ * stack the brand above the crumb, make the bar two rows tall, and reintroduce
+ * the exact defect this change removes.
+ * ------------------------------------------------------------------------ */
+@media (max-width: 960px) {
+  .kikx-topbar.kikx-window__header {
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    gap: 16px;
+    padding: 8px 16px;
+  }
+
+  .kikx-topbar.kikx-window__header .kikx-brand {
+    padding-left: 0;
+    flex: 0 0 auto;
+  }
+
+  .kikx-topbar.kikx-window__header .kikx-topbar__rest {
+    flex: 1 1 auto;
+    padding-right: 0;
+  }
 }

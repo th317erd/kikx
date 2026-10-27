@@ -35,3 +35,6 @@ cxp.sh
 
 # Local documentation symlinks
 docs/mythix-ui-*
+
+# Local gate logs and one-off probes (not source)
+.gate/

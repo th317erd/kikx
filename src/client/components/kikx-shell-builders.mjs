@@ -252,11 +252,15 @@ export function buildRunnerShell(app) {
         // Activities sits directly under it (§6.4): the same glance-then-drill
         // relationship, one level out from the questions themselves.
         buildActivitiesSidebarEntry(app),
-        // Owner points 2, 5, 6: the session-object cluster at the FOOT of the
-        // session-tree pane (CSS pushes it down with `margin-top: auto`). These
-        // five controls are session objects, so they live in the session-tree
-        // overview pane and nowhere else -- the top bar renders none of them.
-        buildSidebarSessionObjects(app),
+        // Owner item 2 (2026-10-27): "Agents and Teams should go up into the
+        // 'Session View' items. They are views into the session tree, so
+        // they render here with Inbox and Activities, above the tree.
+        buildSidebarSessionObjects(app, { group: 'view' }),
+        // Owner points 2, 5, 6: the identity controls stay at the FOOT of the
+        // session-tree pane (CSS pushes them down with `margin-top: auto`). All
+        // five are session objects, so they live in this pane and nowhere else --
+        // the top bar renders none of them.
+        buildSidebarSessionObjects(app, { group: 'footer' }),
       ),
       // A view replaces the work area while it is the top stack entry; Back pops
       // to whatever window was underneath.

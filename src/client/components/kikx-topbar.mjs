@@ -313,9 +313,17 @@ export function buildUnifiedTopbar(app) {
       span.class('kikx-brand__mark')('K'),
       div.class('kikx-brand__copy')(h1('Kikx'), p('Agent runner')),
     ),
-    authed ? buildTopbarBreadcrumb(app) : null,
-    authed ? buildTopbarSearch(app) : null,
-    authed ? buildTopbarActions(app, sessionID) : span.class('kikx-topbar__spacer')(),
+    // Owner item 1 (2026-10-27): the bar is a grid whose tracks are identical to
+    // .kikx-main (app.css:177-181), so column 2 begins exactly where the sidebar
+    // ends and the breadcrumb lines up with the sidebar's right edge at every
+    // width. That only works if the three remaining children live in column 2 as
+    // one row -- as direct grid children they would auto-place the search into
+    // column 1 of a second row and reinstate the two-row bar the owner rejected.
+    div.class('kikx-topbar__rest')(
+      authed ? buildTopbarBreadcrumb(app) : null,
+      authed ? buildTopbarSearch(app) : null,
+      authed ? buildTopbarActions(app, sessionID) : span.class('kikx-topbar__spacer')(),
+    ),
   );
 }
 
