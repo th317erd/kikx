@@ -532,7 +532,7 @@ export async function loadFrames(app, sessionID, options = {}) {
   if (options.after != null) {
     mergeSessionFrameWindow(sessionID, frames, app._state, paging);
     if (options.render !== false)
-      app._syncFrameThread(sessionID, { force: true });
+      app._syncFrameThread(sessionID);
     return result.data;
   }
 
@@ -552,7 +552,7 @@ export async function loadFrames(app, sessionID, options = {}) {
 
   if (options.render !== false) {
     if (options.merge === true)
-      app._syncFrameThread(sessionID, { force: true });
+      app._syncFrameThread(sessionID);
     else
       app._render();
   }
