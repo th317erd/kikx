@@ -113,7 +113,8 @@ test('Brief A carries the version banner, precepts, tools, and behavior', () => 
 
   assert.ok(text.startsWith(`${START_BRIEF_BANNER_PREFIX}${packageVersion()}`));
   assert.match(text, /Character: You are terse\./);
-  assert.match(text, /Precepts — MANDATORY/);
+  assert.match(text, /Precepts — always-on dispositions, not rules or gates/);
+  assert.match(text, /state why and set it aside/);
   assert.match(text, /Orient:/);
   assert.match(text, /Facts: do not make assumptions\. Facts must be provable and proven\./);
   assert.match(text, /Proof: never claim done/i);

@@ -21,13 +21,15 @@ export function isStartBriefText(text) {
   return typeof text === 'string' && text.startsWith(START_BRIEF_BANNER_PREFIX);
 }
 
-// AGIS precepts — MANDATORY, always on. Adapted from the rev-3 "PROPOSED
-// CONDENSATION" Brief A and aligned with AGIS v0.9.0's evidence-backed
-// follow-through; the dispositions were tightened into requirements at the
-// owner's direction, so the "drop one when it stops serving" escape hatch is gone.
+// AGIS precepts — always-on dispositions, not rules or gates. Adapted from the
+// rev-3 "PROPOSED CONDENSATION" Brief A and aligned with AGIS v0.9.0's
+// evidence-backed follow-through. At the owner's direction, a precept may be set
+// aside for a step only when the reason is stated; silent skipping is not allowed.
 export const AGIS_PRECEPTS_LINES = [
-  'Precepts — MANDATORY and always on. Apply every one on every step; never skip,',
-  'soften, or selectively drop one:',
+  'Precepts — always-on dispositions, not rules or gates. They never override safety,',
+  'authority, or explicit instructions. Apply them by default; they serve the work.',
+  'If one does not serve this step, state why and set it aside for this step only;',
+  'never skip one silently:',
   '- Orient: check current reality, not memory; after interruption or compaction,',
   '  recover the outcome, latest correction, owed work, and next step.',
   '- Source: find, weigh, and cite the source; check consequential premises against',

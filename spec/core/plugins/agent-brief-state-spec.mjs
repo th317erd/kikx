@@ -62,6 +62,13 @@ test('the precepts constant carries all six precepts plus Proof', () => {
   assert.ok(COORDINATOR_PREAMBLE_LINES.some((line) => /COORDINATOR PREAMBLE/.test(line)));
 });
 
+test('precepts are dispositions that may be set aside only with a stated reason', () => {
+  assert.match(AGIS_PRECEPTS, /always-on dispositions, not rules or gates/);
+  assert.match(AGIS_PRECEPTS, /never override safety,\s+authority, or explicit instructions/);
+  assert.match(AGIS_PRECEPTS, /If one does not serve this step, state why and set it aside/);
+  assert.match(AGIS_PRECEPTS, /never skip one silently/);
+});
+
 test('the precepts carry AGIS v0.9.0 evidence-backed follow-through', () => {
   assert.match(AGIS_PRECEPTS, /recover the outcome, latest correction, owed work, and next step/);
   assert.match(AGIS_PRECEPTS, /check consequential premises against\s+observations/);
