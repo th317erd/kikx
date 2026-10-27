@@ -114,9 +114,35 @@ function itemsForGroup(items, group) {
   return items.filter((item) => item.group === group);
 }
 
+// Owner item 1 (2026-10-27): "These two items should be grouped with, and have
+// the same styling as, the 'Inbox' and 'Activities'... every item in this sidebar
+// is a 'view' into the current session and its children."
+//
+// The defect this fixes: every non-chip descriptor rendered as
+// `button.kikx-sign-out-button` -- the SAME class as the footer's Sign out. So
+// Agents and Teams were wearing footer-identity styling while sitting in the
+// view cluster, which is exactly why they read as misplaced controls rather than
+// as views.
+//
+// View items now render the `kikx-sidebar__view` family, whose rule lives beside
+// the Inbox/Activities rule in questions.css so all four are ONE rule rather than
+// two copies of the same metrics that can drift apart. The label is wrapped in a
+// span, as Inbox and Activities do, so it can ellipsise like they can -- and
+// `button.textContent` still equals exactly `Agents` / `Teams`, which is what
+// `clickButtonByText`'s `textContent.trim() === text` assertion needs (seven
+// stagehand specs click these by text).
+//
+// The footer branch below is unchanged and still emits `kikx-sign-out-button`:
+// Account and Sign out ARE bar-style controls, and that styling is correct there.
 function renderItem(item) {
   if (item.kind === 'chip')
     return span.class('kikx-account-chip')(item.label);
+
+  if (item.group === 'view')
+    return button
+      .type('button')
+      .class('kikx-sidebar__view')
+      .onClick(item.onSelect)(span.class('kikx-sidebar__view-label')(item.label));
 
   return button
     .type('button')
@@ -140,6 +166,10 @@ function renderItem(item) {
 // Both clusters also go through `filterSessionObjectItems` -- the scope seam is
 // not bypassed for the new cluster, or Agents/Teams would leak past ownership
 // filtering while Account did not.
+//
+// `kikx-session-objects` stays on BOTH clusters' containers, and the button text
+// stays exactly the label. Both are load-bearing: seven stagehand specs select
+// `.kikx-session-objects button` and then compare `textContent.trim()`.
 //
 // Button text is load-bearing: `clickButtonByText(page, 'Teams'|'Agents')`.
 export function buildSidebarSessionObjects(app, { scopeFilter = null, group = null } = {}) {

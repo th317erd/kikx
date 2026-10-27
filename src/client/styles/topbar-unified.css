@@ -90,14 +90,37 @@
 
 /* Owner point 4 -- the freed centre. `order` puts the search between the lead
  * and the trailing actions regardless of DOM order, and the auto margins centre
- * it in the leftover space. max-width stops it sprawling on wide monitors. */
-.kikx-topbar.kikx-window__header .kikx-session-search {
+ * it in the leftover space. max-width stops it sprawling on wide monitors.
+ *
+ * Owner item 3 (2026-10-27): the centring moved OUT of the field and INTO the
+ * search group, because the eye now sits beside the field. Centring the field
+ * alone would have split the pair across the bar again -- the group is the thing
+ * that must be centred, so the two controls always travel together. */
+.kikx-topbar.kikx-window__header .kikx-topbar__search-group {
   order: 2;
+  display: flex;
+  align-items: center;
+  /* "hugged up next to": one hairline gap. Deliberately much smaller than the
+   * bar's own 16px rhythm -- the point is that these two read as one control
+   * pair, not as two neighbours. */
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.kikx-topbar.kikx-window__header .kikx-session-search {
   flex: 1 1 auto;
   min-width: 120px;
   max-width: 560px;
-  margin-left: auto;
-  margin-right: auto;
+}
+
+/* The eye is an accessory of the search field, so it is sized to the field's
+ * height and never allowed to shrink out of reach at narrow widths. */
+.kikx-topbar.kikx-window__header .kikx-topbar__search-group > kikx-frame-filter-popup {
+  flex: 0 0 auto;
 }
 
 /* Trailing cluster: preview status, participants, eyeball, + Add. Pinned right
@@ -128,6 +151,85 @@
   visibility: hidden;
   opacity: 0;
   transition: opacity 120ms ease-in;
+}
+
+/* ---------------------------------------------------------------------------
+ * Owner item 2a (2026-10-27): "the edit pencil icon itself is WAY WAY too
+ * large". Measured cause, not a guess:
+ *
+ *   app.css:509-514  .kikx-icon-button { width: 34px; font-size: calc(22px * 1.25) }
+ *   app.css:7-12     .kikx-icon        { width: 1em; height: 1em }
+ *   kikx-topbar.mjs  the pencil svg carries class `kikx-icon`
+ *
+ * so the glyph rendered at 27.5px inside a 34px box -- a 1:1.24 glyph-to-button
+ * ratio that reads as an illustration, not an icon. The glyph is now 15px and
+ * the button 26px: the HIT TARGET is still comfortably clickable (26px square,
+ * plus the row's own padding), which is the part that must not shrink, while the
+ * ART is a third of its old size. Scoped to the crumb so the back chevron and
+ * every other `.kikx-icon-button` in the app keep their existing size.
+ *
+ * `.kikx-breadcrumb .kikx-icon-button` is (0,2,0) against app.css's single-class
+ * (0,1,0), so this wins on specificity rather than on load order.
+ * ------------------------------------------------------------------------ */
+.kikx-breadcrumb .kikx-icon-button {
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  padding: 0;
+  font-size: 15px;
+  border-radius: 6px;
+  color: #aab4bf;
+}
+
+.kikx-breadcrumb .kikx-icon-button:hover {
+  color: #f5f7fa;
+  background: #22272d;
+}
+
+/* The inline rename, grouped so the field, Save and Cancel read as one control
+ * (owner item 2b: there must be a VISIBLE way out without knowing a key). */
+.kikx-breadcrumb__editor {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* The editor's own buttons are never hover-gated: a Cancel control you have to
+ * find by hovering is exactly the defect this exists to remove.
+ *
+ * SPECIFICITY, measured in the browser, not by counting selectors in our heads
+ * (the first version of this comment got the arithmetic wrong, and three agents
+ * caught it):
+ *   `.kikx-breadcrumb .kikx-icon-button`                    = (0,2,0)
+ *   `.kikx-breadcrumb:hover .kikx-icon-button`              = (0,3,0)
+ *   `.kikx-breadcrumb:focus-within .kikx-icon-button`       = (0,3,0)
+ *   `.kikx-breadcrumb .kikx-breadcrumb__editor .kikx-icon-button` = (0,3,0)
+ * The override therefore TIES the two reveal rules rather than beating them,
+ * and it sits EARLIER in this sheet than `:focus-within` (line ~207 vs ~228),
+ * so on a tie the reveal wins. That is harmless only because both sides set
+ * `visibility: visible`. Do not "simplify" this selector back to two classes:
+ * (0,2,0) genuinely loses, and the Cancel control would compute `hidden` again.
+ * The specs assert the computed `visibility`, not this comment. */
+.kikx-breadcrumb .kikx-breadcrumb__editor .kikx-icon-button,
+.kikx-breadcrumb .kikx-breadcrumb__editor .kikx-breadcrumb__editor-action {
+  visibility: visible;
+  opacity: 1;
+}
+
+.kikx-breadcrumb__editor .kikx-breadcrumb__editor-action {
+  color: #8f9aa6;
+}
+
+.kikx-breadcrumb__editor .kikx-breadcrumb__editor-action:hover {
+  color: #f5f7fa;
+  background: #22272d;
+}
+
+/* Save reads as the affirmative action; Cancel stays neutral so a mis-click on
+ * the way out cannot destroy the typed name. */
+.kikx-breadcrumb__editor .kikx-breadcrumb__editor-action[aria-label="Save name"] {
+  color: #7fd1a0;
 }
 
 .kikx-breadcrumb:hover .kikx-icon-button,
@@ -190,10 +292,22 @@
   flex-wrap: nowrap;
 }
 
+/* Owner item 1 (2026-10-27): "grouped WITH" Inbox and Activities.
+ *
+ * This cluster used to open with a `border-top` divider and its own margin, which
+ * drew a visual boundary right between Activities and Agents -- the opposite of
+ * grouping them. The divider is gone and the cluster's own gap is zeroed so the
+ * four view rows are spaced ONLY by the row margin they share with Inbox and
+ * Activities. That is what makes them read as one list rather than as two lists
+ * with a rule between them.
+ *
+ * The footer cluster keeps its divider and its `margin-top: auto`: identity
+ * controls genuinely are a separate block, pinned to the foot. */
 .kikx-session-objects--view {
-  margin-top: 4px;
-  padding-top: 8px;
-  border-top: 1px solid #2f3439;
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+  gap: 0;
 }
 
 .kikx-session-objects--footer {
@@ -240,6 +354,7 @@
   min-height: 0;
 }
 
+
 /* ---------------------------------------------------------------------------
  * Below the sidebar stacking breakpoint the sidebar spans the full width, so
  * "line up with the sidebar's right edge" stops meaning anything and the crumb
@@ -272,4 +387,43 @@
     flex: 1 1 auto;
     padding-right: 0;
   }
+}
+
+/* ==========================================================================
+ * The thinking dock's grid track (owner item 4, 2026-10-27)
+ * ==========================================================================
+ * The owner's report: "the little brain that shows an agent is thinking is
+ * buried behind / underneath the message box."
+ *
+ * Measured before this rule, on the real authed app at 1280x900 and 1280x620
+ * (geometry identical at both heights, so it is not a viewport accident):
+ *
+ *   .kikx-thread gridTemplateRows = "697.625px 0px 104px 0px"
+ *   .kikx-thinking-dock  y=767 h=54   position:static
+ *   .kikx-composer       y=767 h=104  position:relative
+ *   dockBottomOverlapsComposerTopBy = 54
+ *   realClippingAncestors = []        clipped: false
+ *   elementFromPoint(dock centre) -> button.kikx-composer-history-button
+ *
+ * The cause is a track/child mismatch, not clipping and not a z-index fight.
+ * `app.css:436` declares FOUR rows (`auto minmax(0,1fr) auto auto`) but
+ * `buildThreadSection` (kikx-shell-builders.mjs:460-468) emits THREE children:
+ * body, dock, composer. So the body's tall max-content claimed the `auto`
+ * track (697px), the `minmax(0,1fr)` track resolved to 0px, and the dock
+ * overflows that zero-height row onto the composer, which -- being
+ * `position:relative` -- paints on top of the static dock.
+ *
+ * The fix is to move the flexible row onto the element that should flex: the
+ * BODY. Deleting the 4th track alone would give `auto minmax(0,1fr) auto`,
+ * which still hands the dock the 0px row -- the assignment, not the count, is
+ * what was wrong.
+ *
+ * Deliberately here and not in app.css: this sheet is linked AFTER app.css
+ * (index.html:17 vs :20), so an equal-specificity (0,1,0) `.kikx-thread` rule
+ * wins on source order alone and the 4021-line sheet does not grow.
+ * `.kikx-workspace` is untouched -- it shares only the base 3-track rule at
+ * app.css:422-427 and has its own correct one.
+ * ------------------------------------------------------------------------ */
+.kikx-thread {
+  grid-template-rows: minmax(0, 1fr) auto auto;
 }
