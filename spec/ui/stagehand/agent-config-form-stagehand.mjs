@@ -76,7 +76,7 @@ test('Stagehand renders a plugin-owned agent-config-form served from plugin asse
       timeout: 10000,
     });
 
-    await page.waitForSelector('.kikx-topbar__actions button', { timeout: 10000 });
+    await page.waitForSelector('.kikx-session-objects button', { timeout: 10000 });
 
     // Self-healing interactions: a click can race the app's initial async load,
     // so retry until the observed state arrives.
@@ -84,7 +84,7 @@ test('Stagehand renders a plugin-owned agent-config-form served from plugin asse
       if (document.querySelector('.kikx-agent-manager'))
         return true;
 
-      Array.from(document.querySelectorAll('.kikx-topbar__actions button'))
+      Array.from(document.querySelectorAll('.kikx-session-objects button'))
         .find((candidate) => candidate.textContent.trim() === 'Agents')?.click();
       return false;
     });

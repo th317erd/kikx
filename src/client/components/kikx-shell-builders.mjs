@@ -27,13 +27,18 @@ import { hasAnyFrames, threadRenderFrames } from '../state/thinking-state.mjs';
 import { childSessions } from './chat-view-model.mjs';
 import { formatTokenUsageTotal, hasSessionDeepLink } from './kikx-app-helpers.mjs';
 import { countRebuild } from './render-stats.mjs';
+// Unified top toolbar (owner spec pts 1-4). This is the only top bar: it has no
+// enable flag and no legacy sibling, so there is nothing to switch at runtime.
+import { buildUnifiedTopbar } from './kikx-topbar.mjs';
+// Owner point 2: User / Account / Agents / Teams / Sign out as sidebar session objects.
+import { buildSidebarSessionObjects } from './kikx-sidebar-session-objects.mjs';
 import { buildInboxSidebarEntry, buildInboxView } from './kikx-inbox-view.mjs';
 import {
   buildActivitiesSidebarEntry,
   buildActivitiesView,
 } from './kikx-activities-view.mjs';
 
-const { div, main, nav, section, header, h1, h2, p, span, button, form, input, label, textarea } = elements;
+const { div, main, nav, section, header, h2, p, span, button, form, input, label, textarea } = elements;
 const aeorInput = elements['aeor-input'];
 
 // S1: the app render entry point. A throwing shell builder must never wedge the
@@ -55,25 +60,11 @@ export function renderAppShell(app) {
 
   let rendered = guardClientOperation('kikx-app.render', () => {
     let shellChildren = [
-      header.class('kikx-topbar')(
-        div.class('kikx-brand')(
-          span.class('kikx-brand__mark')('K'),
-          div.class('kikx-brand__copy')(
-            h1('Kikx'),
-            p('Agent runner'),
-          ),
-        ),
-        app._state.authToken ? app._buildBreadcrumb() : null,
-        app._state.authToken
-          ? div.class('kikx-topbar__actions')(
-            span.class('kikx-account-chip')(app._state.account?.name || 'User'),
-            button.type('button').class('kikx-sign-out-button').onClick(app._openAccountEditor)('Account'),
-            button.type('button').class('kikx-sign-out-button').onClick(app._openAgentManager)('Agents'),
-            button.type('button').class('kikx-sign-out-button').onClick(app._openTeamManager)('Teams'),
-            button.type('button').class('kikx-sign-out-button').onClick(app._signOut)('Sign out'),
-          )
-          : span.class('kikx-topbar__spacer')(),
-      ),
+      // Bar merge (owner pt 1): ONE header. It replaces the former `kikx-topbar`
+      // above the work area and the per-level `kikx-window__header` inside it, so
+      // there is exactly one toolbar in the tree. There is no enable flag: the
+      // merged bar IS the bar. Rollback is a git checkout of e7b1739, not a switch.
+      buildUnifiedTopbar(app),
       app._state.authToken
         ? (hasSessionDeepLink() && app._deepLinkReady !== true
           ? buildStartupLoading()
@@ -262,6 +253,11 @@ export function buildRunnerShell(app) {
         // Activities sits directly under it (§6.4): the same glance-then-drill
         // relationship, one level out from the questions themselves.
         buildActivitiesSidebarEntry(app),
+        // Owner points 2, 5, 6: the session-object cluster at the FOOT of the
+        // session-tree pane (CSS pushes it down with `margin-top: auto`). These
+        // five controls are session objects, so they live in the session-tree
+        // overview pane and nowhere else -- the top bar renders none of them.
+        buildSidebarSessionObjects(app),
       ),
       // A view replaces the work area while it is the top stack entry; Back pops
       // to whatever window was underneath.

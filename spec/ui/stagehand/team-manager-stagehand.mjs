@@ -63,8 +63,8 @@ test('Stagehand creates, edits, and deletes teams from the topbar Teams modal', 
       timeout: 10000,
     });
 
-    await page.waitForSelector('.kikx-topbar__actions button', { timeout: 10000 });
-    await clickButtonByText(page, 'Teams', '.kikx-topbar__actions');
+    await page.waitForSelector('.kikx-session-objects button', { timeout: 10000 });
+    await clickButtonByText(page, 'Teams', '.kikx-session-objects');
     await waitForPagePredicate(page, () => document.querySelector('aeor-modal[title="Teams"]')?.textContent?.includes('+ Add Team'));
     await clickButtonByText(page, '+ Add Team', 'aeor-modal[title="Teams"]');
     await waitForPagePredicate(page, () => Boolean(document.querySelector('.kikx-team-form')));

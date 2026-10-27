@@ -1,0 +1,191 @@
+/*
+ * Unified top toolbar + sidebar session objects (owner spec points 1-4).
+ *
+ * WHY THIS FILE EXISTS rather than editing app.css:
+ * app.css is 4035 lines. AGENTS.md:69-72 sets a 800-line HARD cap, so app.css is
+ * 5x over hard limit; "refactoring is mandatory before adding more code". Every
+ * rule the merge needs is therefore additive and lives here.
+ *
+ * This file is NOT inert only because index.html links it -- see
+ * spec/client/stylesheet-links-spec.mjs, which fails the build when a stylesheet
+ * on disk is unlinked (:139-156) and when a component emits a kikx-* class with
+ * no rule in a LINKED stylesheet (:158-172). Both halves are satisfied by the
+ * <link> added at index.html:20 plus the rules below.
+ *
+ * Selection strategy: the merged bar carries both `kikx-topbar` and
+ * `kikx-window__header` (see kikx-topbar.mjs), so everything here is scoped by
+ * the compound `.kikx-topbar.kikx-window__header` and wins on specificity over
+ * the two legacy single-class rule sets without touching either of them.
+ */
+
+/* ---------------------------------------------------------------------------
+ * Owner point 1 -- one bar. The legacy pair stacked a 64px topbar above a
+ * second full-width header, so the app lost ~120px of vertical space before any
+ * content. One bar, one border.
+ * ------------------------------------------------------------------------ */
+.kikx-topbar.kikx-window__header {
+  min-height: 56px;
+  padding: 8px 16px;
+  gap: 16px;
+  /* brand | breadcrumb | search | actions -- the search takes the free centre */
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  border-bottom: 1px solid #2f3439;
+  background: #171a1d;
+}
+
+/* The brand block is the fixed left anchor; it must not shrink or the crumb
+ * trail starts jumping as session titles change length. */
+.kikx-topbar.kikx-window__header .kikx-brand {
+  flex: 0 0 auto;
+}
+
+/* Owner point 3 -- back + breadcrumb as ONE control. The chevron and the crumb
+ * trail are siblings inside `.kikx-window__lead`, so they read as one unit and
+ * never wrap apart from each other. */
+.kikx-topbar.kikx-window__header .kikx-window__lead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 0 1 auto;
+  padding: 0;
+}
+
+/* Owner point 4 -- the freed centre. `order` puts the search between the lead
+ * and the trailing actions regardless of DOM order, and the auto margins centre
+ * it in the leftover space. max-width stops it sprawling on wide monitors. */
+.kikx-topbar.kikx-window__header .kikx-session-search {
+  order: 2;
+  flex: 1 1 auto;
+  min-width: 120px;
+  max-width: 560px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Trailing cluster: preview status, participants, eyeball, + Add. Pinned right
+ * and never wrapped -- a wrapped `+ Add Project` reads as a second bar. */
+.kikx-topbar.kikx-window__header .kikx-window__actions {
+  order: 3;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+ * Owner point 3 -- each crumb gets a pencil on hover. Hidden until the crumb's
+ * trail is hovered or holds focus, so the trail stays legible at rest.
+ *
+ * Scope is `.kikx-breadcrumb .kikx-icon-button`, which is the pencil only: the
+ * back chevron lives in `.kikx-window__lead`, not inside the crumb `nav`. Using
+ * `visibility` rather than `display` keeps the crumb width stable so hovering
+ * does not reflow the trail and shift the crumb out from under the cursor.
+ *
+ * `focus-within` is required, not optional: a keyboard user tabbing to the
+ * pencil must be able to see it. And on touch there is no hover at all, so the
+ * pencil is shown unconditionally there.
+ * ------------------------------------------------------------------------ */
+.kikx-breadcrumb .kikx-icon-button {
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 120ms ease-in;
+}
+
+.kikx-breadcrumb:hover .kikx-icon-button,
+.kikx-breadcrumb:focus-within .kikx-icon-button {
+  visibility: visible;
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .kikx-breadcrumb .kikx-icon-button {
+    visibility: visible;
+    opacity: 1;
+  }
+}
+
+/* The active crumb is the current location, not a destination: it stays
+ * unclickable (matching buildBreadcrumbCrumb's span) but it is the bar's title,
+ * so it is allowed to be the widest item before the trail ellipsises. */
+.kikx-topbar.kikx-window__header .kikx-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.kikx-topbar.kikx-window__header .kikx-breadcrumb__crumb--active {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------------------------------------------------------------------------
+ * Owner point 2 -- User / Account / Agents / Teams / Sign out moved OUT of the
+ * top-right and INTO the session-tree overview pane.
+ *
+ * The cluster uses the single class `kikx-session-objects`. Seven stagehand specs
+ * select that class and then click by button text; they were moved off the legacy
+ * `kikx-topbar__actions` alias (coordinator option (ii)) so that a future cleanup
+ * of the retired top-bar CSS cannot silently break the only browser proof that
+ * Agents/Teams open.
+ *
+ * `margin-top: auto` is what makes them sit at the FOOT of the sidebar: the
+ * session tree above them grows downward and pushes these to the bottom, which
+ * is where "session objects" belong -- they act on the whole scope, not on one
+ * row of the tree.
+ * ------------------------------------------------------------------------ */
+.kikx-session-objects {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid #2f3439;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  flex-wrap: nowrap;
+}
+
+.kikx-session-objects .kikx-account-chip {
+  padding: 6px 8px 10px;
+  color: #aab4bf;
+  font-size: calc(12px * 1.25);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sidebar rows, not toolbar buttons: full width, left aligned, flat until
+ * hover. The existing `.kikx-sign-out-button` rule is a pill meant for a
+ * horizontal bar; it is overridden here rather than in app.css. */
+.kikx-session-objects .kikx-sign-out-button {
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #d7dde4;
+  font: inherit;
+  font-size: calc(12px * 1.25);
+  cursor: pointer;
+}
+
+.kikx-session-objects .kikx-sign-out-button:hover,
+.kikx-session-objects .kikx-sign-out-button:focus-visible {
+  background: #22272d;
+}
+
+/* The sidebar is a column so `margin-top: auto` on the object cluster has slack
+ * to consume. Without this the cluster cannot be pushed to the foot at all. */
+.kikx-sessions {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}

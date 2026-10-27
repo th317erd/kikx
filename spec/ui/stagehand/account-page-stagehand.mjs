@@ -58,8 +58,8 @@ test('Stagehand updates account profile and uses the display name on user messag
       timeout: 10000,
     });
 
-    await page.waitForSelector('.kikx-topbar__actions button', { timeout: 10000 });
-    await page.locator('.kikx-topbar__actions button').first().click();
+    await page.waitForSelector('.kikx-session-objects button', { timeout: 10000 });
+    await page.locator('.kikx-session-objects button').first().click();
     await page.waitForSelector('.kikx-account-form', { timeout: 10000 });
     await waitForTwoAnimationFrames(page);
     await page.evaluate(() => {

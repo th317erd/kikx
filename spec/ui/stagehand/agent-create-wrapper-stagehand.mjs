@@ -83,14 +83,14 @@ test('Stagehand wrapper reads Codex guts values and blocks invalid default-endpo
       timeout: 10000,
     });
 
-    await page.waitForSelector('.kikx-topbar__actions button', { timeout: 10000 });
+    await page.waitForSelector('.kikx-session-objects button', { timeout: 10000 });
 
     // Open the Agents modal.
     await waitForPagePredicate(page, () => {
       if (document.querySelector('.kikx-agent-manager'))
         return true;
 
-      Array.from(document.querySelectorAll('.kikx-topbar__actions button'))
+      Array.from(document.querySelectorAll('.kikx-session-objects button'))
         .find((candidate) => candidate.textContent.trim() === 'Agents')?.click();
       return false;
     });

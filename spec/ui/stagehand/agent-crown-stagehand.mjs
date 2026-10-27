@@ -65,11 +65,11 @@ test('Stagehand crowns master agents from the Agents modal with ranked styling',
     await stagehand.init();
     let page = stagehand.context.pages()[0];
     await page.goto(`${fixture.baseURL}/?code=stagehand-test`, { waitUntil: 'domcontentloaded', timeout: 10000 });
-    await page.waitForSelector('.kikx-topbar__actions button', { timeout: 10000 });
+    await page.waitForSelector('.kikx-session-objects button', { timeout: 10000 });
 
     // Open the Agents modal via a real click.
     await page.evaluate(() => {
-      let button = Array.from(document.querySelectorAll('.kikx-topbar__actions button'))
+      let button = Array.from(document.querySelectorAll('.kikx-session-objects button'))
         .find((candidate) => candidate.textContent.trim() === 'Agents');
       button.click();
     });
