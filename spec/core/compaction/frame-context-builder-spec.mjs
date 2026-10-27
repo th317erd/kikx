@@ -7,6 +7,7 @@ import {
   COMPACTION_FRAME_KIND,
   COMPACTION_FRAME_TYPE,
   FrameContextBuilder,
+  serializeFrameForContext,
   serializeFramesForCompaction,
 } from '../../../src/core/compaction/index.mjs';
 
@@ -276,3 +277,19 @@ function frame(id, type, text, order) {
     content: { text },
   };
 }
+
+test('context estimation uses the same captured user message text the provider replays', () => {
+  let frame = {
+    id: 'msg_1',
+    type: 'UserMessage',
+    authorType: 'user',
+    hidden: false,
+    content: {
+      text: 'short visible text',
+      modelPrompt: { messageText: 'the exact longer prompt the provider saw' },
+    },
+  };
+  let serialized = serializeFrameForContext(frame);
+  assert.match(serialized, /the exact longer prompt the provider saw/);
+  assert.doesNotMatch(serialized, /short visible text/);
+});

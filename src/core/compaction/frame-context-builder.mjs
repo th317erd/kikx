@@ -279,6 +279,14 @@ function extractFrameText(frame) {
   if (typeof content === 'string')
     return content;
 
+  // UserMessage replays the captured provider message text for KV-cache
+  // stability. The estimator must count the same text, or a captured prompt
+  // that is larger than the visible message is invisible to compaction.
+  if (frame?.type === 'UserMessage'
+    && typeof content.modelPrompt?.messageText === 'string'
+    && content.modelPrompt.messageText.trim() !== '')
+    return content.modelPrompt.messageText;
+
   if (typeof content.text === 'string')
     return content.text;
 

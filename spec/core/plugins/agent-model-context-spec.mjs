@@ -713,3 +713,19 @@ function commonPrefixLength(left, right) {
     index++;
   return index;
 }
+
+test('a historical compaction prompt captured on a user message is never replayed as the user turn', async () => {
+  let { frameToModelTurn } = await import('../../../src/core/plugins/agent-model-context.mjs');
+  let turn = frameToModelTurn({
+    id: 'msg_1',
+    type: 'UserMessage',
+    authorType: 'user',
+    content: {
+      text: 'Please commit and sync.',
+      modelPrompt: {
+        messageText: 'This is the context memory of another Kikx agent.\n' + 'x'.repeat(100000),
+      },
+    },
+  });
+  assert.deepEqual(turn, { role: 'user', content: 'Please commit and sync.' });
+});

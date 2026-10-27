@@ -1245,3 +1245,19 @@ test('providers skip prompt recording for hidden internal wakes', async () => {
   });
   assert.equal(calls, 0);
 });
+
+test('providers do not record compaction or one-shot prompts against a user message', async () => {
+  let calls = 0;
+  let agent = new AgentInterface({
+    services: { frameRuntime: { async recordModelPrompt() { calls++; } } },
+  });
+  let frame = { id: 'msg_1', type: 'UserMessage', authorType: 'user', hidden: false, sessionID: 'ses_1', content: { text: 'Please commit.' } };
+  for (let flags of [ { compaction: true }, { oneShot: true }, { rawPrompt: true } ]) {
+    await agent.recordModelPrompt([ { role: 'user', content: 'huge compaction prompt' } ], {
+      userFrame: frame,
+      session: { id: 'ses_1' },
+      ...flags,
+    });
+  }
+  assert.equal(calls, 0);
+});

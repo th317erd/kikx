@@ -91,6 +91,13 @@ export class AgentInterface extends PluginInterface {
   // "sent prompt" view. Providers should call it after their own context
   // fitting/trimming so the stored list matches the real request.
   async recordModelPrompt(messages, params = {}) {
+    // Compaction and one-shot prompts are not conversation history. Recording
+    // one against the last user frame made the entire compaction request part
+    // of that user's model turn on the next request, which could exceed the
+    // provider window by hundreds of thousands of tokens.
+    if (params.compaction === true || params.oneShot === true || params.rawPrompt === true)
+      return null;
+
     let frame = params.userFrame || params.frame || this.context?.userFrame || this.context?.frame;
     if (!frame || frame.type !== 'UserMessage' || frame.authorType !== 'user' || frame.hidden === true)
       return null;
