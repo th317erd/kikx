@@ -18,6 +18,7 @@ export function createLoopState() {
     deferralGuarded: false,
     suppressFinalFrame: false,
     finalFrame: null,
+    endTurnNotice: null,
     continuation: null,
     yieldedAgentMessage: false,
     forwards: [],

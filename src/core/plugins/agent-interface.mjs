@@ -40,6 +40,7 @@ import {
   resolvePromptContent,
 } from './agent-model-context.mjs';
 import { PluginInterface } from './plugin-interface.mjs';
+import { notifyCoordinatorOfEndTurn } from '../agents/end-turn-notification.mjs';
 import {
   buildOcrPrompt,
   normalizeOcrImages,
@@ -218,6 +219,10 @@ export class AgentInterface extends PluginInterface {
         yield { type: 'SuppressFinalFrame' };
       } else if (state.finalFrame && !state.yieldedAgentMessage) {
         yield state.finalFrame;
+        // The consumer commits the yielded AgentMessage before asking for the
+        // next output, so the coordinator's notice does not race the visible
+        // end-turn report. Best-effort: a failed notice must never fail the turn.
+        await dispatchEndTurnNotice(state, context);
       }
 
       yield {
@@ -473,5 +478,24 @@ export class AgentInterface extends PluginInterface {
   // Max tokens the compaction summary may consume.
   getMaxCompactionTokens() {
     return 8000;
+  }
+}
+
+async function dispatchEndTurnNotice(state, context) {
+  let notice = state.endTurnNotice;
+  if (!notice)
+    return;
+
+  state.endTurnNotice = null;
+  try {
+    state.endTurnNoticeResult = await notifyCoordinatorOfEndTurn({
+      context,
+      summary: notice.summary,
+      details: notice.details,
+    });
+  } catch (error) {
+    state.endTurnNoticeError = error?.message || String(error);
+    let logger = context?.logger || context?.services?.logger;
+    logger?.warn?.(`Unable to notify the coordinator after end-turn: ${state.endTurnNoticeError}`);
   }
 }

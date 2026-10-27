@@ -10,6 +10,7 @@ export async function postAgentSessionMessage({
   text,
   interactionID = null,
   agentID = null,
+  targetAgentID = null,
   sourceSessionID = null,
   sourceFrameID = null,
 }) {
@@ -42,6 +43,7 @@ export async function postAgentSessionMessage({
     updatedClock: stamp.clock,
     hidden: false,
     deleted: false,
+    ...(normalizeOptionalString(targetAgentID) ? { targetAgentID: normalizeOptionalString(targetAgentID) } : {}),
     content: {
       text,
       status: 'complete',

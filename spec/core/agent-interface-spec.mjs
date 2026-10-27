@@ -93,6 +93,16 @@ class PermissionSeekingDirectAgent extends AgentInterface {
   }
 }
 
+class EndTurnSummaryAgent extends AgentInterface {
+  async ask(_prompt, options = {}) {
+    options.tools['end-turn']({
+      summary: 'Finished the child task.\n\n- Implemented the change.\n- Ran the focused spec.',
+      details: 'Focused spec passed.',
+    });
+    return { done: true };
+  }
+}
+
 class ContinueTurnAgent extends AgentInterface {
   async ask(_prompt, options = {}) {
     return options.tools['continue-turn']({
@@ -822,6 +832,120 @@ test('AgentInterface base loop supports continue-turn control', async () => {
       },
     },
   ]);
+});
+
+test('end-turn with a summary notifies the nearest non-self coordinator after the report', async () => {
+  let child = {
+    id: 'ses_child',
+    parentSessionID: 'ses_parent',
+    participantAgentIDs: [ 'agent_1' ],
+    coordinatorAgentID: 'agent_1',
+  };
+  let parent = {
+    id: 'ses_parent',
+    participantAgentIDs: [ 'agent_2' ],
+    coordinatorAgentID: 'agent_2',
+  };
+  let postedFrames = [];
+  let sequence = [];
+  let sessions = new Map([ [ child.id, child ], [ parent.id, parent ] ]);
+  let runtime = {
+    async ensureSessionEntry(id) {
+      return {
+        session: sessions.get(id) || null,
+        frameEngine: id === parent.id
+          ? {
+            merge(frames) {
+              postedFrames.push(...frames);
+              sequence.push('notice');
+              return frames;
+            },
+          }
+          : { merge: (frames) => frames },
+      };
+    },
+    getSession(id) {
+      return sessions.get(id) || null;
+    },
+    frameStore: { async flush() {} },
+    syncSessionManifestFromEngine() {},
+    nextClockStamp() {
+      return { at: 123, clock: null };
+    },
+    idGenerator() {
+      return 'notice-frame';
+    },
+  };
+
+  let outputs = [];
+  for await (let output of new EndTurnSummaryAgent().run(baseLoopParams({
+    session: child,
+    services: { frameRuntime: runtime },
+  }))) {
+    outputs.push(output);
+    sequence.push(output.type);
+  }
+
+  assert.deepEqual(outputs.map((output) => output.type), [ 'AgentMessage', 'Done' ]);
+  assert.deepEqual(sequence, [ 'AgentMessage', 'notice', 'Done' ]);
+  assert.equal(postedFrames.length, 1);
+  assert.equal(postedFrames[0].sessionID, parent.id);
+  assert.equal(postedFrames[0].authorID, 'agent_1');
+  assert.equal(postedFrames[0].targetAgentID, 'agent_2');
+  assert.match(postedFrames[0].content.text, /Bot agent_1 in session ses_child has stopped/);
+  assert.match(postedFrames[0].content.text, /Finished the child task/);
+  assert.match(postedFrames[0].content.text, /Coordinator validation required/);
+});
+
+test('a failed coordinator notice does not prevent the final end-turn report', async () => {
+  let child = {
+    id: 'ses_child',
+    parentSessionID: 'ses_parent',
+    participantAgentIDs: [ 'agent_1' ],
+    coordinatorAgentID: 'agent_1',
+  };
+  let parent = {
+    id: 'ses_parent',
+    participantAgentIDs: [ 'agent_2' ],
+    coordinatorAgentID: 'agent_2',
+  };
+  let sessions = new Map([ [ child.id, child ], [ parent.id, parent ] ]);
+  let warnings = [];
+  let runtime = {
+    async ensureSessionEntry(id) {
+      return {
+        session: sessions.get(id) || null,
+        frameEngine: { merge: (frames) => frames },
+      };
+    },
+    getSession(id) {
+      return sessions.get(id) || null;
+    },
+    frameStore: {
+      async flush() {
+        throw new Error('store unavailable');
+      },
+    },
+    nextClockStamp() {
+      return { at: 123, clock: null };
+    },
+    idGenerator() {
+      return 'notice-frame';
+    },
+  };
+
+  let outputs = await collect(new EndTurnSummaryAgent().run(baseLoopParams({
+    session: child,
+    services: {
+      frameRuntime: runtime,
+      logger: { warn(message) { warnings.push(message); } },
+    },
+  })));
+
+  assert.deepEqual(outputs.map((output) => output.type), [ 'AgentMessage', 'Done' ]);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /Unable to notify the coordinator/);
+  assert.match(warnings[0], /store unavailable/);
 });
 
 test('AgentInterface base loop ends the turn silently for end-turn with no text and handles stop', async () => {

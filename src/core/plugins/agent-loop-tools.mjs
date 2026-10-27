@@ -61,6 +61,10 @@ export function createLoopTools(state, context) {
     state.finalFrame = hasText
       ? { type: 'AgentMessage', content: normalized }
       : null;
+    // The loop dispatches this after the final AgentMessage is yielded and
+    // committed, so the coordinator does not race the child's visible report.
+    if (hasText && (summary !== '' || details !== '') && !state.endTurnNotice)
+      state.endTurnNotice = { summary, details };
     return { type: 'LoopControl', action: 'finalize', content: normalized };
   };
   let continueTurn = (content) => {
