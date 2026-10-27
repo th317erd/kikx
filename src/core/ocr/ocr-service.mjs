@@ -9,6 +9,8 @@ import {
   createRegisteredToolHandlers,
 } from '../plugins/agent-loop-tools.mjs';
 
+const EMPTY_ROSTER_BASE = 'No OCR-capable enabled agents have a positive ocr_score tag';
+
 export class OcrService {
   constructor(options = {}) {
     this.agentManager = options.agentManager || null;
@@ -37,6 +39,65 @@ export class OcrService {
         || agentTagValue(b, 'ocr_score') - agentTagValue(a, 'ocr_score')
         || String(a.name || a.id).localeCompare(String(b.name || b.id))
       ));
+  }
+
+  // An agent can carry a healthy ocr_score and still never be selectable, because
+  // `listOcrAgents()` also requires `ProviderClass.supportsOcr === true`. Return
+  // those silently rejected agents so an error can name them.
+  async listOcrScoreAgentsWithoutProviderSupport(options = {}) {
+    if (!this.agentManager?.listAgents)
+      return [];
+
+    let excluded = new Set(Array.isArray(options.excludeAgentIDs) ? options.excludeAgentIDs : []);
+    let agents = await this.agentManager.listAgents({ limit: options.limit || 500 });
+    return agents
+      .filter((agent) => (
+        agent?.enabled !== false
+        && !excluded.has(agent.id)
+        && agentTagValue(agent, 'ocr_score') > 0
+        && !providerSupportsOcr(this.pluginRegistry?.getAgentProvider?.(agent.pluginID))
+      ))
+      .map((agent) => ({
+        id: agent.id,
+        name: agent.name || null,
+        pluginID: agent.pluginID || null,
+        score: agentTagValue(agent, 'ocr_score'),
+      }))
+      .sort((a, b) => (
+        b.score - a.score
+        || String(a.name || a.id).localeCompare(String(b.name || b.id))
+      ));
+  }
+
+  async explainEmptyOcrRoster(options = {}) {
+    let ignored = await this.safeIgnoredOcrAgents(options);
+    if (ignored.length === 0)
+      return EMPTY_ROSTER_BASE;
+    return `${EMPTY_ROSTER_BASE}: ${describeIgnoredAgents(ignored)}`;
+  }
+
+  // The empty-roster message above only fires when there is no builtin fallback,
+  // which in practice never happens once the OCR plugin is installed. Every
+  // production failure therefore arrives as `All OCR agents failed: …`, and
+  // without this the reader is still never told that their scored agents were
+  // filtered out for a missing supportsOcr declaration.
+  async explainIgnoredOcrAgents(options = {}) {
+    let ignored = await this.safeIgnoredOcrAgents(options);
+    if (ignored.length === 0)
+      return '';
+    return ` ${describeIgnoredAgents(ignored)}`;
+  }
+
+  // A diagnostic must never outrank the failure it explains: if listing agents
+  // throws here, the caller still gets the real OCR error rather than a second
+  // error about the error reporting.
+  async safeIgnoredOcrAgents(options = {}) {
+    try {
+      return await this.listOcrScoreAgentsWithoutProviderSupport(options);
+    } catch (error) {
+      this.logger?.warn?.(`OCR diagnostics could not list agents: ${error?.message || error}`);
+      return [];
+    }
   }
 
   builtinOcrAgent() {
@@ -124,7 +185,7 @@ export class OcrService {
         candidates = [ fallback ];
     }
     if (candidates.length === 0)
-      throw new Error('No OCR-capable enabled agents have a positive ocr_score tag');
+      throw new Error(await this.explainEmptyOcrRoster());
 
     let attempts = [];
     for (let agent of candidates) {
@@ -176,7 +237,8 @@ export class OcrService {
       }
     }
 
-    let error = new Error(`All OCR agents failed: ${attempts.map((attempt) => `${attempt.agentName || attempt.agentID}: ${attempt.error}`).join('; ')}`);
+    let ignored = await this.explainIgnoredOcrAgents();
+    let error = new Error(`All OCR agents failed: ${attempts.map((attempt) => `${attempt.agentName || attempt.agentID}: ${attempt.error}`).join('; ')}${ignored}`);
     error.attempts = attempts;
     throw error;
   }
@@ -200,6 +262,15 @@ function createNestedProcessManager(base) {
 
 function providerSupportsOcr(ProviderClass) {
   return Boolean(ProviderClass && ProviderClass.supportsOcr === true);
+}
+
+function describeIgnoredAgents(ignored) {
+  let described = ignored
+    .slice(0, 5)
+    .map((agent) => `${agent.name || agent.id} (ocr_score ${agent.score}, provider '${agent.pluginID}')`)
+    .join(', ');
+  let remainder = ignored.length > 5 ? ` and ${ignored.length - 5} more` : '';
+  return `${ignored.length} agent(s) with a positive ocr_score were ignored because their provider does not declare supportsOcr — ${described}${remainder}. Add OCR support to that provider, or tag an agent on the 'host-ocr-command' provider.`;
 }
 
 function agentTagValue(agent, name) {
