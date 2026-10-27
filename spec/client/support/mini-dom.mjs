@@ -5,7 +5,7 @@
 // components under test touch; it is deliberately not a general-purpose DOM.
 
 import { parseHTMLInto, VOID_TAGS } from './mini-dom-html.mjs';
-import { matchesSelector, queryAll } from './mini-dom-selectors.mjs';
+import { matchesAnySelector, queryAll } from './mini-dom-selectors.mjs';
 
 class ClassList {
   constructor(element) {
@@ -426,8 +426,7 @@ export class MiniElement extends MiniNode {
   }
 
   matches(selector) {
-    let compounds = String(selector).trim().split(/\s+/).filter(Boolean);
-    return compounds.length > 0 && matchesSelector(this, compounds);
+    return matchesAnySelector(this, selector);
   }
 
   addEventListener(type, listener) {

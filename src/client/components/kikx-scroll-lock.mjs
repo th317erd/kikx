@@ -111,10 +111,21 @@ export function paintScrollLockButton(app, sessionID = app?._state?.selectedSess
 
   let next = locked == null ? isScrollLockedForSession(app, sessionID) : locked === true;
   let mode = getScrollLockModeForSession(app, sessionID);
-  button.setAttribute('aria-pressed', next ? 'true' : 'false');
-  button.title = scrollLockTitle(next, mode);
-  button.setAttribute('aria-label', button.title);
-  setIcon(button, next ? 'lock-locked' : 'lock-unlocked');
+  let title = scrollLockTitle(next, mode);
+  let icon = next ? 'lock-locked' : 'lock-unlocked';
+  let pressed = next ? 'true' : 'false';
+  // Frame/lock updates can arrive several times in one batch. Replacing the
+  // SVG and rewriting four attributes each time is pure DOM churn; leave an
+  // already-correct button alone.
+  if (button.getAttribute('aria-pressed') === pressed
+    && button.title === title
+    && button.getAttribute('aria-label') === title
+    && button.dataset.icon === icon)
+    return;
+  button.setAttribute('aria-pressed', pressed);
+  button.title = title;
+  button.setAttribute('aria-label', title);
+  setIcon(button, icon);
 }
 
 function scrollLockTitle(locked, mode) {

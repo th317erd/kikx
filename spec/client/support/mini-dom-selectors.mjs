@@ -84,9 +84,61 @@ export function collectDescendants(node, out) {
   return out;
 }
 
+export function matchesAnySelector(element, selector) {
+  for (let group of splitSelectorGroups(selector)) {
+    let compounds = group.split(/\s+/).filter(Boolean);
+    if (compounds.length > 0 && matchesSelector(element, compounds))
+      return true;
+  }
+  return false;
+}
+
 export function queryAll(root, selector) {
-  let compounds = String(selector).trim().split(/\s+/).filter(Boolean);
-  if (compounds.length === 0)
+  let groups = splitSelectorGroups(selector);
+  if (groups.length === 0)
     return [];
-  return collectDescendants(root, []).filter((element) => matchesSelector(element, compounds));
+  let seen = new Set();
+  let out = [];
+  for (let element of collectDescendants(root, [])) {
+    if (seen.has(element))
+      continue;
+    if (!matchesAnySelector(element, selector))
+      continue;
+    seen.add(element);
+    out.push(element);
+  }
+  return out;
+}
+
+// Split a comma-separated selector list without splitting commas inside an
+// attribute value or quoted string. The mini DOM previously treated the whole
+// list as one compound, so a production selector such as
+// ".title, .active, h2" silently matched nothing in the specs.
+function splitSelectorGroups(selector) {
+  let groups = [];
+  let current = '';
+  let quote = '';
+  let depth = 0;
+  for (let char of String(selector || '')) {
+    if (quote) {
+      current += char;
+      if (char === quote) quote = '';
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      current += char;
+      continue;
+    }
+    if (char === '[') depth++;
+    if (char === ']') depth = Math.max(0, depth - 1);
+    if (char === ',' && depth === 0) {
+      if (current.trim()) groups.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  if (current.trim()) groups.push(current.trim());
+  return groups;
 }

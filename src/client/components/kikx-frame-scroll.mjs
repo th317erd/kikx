@@ -210,8 +210,13 @@ export function requestRender(app) {
 export function syncSessionShell(app) {
   // The title can be an h2 (root), the relocated breadcrumb title (session
   // window), or an inline input while editing (left alone).
-  let threadTitle = app.querySelector('.kikx-breadcrumb__title, .kikx-window__header h2');
-  let editingTitle = app.querySelector('.kikx-breadcrumb__title-input, .kikx-window__header .kikx-window__title-input');
+  // The unified topbar renders the active crumb as
+  // `.kikx-breadcrumb__crumb--active.kikx-window__title`, not as
+  // `.kikx-breadcrumb__title`. Missing that class made this function report
+  // `false` on every session event in a drilled-in thread, which forced a full
+  // shell rebuild (and replaced the composer under the user's caret).
+  let threadTitle = app.querySelector('.kikx-breadcrumb__title, .kikx-breadcrumb__crumb--active, .kikx-window__header h2');
+  let editingTitle = app.querySelector('.kikx-breadcrumb__title-input, .kikx-breadcrumb__crumb--editing, .kikx-window__header .kikx-window__title-input');
   if (threadTitle && !editingTitle) {
     let selectedSession = app._selectedSession();
     threadTitle.textContent = selectedSession?.title || 'No session';

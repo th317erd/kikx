@@ -259,3 +259,22 @@ test('a list repaint still leaves untouched cards, and their caret, alone', () =
     'the typed text was never re-created from the draft store',
   );
 });
+
+test('syncSessionShell updates the unified topbar active crumb and claims the surface', () => {
+  let root = document.createElement('div');
+  root.className = 'kikx-app';
+  let active = document.createElement('span');
+  active.className = 'kikx-breadcrumb__crumb kikx-breadcrumb__crumb--active kikx-window__title';
+  active.textContent = 'Old title';
+  root.appendChild(active);
+  root._state = {
+    navigationStack: createNavigationStack(),
+    selectedSessionID: 'ses_1',
+    sessionIDs: [ 'ses_1' ],
+    sessionDetailsByID: { ses_1: { id: 'ses_1', title: 'New title' } },
+  };
+  root._selectedSession = () => root._state.sessionDetailsByID.ses_1;
+
+  assert.equal(syncSessionShell(root), true);
+  assert.equal(active.textContent, 'New title');
+});

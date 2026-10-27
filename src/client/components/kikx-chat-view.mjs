@@ -91,6 +91,10 @@ export class KikxChatView extends HTMLElement {
       this._appState = input.appState;
 
     this._pendingWindowStart = Number.isInteger(input.windowStart) ? input.windowStart : null;
+    if (this._mode === 'mini') {
+      this.syncFrames(this._frames, this._appState, { animate: false });
+      return;
+    }
     this._render();
   }
 
@@ -124,10 +128,8 @@ export class KikxChatView extends HTMLElement {
     if (appState)
       this._appState = appState;
 
-    if (this._mode === 'mini') {
-      this._render();
-      return { insertedNew: false };
-    }
+    if (this._mode === 'mini')
+      return this._syncMiniFrames();
 
     let stream = this.frameStream;
     if (!stream) {
@@ -372,6 +374,52 @@ export class KikxChatView extends HTMLElement {
 
     list.appendChild(stream);
     this.appendChild(list);
+  }
+
+  _syncMiniFrames() {
+    let stream = this._miniScaler?.querySelector?.('.kikx-frame-stream') || this.frameStream;
+    if (!stream) {
+      this._renderMini();
+      return { insertedNew: false };
+    }
+
+    let frames = miniPreviewFrames(this._frames);
+    let existingByID = new Map();
+    for (let item of Array.from(stream.children).filter((node) => node.matches?.('kikx-frame-item[data-frame-id]')))
+      existingByID.set(item.dataset.frameId, item);
+
+    let cursor = stream.firstElementChild;
+    let insertedNew = false;
+    for (let frame of frames) {
+      let item = existingByID.get(frame.id);
+      if (!item) {
+        item = guardClientOperation('kikx-chat-view.createMiniFrameItem', () => this._createFrameItem(frame), {
+          frameID: frame.id,
+          frameType: frame.type,
+        });
+        if (!item)
+          continue;
+        insertedNew = true;
+      } else {
+        existingByID.delete(frame.id);
+        guardClientOperation('kikx-chat-view.updateMiniFrameItem', () => {
+          item.updateFrame(frame, this._appState);
+        }, { frameID: frame.id, frameType: frame.type });
+      }
+
+      if (item === cursor)
+        cursor = cursor.nextElementSibling;
+      else
+        stream.insertBefore(item, cursor);
+    }
+
+    for (let stale of existingByID.values())
+      stale.remove();
+
+    this._windowStart = 0;
+    this._windowEnd = frames.length;
+    this._windowStartFrameID = frames[0]?.id || null;
+    return { insertedNew };
   }
 
   _renderMini() {
