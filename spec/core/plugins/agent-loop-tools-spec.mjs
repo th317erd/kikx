@@ -9,6 +9,7 @@ import {
 import {
   createLoopToolDefinitions,
   createLoopTools,
+  shouldExposeLoopTool,
 } from '../../../src/core/plugins/agent-loop-tools.mjs';
 import { createLoopState } from '../../../src/core/plugins/agent-loop-state.mjs';
 
@@ -158,4 +159,12 @@ test('write tools make an explicit session target part of the model schema', () 
   assert.deepEqual(definition.parameters.required, [ 'text', 'session_id' ]);
   assert.match(definition.parameters.properties.session_id.description, /Required target Kikx session ID/);
   assert.match(definition.parameters.properties.session_id.description, /session-list/);
+});
+
+
+test('session merge tools are hidden unless the agent is the coordinator', () => {
+  for (let name of [ 'session-merge', 'session-merge-status' ]) {
+    assert.equal(shouldExposeLoopTool(name, { isCoordinator: false }), false);
+    assert.equal(shouldExposeLoopTool(name, { isCoordinator: true }), true);
+  }
 });

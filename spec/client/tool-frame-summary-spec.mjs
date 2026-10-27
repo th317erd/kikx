@@ -214,6 +214,21 @@ test('session-control names the target session in the tool line', () => {
   );
 });
 
+test('session merge tools name the target and merge id', () => {
+  assert.equal(
+    compactFrameBodyDescription(toolFrame('session-merge', { target_session_id: 'target', session_ids: [ 'a', 'b' ] })),
+    'Merge 2 into target',
+  );
+  assert.equal(
+    compactFrameBodyDescription(toolFrame('session-merge-status', { merge_id: 'merge_1' })),
+    'Merge status merge_1',
+  );
+  assert.equal(
+    compactFrameBodyDescription(toolFrame('session-merge-status', {})),
+    'List session merges',
+  );
+});
+
 test('other tool frames derive a short verb and subject', () => {
   assert.equal(
     compactFrameSummary(toolFrame('web-search', { query: 'hottest pokemon' })).description,

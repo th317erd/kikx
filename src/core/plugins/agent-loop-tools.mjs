@@ -119,7 +119,10 @@ export function createLoopTools(state, context) {
 }
 
 export function shouldExposeLoopTool(toolName, context = {}) {
-  if (toolName === 'route' || toolName === 'session-control')
+  if (toolName === 'route'
+    || toolName === 'session-control'
+    || toolName === 'session-merge'
+    || toolName === 'session-merge-status')
     return context.isCoordinator === true;
 
   return true;

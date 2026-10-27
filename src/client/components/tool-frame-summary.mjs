@@ -781,6 +781,15 @@ function toolDescription(toolName, input, status = 'running', frame = null) {
       return sessionID ? `Post message to ${sessionID}` : 'Post session message';
     case 'session-search':
       return query ? `Search sessions for ${query}` : 'Search sessions';
+    case 'session-merge': {
+      let target = inputField(input, 'target_session_id') || inputField(input, 'targetSessionID') || sessionID;
+      let ids = Array.isArray(input.session_ids) ? input.session_ids : (Array.isArray(input.sessionIDs) ? input.sessionIDs : []);
+      return target ? `Merge ${ids.length || 'sessions'} into ${target}` : `Merge ${ids.length || ''} sessions`;
+    }
+    case 'session-merge-status': {
+      let mergeID = inputField(input, 'merge_id') || inputField(input, 'mergeID');
+      return mergeID ? `Merge status ${mergeID}` : 'List session merges';
+    }
     case 'cwd-get':
       return 'Read shell cwd';
     case 'cwd-set':
