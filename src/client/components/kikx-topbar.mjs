@@ -40,6 +40,16 @@ import { elements } from '../lib/aeor-ui.mjs';
 import { createIcon } from '../lib/icons.mjs';
 import { stateHasFilters } from '../lib/frame-filters.mjs';
 import { buildScrollLockToolbar } from './kikx-scroll-lock.mjs';
+// ONE shared contract for the rename field's `name` (owner item 2). The bar used
+// to name it `crumb-name` while `beginSessionNameEdit` looked up `session-name`,
+// so the field was never focused and blur/Escape were both dead. The constant
+// lives in kikx-navigation.mjs beside the lookup that has to match it, and all
+// three rename builders import it rather than repeating the string.
+import {
+  SESSION_NAME_INPUT_NAME,
+  commitSessionNameOnFocusout,
+  holdSessionNameFieldFocus,
+} from './kikx-navigation.mjs';
 import { getCurrentEntry, getScopeNoun, getSessions, getStackDepth } from '../state/kikx-state.mjs';
 
 // Registration side effects for the popup custom elements hosted by the bar.
@@ -121,15 +131,41 @@ const ACTIVE_CRUMB_CLASS = 'kikx-breadcrumb__crumb kikx-breadcrumb__crumb--activ
 export function buildTopbarCrumb(app, crumb) {
   if (crumb.sessionID && app._state.editingSessionNameID === crumb.sessionID) {
     // Native input: aeor-input does not re-dispatch keydown/focusout, which the
-    // inline rename needs for Enter/Escape and click-away commit.
-    return input
+    // inline rename needs for Enter/Escape and click-away commit. The name comes
+    // from the shared constant so the focus lookup can never drift from it again.
+    let field = input
       .type('text')
       .class('kikx-breadcrumb__title-input')
-      .name('crumb-name')
+      .name(SESSION_NAME_INPUT_NAME)
       .value(app._state.editingSessionNameValue || '')
       .onInput((event) => { app._state.editingSessionNameValue = event.target.value; })
       .onKeydown((event) => app._onSessionNameKeydown(event, crumb.sessionID))
-      .onFocusout(() => app._commitSessionName(crumb.sessionID))();
+      .onFocusout((event) => commitSessionNameOnFocusout(app, event, crumb.sessionID))();
+
+    // Owner item 2b: "if I change my mind, I am fucked... there is NO WAY to
+    // leave edit mode". Blur, Esc and navigation are all fixed in
+    // kikx-navigation.mjs, but a VISIBLE control is the part that needs no
+    // knowledge of any key. Both buttons are real buttons so they are keyboard
+    // reachable, and both live inside `.kikx-breadcrumb__editor`, which is what
+    // tells the focus guard not to yank focus back to the field before the click
+    // lands.
+    return div.class('kikx-breadcrumb__editor')(
+      field,
+      button
+        .type('button')
+        .class('kikx-breadcrumb__editor-action kikx-icon-button')
+        .title('Save name')
+        .ariaLabel('Save name')
+        .onMousedown(holdSessionNameFieldFocus)
+        .onClick(() => app._commitSessionName(crumb.sessionID))(createIcon('check')),
+      button
+        .type('button')
+        .class('kikx-breadcrumb__editor-action kikx-icon-button')
+        .title('Cancel rename')
+        .ariaLabel('Cancel rename (Esc)')
+        .onMousedown(holdSessionNameFieldFocus)
+        .onClick(() => app._cancelSessionNameEdit())(createIcon('circle-x')),
+    );
   }
 
   if (!crumb.sessionID) {
@@ -213,7 +249,7 @@ export function buildTopbarBreadcrumb(app) {
 // (kikx-shell-builders.mjs:437-458) - a query input plus one "clear all filters"
 // action - carried here so the merged bar owns its own centre and app.css is not
 // grown. Native input for the same reason the legacy builder uses one.
-export function buildTopbarSearch(app) {
+export function buildTopbarSearch(app, sessionID = null) {
   let searchInput = document.createElement('input');
   searchInput.type = 'search';
   searchInput.className = 'kikx-session-search__input';
@@ -239,7 +275,29 @@ export function buildTopbarSearch(app) {
   let container = document.createElement('div');
   container.className = 'kikx-session-search';
   container.append(searchInput, clear);
-  return container;
+
+  // Owner item 3 (2026-10-27): "I would like the 'eye' filter to be hugged up next
+  // to the 'Search' field, to the right, just next to it (group 'search' items
+  // together on the UI)."
+  //
+  // The eyeball used to live in the trailing `kikx-window__actions`, past the
+  // participants popup and `+ Add` -- so the two controls that both narrow
+  // visible content sat at opposite ends of the bar. It is now a sibling of the
+  // field inside ONE group, which is what makes "search items together" true
+  // structurally rather than by eyeballing pixel gaps: there is no element
+  // between them that a later change could grow.
+  //
+  // The ROOT case is the reason this takes `sessionID` at all, and why it does
+  // NOT gate the popup on it. The Projects grid is exactly where soft-deleted
+  // sessions are listed (see buildTopbarActions' note and
+  // kikx-shell-builders.mjs:326-331), so an eyeball that only rendered inside a
+  // session would strand "show deleted" on the one screen that needs it. The
+  // popup is created on every level; only the participants popup is
+  // session-scoped.
+  let frameFilter = document.createElement('kikx-frame-filter-popup');
+  frameFilter.configure({ app, appState: app._state, sessionID });
+
+  return div.class('kikx-topbar__search-group')(container, frameFilter);
 }
 
 // The session-object cluster (User / Account / Agents / Teams / Sign out) USED to
@@ -274,15 +332,9 @@ export function buildTopbarActions(app, sessionID = null) {
   let participants = document.createElement('kikx-participants-popup');
   participants.configure({ app, appState: app._state, sessionID });
 
-  // One eyeball on every level: the popup is where "show deleted" lives, and a
-  // header without it would strand that control on the grid that lists them.
-  let frameFilter = document.createElement('kikx-frame-filter-popup');
-  frameFilter.configure({ app, appState: app._state, sessionID });
-
   return div.class('kikx-window__actions')(
     previewSpan,
     sessionID ? participants : null,
-    frameFilter,
     // Label from the same scope noun the inline Add card uses, so the two can
     // never disagree about what this level creates.
     button
@@ -321,7 +373,7 @@ export function buildUnifiedTopbar(app) {
     // column 1 of a second row and reinstate the two-row bar the owner rejected.
     div.class('kikx-topbar__rest')(
       authed ? buildTopbarBreadcrumb(app) : null,
-      authed ? buildTopbarSearch(app) : null,
+      authed ? buildTopbarSearch(app, sessionID) : null,
       authed ? buildTopbarActions(app, sessionID) : span.class('kikx-topbar__spacer')(),
     ),
   );

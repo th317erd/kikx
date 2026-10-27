@@ -29,6 +29,11 @@ import { countRebuild } from './render-stats.mjs';
 // Unified top toolbar (owner spec pts 1-4). This is the only top bar: it has no
 // enable flag and no legacy sibling, so there is nothing to switch at runtime.
 import { buildUnifiedTopbar } from './kikx-topbar.mjs';
+import {
+  SESSION_NAME_INPUT_NAME,
+  commitSessionNameOnFocusout,
+  syncSessionNameEdit,
+} from './kikx-navigation.mjs';
 // Owner point 2: User / Account / Agents / Teams / Sign out as sidebar session objects.
 import { buildSidebarSessionObjects } from './kikx-sidebar-session-objects.mjs';
 import { buildInboxSidebarEntry, buildInboxView } from './kikx-inbox-view.mjs';
@@ -45,6 +50,14 @@ const aeorInput = elements['aeor-input'];
 // previous children are put back so the UI is not left blank.
 export function renderAppShell(app) {
   countRebuild('shell');
+
+  // Owner item 2b (2026-10-27): an inline rename must not survive a context
+  // change. This runs FIRST, before any builder, so the paint about to happen is
+  // already correct -- a sweep after the topbar was built would leave one stale
+  // frame showing the input. The navigation state subscription in
+  // kikx-navigation.mjs covers every path that goes through the navigate*
+  // helpers; this also covers a stack written directly by a view builder.
+  syncSessionNameEdit(app);
   let renderSnapshot = app._captureRenderSnapshot();
   if (!app._frameWindowStartFrameID && renderSnapshot.preserveWindowStartFrameID)
     app._frameWindowStartFrameID = renderSnapshot.preserveWindowStartFrameID;
@@ -220,11 +233,11 @@ export function buildEditableTitle(app, title, sessionID) {
     return input
       .type('text')
       .class('kikx-window__title-input')
-      .name('session-name')
+      .name(SESSION_NAME_INPUT_NAME)
       .value(app._state.editingSessionNameValue || '')
       .onInput((event) => { app._state.editingSessionNameValue = event.target.value; })
       .onKeydown((event) => app._onSessionNameKeydown(event, sessionID))
-      .onFocusout(() => app._commitSessionName(sessionID))();
+      .onFocusout((event) => commitSessionNameOnFocusout(app, event, sessionID))();
   }
 
   return button
@@ -423,11 +436,11 @@ export function buildBreadcrumbTitle(app, title, sessionID) {
     return input
       .type('text')
       .class('kikx-breadcrumb__title-input')
-      .name('session-name')
+      .name(SESSION_NAME_INPUT_NAME)
       .value(app._state.editingSessionNameValue || '')
       .onInput((event) => { app._state.editingSessionNameValue = event.target.value; })
       .onKeydown((event) => app._onSessionNameKeydown(event, sessionID))
-      .onFocusout(() => app._commitSessionName(sessionID))();
+      .onFocusout((event) => commitSessionNameOnFocusout(app, event, sessionID))();
   }
 
   return button
