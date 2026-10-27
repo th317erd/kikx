@@ -186,25 +186,26 @@ export function installSessionNameEditGuards(app) {
     cancelSessionNameEdit(app);
   };
 
-  // 2. If focus is stolen mid-edit (an autofocused frame, a poll repaint, a
-  //    click that lands outside every handler), put it back on the field so
-  //    blur-to-commit and Esc keep working. Scoped to "focus left the rename
-  //    editor entirely": Tab between the field and the Save/Cancel buttons
-  //    inside it must not be yanked back.
-  let onFocusIn = (event) => {
-    if (!state.editingSessionNameID)
-      return;
-
-    if (isInsideSessionNameEditor(event.target))
-      return;
-
-    let field = app.querySelector?.(SESSION_NAME_INPUT_SELECTOR);
-    if (field && event.target !== field)
-      focusSessionNameField(app);
-  };
-
   listen(doc, 'keydown', onKeydown, true);
-  listen(doc, 'focusin', onFocusIn, true);
+
+  // 2. REMOVED (owner 2026-10-27): "Blur, or Esc leaves edit mode."
+  //
+  //    There used to be a `focusin` guard here that re-focused the rename field
+  //    whenever focus landed anywhere outside the editor. It was written to
+  //    repair an earlier defect -- the field never received focus, so `focusout`
+  //    never fired and blur-exit was dead -- and it did repair that. But it also
+  //    made blur-exit IMPOSSIBLE by construction: clicking anywhere else moved
+  //    focus out and this guard immediately put it back, so `focusout` could not
+  //    complete and the editor could not be left by clicking away. That is the
+  //    owner's original complaint ("Blurring the field won't do it") surviving
+  //    underneath a fix that only ever addressed Esc.
+  //
+  //    With the field now genuinely focused by focusSessionNameField(), blur does
+  //    not need re-focusing to work: a real click away produces a real focusout,
+  //    which reaches commitSessionNameOnFocusout and exits. A repaint that
+  //    replaces the node mid-edit is still covered, by focusSessionNameField()
+  //    being called again from beginSessionNameEdit() and by the Escape guard
+  //    below, which is armed by STATE and needs no focus at all.
 
   // 3. Backstop for a navigation that does not repaint on its own: the
   //    synchronous sweep at the top of renderAppShell is the primary path, but
