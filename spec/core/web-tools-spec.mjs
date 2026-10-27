@@ -9,6 +9,8 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 import { PluginRegistry } from '../../src/core/plugins/index.mjs';
+import { SessionControlTool } from '../../src/core/tools/session-control-tool.mjs';
+import { SessionMergeStatusTool, SessionMergeTool } from '../../src/core/tools/session-merge-tools.mjs';
 import {
   AgentCreateTool,
   AgentListTool,
@@ -116,6 +118,9 @@ test('registerBuiltInTools registers global web tools with OpenAI-safe names', (
   assert.equal(registry.getTool('session-frames'), SessionFramesTool);
   assert.equal(registry.getTool('session-search'), SessionSearchTool);
   assert.equal(registry.getTool('session-message'), SessionMessageTool);
+  assert.equal(registry.getTool('session-control'), SessionControlTool);
+  assert.equal(registry.getTool('session-merge'), SessionMergeTool);
+  assert.equal(registry.getTool('session-merge-status'), SessionMergeStatusTool);
   assert.equal(registry.getTool('team-list'), TeamListTool);
   assert.equal(registry.getTool('team-create'), TeamCreateTool);
   assert.equal(registry.getTool('team-update'), TeamUpdateTool);
@@ -1205,6 +1210,7 @@ test('Session tools list, create, inspect frames, and post messages through Fram
         id,
         title: input.title || `Session ${sessions.length + 1}`,
         participantAgentIDs: input.participantAgentIDs || [],
+        coordinatorAgentID: input.coordinatorAgentID || input.participantAgentIDs?.[0] || null,
         createdByAgentID: input.createdByAgentID || null,
         parentSessionID: input.parentSessionID || null,
         generation: input.generation ?? 0,
@@ -1332,6 +1338,7 @@ test('Session tools list, create, inspect frames, and post messages through Fram
   assert.equal(created.session.title, 'Branch');
   assert.deepEqual(created.session.participantAgentIDs, [ 'agent_2', 'agent_1' ]);
   assert.equal(created.session.createdByAgentID, 'agent_1');
+  assert.equal(created.session.coordinatorAgentID, 'agent_1', 'includeSelf keeps accountability with the creator');
   assert.equal(created.session.parentSessionID, 'ses_1');
   assert.equal(created.session.generation, 1);
   assert.equal(created.initialFrame.type, 'AgentMessage');

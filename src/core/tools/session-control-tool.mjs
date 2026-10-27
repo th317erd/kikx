@@ -19,8 +19,8 @@ export class SessionControlTool extends PluginInterface {
     properties: {
       action: {
         type: 'string',
-        enum: [ 'list', 'resume', 'suspend' ],
-        description: 'List suspension state, resume one agent, or suspend one agent.',
+        enum: [ 'list', 'resume', 'suspend', 'kick' ],
+        description: 'List suspension state, resume/suspend one agent, or remove a participant.',
       },
       target: {
         type: 'string',
@@ -41,8 +41,9 @@ export class SessionControlTool extends PluginInterface {
     required: [ 'action' ],
     additionalProperties: false,
   };
-  static help = 'Coordinator-only recovery tool. Use list to see suspended agents, then resume or suspend an agent by id/name. '
+  static help = 'Coordinator-only session control. Use list to see suspended agents, resume or suspend an agent by id/name, or kick an agent out of a session. '
     + 'Pass session_id to reach the current session or any descendant of it (never a parent or an unrelated branch); includeSubtree fans a suspend out over that subtree. '
+    + 'Kick removes the participant, cancels its runs, and promotes a remaining coordinator if needed; the last participant cannot be removed. '
     + 'Suspension cancels queued work and freezes running commands at the next yield, but cannot preempt a provider call that is already blocked. '
     + 'Commands are controlled with exec-list/exec-status/exec-resume/exec-kill.';
 
@@ -240,6 +241,28 @@ export class SessionControlTool extends PluginInterface {
     let participantAgentIDs = Array.isArray(session?.participantAgentIDs) ? session.participantAgentIDs : [];
     if (!participantAgentIDs.includes(agent.id))
       throw new Error(`${agent.name || agent.id} is not a participant in ${session?.title || sessionID}`);
+
+    if (action === 'kick') {
+      frameRuntime.cancelAgentRuns?.(sessionID, agent.id);
+      let suspendedCommandIDs = await processManager?.suspendSession?.(sessionID, { agentID: agent.id }) || [];
+      let removed = await frameRuntime.removeAgentFromSession(sessionID, agent.id, {
+        removedByAgentID: this.context.agent?.id || null,
+        removedAgentName: agent.name || agent.id,
+        frameID: this.context.frame?.id || null,
+        interactionID: this.context.frame?.interactionID || null,
+      });
+      return {
+        sessionID,
+        sessionTitle: removed.session.title || sessionID,
+        agentID: agent.id,
+        agentName: agent.name || agent.id,
+        removed: true,
+        coordinatorAgentID: removed.coordinatorAgentID,
+        suspendedCommandIDs,
+        auditFrameID: removed.auditFrame?.id || null,
+        message: `${agent.name || agent.id} was removed from ${removed.session.title || sessionID}.`,
+      };
+    }
 
     if (action === 'resume') {
       let resumed = false;

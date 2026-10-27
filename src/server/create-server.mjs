@@ -62,6 +62,7 @@ import { registerQuestionScheduleRouting } from '../core/questions/question-sche
 import { CommandRegistry, registerInternalCommands } from '../core/commands/index.mjs';
 import { PluginRegistry } from '../core/plugins/index.mjs';
 import { loadPlugins } from '../core/plugins/plugin-loader.mjs';
+import { mergePluginPaths } from '../core/plugins/plugin-paths.mjs';
 import { registerCoreClasses, resolveCoreClass } from '../core/plugins/core-classes.mjs';
 import { FrameRouter } from '../core/routing/index.mjs';
 import { FrameRuntime } from '../core/runtime/frame-runtime.mjs';
@@ -95,6 +96,7 @@ import { routeRequest } from './router.mjs';
 const CLIENT_ROOT = fileURLToPath(new URL('../client/', import.meta.url));
 const SHARED_ROOT = fileURLToPath(new URL('../shared/', import.meta.url));
 const DEFAULT_AEOR_WEB_COMPONENTS_ROOT = '/home/wyatt/Projects/aeor-web-components';
+const DEFAULT_BUNDLED_PLUGIN_ROOT = fileURLToPath(new URL('../../plugins/', import.meta.url));
 
 export async function createServer(options = {}) {
   let context = options.context || new AppContext();
@@ -104,7 +106,8 @@ export async function createServer(options = {}) {
   // Resolve every config-derived value ONCE, before any store guard. All awaits
   // happen here so the guard/set pairs below run as one synchronous section: a
   // shared `context` is never observed half-wired while values are pending.
-  let pluginPaths = options.pluginPaths || await config.get(KIKX_PLUGIN_PATHS_PATH) || '';
+  let configuredPluginPaths = options.pluginPaths ?? await config.get(KIKX_PLUGIN_PATHS_PATH) ?? '';
+  let pluginPaths = mergePluginPaths(DEFAULT_BUNDLED_PLUGIN_ROOT, configuredPluginPaths);
   let aeorWebComponentsRoot = options.aeorWebComponentsRoot || await config.get(AEOR_WEB_COMPONENTS_DIR_PATH) || DEFAULT_AEOR_WEB_COMPONENTS_ROOT;
   let aeorDBURL = options.aeorDBURL || await config.get(AEORDB_URL_PATH) || 'http://127.0.0.1:6830';
   let aeorDBToken = options.aeorDBToken || await config.get(AEORDB_TOKEN_PATH) || '';

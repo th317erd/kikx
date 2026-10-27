@@ -1,6 +1,10 @@
 'use strict';
 
 import { spawn } from 'node:child_process';
+import { constants as fsConstants } from 'node:fs';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
 const DEFAULT_COMMAND = 'bot-ocr';
 const DEFAULT_PROMPT_FLAG = '--prompt';
@@ -79,6 +83,8 @@ export function setup(provide) {
 
         let config = this.context?.agent?.config || request.agent?.config || {};
         let command = normalizeString(config.command) || DEFAULT_COMMAND;
+        let resolvedCommand = await resolveCommand(command);
+        command = resolvedCommand.command;
         let prompt = normalizeString(request.prompt);
         let promptFlag = config.promptFlag === '' ? '' : (normalizeString(config.promptFlag) || DEFAULT_PROMPT_FLAG);
         let args = [
@@ -94,7 +100,7 @@ export function setup(provide) {
         if (deadline.raised)
           warnings.push(`'timeoutMs' ${requestedTimeoutMs}ms was shorter than the ${deadline.providerTimeoutSeconds}s that -t/--timeout asked for, so the command was given a ${deadline.timeoutMs}ms deadline instead. bot-ocr's -t is seconds per image; 'timeoutMs' is one deadline for the whole process.`);
 
-        let result = await runCommand(command, args, { timeoutMs: deadline.timeoutMs });
+        let result = await runCommand(command, args, { timeoutMs: deadline.timeoutMs, tried: resolvedCommand.tried });
         if (result.exitCode !== 0) {
           let error = new Error(`OCR command failed with exit ${result.exitCode}: ${result.stderr.trim() || result.stdout.trim() || 'no output'}`);
           error.exitCode = result.exitCode;
@@ -247,13 +253,40 @@ function requestedProviderTimeoutSeconds(args) {
   return seconds;
 }
 
-function runCommand(command, args, { timeoutMs } = {}) {
+async function resolveCommand(command) {
+  let text = normalizeString(command) || DEFAULT_COMMAND;
+  if (path.isAbsolute(text) || text.includes('/') || text.includes('\\'))
+    return { command: text, tried: [ text ] };
+
+  let tried = [];
+  let home = os.homedir();
+  let candidates = [];
+  if (text === DEFAULT_COMMAND && process.env.BOT_OCR_BIN)
+    candidates.push(process.env.BOT_OCR_BIN);
+  candidates.push(
+    path.join(home, '.bot-common', 'tools', text),
+    path.join(home, 'Programs', text),
+    text,
+  );
+  for (let candidate of candidates) {
+    tried.push(candidate);
+    if (candidate === text)
+      return { command: candidate, tried };
+    try {
+      await fs.access(candidate, fsConstants.X_OK);
+      return { command: candidate, tried };
+    } catch (_error) {}
+  }
+  return { command: text, tried };
+}
+
+function runCommand(command, args, { timeoutMs, tried = [] } = {}) {
   return new Promise((resolve, reject) => {
     let child;
     try {
       child = spawn(command, args, { stdio: [ 'ignore', 'pipe', 'pipe' ] });
     } catch (error) {
-      reject(describeSpawnFailure(command, error));
+      reject(describeSpawnFailure(command, error, tried));
       return;
     }
 
@@ -309,7 +342,7 @@ function runCommand(command, args, { timeoutMs } = {}) {
       else
         stderr.push(Buffer.from(chunk));
     });
-    child.on('error', (error) => finish(null, null, describeSpawnFailure(command, error)));
+    child.on('error', (error) => finish(null, null, describeSpawnFailure(command, error, tried)));
     child.on('close', (exitCode, signal) => finish(exitCode, signal));
   });
 }
@@ -318,16 +351,17 @@ function runCommand(command, args, { timeoutMs } = {}) {
 // the resolved command is the whole story here: the plugin spawns without a
 // shell, so a bare default such as `bot-ocr` only works if it is on PATH of the
 // server process. Say which command failed and what to configure instead.
-function describeSpawnFailure(command, error) {
+function describeSpawnFailure(command, error, tried = []) {
   if (error?.code !== 'ENOENT' && error?.code !== 'EACCES')
     return error;
 
   // EACCES is the sibling of ENOENT here, not a separate bug: same plugin, same
   // config field, same "nothing says what to configure" complaint. A directory or
   // a non-executable file reach the caller as a bare `spawn X EACCES`.
+  let triedDetail = tried.length > 0 ? ` Tried: ${tried.join(', ')}.` : '';
   let failure = error.code === 'EACCES'
-    ? new Error(`OCR command '${command}' could not be executed. ${NOT_EXECUTABLE_ADVICE}`)
-    : new Error(`OCR command '${command}' was not found. ${MISSING_COMMAND_ADVICE}`);
+    ? new Error(`OCR command '${command}' could not be executed.${triedDetail} ${NOT_EXECUTABLE_ADVICE}`)
+    : new Error(`OCR command '${command}' was not found.${triedDetail} ${MISSING_COMMAND_ADVICE}`);
   failure.code = error.code;
   failure.errno = error.errno;
   failure.syscall = error.syscall;

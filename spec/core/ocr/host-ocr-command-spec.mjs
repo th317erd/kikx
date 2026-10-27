@@ -60,3 +60,53 @@ test('host-ocr-command reports a non-zero command as an error', async () => {
     /exit 3: bad OCR/,
   );
 });
+
+test('host-ocr-command resolves the default bot-ocr through BOT_OCR_BIN instead of PATH', async () => {
+  let Provider = createProviderClass();
+  let previous = process.env.BOT_OCR_BIN;
+  process.env.BOT_OCR_BIN = process.execPath;
+  try {
+    let provider = new Provider({
+      agent: {
+        id: 'ocr_3',
+        name: 'Host OCR',
+        config: {
+          args: '-e "process.stdout.write(\'resolved OCR\')"',
+          promptFlag: '',
+        },
+      },
+    });
+    let result = await provider.runOcr({ images: [ '/tmp/example.png' ] });
+    assert.equal(result.text, 'resolved OCR');
+    assert.equal(result.command, process.execPath);
+  } finally {
+    if (previous == null)
+      delete process.env.BOT_OCR_BIN;
+    else
+      process.env.BOT_OCR_BIN = previous;
+  }
+});
+
+test('host-ocr-command names the paths it tried when the command is missing', async () => {
+  let Provider = createProviderClass();
+  let previous = process.env.BOT_OCR_BIN;
+  delete process.env.BOT_OCR_BIN;
+  try {
+    let provider = new Provider({
+      agent: {
+        id: 'ocr_4',
+        name: 'Host OCR',
+        config: { command: 'definitely-not-a-real-ocr-command', promptFlag: '' },
+      },
+    });
+    await assert.rejects(
+      () => provider.runOcr({ images: [ '/tmp/example.png' ] }),
+      /OCR command 'definitely-not-a-real-ocr-command' was not found.*Tried:.*\.bot-common.*absolute command path/,
+    );
+  } finally {
+    if (previous == null)
+      delete process.env.BOT_OCR_BIN;
+    else
+      process.env.BOT_OCR_BIN = previous;
+  }
+});

@@ -243,7 +243,7 @@ export class SessionCreateTool extends SessionTool {
     },
     additionalProperties: false,
   };
-  static help = 'Use session-create to create a new session. Set includeSelf when you should participate in that new session. Before including an agent, check session-list: do not make one agent coordinator of two concurrent sessions. For delegated sub-agent work, set initialMessage to a compact orienting handoff with project name, cwd, parent goal, current status, constraints, and the first assignment. Agent-created child sessions reuse an existing same-title child under the same parent/creator by default; set reuseExisting false only when you intentionally need a separate duplicate-title session.';
+  static help = 'Use session-create to create a new session. Set includeSelf when you should participate; with includeSelf:true the calling agent becomes coordinator. A child does not inherit the parent transcript, so for delegated work set initialMessage to a compact orienting handoff (project, cwd, goal, current status, constraints, first assignment). Parent and child can then communicate explicitly with session-message using the other session ID; a child can reply to its parentSessionID. Agent-created child sessions reuse an existing same-title child under the same parent/creator by default; set reuseExisting false only for an intentional duplicate-title session.';
 
   async _execute(params = {}) {
     this.assertFirstGenerationDelegation('session-create');
@@ -283,6 +283,10 @@ export class SessionCreateTool extends SessionTool {
     let session = await this.frameRuntime().createSession({
       ...(title ? { title } : {}),
       participantAgentIDs,
+      // A caller that joins the child owns accountability for it. Without this
+      // explicit designation, createSession would promote the first invitee to
+      // coordinator and silently transfer the caller's role to a worker.
+      ...(params.includeSelf === true && createdByAgentID ? { coordinatorAgentID: createdByAgentID } : {}),
       ...(createdByAgentID ? {
         createdByAgentID,
         parentSessionID: sourceSession?.id || null,

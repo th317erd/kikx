@@ -23,46 +23,90 @@ export async function loadPlugins(options = {}) {
   registry.registerClass('PluginInterface', PluginInterface, { pluginName: 'core' });
 
   let loaded = [];
-  for (let pluginPath of normalizePluginPaths(pluginPaths)) {
-    try {
-      let modulePath = await resolvePluginModule(pluginPath);
-      let pluginModule = await import(`${pathToFileURL(modulePath).href}?t=${Date.now()}`);
+  for (let configuredPath of normalizePluginPaths(pluginPaths)) {
+    for (let pluginPath of await expandPluginPathSites(configuredPath)) {
+      try {
+        let modulePath = await resolvePluginModule(pluginPath);
+        let pluginModule = await import(`${pathToFileURL(modulePath).href}?t=${Date.now()}`);
 
-      if (typeof pluginModule.setup !== 'function')
-        continue;
+        if (typeof pluginModule.setup !== 'function')
+          continue;
 
-      let pluginName = pluginModule.pluginName || pluginNameFromPath(pluginPath);
-      let record = { pluginPath, pluginName, modulePath, callbacks: [], teardown: null };
-      let providerIDsBefore = agentProviderIDs(registry);
-      let teardown = await pluginModule.setup(createPluginSetupContext({
-        registry,
-        commandRegistry,
-        context,
-        pluginPath,
-        pluginName,
-        onProvide: (callback) => record.callbacks.push(callback),
-      }));
-      if (typeof teardown === 'function')
-        record.teardown = teardown;
+        let pluginName = pluginModule.pluginName || pluginNameFromPath(pluginPath);
+        let record = { pluginPath, pluginName, modulePath, callbacks: [], teardown: null };
+        let providerIDsBefore = agentProviderIDs(registry);
+        let teardown = await pluginModule.setup(createPluginSetupContext({
+          registry,
+          commandRegistry,
+          context,
+          pluginPath,
+          pluginName,
+          onProvide: (callback) => record.callbacks.push(callback),
+        }));
+        if (typeof teardown === 'function')
+          record.teardown = teardown;
 
-      if (typeof registry.registerPluginPath === 'function') {
-        let registeredProviderIDs = [];
-        for (let key of agentProviderIDs(registry)) {
-          if (!providerIDsBefore.has(key))
-            registeredProviderIDs.push(key);
+        if (typeof registry.registerPluginPath === 'function') {
+          let registeredProviderIDs = [];
+          for (let key of agentProviderIDs(registry)) {
+            if (!providerIDsBefore.has(key))
+              registeredProviderIDs.push(key);
+          }
+
+          registry.registerPluginPath(pluginName, pluginPath, registeredProviderIDs);
         }
 
-        registry.registerPluginPath(pluginName, pluginPath, registeredProviderIDs);
+        registerPluginRecord(registry, record);
+        loaded.push({ path: pluginPath, modulePath, pluginName });
+      } catch (error) {
+        logger.warn?.(`Failed to load plugin at ${pluginPath}: ${error.message}`);
       }
-
-      registerPluginRecord(registry, record);
-      loaded.push({ path: pluginPath, modulePath, pluginName });
-    } catch (error) {
-      logger.warn?.(`Failed to load plugin at ${pluginPath}: ${error.message}`);
     }
   }
 
   return loaded;
+}
+
+// A configured path may be a single plugin module, a plugin directory, or a
+// container of plugin directories. Expanding containers is what makes an
+// in-repo plugins/ tree one ingestion site instead of requiring every child to
+// be listed separately.
+async function expandPluginPathSites(pluginPath) {
+  let stat;
+  try {
+    stat = await fs.stat(pluginPath);
+  } catch (_error) {
+    return [ pluginPath ];
+  }
+  if (!stat.isDirectory())
+    return [ pluginPath ];
+
+  if (await hasPluginEntry(pluginPath))
+    return [ pluginPath ];
+
+  let children = [];
+  try {
+    let entries = await fs.readdir(pluginPath, { withFileTypes: true });
+    for (let entry of entries) {
+      if (!entry.isDirectory())
+        continue;
+      let child = path.join(pluginPath, entry.name);
+      if (await hasPluginEntry(child))
+        children.push(child);
+    }
+  } catch (_error) {}
+  return children.length > 0 ? children : [ pluginPath ];
+}
+
+async function hasPluginEntry(pluginPath) {
+  for (let entry of [ 'index.mjs', 'package.json' ]) {
+    try {
+      let stat = await fs.stat(path.join(pluginPath, entry));
+      if (stat.isFile())
+        return true;
+    } catch (_error) {}
+  }
+  return false;
 }
 
 // Unload a plugin: run its teardown, pop its class overrides, and forget its

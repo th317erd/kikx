@@ -70,6 +70,7 @@ export class QuestionsStore {
 
     this.aeordb = db;
     this.db = db;
+    this.frameStore = options.frameStore || options.sessionStore || options.runtime?.frameStore || null;
     this.rootPath = normalizeRoot(rootPath);
     this.clock = clock;
     this.idGenerator = idGenerator;

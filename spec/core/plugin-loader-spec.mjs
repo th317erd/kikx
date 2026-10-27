@@ -179,3 +179,34 @@ test('coreClasses registers the override-worthy core classes', async () => {
 
   assert.equal(registry.getClass('FrameRouter').name, 'FrameRouter');
 });
+
+test('loadPlugins treats a directory of plugin directories as one ingestion site', async () => {
+  let root = await fs.mkdtemp(path.join(os.tmpdir(), 'kikx-plugin-container-'));
+  for (let [ name, agentType ] of [ [ 'alpha', 'container-alpha' ], [ 'beta', 'container-beta' ] ]) {
+    let dir = path.join(root, name);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, 'index.mjs'), `
+      export function setup(provide) {
+        provide(({ registry }) => {
+          let AgentInterface = registry.getClass('AgentInterface');
+          class ContainerAgent extends AgentInterface {
+            static pluginId = '${agentType}';
+            static displayName = '${name}';
+          }
+          registry.registerAgentType('${agentType}', ContainerAgent);
+        });
+      }
+    `);
+  }
+
+  let registry = new PluginRegistry({ logger: { warn() {} } });
+  let loaded = await loadPlugins({
+    pluginPaths: root,
+    registry,
+    logger: { warn() {} },
+  });
+
+  assert.equal(loaded.length, 2);
+  assert.equal(registry.getAgentProvider('container-alpha')?.displayName, 'alpha');
+  assert.equal(registry.getAgentProvider('container-beta')?.displayName, 'beta');
+});

@@ -578,6 +578,87 @@ const sessionMethods = {
     };
   },
 
+  // Coordinator-only participant removal. The mutation refuses to leave a
+  // session without a coordinator: when the removed agent was coordinator, the
+  // next participant is promoted; a sole coordinator cannot remove itself.
+  async removeAgentFromSession(sessionID, agentID, input = {}) {
+    let entry = await this.ensureSessionEntry(sessionID, { loadFrames: false });
+    let targetAgentID = normalizeRequiredString(agentID, 'agentID');
+    let participantAgentIDs = normalizeStringArray(entry.session.participantAgentIDs);
+    if (!participantAgentIDs.includes(targetAgentID)) {
+      let error = new Error(`${targetAgentID} is not a participant in ${entry.session.title || sessionID}`);
+      error.status = 400;
+      throw error;
+    }
+
+    let remaining = participantAgentIDs.filter((id) => id !== targetAgentID);
+    if (remaining.length === 0) {
+      let error = new Error('Refusing to remove the last participant and leave the session without a coordinator');
+      error.status = 400;
+      throw error;
+    }
+
+    let stamp = this.nextClockStamp();
+    let now = input.removedAt || input.removedClock?.at || stamp.at;
+    entry.session.participantAgentIDs = remaining;
+    entry.session.coordinatorAgentID = entry.session.coordinatorAgentID === targetAgentID
+      ? normalizeCoordinatorAgentID(null, remaining)
+      : normalizeCoordinatorAgentID(entry.session.coordinatorAgentID, remaining);
+    if (entry.session.compactionAgentID === targetAgentID)
+      entry.session.compactionAgentID = null;
+    entry.session.updatedAt = now;
+    entry.session.updatedClock = input.removedClock?.clock || stamp.clock;
+
+    if (entry.sessionSuspension) {
+      entry.sessionSuspension.suspendedAgentIDs?.delete(targetAgentID);
+      entry.sessionSuspension.warnedAgentIDs?.delete(targetAgentID);
+      entry.cancelledAgents?.delete(targetAgentID);
+      this.syncSessionSuspensionSnapshot(entry);
+    }
+
+    await this.frameStore.saveSessionManifest(entry.session);
+
+    let auditFrame = {
+      id: this.idGenerator(),
+      type: 'SystemNotice',
+      sessionID,
+      interactionID: input.interactionID || input.frameID || null,
+      parentID: input.frameID || null,
+      authorType: 'system',
+      authorID: 'internal:session-participant',
+      authorDisplayName: 'Kikx session participants',
+      timestamp: now,
+      createdAt: now,
+      updatedAt: now,
+      createdClock: input.removedClock?.clock || stamp.clock,
+      updatedClock: input.removedClock?.clock || stamp.clock,
+      hidden: false,
+      deleted: false,
+      content: {
+        text: `${input.removedByAgentID || 'The coordinator'} removed ${input.removedAgentName || targetAgentID} from the session.`,
+        status: 'success',
+        participantRemoval: {
+          removedAgentID: targetAgentID,
+          removedByAgentID: input.removedByAgentID || null,
+          coordinatorAgentID: entry.session.coordinatorAgentID,
+        },
+      },
+    };
+    let merged = entry.frameEngine.merge([ auditFrame ], {
+      authorType: 'system',
+      authorID: 'internal:session-participant',
+    });
+    await this.frameStore?.flush?.();
+    this.emitRuntimeEvent('session.saved', { sessionID, session: entry.session });
+
+    return {
+      session: entry.session,
+      removedAgentID: targetAgentID,
+      coordinatorAgentID: entry.session.coordinatorAgentID,
+      auditFrame: merged[0] || entry.frameEngine.get(auditFrame.id) || auditFrame,
+    };
+  },
+
   // Wake one invited agent with a hidden, targeted, immediately-due UserMessage.
   // The explicit targetAgentID bypasses the coordinator-targeting rule, so the
   // invited agent runs without waiting for a separate @mention. This mirrors the

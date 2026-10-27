@@ -1849,3 +1849,33 @@ test('appendUserMessage never waits for the router from inside a routing pass', 
   assert.equal(result.frame.type, 'UserMessage');
   assert.equal(flushCalls, 0, 'waiting on the current routing pass would deadlock the session');
 });
+
+test('FrameRuntime removes participants, promotes a coordinator, and writes an audit frame', async () => {
+  let aeordb = createClient();
+  let runtime = createRuntime({ aeordb, ids: [ 'ses_1', 'audit_1', 'audit_2', 'audit_3' ], now: 1000 });
+  await runtime.createSession({
+    title: 'Participants',
+    participantAgentIDs: [ 'agent_1', 'agent_2', 'agent_3' ],
+    coordinatorAgentID: 'agent_1',
+  });
+
+  let removed = await runtime.removeAgentFromSession('ses_1', 'agent_1', {
+    removedByAgentID: 'user_coordinator',
+    removedAgentName: 'Coordinator One',
+  });
+  assert.deepEqual(removed.session.participantAgentIDs, [ 'agent_2', 'agent_3' ]);
+  assert.equal(removed.coordinatorAgentID, 'agent_2');
+  assert.equal(removed.auditFrame.type, 'SystemNotice');
+  assert.equal(removed.auditFrame.content.participantRemoval.removedAgentID, 'agent_1');
+
+  await runtime.removeAgentFromSession('ses_1', 'agent_2');
+  await assert.rejects(
+    () => runtime.removeAgentFromSession('ses_1', 'agent_3'),
+    /without a coordinator/,
+  );
+  let entry = runtime.requireSessionEntry('ses_1');
+  let audits = entry.frameEngine.toArray().filter((frame) => frame.type === 'SystemNotice');
+  assert.equal(audits.length, 2);
+  assert.deepEqual(entry.session.participantAgentIDs, [ 'agent_3' ]);
+  assert.equal(entry.session.coordinatorAgentID, 'agent_3');
+});

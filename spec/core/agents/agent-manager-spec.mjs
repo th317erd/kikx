@@ -561,3 +561,49 @@ test('AgentManager.listModels aggregates provider model manifests tagged by plug
   ]);
   assert.equal(models.find((model) => model.id === 'a-1').contextWindow, 128000);
 });
+
+test('agent creation applies provider defaults and reports all missing or unknown fields at once', async () => {
+  let pluginRegistry = new PluginRegistry({ logger: { warn() {} } });
+  class DefaultedProvider extends AgentInterface {
+    static pluginID = 'defaulted-agent';
+    static configFields = [
+      { name: 'baseUrl', required: true, defaultValue: 'http://127.0.0.1:11434' },
+      { name: 'model', required: true, defaultValue: 'default-model' },
+      { name: 'temperature', required: false },
+    ];
+  }
+  pluginRegistry.registerAgentProvider('defaulted-agent', DefaultedProvider);
+  let manager = new AgentManager({ pluginRegistry, agentStore: createStore() });
+
+  let created = await manager.createAgent({ name: 'Defaults', pluginID: 'defaulted-agent', config: {} });
+  assert.deepEqual(created.config, {
+    baseUrl: 'http://127.0.0.1:11434',
+    model: 'default-model',
+  });
+
+  await assert.rejects(
+    () => manager.createAgent({
+      name: 'Typo',
+      pluginID: 'defaulted-agent',
+      config: { baseURL: 'http://127.0.0.1:11434', temp: 1 },
+    }),
+    (error) => {
+      assert.match(error.message, /Unknown config field for defaulted-agent: baseURL \(did you mean baseUrl\?\)/);
+      assert.match(error.message, /Unknown config field for defaulted-agent: temp/);
+      return true;
+    },
+  );
+
+  class RequiredProvider extends AgentInterface {
+    static pluginID = 'required-agent';
+    static configFields = [
+      { name: 'alpha', required: true },
+      { name: 'beta', required: true },
+    ];
+  }
+  pluginRegistry.registerAgentProvider('required-agent', RequiredProvider);
+  await assert.rejects(
+    () => manager.createAgent({ name: 'Missing', pluginID: 'required-agent', config: {} }),
+    /Missing required fields: alpha is required, beta is required/,
+  );
+});

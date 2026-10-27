@@ -69,6 +69,17 @@ export class OcrService {
       ));
   }
 
+  async listUnsupportedOcrAgents(options = {}) {
+    let ignored = await this.listOcrScoreAgentsWithoutProviderSupport(options);
+    return ignored.map((agent) => ({
+      agentID: agent.id,
+      agentName: agent.name || agent.id,
+      providerID: agent.pluginID,
+      ocrScore: agent.score,
+      reason: `provider ${agent.pluginID} does not declare supportsOcr`,
+    }));
+  }
+
   async explainEmptyOcrRoster(options = {}) {
     let ignored = await this.safeIgnoredOcrAgents(options);
     if (ignored.length === 0)
@@ -178,6 +189,10 @@ export class OcrService {
     if (images.length === 0)
       throw new Error('ocr requires at least one image path');
 
+    let ignoredAgents = await this.listUnsupportedOcrAgents();
+    let warnings = ignoredAgents.map((entry) => (
+      `ocr_score ${entry.ocrScore} on ${entry.agentName} is inert: ${entry.reason}`
+    ));
     let candidates = await this.listOcrAgents();
     if (candidates.length === 0) {
       let fallback = this.builtinOcrAgent();
@@ -226,6 +241,8 @@ export class OcrService {
           providerID: agent.pluginID,
           images,
           attempts,
+          warnings,
+          ignoredAgents,
         };
       } catch (error) {
         attempts.push({

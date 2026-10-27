@@ -334,10 +334,11 @@ test('QuestionsStore groups a batch by groupID and exposes sibling context', asy
   assert.equal(group.siblings[0].text, 'First?');
 });
 
-function createStore({ aeordb, clock, ids = [] }) {
+function createStore({ aeordb, clock, ids = [], frameStore = null }) {
   let queue = [ ...ids ];
   return new QuestionsStore({
     aeordb,
+    frameStore,
     clock: clock || (() => Date.now()),
     idGenerator: () => {
       let next = queue.shift();
@@ -395,3 +396,35 @@ function createClient() {
     },
   };
 }
+
+
+test('a tree-scoped question read includes descendants when the frame store is wired', async () => {
+  let aeordb = createClient();
+  let frameStore = {
+    async listSessions() {
+      return [
+        { id: 'root', parentSessionID: null },
+        { id: 'child', parentSessionID: 'root' },
+        { id: 'grandchild', parentSessionID: 'child' },
+        { id: 'sibling', parentSessionID: null },
+      ];
+    },
+  };
+  let store = createStore({
+    aeordb,
+    ids: [ 'q_root', 'root-group', 'q_child', 'child-group', 'q_grandchild', 'grandchild-group', 'q_sibling', 'sibling-group' ],
+    frameStore,
+  });
+
+  await store.createQuestions({ questions: [ { text: 'root question?' } ], sessionID: 'root', agentID: 'agent_1' });
+  await store.createQuestions({ questions: [ { text: 'child question?' } ], sessionID: 'child', agentID: 'agent_1' });
+  await store.createQuestions({ questions: [ { text: 'grandchild question?' } ], sessionID: 'grandchild', agentID: 'agent_1' });
+  await store.createQuestions({ questions: [ { text: 'sibling question?' } ], sessionID: 'sibling', agentID: 'agent_1' });
+
+  let open = await store.listOpen({ rootSessionID: 'root', includeDescendants: true });
+  assert.deepEqual(open.summaries.map((question) => question.text).sort(), [ 'child question?', 'grandchild question?', 'root question?' ]);
+
+  let visible = await store.listVisibleQuestions({ sessionID: 'root' });
+  assert.deepEqual(visible.sessionIDs.sort(), [ 'child', 'grandchild', 'root' ]);
+  assert.deepEqual(visible.questions.map((question) => question.text).sort(), [ 'child question?', 'grandchild question?', 'root question?' ]);
+});

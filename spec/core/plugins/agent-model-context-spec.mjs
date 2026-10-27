@@ -586,6 +586,7 @@ test('the invariant authority contract reaches the model system prompt', () => {
   assert.match(system.content, /Follow the newest explicit user request within system safety and project constraints\./);
   assert.match(system.content, /Delegation transfers work, not accountability\./);
   assert.match(system.content, /Anti-churn: after two failed attempts/);
+  assert.match(system.content, /Reachability: a checkpoint that claims behavioural change/);
   assert.equal(brief.role, 'user');
   assert.doesNotMatch(brief.content, /Prefer scripts:/);
 });

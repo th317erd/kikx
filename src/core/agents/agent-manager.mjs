@@ -291,31 +291,48 @@ export class AgentManager {
       ? normalizeCompressedCharacter(input[CHARACTER_COMPRESSED_FIELD], CHARACTER_COMPRESSED_FIELD)
       : (options.creating ? '' : undefined);
 
+    let errors = [];
     for (let key of Object.keys(config || {})) {
       if (!configFields.has(key))
-        throw badRequest(`Unknown config field for ${input.pluginID}: ${key}`);
+        errors.push(unknownFieldMessage('config', input.pluginID, key, [ ...configFields ]));
     }
 
     for (let key of Object.keys(secrets)) {
       if (!secretFields.has(key))
-        throw badRequest(`Unknown secret field for ${input.pluginID}: ${key}`);
+        errors.push(unknownFieldMessage('secret', input.pluginID, key, [ ...secretFields ]));
     }
 
     if (Array.isArray(input.clearSecrets)) {
       for (let key of input.clearSecrets) {
         if (!secretFields.has(key))
-          throw badRequest(`Unknown secret field for ${input.pluginID}: ${key}`);
+          errors.push(unknownFieldMessage('secret', input.pluginID, key, [ ...secretFields ]));
       }
     }
 
-    for (let field of fields) {
-      if (!field.required || !options.creating)
-        continue;
+    if (options.creating) {
+      // A provider default satisfies a required field. Applying defaults before
+      // the required pass avoids the old "required" error for a field the
+      // provider itself declares a value for.
+      for (let field of fields) {
+        let source = field.secret ? secrets : config;
+        if (source[field.name] == null && field.defaultValue !== undefined)
+          source[field.name] = field.defaultValue;
+      }
 
-      let source = field.secret ? secrets : config;
-      if (source[field.name] == null || source[field.name] === '')
-        throw badRequest(`${field.name} is required`);
+      let missing = [];
+      for (let field of fields) {
+        if (!field.required)
+          continue;
+        let source = field.secret ? secrets : config;
+        if (source[field.name] == null || source[field.name] === '')
+          missing.push(`${field.name} is required`);
+      }
+      if (missing.length > 0)
+        errors.push(`Missing required fields: ${missing.join(', ')}`);
     }
+
+    if (errors.length > 0)
+      throw badRequest(errors.join('; '));
 
     // Provider-specific validation (async hook). Generic `required` flags here
     // are static; a provider may need conditional rules (for example, an API key
@@ -431,6 +448,45 @@ function withoutUndefined(value) {
   }
 
   return normalized;
+}
+
+function unknownFieldMessage(kind, pluginID, key, fields = []) {
+  let suggestion = closestField(key, fields);
+  return `Unknown ${kind} field for ${pluginID}: ${key}${suggestion ? ` (did you mean ${suggestion}?)` : ''}`;
+}
+
+function closestField(key, fields = []) {
+  let lower = String(key).toLowerCase();
+  let exact = fields.find((field) => field.toLowerCase() === lower);
+  if (exact)
+    return exact;
+
+  let best = null;
+  let bestDistance = Infinity;
+  for (let field of fields) {
+    let distance = editDistance(lower, field.toLowerCase());
+    if (distance < bestDistance) {
+      best = field;
+      bestDistance = distance;
+    }
+  }
+  return bestDistance <= Math.max(2, Math.floor(String(key).length / 2)) ? best : null;
+}
+
+function editDistance(left, right) {
+  let previous = Array.from({ length: right.length + 1 }, (_value, index) => index);
+  for (let i = 1; i <= left.length; i++) {
+    let current = [ i ];
+    for (let j = 1; j <= right.length; j++) {
+      current[j] = Math.min(
+        previous[j] + 1,
+        current[j - 1] + 1,
+        previous[j - 1] + (left[i - 1] === right[j - 1] ? 0 : 1),
+      );
+    }
+    previous = current;
+  }
+  return previous[right.length];
 }
 
 function badRequest(message) {

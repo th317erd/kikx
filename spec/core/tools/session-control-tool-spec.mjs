@@ -197,3 +197,67 @@ test('session-control cannot reach up into the parent session', async () => {
     /current session or one of its descendants/,
   );
 });
+
+test('session-control kick removes a participant and reports the promoted coordinator', async () => {
+  let calls = [];
+  let frameRuntime = {
+    async ensureSessionEntry(sessionID) {
+      return {
+        session: {
+          id: sessionID,
+          title: 'Child',
+          parentSessionID: 'parent',
+          participantAgentIDs: [ 'agent_1', 'agent_2' ],
+          coordinatorAgentID: 'agent_1',
+        },
+      };
+    },
+    getSessionSuspension() { return null; },
+    listActiveAgentRuns() { return []; },
+    async hydrateSessionSuspension() {},
+    cancelAgentRuns(sessionID, agentID) { calls.push({ method: 'cancelAgentRuns', sessionID, agentID }); },
+    async removeAgentFromSession(sessionID, agentID, input) {
+      calls.push({ method: 'removeAgentFromSession', sessionID, agentID, input });
+      return {
+        session: { id: sessionID, title: 'Child', participantAgentIDs: [ 'agent_2' ], coordinatorAgentID: 'agent_2' },
+        coordinatorAgentID: 'agent_2',
+        auditFrame: { id: 'audit_1' },
+      };
+    },
+  };
+  let agentManager = {
+    async resolveAgent(reference) { return { id: reference, name: reference }; },
+    async getAgent(agentID) { return { id: agentID, name: agentID }; },
+  };
+  let processManager = {
+    async suspendSession(sessionID, options) {
+      calls.push({ method: 'suspendSession', sessionID, options });
+      return [ 'proc_1' ];
+    },
+  };
+  let context = {
+    isCoordinator: true,
+    session: { id: 'parent' },
+    agent: { id: 'agent_1' },
+    frame: { id: 'frame_1' },
+    frameRuntime,
+    agentManager,
+    processManager,
+  };
+
+  let result = await new SessionControlTool(context).execute({
+    action: 'kick',
+    target: 'agent_2',
+    session_id: 'child',
+  });
+
+  assert.equal(result.removed, true);
+  assert.equal(result.coordinatorAgentID, 'agent_2');
+  assert.equal(result.auditFrameID, 'audit_1');
+  assert.deepEqual(result.suspendedCommandIDs, [ 'proc_1' ]);
+  assert.deepEqual(calls.map((call) => call.method), [
+    'cancelAgentRuns',
+    'suspendSession',
+    'removeAgentFromSession',
+  ]);
+});

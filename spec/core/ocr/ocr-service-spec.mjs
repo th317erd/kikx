@@ -231,3 +231,32 @@ test('OcrService falls back to the bundled host OCR command when no tagged agent
   assert.equal(result.agentID, 'builtin-host-ocr');
   assert.equal(result.agentName, 'Built-in Host OCR');
 });
+
+test('OcrService surfaces inert ocr_score tags when the provider cannot OCR', async () => {
+  class HostOcrProvider {
+    static supportsOcr = true;
+    async runOcr() { return { text: 'fallback text' }; }
+  }
+  let service = new OcrService({
+    agentManager: {
+      async listAgents() {
+        return [
+          { id: 'agent_1', name: 'Ollama Bot', pluginID: 'ollama-agent', enabled: true, tags: [
+            { name: 'ocr_score', value: 9 },
+          ] },
+        ];
+      },
+    },
+    pluginRegistry: {
+      getAgentProvider(pluginID) {
+        return pluginID === 'host-ocr-command' ? HostOcrProvider : null;
+      },
+    },
+  });
+
+  let result = await service.run({ images: [ '/tmp/a.png' ] });
+
+  assert.equal(result.agentID, 'builtin-host-ocr');
+  assert.match(result.warnings[0], /ocr_score 9 on Ollama Bot is inert/);
+  assert.deepEqual(result.ignoredAgents.map((entry) => entry.agentID), [ 'agent_1' ]);
+});
