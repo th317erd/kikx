@@ -227,6 +227,33 @@ export function ancestryChain(viewerSessionID, source = []) {
   }
 }
 
+/*
+ * SAME-NAMED FUNCTION IN CORE -- deliberate, not a duplicate to merge.
+ *
+ * `src/core/agents/session-subtree.mjs:116` also exports `descendantSessionIDs`,
+ * with a different signature and a different contract:
+ *
+ *   here  : (viewerSessionID, sessions = [])      -> string[]
+ *           Unbounded walk over a caller-supplied flat list. Returns ids only.
+ *   core  : (rootSessionID, options = {})         -> { sessionIDs, truncated }
+ *           Bounded BFS, maxNodes defaults to 1000, and it REPORTS truncation
+ *           rather than silently under-returning.
+ *
+ * Why they are not merged: `src/client/` may not import from `src/core/` --
+ * `grep -rn "from '.*core/" src/client/` finds nothing, by construction. This
+ * module is browser-loadable only because `src/shared/` is served
+ * (src/server/static-files.mjs:75-77), which is why both surfaces can share it
+ * and neither can reach Core.
+ *
+ * Consumers of this one: src/client/state/session-scope.mjs:50 and
+ * src/core/ownership/session-ownership.mjs:52 (`resolveScopeSessionIDs`).
+ * Core's bounded version is the right call for anything that must cap work; a
+ * caller that needs the truncation signal must use it, not this.
+ *
+ * If you are here to delete one of the two: do not. Renaming this one was
+ * considered and rejected -- both names are exported from the public surfaces
+ * of both sides, so a rename is a breaking change in two lanes at once.
+ */
 /** The downward view: the viewer plus every descendant. Needs the full list. */
 export function descendantSessionIDs(viewerSessionID, sessions = []) {
   let viewer = normalizeSessionID(viewerSessionID);

@@ -73,3 +73,28 @@ backfilled or treated as root-owned by an explicit migration.
 
 A bare directory (`node --test spec/ownership`) does not work on Node 24: it is
 resolved as a module path and fails with `MODULE_NOT_FOUND`.
+
+## Specs in this directory
+
+| file | what it pins |
+|---|---|
+| `session-scope-spec.mjs` | the client visibility surface: self+ancestors in, sibling out, descendant out, cycle/dangling/blank fail closed |
+| `session-scope-filter-spec.mjs` | the row filter: owner read from row fields, ownerless rows dropped, caller order preserved |
+| `core-ownership-spec.mjs` | the core surface: `ownerScopeFor`, `buildScopedQuery`, `filterOwnedRows` |
+| `session-ancestry-parity-spec.mjs` | the client surface and the core surface agree on one 3-level tree |
+| `sidebar-seam-spec.mjs` | the seam the shell owner implements, measured against the real `filterSessionObjectItems` |
+| `session-scope-fixture.mjs` | shared tree fixture (no tests; not matched by the `*-spec.mjs` glob) |
+
+## Two decisions the coordinator made, recorded so they are not re-litigated
+
+**1. `descendantSessionIDs` exists twice on purpose.** `src/shared/session-ancestry.mjs:258`
+is the client's unbounded walk over a supplied list; `src/core/agents/session-subtree.mjs:116`
+is core's bounded BFS that reports `truncated`. They are not merged because
+`src/client/` may not import from `src/core/`. A comment at the shared definition
+says so, with both signatures.
+
+**2. Nothing is deleted from `src/core/ownership/`.** `ownership-query.mjs` filters
+in the query rather than after loading every row — on the reference DB that is the
+difference between an index probe and ~20k frames per sidebar render. It has no
+caller yet because no scoped route exists yet; that is a wiring gap, not dead code.
+The four anchors above are what closes it.
