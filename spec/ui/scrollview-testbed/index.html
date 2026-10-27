@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>aeor-scrollview testbed</title>
+  <link rel="stylesheet" href="./testbed.css">
+</head>
+<body>
+  <aside class="controls">
+    <h1>aeor-scrollview testbed</h1>
+    <p>Deterministic 17k-item history. The engine only serves pages on demand; unloaded ranges are virtual geometry.</p>
+
+    <section>
+      <h2>Navigation</h2>
+      <div class="row">
+        <button id="end" class="primary">Jump to bottom</button>
+        <button id="random">Jump random</button>
+      </div>
+      <div class="row">
+        <button id="short">Short thread (8)</button>
+        <button id="long" class="primary">Reset 17k</button>
+      </div>
+      <label>Jump index <input id="jump-index" type="number" min="0" value="0"></label>
+      <div class="row"><button id="jump">Jump</button></div>
+    </section>
+
+    <section>
+      <h2>Live updates</h2>
+      <div class="row">
+        <button id="append">Append message</button>
+        <button id="stream">Stream last</button>
+      </div>
+      <div class="row"><button id="update">Update random</button></div>
+    </section>
+
+    <section>
+      <h2>Engine</h2>
+      <label>Latency ms <input id="latency" type="number" min="0" value="220"></label>
+      <label>Failure rate
+        <select id="failure">
+          <option value="0">0%</option>
+          <option value="0.15">15%</option>
+          <option value="0.5">50%</option>
+        </select>
+      </label>
+      <div class="row"><button id="follow">Toggle follow</button></div>
+      <div class="row"><button id="clear" class="danger">Reset testbed</button></div>
+    </section>
+
+    <section>
+      <h2>Metrics</h2>
+      <div id="log"></div>
+    </section>
+  </aside>
+  <main id="stage">
+    <div id="scrollhost"></div>
+    <div id="metrics">Starting…</div>
+  </main>
+  <script type="module" src="./app.mjs"></script>
+</body>
+</html>

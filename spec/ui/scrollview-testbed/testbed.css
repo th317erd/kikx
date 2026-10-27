@@ -1,0 +1,139 @@
+:root {
+  color-scheme: dark;
+  --bg: #0b0d10;
+  --panel: #12161b;
+  --panel-2: #171c23;
+  --text: #e7edf5;
+  --muted: #8b98a8;
+  --border: #2a333e;
+  --accent: #5aa9ff;
+  --danger: #ff6b6b;
+  --ok: #58d68d;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); }
+body { display: grid; grid-template-columns: 310px 1fr; overflow: clip; }
+button, input, select { font: inherit; }
+button {
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+button.primary { background: #163a5f; border-color: #2e72ad; }
+button.danger { border-color: #683232; color: #ffc0c0; }
+.controls {
+  padding: 16px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  overflow: auto;
+}
+.controls h1 { font-size: 15px; margin: 0 0 4px; }
+.controls p { color: var(--muted); font-size: 12px; line-height: 1.45; }
+.controls section { margin-top: 16px; }
+.controls section h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px; }
+.controls .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.controls .row > * { flex: 1; min-width: 0; }
+.controls label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+.controls input[type="number"], .controls select {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+#stage {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 1fr auto;
+}
+#scrollhost { min-height: 0; position: relative; }
+#metrics {
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  padding: 8px 12px;
+  color: var(--muted);
+  font: 11px/1.5 ui-monospace, SFMono-Regular, monospace;
+  white-space: pre-wrap;
+  max-height: 150px;
+  overflow: auto;
+}
+#log {
+  max-height: 120px;
+  overflow: auto;
+  font: 10px/1.4 ui-monospace, monospace;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  margin-top: 12px;
+}
+
+aeor-scrollview {
+  display: block;
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg);
+  --aeor-scrollview-bottom-padding: 0px;
+}
+.aeor-scrollview__viewport {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overflow-anchor: none;
+  scrollbar-gutter: stable;
+  padding: 0 16px var(--aeor-scrollview-bottom-padding);
+  outline: none;
+  contain: layout paint style;
+}
+.aeor-scrollview__viewport:focus-visible { box-shadow: inset 0 0 0 1px var(--accent); }
+.aeor-scrollview__window { display: flow-root; }
+.aeor-scrollview__spacer { width: 1px; }
+.aeor-scrollview__item { margin: 0; overflow-anchor: none; }
+.aeor-scrollview__item--virtual {
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+  padding: 16px;
+  background: rgba(255,255,255,.01);
+}
+.aeor-scrollview__status {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(640px, calc(100% - 48px));
+  border: 1px solid var(--border);
+  background: rgba(18, 22, 27, .94);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  pointer-events: none;
+}
+.aeor-scrollview__status--top { top: 10px; }
+.aeor-scrollview__status--bottom { bottom: 10px; }
+
+.message {
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  border-radius: 10px;
+  padding: 10px 12px;
+  max-width: 900px;
+  margin: 0;
+}
+.message[data-role="user"] { margin-left: auto; border-color: #315a7d; background: #13283a; }
+.message[data-role="system"] { border-color: #4b4030; background: #211d16; }
+.message__head { display: flex; gap: 8px; align-items: baseline; color: var(--muted); font-size: 11px; margin-bottom: 6px; }
+.message__role { color: var(--text); font-weight: 600; }
+.message__body { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; }
+.message[data-kind="code"] .message__body { white-space: pre; overflow: auto; font-family: ui-monospace, monospace; font-size: 12px; }

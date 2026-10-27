@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>aeor-page-scrollview testbed</title>
+  <link rel="stylesheet" href="./testbed.css">
+  <style>
+    .aeor-page-scrollview { display:block; position:relative; height:100%; min-height:0; background:var(--bg); }
+    .aeor-page-scrollview__window { display:flow-root; }
+    .aeor-page-scrollview__page { overflow-anchor:none; }
+    .aeor-page-scrollview__items { display:flow-root; }
+    .aeor-page-scrollview__gap { width:1px; overflow-anchor:none; }
+    .aeor-page-scrollview__page {
+      opacity:1;
+      transform:translateY(0);
+    }
+    .aeor-page-scrollview__page--entering {
+      animation:aeor-page-enter 250ms ease both;
+    }
+    @keyframes aeor-page-enter {
+      from { opacity:0; transform:translateY(12px); }
+      to { opacity:1; transform:translateY(0); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .aeor-page-scrollview__page--entering { animation:none; }
+    }
+  </style>
+</head>
+<body>
+  <aside class="controls">
+    <h1>page/container prototype</h1>
+    <p>Native-flow chunks and gaps. Only loaded pages exist as real item DOM; an unloaded page range is one gap element.</p>
+    <section>
+      <h2>Navigation</h2>
+      <div class="row">
+        <button id="end" class="primary">Jump to bottom</button>
+        <button id="random">Jump random page</button>
+      </div>
+      <div class="row">
+        <button id="short">Short thread</button>
+        <button id="long" class="primary">Reset 17k</button>
+      </div>
+      <label>Scroll animation ms <input id="scroll-animation" type="number" min="0" step="10" value="250"></label>
+      <label>Page enter ms <input id="page-enter" type="number" min="0" step="10" value="250"></label>
+      <label>Page load debounce ms <input id="page-debounce" type="number" min="0" step="10" value="150"></label>
+      <label>Page index <input id="page-index" type="number" min="0" value="0"></label>
+      <div class="row"><button id="jump">Jump to page</button></div>
+    </section>
+    <section>
+      <h2>Live</h2>
+      <div class="row"><button id="append">Append page</button></div>
+      <div class="row"><button id="rapid">Start rapid fire</button></div>
+      <label>Rapid interval (sec) <input id="rapid-interval" type="number" min="0.5" step="0.5" value="2.5"></label>
+      <label>Latency ms <input id="latency" type="number" min="0" value="220"></label>
+      <label>Failure rate
+        <select id="failure">
+          <option value="0">0%</option>
+          <option value="0.15">15%</option>
+          <option value="0.5">50%</option>
+        </select>
+      </label>
+      <label><input id="animate" type="checkbox" checked> Animate jump scrolls</label>
+      <div class="row"><button id="follow">Toggle follow</button></div>
+    </section>
+    <section><h2>Metrics</h2><div id="log"></div></section>
+  </aside>
+  <main id="stage">
+    <div id="scrollhost"></div>
+    <div id="metrics">Starting…</div>
+  </main>
+  <script type="module" src="./page-app.mjs"></script>
+</body>
+</html>
