@@ -8,6 +8,10 @@ import { shutdownHTTPServer } from './shutdown.mjs';
 const TOOL_INFLIGHT_SHUTDOWN_GRACE_MS = 30_000;
 const CHILD_PROCESS_SHUTDOWN_GRACE_MS = 30_000;
 const CHILD_PROCESS_SHUTDOWN_TIMEOUT_MS = 35_000;
+// A 1s flush was too short for a busy frame store and dropped composer drafts
+// that were already queued when SIGTERM arrived. Flush once before the long tool
+// drains and again after them; the second pass catches writes made during drain.
+const RUNTIME_FLUSH_SHUTDOWN_TIMEOUT_MS = 10_000;
 
 let shuttingDown = false;
 let server;
@@ -95,6 +99,10 @@ async function shutdownRuntimeServices(server) {
     console.error('Kikx tool shutdown signal failed:', error);
   }
 
+  // Capture queued client/draft writes before waiting on long tool and process
+  // drains. The final pass below still captures writes made during those drains.
+  await flushRuntimeServices(context, 'pre-drain');
+
   // Start asking managed command children to terminate while we await the
   // in-process tool executions. Both drains share the same wall-clock window.
   let processShutdown = Promise.resolve().then(async () => {
@@ -134,12 +142,7 @@ async function shutdownRuntimeServices(server) {
     console.error('Kikx child-process drain failed:', error);
   }
 
-  try {
-    await withTimeout(context.require?.('frameRouter')?.flush?.({ background: true }), 1000);
-    await withTimeout(context.require?.('frameRuntime')?.frameStore?.flush?.(), 1000);
-  } catch (error) {
-    console.error('Kikx runtime drain failed:', error);
-  }
+  await flushRuntimeServices(context, 'final');
 
   try {
     context.require?.('frameRuntime')?.disconnect?.();
@@ -151,6 +154,21 @@ async function shutdownRuntimeServices(server) {
     await context.require?.('db')?.close?.();
   } catch (error) {
     console.error('Kikx database shutdown failed:', error);
+  }
+}
+
+async function flushRuntimeServices(context, phase) {
+  try {
+    await withTimeout(
+      context.require?.('frameRouter')?.flush?.({ background: true }),
+      RUNTIME_FLUSH_SHUTDOWN_TIMEOUT_MS,
+    );
+    await withTimeout(
+      context.require?.('frameRuntime')?.frameStore?.flush?.(),
+      RUNTIME_FLUSH_SHUTDOWN_TIMEOUT_MS,
+    );
+  } catch (error) {
+    console.error(`Kikx runtime ${phase} flush failed:`, error);
   }
 }
 

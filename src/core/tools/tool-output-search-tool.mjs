@@ -1,5 +1,7 @@
 'use strict';
 
+import { WHERE_SHAPE_HELP } from '../database/where-clause.mjs';
+
 import { PluginInterface } from '../plugins/index.mjs';
 import { formatSearchResponse } from './database-tools.mjs';
 import { builtInToolComponent } from './tool-client-components.mjs';
@@ -17,11 +19,11 @@ export class OutputSearchTool extends PluginInterface {
     properties: {
       query: {
         type: 'string',
-        description: 'Broad fuzzy search query. At least one of query or where is required.',
+        description: 'Broad fuzzy text search. Use where for structured fields; do not put field=op expressions here.',
       },
       where: {
         type: 'object',
-        description: 'Structured AeorDB where clause scoped to stored tool outputs.',
+        description: `Structured AeorDB filter scoped to stored tool outputs. ${WHERE_SHAPE_HELP}`
       },
       limit: {
         type: 'integer',

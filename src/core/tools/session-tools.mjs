@@ -6,6 +6,8 @@ import { createLocatorSearchRequest, formatSearchResponse } from './database-too
 import { builtInToolComponent } from './tool-client-components.mjs';
 import { wakeInvitedAgent } from './session-invite-wake.mjs';
 import { planSessionFork } from '../context/session-fork.mjs';
+import { resolveForkParentFrames } from '../context/session-fork-source.mjs';
+import { WHERE_SHAPE_HELP } from '../database/where-clause.mjs';
 
 import {
   clampInteger,
@@ -285,6 +287,17 @@ export class SessionCreateTool extends SessionTool {
       }
     }
 
+    // Resolve the fork source before creating the child. A cold parent hydration
+    // failure must not leave an orphan empty session behind, and a fresh child
+    // must not read the parent at all.
+    let parentFrames = params.freshContext === true
+      ? []
+      : await resolveForkParentFrames({
+        runtime: this.frameRuntime(),
+        sourceSession,
+        context: this.context,
+      });
+
     let session = await this.frameRuntime().createSession({
       ...(title ? { title } : {}),
       participantAgentIDs,
@@ -300,11 +313,8 @@ export class SessionCreateTool extends SessionTool {
     });
 
     let childEntry = await this.frameRuntime().ensureSessionEntry(session.id, { loadFrames: false });
-    let parentEntry = sourceSession?.id
-      ? await this.frameRuntime().ensureSessionEntry(sourceSession.id)
-      : null;
     let forkPlan = planSessionFork({
-      parentFrames: parentEntry?.frameEngine?.toArray?.() || [],
+      parentFrames,
       childSessionID: session.id,
       parentSessionID: sourceSession?.id || null,
       freshContext: params.freshContext === true,
@@ -519,11 +529,11 @@ export class SessionSearchTool extends SessionTool {
     properties: {
       query: {
         type: 'string',
-        description: 'Broad fuzzy search query. At least one of query or where is required.',
+        description: 'Broad fuzzy text search. Use where for structured fields; do not put field=op expressions here.',
       },
       where: {
         type: 'object',
-        description: 'Structured AeorDB where clause scoped to this session frames index.',
+        description: `Structured AeorDB filter scoped to this session's frames. ${WHERE_SHAPE_HELP}`
       },
       limit: {
         type: 'integer',

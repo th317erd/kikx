@@ -10,7 +10,7 @@ import { normalizeOptionalString } from './session-tool-helpers.mjs';
 export class SessionControlTool extends PluginInterface {
   static pluginID = 'internal:session-control';
   static displayName = 'Session control';
-  static description = 'Coordinator-only: inspect, resume, or suspend session agents.';
+  static description = 'Coordinator-only: inspect, resume, suspend, kick, or soft-delete session agents/sessions.';
   static frameType = 'SessionControlToolFrame';
   static clientComponent = builtInToolComponent('kikx-agent-tool-use');
   static riskLevel = 'none';
@@ -19,8 +19,8 @@ export class SessionControlTool extends PluginInterface {
     properties: {
       action: {
         type: 'string',
-        enum: [ 'list', 'resume', 'suspend', 'kick' ],
-        description: 'List suspension state, resume/suspend one agent, or remove a participant.',
+        enum: [ 'list', 'resume', 'suspend', 'kick', 'delete' ],
+        description: 'List state, resume/suspend one agent, remove a participant, or soft-delete a descendant session.',
       },
       target: {
         type: 'string',
@@ -41,9 +41,10 @@ export class SessionControlTool extends PluginInterface {
     required: [ 'action' ],
     additionalProperties: false,
   };
-  static help = 'Coordinator-only session control. Use list to see suspended agents, resume or suspend an agent by id/name, or kick an agent out of a session. '
+  static help = 'Coordinator-only session control. Use list to see suspended agents, resume or suspend an agent by id/name, kick an agent out of a session, or soft-delete a descendant session. '
     + 'Pass session_id to reach the current session or any descendant of it (never a parent or an unrelated branch); includeSubtree fans a suspend out over that subtree. '
     + 'Kick removes the participant, cancels its runs, and promotes a remaining coordinator if needed; the last participant cannot be removed. '
+    + 'Delete is a soft delete: it stamps deletedAt on a descendant session and hides it from the normal session list, but frames remain recoverable. It refuses the current session, any session with active agent runs, and any session with a live command. '
     + 'Suspension cancels queued work and freezes running commands at the next yield, but cannot preempt a provider call that is already blocked. '
     + 'Commands are controlled with exec-list/exec-status/exec-resume/exec-kill.';
 
@@ -150,6 +151,51 @@ export class SessionControlTool extends PluginInterface {
     }
 
     let action = String(params.action || '').trim().toLowerCase();
+
+    if (action === 'delete') {
+      if (sessionID === currentSessionID)
+        throw new Error('session-control delete refuses to delete the current session; name a descendant session');
+      if (params.includeSubtree === true)
+        throw new Error('session-control delete is single-session only; it will not delete a subtree');
+      if (typeof frameRuntime.deleteSession !== 'function')
+        throw new Error('session-control delete requires frameRuntime.deleteSession');
+      if (session?.deletedAt)
+        return {
+          sessionID,
+          sessionTitle: session.title || sessionID,
+          deleted: false,
+          alreadyDeleted: true,
+          deletedAt: session.deletedAt,
+          message: `${session.title || sessionID} is already soft-deleted.`,
+        };
+
+      let activeAgentIDs = frameRuntime.listActiveAgentRuns?.(sessionID) || [];
+      if (activeAgentIDs.length > 0) {
+        throw new Error(
+          `Refusing to delete ${session?.title || sessionID}: ${activeAgentIDs.length} agent run(s) are still active. `
+          + 'Suspend or cancel them first.',
+        );
+      }
+
+      let liveProcesses = processManager?.listProcesses?.({
+        _sessionID: sessionID,
+        _isCoordinator: selfCoordinator,
+        includeCompleted: false,
+        limit: 1,
+      })?.processes || [];
+      if (liveProcesses.length > 0)
+        throw new Error(`Refusing to delete ${session?.title || sessionID}: it still has a live command. Suspend or kill it first.`);
+
+      let deleted = await frameRuntime.deleteSession(sessionID);
+      return {
+        sessionID,
+        sessionTitle: deleted.title || session?.title || sessionID,
+        deleted: true,
+        alreadyDeleted: false,
+        deletedAt: deleted.deletedAt,
+        message: `${deleted.title || sessionID} was soft-deleted. Its frames remain recoverable.`,
+      };
+    }
 
     if (action === 'list') {
       // F3: if a coordinator may halt a subtree it must also be able to see what

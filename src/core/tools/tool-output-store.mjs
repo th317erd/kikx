@@ -1,5 +1,7 @@
 'use strict';
 
+import { normalizeWhereClause } from '../database/where-clause.mjs';
+
 import { randomBytes } from 'node:crypto';
 
 import { writeIndexConfigs } from '../database/index-configs.mjs';
@@ -148,7 +150,7 @@ export class ToolOutputStore {
 
   async searchToolOutputs(options = {}) {
     let normalizedQuery = normalizeOptionalString(options.query);
-    let where = normalizeWhere(options.where);
+    let where = normalizeWhereClause(options.where);
     if (!normalizedQuery && !where)
       throw new TypeError('query or where is required');
 
@@ -386,16 +388,6 @@ function normalizeRequiredString(value, fieldName) {
 
 function normalizeOptionalString(value) {
   return typeof value === 'string' ? value.trim() : '';
-}
-
-function normalizeWhere(value) {
-  if (value == null)
-    return null;
-
-  if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw new TypeError('where must be an object');
-
-  return value;
 }
 
 function normalizePositiveInteger(value, fieldName) {

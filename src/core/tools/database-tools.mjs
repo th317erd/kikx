@@ -2,6 +2,7 @@
 
 import { PluginInterface } from '../plugins/index.mjs';
 import { builtInToolComponent } from './tool-client-components.mjs';
+import { normalizeWhereClause, WHERE_SHAPE_HELP } from '../database/where-clause.mjs';
 
 const DEFAULT_SEARCH_PATH = '/kikx';
 const DEFAULT_SEARCH_LIMIT = 20;
@@ -23,11 +24,11 @@ export class DatabaseSearchTool extends PluginInterface {
     properties: {
       query: {
         type: 'string',
-        description: 'Broad fuzzy search query. At least one of query or where is required.',
+        description: 'Broad fuzzy text search. Use where for structured fields such as authorType, type, or createdAt; do not put field=op expressions here.',
       },
       where: {
         type: 'object',
-        description: 'Structured AeorDB where clause. At least one of query or where is required.',
+        description: `Structured AeorDB filter. ${WHERE_SHAPE_HELP}`,
       },
       path: {
         type: 'string',
@@ -69,7 +70,7 @@ export class DatabaseSearchTool extends PluginInterface {
     },
     additionalProperties: false,
   };
-  static help = 'Use database-search to search AeorDB. Results include matches with fetch hints; pass those hints to database-fetch to read only the needed ranges.';
+  static help = `Use database-search to search AeorDB. Results include matches with fetch hints; pass those hints to database-fetch to read only the needed ranges. ${WHERE_SHAPE_HELP} Put structured filters in where, not query; query is text search.`;
 
   async _execute(params = {}) {
     let aeordb = resolveAeorDB(this.context);
@@ -175,7 +176,7 @@ export class DatabaseFetchTool extends PluginInterface {
 
 export function createLocatorSearchRequest(params = {}, options = {}) {
   let query = normalizeOptionalString(params.query);
-  let where = normalizeWhere(params.where);
+  let where = normalizeWhereClause(params.where);
   if (!query && !where)
     throw new TypeError('search requires query or where');
 
@@ -206,11 +207,18 @@ export function formatSearchResponse(result, context = {}) {
     ...entry,
     locatorFetchTool: 'database-fetch',
   }));
+  let warnings = Array.isArray(context.warnings) ? context.warnings.slice() : [];
+  if (!context.where && context.query && queryLooksLikeWhere(context.query)) {
+    let warning = 'query looks like a structured where expression; pass it as where so it filters instead of matching text.';
+    if (!warnings.includes(warning))
+      warnings.push(warning);
+  }
 
   return {
     path: context.path || null,
     query: context.query || null,
     where: context.where || null,
+    ...(warnings.length ? { warnings } : {}),
     results,
     count: results.length,
     has_more: Boolean(result?.has_more),
@@ -350,14 +358,8 @@ function normalizeSearchResults(result) {
   return items;
 }
 
-function normalizeWhere(value) {
-  if (value == null)
-    return null;
-
-  if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw new TypeError('where must be an object');
-
-  return value;
+function queryLooksLikeWhere(value) {
+  return /(?:^|[,\s])[A-Za-z_][\w.-]*\s*=\s*(?:eq|ne|gt|gte|lt|lte|in|contains|prefix|exists)\b/i.test(String(value || ''));
 }
 
 function normalizePath(value) {

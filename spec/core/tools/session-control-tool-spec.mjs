@@ -261,3 +261,69 @@ test('session-control kick removes a participant and reports the promoted coordi
     'removeAgentFromSession',
   ]);
 });
+
+test('session-control deletes a descendant session as a recoverable soft delete', async () => {
+  let calls = [];
+  let sessions = new Map([
+    [ 'parent', { id: 'parent', title: 'Parent', participantAgentIDs: [ 'agent_1' ], coordinatorAgentID: 'agent_1' } ],
+    [ 'child', { id: 'child', title: 'Dead fork', parentSessionID: 'parent', participantAgentIDs: [ 'agent_1' ], coordinatorAgentID: 'agent_1' } ],
+  ]);
+  let frameRuntime = {
+    getSession(id) { return sessions.get(id) || null; },
+    async ensureSessionEntry(id) { return { session: sessions.get(id) || null }; },
+    listActiveAgentRuns() { return []; },
+    async deleteSession(id) {
+      calls.push({ method: 'deleteSession', id });
+      let deleted = { ...sessions.get(id), deletedAt: 12345 };
+      sessions.set(id, deleted);
+      return deleted;
+    },
+  };
+  let context = {
+    isCoordinator: true,
+    session: { id: 'parent' },
+    agent: { id: 'agent_1' },
+    frameRuntime,
+    agentManager: { async getAgent(id) { return { id, name: id }; } },
+  };
+
+  let result = await new SessionControlTool(context).execute({
+    action: 'delete',
+    session_id: 'child',
+  });
+
+  assert.equal(result.deleted, true);
+  assert.equal(result.deletedAt, 12345);
+  assert.match(result.message, /soft-deleted/);
+  assert.deepEqual(calls, [ { method: 'deleteSession', id: 'child' } ]);
+});
+
+test('session-control delete refuses the current session and active descendants', async () => {
+  let sessions = new Map([
+    [ 'parent', { id: 'parent', title: 'Parent', participantAgentIDs: [ 'agent_1' ], coordinatorAgentID: 'agent_1' } ],
+    [ 'child', { id: 'child', title: 'Live child', parentSessionID: 'parent', participantAgentIDs: [ 'agent_1' ], coordinatorAgentID: 'agent_1' } ],
+  ]);
+  let frameRuntime = {
+    getSession(id) { return sessions.get(id) || null; },
+    async ensureSessionEntry(id) { return { session: sessions.get(id) || null }; },
+    listActiveAgentRuns() { return [ 'agent_2' ]; },
+    async deleteSession() { throw new Error('must not delete'); },
+  };
+  let context = {
+    isCoordinator: true,
+    session: { id: 'parent' },
+    agent: { id: 'agent_1' },
+    frameRuntime,
+    agentManager: { async getAgent(id) { return { id, name: id }; } },
+  };
+  let tool = new SessionControlTool(context);
+
+  await assert.rejects(
+    () => tool.execute({ action: 'delete', session_id: 'parent' }),
+    /refuses to delete the current session/,
+  );
+  await assert.rejects(
+    () => tool.execute({ action: 'delete', session_id: 'child' }),
+    /agent run\(s\) are still active/,
+  );
+});

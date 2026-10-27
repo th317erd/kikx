@@ -213,6 +213,20 @@ describe('fork seam: planner reachability', () => {
     );
   });
 
+  it('session-tools resolves the fork source without hydrating the parent runtime', async () => {
+    let source = await read(SESSION_TOOLS);
+    expectMatch(
+      source,
+      /resolveForkParentFrames\s*\(/,
+      'session-create must use the no-hydration fork source resolver',
+    );
+    assert.doesNotMatch(
+      source,
+      /ensureSessionEntry\(sourceSession\.id\)/,
+      'session-create must not call ensureSessionEntry(sourceSession.id) without loadFrames:false',
+    );
+  });
+
   it('session-tools does not grow a second, divergent compaction finder', async () => {
     // The latest-compaction rule lives in one place (agent-brief-state.mjs,
     // reused by session-fork.mjs). A second local copy is the split-brain
