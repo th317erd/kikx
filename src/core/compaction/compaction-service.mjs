@@ -12,6 +12,7 @@ import { buildCompactionFrame, buildCompactionFrameUpdate } from './compaction-f
 import { buildCompactionSummaryJSON } from './compaction-summary.mjs';
 import {
   DEFAULT_COMPACTION_OUTPUT_RESERVE_TOKENS,
+  DEFAULT_COMPACTION_WINDOW_SAFETY_RATIO,
   computeCompactionBudget,
   countCompactionMetadataTokens,
   resolveCompactorWindow,
@@ -31,11 +32,6 @@ const DEFAULT_COMPACTION_AGENT_CONTEXT_TOKENS = 128000;
 const DEFAULT_PROMPT_RESERVE_TOKENS = 8000;
 const DEFAULT_COMPACTION_TRIGGER_RATIO = 0.7;
 const DEFAULT_HARD_LIMIT_RATIO = 1;
-// Compaction input is estimated with chars/4; real tokenizers can be materially
-// denser (code/JSON). Leave enough headroom that a 1M model never receives a
-// 1.25M-token compaction prompt and falls back to trimming.
-const DEFAULT_COMPACTION_WINDOW_SAFETY_RATIO = 0.6;
-
 export class CompactionService {
   constructor(options = {}) {
     this.agentManager = options.agentManager || null;
@@ -607,7 +603,7 @@ export class CompactionService {
   // selected provider instance's resolver when present, else shared resolution.
   // The legacy `compactionAgentContextTokens` is only a fallback when the window
   // cannot be determined.
-  resolveCompactionBudget({ input = {}, compactorAgent, provider, ProviderClass, compactionWindow } = {}) {
+  resolveCompactionBudget({ input = {}, compactorAgent, provider, ProviderClass, compactionWindow, safetyRatio = 1 } = {}) {
     let agentManager = this.agentManager || resolveService(input.services, 'agentManager');
     let catalog = input.catalog || this.catalog || agentManager?.listModels?.() || [];
     let window = resolveCompactorWindow({ compactorAgent, provider, ProviderClass, catalog });
@@ -623,6 +619,7 @@ export class CompactionService {
       instructionTokens: this.countInstructionTokens(),
       metadataTokens,
       outputReserveTokens: this.compactionOutputReserveTokens,
+      safetyRatio,
     });
   }
 

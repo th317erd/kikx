@@ -4,6 +4,7 @@ import { AgentInterface } from '../plugins/index.mjs';
 import {
   buildAgentCompactionPrompt,
   collectCompactionText,
+  DEFAULT_COMPACTION_WINDOW_SAFETY_RATIO,
   runChunkedCompaction,
   serializeFramesForCompaction,
 } from '../compaction/index.mjs';
@@ -37,6 +38,10 @@ export async function createMergeSummaryRunner({ compactionService, input = {}, 
     provider: probe,
     ProviderClass,
     compactionWindow: compactionWindow || { frames: [], startFrameID: '', boundaryFrameID: '', tokens: 0 },
+    // Merge sections can be the largest compaction inputs in the system. Apply
+    // the same chars/4 safety margin as ordinary compaction so an estimated
+    // under-budget merge is still chunked before the provider rejects it.
+    safetyRatio: DEFAULT_COMPACTION_WINDOW_SAFETY_RATIO,
   });
 
   return {

@@ -20,6 +20,17 @@ import {
 // one default.
 export const DEFAULT_COMPACTION_OUTPUT_RESERVE_TOKENS = 4096;
 
+// Compaction input is estimated with chars/4; real tokenizers can be materially
+// denser (code/JSON). The ordinary compaction path already applies this ratio
+// when choosing the window to compact. Merge compaction must apply the same
+// safety margin, or a prompt estimated under the raw 1M window can still exceed
+// the provider's real token limit.
+export const DEFAULT_COMPACTION_WINDOW_SAFETY_RATIO = 0.6;
+
+// Below this size the fallback behavior is already conservative enough and a
+// ratio would shrink already-small windows without useful headroom.
+const SAFETY_RATIO_MIN_WINDOW_TOKENS = 65536;
+
 // The selected compactor's effective window, or null when unknown. Prefers the
 // live provider instance, then the provider class, then shared per-agent
 // resolution against the model catalog. The shared resolver's bare default is
@@ -55,11 +66,15 @@ export function computeCompactionBudget({
   instructionTokens = 0,
   metadataTokens = 0,
   outputReserveTokens = DEFAULT_COMPACTION_OUTPUT_RESERVE_TOKENS,
+  safetyRatio = 1,
 } = {}) {
   let effectiveWindow = normalizePositiveInteger(
     window,
     normalizePositiveInteger(fallbackWindow, 1),
   );
+  let ratio = normalizeSafetyRatio(safetyRatio);
+  if (ratio < 1 && effectiveWindow >= SAFETY_RATIO_MIN_WINDOW_TOKENS)
+    effectiveWindow = Math.max(1, Math.floor(effectiveWindow * ratio));
   let overhead = normalizeNonNegativeInteger(instructionTokens, 0)
     + normalizeNonNegativeInteger(metadataTokens, 0)
     + normalizeNonNegativeInteger(outputReserveTokens, 0);
@@ -99,6 +114,11 @@ function callResolveContextWindow(target, context) {
   } catch (_error) {
     return null;
   }
+}
+
+function normalizeSafetyRatio(value) {
+  let number = Number(value);
+  return Number.isFinite(number) && number > 0 && number <= 1 ? number : 1;
 }
 
 function defaultEstimate(value) {

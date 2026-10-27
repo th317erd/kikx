@@ -33,6 +33,7 @@ export {
 } from './chunked-compaction.mjs';
 export {
   DEFAULT_COMPACTION_OUTPUT_RESERVE_TOKENS,
+  DEFAULT_COMPACTION_WINDOW_SAFETY_RATIO,
   computeCompactionBudget,
   countCompactionMetadataTokens,
   resolveCompactorWindow,

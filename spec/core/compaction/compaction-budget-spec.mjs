@@ -5,6 +5,7 @@ import test from 'node:test';
 
 import {
   DEFAULT_COMPACTION_OUTPUT_RESERVE_TOKENS,
+  DEFAULT_COMPACTION_WINDOW_SAFETY_RATIO,
   computeCompactionBudget,
   countCompactionMetadataTokens,
   resolveCompactorWindow,
@@ -125,4 +126,29 @@ test('countCompactionMetadataTokens estimates the wrapper and metadata JSON', ()
     frameCount: 300000,
   });
   assert.equal(tokensMore >= tokens, true);
+});
+
+
+test('computeCompactionBudget applies a safety ratio to large compactor windows', () => {
+  let budget = computeCompactionBudget({
+    window: 100000,
+    instructionTokens: 500,
+    metadataTokens: 200,
+    outputReserveTokens: 1000,
+    safetyRatio: DEFAULT_COMPACTION_WINDOW_SAFETY_RATIO,
+  });
+
+  assert.equal(budget, 60000 - 500 - 200 - 1000);
+});
+
+test('computeCompactionBudget ignores the safety ratio on small windows', () => {
+  let budget = computeCompactionBudget({
+    window: 12000,
+    instructionTokens: 100,
+    metadataTokens: 50,
+    outputReserveTokens: 400,
+    safetyRatio: 0.6,
+  });
+
+  assert.equal(budget, 12000 - 100 - 50 - 400);
 });
