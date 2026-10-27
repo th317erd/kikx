@@ -64,6 +64,25 @@ export class SessionMergeService {
     return sanitizeJob(job);
   }
 
+  // A running job cannot survive a process restart. Leave it visible as failed
+  // instead of reporting "running" forever with no worker behind it.
+  async recoverStaleJobs() {
+    if (!this.store?.list)
+      return [];
+    let stale = [];
+    for (let job of await this.store.list({ limit: 1000 })) {
+      if (job?.status !== 'running')
+        continue;
+      job.status = 'failed';
+      job.error = job.error || 'Kikx restarted before the merge completed.';
+      job.updatedAt = new Date(this.clock()).toISOString();
+      job.updatedAtMs = this.clock();
+      await this._save(job);
+      stale.push(job.id || job.mergeID);
+    }
+    return stale;
+  }
+
   async getMerge(id) {
     let mergeID = normalizeOptional(id);
     if (!mergeID)

@@ -467,12 +467,16 @@ export async function createServer(options = {}) {
 
   if (!context.has('sessionMergeService')) {
     let aeordb = context.require('aeordb');
-    context.set('sessionMergeService', new SessionMergeService({
+    let sessionMergeService = new SessionMergeService({
       frameRuntime: context.require('frameRuntime'),
       compactionService: context.require('compactionService'),
       store: new SessionMergeStore({ db: aeordb }),
       logger: options.logger || console,
-    }));
+    });
+    context.set('sessionMergeService', sessionMergeService);
+    sessionMergeService.recoverStaleJobs().catch((error) => {
+      (options.logger || console).warn?.('Kikx session merge recovery failed', error);
+    });
   }
 
   if (!context.has('processManager')) {

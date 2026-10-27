@@ -183,3 +183,17 @@ test('close_sessions soft-deletes only the source sessions after the merge frame
   assert.equal(harness.sessions.get('target').deletedAt, undefined);
   assert.ok(harness.engines.get('target').get('merge-frame-1'), 'the merge frame is durable before closing');
 });
+
+test('a merge left running by a restart is marked failed instead of running forever', async () => {
+  let jobs = [ { id: 'stale', mergeID: 'stale', status: 'running', targetSessionID: 'target' } ];
+  let store = {
+    async list() { return jobs; },
+    async save(job) { jobs = [ job ]; },
+  };
+  let service = new SessionMergeService({ store, clock: () => 1000 });
+  let stale = await service.recoverStaleJobs();
+
+  assert.deepEqual(stale, [ 'stale' ]);
+  assert.equal(jobs[0].status, 'failed');
+  assert.match(jobs[0].error, /restarted/);
+});
