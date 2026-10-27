@@ -37,6 +37,10 @@
 // ---------------------------------------------------------------------------
 
 import { elements } from '../lib/aeor-ui.mjs';
+import {
+  attachSessionNameEntryGestures,
+  consumeNavigationClickGuard,
+} from './session-name-gestures.mjs';
 import { createIcon } from '../lib/icons.mjs';
 import { stateHasFilters } from '../lib/frame-filters.mjs';
 import { buildScrollLockToolbar } from './kikx-scroll-lock.mjs';
@@ -59,34 +63,6 @@ import './kikx-participants-popup.mjs';
 import './kikx-frame-filter-popup.mjs';
 
 const { div, nav, header, h1, p, span, button, input } = elements;
-
-// The pencil is deliberately NOT from lib/icons.mjs: that registry is generated
-// from traced SVGs and has no `pencil` key (keys read from the ICONS map:
-// arrow-right, brain, chat, check, chevron-left, circle-x, compaction, crown,
-// database, diamond, dots, eyeball, fetch, file-read, file-write, gear, info,
-// lock-locked, lock-unlocked, mail, output, people, quill, reply, search,
-// terminal, todo, warning, clamp, hash). Adding a key would mean editing the
-// generated module, so this module carries its own glyph.
-export function createPencilIcon() {
-  const SVG_NS = 'http://www.w3.org/2000/svg';
-  let svg = document.createElementNS(SVG_NS, 'svg');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('aria-hidden', 'false');
-  svg.setAttribute('focusable', 'false');
-  svg.setAttribute('role', 'img');
-  svg.setAttribute('aria-label', 'Rename');
-  // `.kikx-icon` already has an app.css rule, so the glyph is sized today.
-  svg.setAttribute('class', 'kikx-icon');
-  let path = document.createElementNS(SVG_NS, 'path');
-  path.setAttribute('fill', 'none');
-  path.setAttribute('stroke', 'currentColor');
-  path.setAttribute('stroke-width', '2');
-  path.setAttribute('stroke-linecap', 'round');
-  path.setAttribute('stroke-linejoin', 'round');
-  path.setAttribute('d', 'M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z');
-  svg.appendChild(path);
-  return svg;
-}
 
 // Crumb model. Mirrors buildBreadcrumb (kikx-shell-builders.mjs:177-210) crumb
 // for crumb so the two stay comparable; the only addition is `sessionID`, which
@@ -175,31 +151,50 @@ export function buildTopbarCrumb(app, crumb) {
         .onClick(() => app._navigateToDepth(crumb.depth))(crumb.label);
   }
 
-  // A session crumb: label (+ navigation) and its rename pencil, side by side.
-  let labelNode = crumb.active
+  // A session crumb: just the label. The rename is a GESTURE now, not a button
+  // (owner change of mind, 2026-10-27), so nothing sits beside the label.
+  //
+  // The gesture is attached to the BUILT node, not declared in the DSL: it is
+  // imperative listener wiring with a timer and a teardown, which the element DSL
+  // has no shape for. `.build(document)` here is deliberate and is the only place
+  // in this module that forces a build, because the listener needs a real node.
+  // Attaching before the node is wrapped is safe: a real DOM node passes through
+  // the DSL unchanged, so the node nav is given is the same node the listeners
+  // are on.
+  // The ancestor's click consults `consumeNavigationClickGuard()` because a
+  // long-press on an ancestor crumb opens the editor at 450ms and the click that
+  // follows the release would otherwise navigate and destroy it. See the guard's
+  // comment in session-name-gestures.mjs for why it cannot be done with
+  // stopPropagation or a capture-phase listener.
+  let label = (crumb.active
     ? span.class(ACTIVE_CRUMB_CLASS)(crumb.label)
     : button.type('button').class('kikx-breadcrumb__crumb')
-      .onClick(() => app._navigateToDepth(crumb.depth))(crumb.label);
+      .onClick(() => {
+        if (consumeNavigationClickGuard(crumb.sessionID))
+          return;
+        app._navigateToDepth(crumb.depth);
+      })(crumb.label)).build(document);
+
+  attachSessionNameEntryGestures(app, label, crumb);
+
+  // The pencil was the only keyboard-reachable entry, and it is gone. `tabindex`
+  // plus F2 keeps the rename reachable without a mouse, and the title attribute
+  // is the tooltip that makes the gesture discoverable at all -- nothing else on
+  // screen advertises that the title can be edited.
+  label.setAttribute('tabindex', '0');
+  // The tooltip must not promise a gesture the crumb does not have: double-click
+  // is active-crumb only (see the dblclick handler), so an ancestor advertises
+  // just the two entries it really supports.
+  label.setAttribute('title', crumb.active
+    ? `Double-click or hold to rename "${crumb.label}" (F2)`
+    : `Hold to rename "${crumb.label}" (F2)`);
 
   // NOTE: wrap in `nav`, not `kikx-breadcrumb__crumb`. That class is a pill -
-  // app.css:2799-2811 gives it border, radius and `cursor: pointer` - so nesting
-  // it around the pencil would render a pill inside a pill and paint a second
+  // app.css:2799-2811 gives it border and radius - so nesting it around a
+  // second control would render a pill inside a pill and paint a second
   // clickable-looking target. `nav` already carries a rule and is the correct
-  // semantic home for a navigation affordance plus its rename action.
-  return nav.class('kikx-breadcrumb')(labelNode, buildTopbarCrumbPencil(app, crumb));
-}
-
-// The per-crumb pencil (owner point 3). A real button so it is keyboard
-// reachable. It reuses the app's own session-rename machinery
-// (`_beginSessionNameEdit`, wired at kikx-app.mjs:241) rather than inventing a
-// second editor, so its commit path cannot drift from the inline title editor.
-export function buildTopbarCrumbPencil(app, crumb) {
-  return button
-    .type('button')
-    .class('kikx-icon-button')
-    .title(`Rename "${crumb.label}"`)
-    .ariaLabel(`Rename ${crumb.label}`)
-    .onClick(() => app._beginSessionNameEdit(crumb.sessionID, crumb.label))(createPencilIcon());
+  // semantic home for a navigation affordance that is also editable.
+  return nav.class('kikx-breadcrumb')(label);
 }
 
 // Back + breadcrumb MERGED into one control (owner point 3). The chevron leads

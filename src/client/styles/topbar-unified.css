@@ -135,55 +135,47 @@
 }
 
 /* ---------------------------------------------------------------------------
- * Owner point 3 -- each crumb gets a pencil on hover. Hidden until the crumb's
- * trail is hovered or holds focus, so the trail stays legible at rest.
+ * Rename entry is a GESTURE (owner change of mind, 2026-10-27):
  *
- * Scope is `.kikx-breadcrumb .kikx-icon-button`, which is the pencil only: the
- * back chevron lives in `.kikx-window__lead`, not inside the crumb `nav`. Using
- * `visibility` rather than `display` keeps the crumb width stable so hovering
- * does not reflow the trail and shift the crumb out from under the cursor.
+ *   "let's please instead have a double-click or long-press enter edit mode.
+ *    Blur, or Esc leaves edit mode."
  *
- * `focus-within` is required, not optional: a keyboard user tabbing to the
- * pencil must be able to see it. And on touch there is no hover at all, so the
- * pencil is shown unconditionally there.
+ * So there is no pencil to hide, size or reveal on hover, and every rule that
+ * existed to make one visible is gone with it. What replaces those rules is the
+ * affordance problem a gesture has and a button does not: a button announces
+ * itself, a gesture does not. Three hints, in increasing order of intrusiveness,
+ * and all three are cheap because they cost no layout:
+ *
+ *   `cursor: text`  -- the pointer itself says "this is an editable name", which
+ *                      is the standard convention for an inline-editable label;
+ *   a hover underline, so the target is identifiable before you commit to a
+ *                      double-click;
+ *   the `title` tooltip, set by the builder, which spells the gesture out.
+ *
+ * `user-select: none` is load-bearing, not cosmetic: a double-click on a text
+ * node selects a word by default, and the selection highlight would sit behind
+ * the input the first click opens. `touch-action: manipulation` removes the
+ * ~300ms tap delay on touch so a long-press begins at the moment the owner
+ * expects, and suppresses the double-tap-to-zoom that would otherwise steal the
+ * second click of a double-click on a phone.
  * ------------------------------------------------------------------------ */
-.kikx-breadcrumb .kikx-icon-button {
-  visibility: hidden;
-  opacity: 0;
-  transition: opacity 120ms ease-in;
+.kikx-breadcrumb .kikx-breadcrumb__crumb[tabindex],
+.kikx-breadcrumb .kikx-breadcrumb__crumb--active {
+  cursor: text;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
 }
 
-/* ---------------------------------------------------------------------------
- * Owner item 2a (2026-10-27): "the edit pencil icon itself is WAY WAY too
- * large". Measured cause, not a guess:
- *
- *   app.css:509-514  .kikx-icon-button { width: 34px; font-size: calc(22px * 1.25) }
- *   app.css:7-12     .kikx-icon        { width: 1em; height: 1em }
- *   kikx-topbar.mjs  the pencil svg carries class `kikx-icon`
- *
- * so the glyph rendered at 27.5px inside a 34px box -- a 1:1.24 glyph-to-button
- * ratio that reads as an illustration, not an icon. The glyph is now 15px and
- * the button 26px: the HIT TARGET is still comfortably clickable (26px square,
- * plus the row's own padding), which is the part that must not shrink, while the
- * ART is a third of its old size. Scoped to the crumb so the back chevron and
- * every other `.kikx-icon-button` in the app keep their existing size.
- *
- * `.kikx-breadcrumb .kikx-icon-button` is (0,2,0) against app.css's single-class
- * (0,1,0), so this wins on specificity rather than on load order.
- * ------------------------------------------------------------------------ */
-.kikx-breadcrumb .kikx-icon-button {
-  width: 26px;
-  height: 26px;
-  min-width: 26px;
-  padding: 0;
-  font-size: 15px;
-  border-radius: 6px;
-  color: #aab4bf;
-}
-
-.kikx-breadcrumb .kikx-icon-button:hover {
-  color: #f5f7fa;
-  background: #22272d;
+/* Hover and keyboard focus both reveal the same hint. `:focus-visible` rather
+ * than `:focus`, so a mouse click that leaves the crumb focused after a rename
+ * does not keep an underline painted under the title forever. */
+.kikx-breadcrumb .kikx-breadcrumb__crumb[tabindex]:hover,
+.kikx-breadcrumb .kikx-breadcrumb__crumb[tabindex]:focus-visible,
+.kikx-breadcrumb .kikx-breadcrumb__crumb--active:hover {
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
 }
 
 /* The inline rename, grouped so the field, Save and Cancel read as one control
@@ -195,22 +187,21 @@
   min-width: 0;
 }
 
-/* The editor's own buttons are never hover-gated: a Cancel control you have to
- * find by hovering is exactly the defect this exists to remove.
+/* The editor's own buttons are always visible.
  *
- * SPECIFICITY, measured in the browser, not by counting selectors in our heads
- * (the first version of this comment got the arithmetic wrong, and three agents
- * caught it):
- *   `.kikx-breadcrumb .kikx-icon-button`                    = (0,2,0)
- *   `.kikx-breadcrumb:hover .kikx-icon-button`              = (0,3,0)
- *   `.kikx-breadcrumb:focus-within .kikx-icon-button`       = (0,3,0)
- *   `.kikx-breadcrumb .kikx-breadcrumb__editor .kikx-icon-button` = (0,3,0)
- * The override therefore TIES the two reveal rules rather than beating them,
- * and it sits EARLIER in this sheet than `:focus-within` (line ~207 vs ~228),
- * so on a tie the reveal wins. That is harmless only because both sides set
- * `visibility: visible`. Do not "simplify" this selector back to two classes:
- * (0,2,0) genuinely loses, and the Cancel control would compute `hidden` again.
- * The specs assert the computed `visibility`, not this comment. */
+ * HISTORICAL NOTE, because the arithmetic in the old comment here was wrong and
+ * three agents caught it: this override used to be fighting a
+ * `.kikx-breadcrumb .kikx-icon-button { visibility: hidden }` rule that hover-
+ * gated the pencil. That hide rule is GONE with the pencil (owner change of
+ * mind, 2026-10-27), so nothing hides these buttons now and this declaration is
+ * belt-and-braces rather than a specificity duel. It is kept deliberately: it is
+ * the one line that guarantees a way out of rename mode stays on screen if a
+ * future rule ever reintroduces hover-gating inside the crumb.
+ *
+ * The related `:hover`/`:focus-within`/`@media (hover: none)` reveal rules were
+ * removed with the hide rule they existed to override -- they had no remaining
+ * subject, and dead CSS that looks load-bearing is how the next reader is
+ * misled. */
 .kikx-breadcrumb .kikx-breadcrumb__editor .kikx-icon-button,
 .kikx-breadcrumb .kikx-breadcrumb__editor .kikx-breadcrumb__editor-action {
   visibility: visible;
@@ -230,19 +221,6 @@
  * the way out cannot destroy the typed name. */
 .kikx-breadcrumb__editor .kikx-breadcrumb__editor-action[aria-label="Save name"] {
   color: #7fd1a0;
-}
-
-.kikx-breadcrumb:hover .kikx-icon-button,
-.kikx-breadcrumb:focus-within .kikx-icon-button {
-  visibility: visible;
-  opacity: 1;
-}
-
-@media (hover: none) {
-  .kikx-breadcrumb .kikx-icon-button {
-    visibility: visible;
-    opacity: 1;
-  }
 }
 
 /* The active crumb is the current location, not a destination: it stays

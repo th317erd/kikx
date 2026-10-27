@@ -130,42 +130,33 @@ async function rulesMentioning(sheet, needle) {
   return found;
 }
 
-test('the rename pencil carries the icon classes and a small glyph size is scoped to it', async () => {
+test('the crumb label is a discoverable, keyboard-reachable rename target', async () => {
+  // SUPERSEDED (owner change of mind, 2026-10-27): "I changed my mind about the
+  // pencil icon... let's please instead have a double-click or long-press enter
+  // edit mode." The pencil is gone, so the glyph-size claim this test used to
+  // make no longer has a subject. What replaces it is the contract that REPLACED
+  // the pencil's two jobs, both of which the button got for free and a gesture
+  // does not:
+  //
+  //   * discoverability -- the crumb must carry a title tooltip saying it can be
+  //     renamed, because nothing on screen advertises a gesture;
+  //   * keyboard reach -- the crumb must be a tab stop, or deleting the button
+  //     silently deletes keyboard access with it.
   let app = makeApp({ editingSessionNameID: '', navigationStack: [ { sessionID: 's1' } ] });
   let crumb = mount(buildTopbarCrumb(app, crumbFor()));
 
-  let pencil = crumb.querySelector('.kikx-icon-button');
-  assert.ok(pencil, 'the session crumb must render its rename pencil');
-  let glyph = pencil.querySelector('.kikx-icon');
-  assert.ok(glyph, 'the pencil artwork is an svg.kikx-icon, sized by the button font-size');
+  assert.equal(crumb.querySelector('.kikx-icon-button'), null,
+    'the rename pencil must not be rendered anywhere in the session crumb');
+  assert.equal(crumb.querySelector('svg'), null,
+    'and no rename glyph should remain as a non-button svg either');
 
-  // app.css sets `.kikx-icon-button { font-size: calc(22px * 1.25) }` = 27.5px, and
-  // `.kikx-icon { width: 1em }`, so the glyph rendered at 27.5px. The fix must be
-  // a scoped override that OUTRANKS the single-class rule, in a linked sheet.
-  let scoped = (await rulesMentioning('topbar-unified.css', '.kikx-breadcrumb'))
-    .filter((rule) => rule.selectors.some((selector) =>
-      selector.includes('.kikx-icon-button') && selector.includes('.kikx-breadcrumb')));
-  assert.ok(scoped.length > 0,
-    'topbar-unified.css must scope the pencil size to .kikx-breadcrumb .kikx-icon-button');
-
-  let sized = scoped.filter((rule) => /(^|[;\s])font-size\s*:/.test(rule.body));
-  assert.ok(sized.length > 0, 'that scoped rule must set font-size, which is what sizes the glyph');
-
-  for (let rule of sized) {
-    for (let selector of rule.selectors) {
-      if (!selector.includes('.kikx-icon-button'))
-        continue;
-      assert.ok(outranks(specificity(selector), specificity('.kikx-icon-button')),
-        `"${selector}" must outrank app.css's ".kikx-icon-button" (0,1,0) or the 27.5px size wins`);
-
-      let value = /(^|[;\s])font-size\s*:\s*([^;]+)/.exec(rule.body)[2].trim();
-      let pixels = /^(\d+(?:\.\d+)?)px$/.exec(value);
-      assert.ok(pixels, `expected an explicit px glyph size, got "${value}"`);
-      let size = Number(pixels[1]);
-      assert.ok(size >= 10 && size <= 18,
-        `the pencil glyph must be icon-sized (10-18px); "${value}" is still an illustration`);
-    }
-  }
+  let label = crumb.querySelector('.kikx-breadcrumb__crumb--active')
+    || crumb.querySelector('.kikx-breadcrumb__crumb')
+    || crumb;
+  assert.equal(label.getAttribute('tabindex'), '0',
+    'the crumb must be a tab stop so F2 can reach it');
+  assert.match(label.getAttribute('title') || '', /rename/i,
+    'the crumb must advertise that it can be renamed; a gesture is otherwise invisible');
 });
 
 test('the Cancel control computes visibility: visible at rest AND while hovered/focused', async () => {
@@ -324,31 +315,51 @@ test('the Cancel control computes visibility: visible at rest AND while hovered/
       `the Cancel control must be visible ${state.name}; "${winner.selector}" won with "${winner.value}"`);
   }
 
-  // CONTROL for the model itself. Re-run the identical evaluation against the
-  // sheet with the editor override deleted. If the model were not discriminating
-  // -- e.g. if it silently ignored specificity or matched everything -- the
-  // assertions above would pass against a sheet with no override at all, which
-  // is exactly the pre-fix state that shipped an invisible Cancel control.
+  // CONTROL for the model itself.
   //
-  // The stripped sheet must produce `hidden` at rest. This is what makes the
-  // three assertions above worth having.
-  let strippedSheet = sheet
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\.kikx-breadcrumb \.kikx-breadcrumb__editor \.kikx-icon-button[^{]*\{[^}]*\}/g, '');
-  assert.doesNotMatch(strippedSheet, /kikx-breadcrumb__editor \.kikx-icon-button/,
-    'the control must actually remove the override, or it controls nothing');
+  // The original control re-ran this evaluation against the sheet with the
+  // override deleted and expected `hidden` to win. That premise died with the
+  // pencil (owner change of mind, 2026-10-27): the
+  // `.kikx-breadcrumb .kikx-icon-button { visibility: hidden }` rule it relied on
+  // was removed along with the button, so with the override gone there is now NO
+  // visibility rule at all and the old control failed looking for one.
+  //
+  // So the control is synthesised instead, which is the stronger form anyway: it
+  // injects a hide rule of EXACTLY the shape that shipped the original bug and
+  // requires the model to report `hidden`. If the model could not see a losing
+  // rule it would keep returning `visible` and this fails. The assertions above
+  // therefore mean something.
+  let stripped = sheet.replace(/\/\*[\s\S]*?\*\//g, '');
 
-  let strippedWinner = winnerForIn(strippedSheet, null);
-  assert.ok(strippedWinner, 'the stripped sheet must still have a visibility rule to find');
-  assert.equal(strippedWinner.value, 'hidden',
-    'CONTROL: without the editor override the hide rule must win, or this model cannot detect the defect');
+  // CONTROL A -- a rule that TIES the override and lands after it must win on
+  // source order, which is precisely how the original invisible-Cancel bug
+  // happened (equal specificity, later rule, `hidden`).
+  //
+  // The injected selector is written as the SAME selector as the override rather
+  // than a hand-counted "equivalent" one. That is deliberate: my first two
+  // attempts at this control guessed at the arithmetic, got it wrong both times
+  // -- once asserting a (0,2,0) rule could beat the (0,3,0) override, once the
+  // reverse -- and each wrong guess surfaced as a failing control rather than as
+  // a false green. Copying the selector makes the tie a fact of the text instead
+  // of a claim about my counting.
+  let tyingHide = `${stripped}\n.kikx-breadcrumb .kikx-breadcrumb__editor .kikx-breadcrumb__editor-action { visibility: hidden; }\n`;
+  let defeated = winnerForIn(tyingHide, null);
+  assert.ok(defeated, 'CONTROL A: the model must find the injected hide rule');
+  assert.equal(defeated.value, 'hidden',
+    'CONTROL A: a hide rule that ties the override and comes later must win on source '
+    + 'order -- this is the exact shape of the original defect');
 
-  // Touch has no hover at all, so the sheet must show the editor actions
-  // unconditionally there. This is the block the model excludes above, asserted
-  // on its own terms so excluding it does not quietly become "untested".
-  assert.match(sheet.replace(/\/\*[\s\S]*?\*\//g, ''),
-    /@media \(hover: none\)[\s\S]*?kikx-icon-button[\s\S]*?visibility:\s*visible/,
-    'on a no-hover device the rename controls must be visible without a hover');
+  // CONTROL B -- the complementary claim, so neither control can pass by
+  // accident. The real override is (0,3,0); against a genuinely weaker (0,2,0)
+  // rule it must WIN. A model that returned whatever it found last, or that
+  // ignored specificity, cannot satisfy both this and CONTROL A.
+  let outranked = `${stripped}\n.kikx-breadcrumb .kikx-icon-button { visibility: hidden; }\n`;
+  let outrankedWinner = winnerForIn(outranked, null);
+  assert.ok(outrankedWinner, 'CONTROL B: the model must find that rule too');
+  assert.equal(outrankedWinner.value, 'visible',
+    'CONTROL B: the (0,3,0) editor override must beat a (0,2,0) hide rule wherever it '
+    + 'appears in the sheet, which is what makes the Cancel control visible at rest');
+
 });
 
 test('the rename field name constant is what the lookup and all builders share', async () => {
