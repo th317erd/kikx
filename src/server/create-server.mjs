@@ -61,6 +61,7 @@ import { repairQuestionIndex } from '../core/questions/question-index-repair.mjs
 import { registerQuestionScheduleRouting } from '../core/questions/question-schedule-plugin.mjs';
 import { CommandRegistry, registerInternalCommands } from '../core/commands/index.mjs';
 import { PluginRegistry } from '../core/plugins/index.mjs';
+import { getPluginRouter } from '../core/plugins/plugin-router.mjs';
 import { loadPlugins } from '../core/plugins/plugin-loader.mjs';
 import { mergePluginPaths } from '../core/plugins/plugin-paths.mjs';
 import { registerCoreClasses, resolveCoreClass } from '../core/plugins/core-classes.mjs';
@@ -152,8 +153,14 @@ export async function createServer(options = {}) {
     aeorWebComponents: aeorWebComponentsRoot,
   };
 
-  if (!context.has('pluginRegistry'))
-    context.set('pluginRegistry', new PluginRegistry());
+  if (!context.has('pluginRegistry')) {
+    let pluginRouter = getPluginRouter();
+    context.set('pluginRouter', pluginRouter);
+
+    let pluginRegistry = new PluginRegistry();
+    pluginRegistry.setPluginRouter(pluginRouter);
+    context.set('pluginRegistry', pluginRegistry);
+  }
 
   if (!context.has('memorySampler')) {
     context.set('memorySampler', createMemorySampler({

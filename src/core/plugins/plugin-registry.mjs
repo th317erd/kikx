@@ -42,6 +42,31 @@ export class PluginRegistry extends ClassRegistry {
     return this._pluginPaths.get(pluginID) || null;
   }
 
+  // Plugin HTTP routes. The prefix rule lives in PluginRouter so every caller gets it:
+  // a plugin may only register under "/plugin/<its own name>/".
+  registerRoute(method, path, handler, options = {}) {
+    let router = this.getPluginRouter();
+    let pluginName = options.pluginName || this._defaultPluginName || null;
+    if (!pluginName)
+      throw new TypeError('registerRoute requires a pluginName');
+
+    return router.register({ method, path, handler, pluginName });
+  }
+
+  listRoutes(pluginName = null) {
+    return this.getPluginRouter().list(pluginName);
+  }
+
+  setPluginRouter(router) {
+    this._pluginRouter = router;
+  }
+
+  getPluginRouter() {
+    if (!this._pluginRouter)
+      throw new Error('registerRoute called before the plugin router was attached');
+    return this._pluginRouter;
+  }
+
   registerTool(name, ToolClass) {
     if (!name || typeof name !== 'string')
       throw new TypeError('Tool name must be a non-empty string');
