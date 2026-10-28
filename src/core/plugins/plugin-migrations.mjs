@@ -140,15 +140,25 @@ export class PluginMigrations {
     }
 
     let connection = await this.getPool();
-    await connection.query(`
-      CREATE TABLE IF NOT EXISTS ${MIGRATIONS_TABLE} (
-        plugin_id   TEXT        NOT NULL,
-        version     INTEGER     NOT NULL,
-        name        TEXT        NOT NULL,
-        checksum    TEXT        NOT NULL,
-        applied_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-        PRIMARY KEY (plugin_id, version)
-      )`);
+
+    // The ledger table itself must be created under a lock. PostgreSQL's
+    // CREATE TABLE IF NOT EXISTS is not atomic across concurrent sessions: two processes
+    // starting together race on pg_type and one fails with a duplicate-key error. The
+    // per-plugin locks below come too late to protect this.
+    await connection.query('SELECT pg_advisory_lock(hashtext($1))', ['plugin_migrations:ledger']);
+    try {
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS ${MIGRATIONS_TABLE} (
+          plugin_id   TEXT        NOT NULL,
+          version     INTEGER     NOT NULL,
+          name        TEXT        NOT NULL,
+          checksum    TEXT        NOT NULL,
+          applied_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+          PRIMARY KEY (plugin_id, version)
+        )`);
+    } finally {
+      await connection.query('SELECT pg_advisory_unlock(hashtext($1))', ['plugin_migrations:ledger']);
+    }
 
     for (let pluginId of this.plugins.keys()) {
       // Serialise concurrent startups against the same database.
