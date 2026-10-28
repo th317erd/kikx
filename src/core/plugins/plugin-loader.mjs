@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 'use strict';
 
 import fs from 'node:fs/promises';
@@ -21,6 +22,16 @@ function withTimeout(promise, ms, message) {
       if (typeof timer.unref === 'function') timer.unref();
     }),
   ]).finally(() => { if (timer) clearTimeout(timer); });
+}
+
+
+// A stable, non-disclosing identifier for a plugin directory. Two installs with the
+// same directory name must not share a failure slot, and the absolute path must not be
+// served to unauthenticated callers.
+function pluginLocation(pluginPath) {
+  let name = String(pluginPath).split(/[/\\]/).filter(Boolean).pop() || 'unknown';
+  let hash = crypto.createHash('sha256').update(String(pluginPath)).digest('hex').slice(0, 8);
+  return `${name}#${hash}`;
 }
 
 export async function loadPlugins(options = {}) {
@@ -53,10 +64,10 @@ export async function loadPlugins(options = {}) {
         // A successful load clears any stale failure for this location, so a
         // fixed plugin stops being reported as broken.
         if (registry._pluginLoadErrors?.length) {
-          let loc = String(pluginPath).split(/[/\\]/).filter(Boolean).pop() || null;
+          let loc = pluginLocation(pluginPath);
           registry._pluginLoadErrors = registry._pluginLoadErrors.filter((e) => e.location !== loc);
         }
-        let record = { pluginPath, pluginName, modulePath, callbacks: [], teardown: null };
+        let record = { pluginPath, pluginName, modulePath, pluginLocation: pluginLocation(pluginPath), callbacks: [], teardown: null };
         let providerIDsBefore = agentProviderIDs(registry);
         let teardown = await withTimeout(
           Promise.resolve(pluginModule.setup(createPluginSetupContext({
@@ -118,7 +129,7 @@ export async function loadPlugins(options = {}) {
         // One entry per location, newest wins: a plugin that fails on every reload
         // must not grow this list without limit, and a stale failure for a location
         // that has since been fixed should not survive a later successful load.
-        let location = String(pluginPath).split(/[/\\]/).filter(Boolean).pop() || null;
+        let location = pluginLocation(pluginPath);
         registry._pluginLoadErrors = registry._pluginLoadErrors
           .filter((e) => e.location !== location)
           .concat([{
