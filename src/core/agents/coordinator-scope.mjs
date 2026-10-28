@@ -307,6 +307,7 @@ export function resolveCoordinatorChain(options = {}) {
   let getSession = toLookup(options.getSession);
   let walk = resolveAncestorChain(sessionID, getSession, options);
   let seen = new Set();
+  let includeRepeatedAgents = options.includeRepeatedAgents === true;
   let chain = [];
 
   for (let chainSessionID of walk.chain) {
@@ -316,7 +317,7 @@ export function resolveCoordinatorChain(options = {}) {
     if (!explicit || !participants.includes(explicit))
       continue;
 
-    if (seen.has(explicit))
+    if (!includeRepeatedAgents && seen.has(explicit))
       continue;
 
     seen.add(explicit);

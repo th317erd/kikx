@@ -48,11 +48,19 @@ export async function notifyCoordinatorOfEndTurn({
   let chain = resolveCoordinatorChain({
     sessionID,
     getSession: (id) => sessions.get(id) || runtime.getSession?.(id) || null,
+    includeRepeatedAgents: true,
   });
 
-  let target = chain.chain.find((entry) => normalizeID(entry.agentID) && entry.agentID !== agentID);
+  let candidates = chain.chain.filter((entry) => normalizeID(entry.agentID) && entry.agentID !== agentID);
+  let target = candidates[0];
   if (!target)
     return { posted: false, reason: 'no-parent-coordinator', coordinatorChain: chain.chain };
+
+  // A coordinator that also holds the same role in an ancestor session belongs
+  // to that ancestor, not to a child-scoped run. Without this, a child worker
+  // wakes the parent coordinator inside the child, and the parent session never
+  // gets the completion notice it is waiting for.
+  target = candidates.filter((entry) => entry.agentID === target.agentID).at(-1) || target;
 
   let text = buildEndTurnNotice({ agentID, sessionID, summary: message });
   let result = await postMessage({

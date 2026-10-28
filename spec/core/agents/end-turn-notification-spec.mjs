@@ -150,6 +150,43 @@ test('a coordinator already present in the child session is notified there', asy
   assert.equal(result.coordinatorSessionID, 'child');
 });
 
+test('a coordinator that also coordinates the parent is notified in the parent session', async () => {
+  let sessions = [
+    session({
+      id: 'child',
+      parentSessionID: 'parent',
+      participantAgentIDs: [ 'child-bot', 'same-bot' ],
+      coordinatorAgentID: 'same-bot',
+    }),
+    session({
+      id: 'parent',
+      participantAgentIDs: [ 'same-bot' ],
+      coordinatorAgentID: 'same-bot',
+    }),
+  ];
+  let posts = [];
+  let result = await notifyCoordinatorOfEndTurn({
+    context: {
+      agent: { id: 'child-bot' },
+      session: sessions[0],
+      services: { frameRuntime: runtimeFor(sessions) },
+    },
+    summary: 'Child work complete.',
+    postMessage: async (input) => {
+      posts.push(input);
+      return { frame: { id: 'parent-notice' } };
+    },
+  });
+
+  assert.equal(result.posted, true);
+  assert.equal(result.coordinatorAgentID, 'same-bot');
+  assert.equal(result.coordinatorSessionID, 'parent');
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].sessionID, 'parent');
+  assert.equal(posts[0].targetAgentID, 'same-bot');
+  assert.equal(posts[0].sourceSessionID, 'child');
+});
+
 test('the highest coordinator does not message itself', async () => {
   let sessions = [
     session({
