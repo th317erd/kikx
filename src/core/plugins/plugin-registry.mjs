@@ -49,6 +49,21 @@ export class PluginRegistry extends ClassRegistry {
     return this._pluginMigrations.register(pluginId, options);
   }
 
+  // A plugin gets a scoped handle, never a pool. Created lazily from the shared pool so
+  // a plugin that never touches the database costs nothing.
+  setPluginDatabaseFactory(factory) {
+    this._pluginDatabaseFactory = factory;
+  }
+
+  getPluginDatabase(pluginId) {
+    if (!this._pluginDatabaseFactory)
+      throw new Error('db() called before the plugin database factory was attached');
+    if (!this._pluginDatabases) this._pluginDatabases = new Map();
+    if (!this._pluginDatabases.has(pluginId))
+      this._pluginDatabases.set(pluginId, this._pluginDatabaseFactory(pluginId));
+    return this._pluginDatabases.get(pluginId);
+  }
+
   setPluginEventBus(bus) {
     this._pluginEventBus = bus;
   }

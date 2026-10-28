@@ -62,6 +62,7 @@ import { registerQuestionScheduleRouting } from '../core/questions/question-sche
 import { CommandRegistry, registerInternalCommands } from '../core/commands/index.mjs';
 import { PluginRegistry } from '../core/plugins/index.mjs';
 import { getPluginRouter } from '../core/plugins/plugin-router.mjs';
+import { PluginDatabase } from '../core/plugins/plugin-database.mjs';
 import { PluginEventBus } from '../core/plugins/plugin-events.mjs';
 import { getPluginMigrations } from '../core/plugins/plugin-migrations.mjs';
 import { loadPlugins } from '../core/plugins/plugin-loader.mjs';
@@ -172,6 +173,9 @@ export async function createServer(options = {}) {
     pluginRegistry.setPluginRouter(pluginRouter);
     pluginRegistry.setPluginMigrations(pluginMigrations);
     pluginRegistry.setPluginEventBus(pluginEventBus);
+    // Same connection as migrations, but every statement is filtered by PluginDatabase.
+    pluginRegistry.setPluginDatabaseFactory((pluginId) =>
+      new PluginDatabase({ pluginId, pool: { query: (...a) => pluginMigrations.pool.query(...a) } }));
     context.set('pluginMigrations', pluginMigrations);
     context.set('pluginRegistry', pluginRegistry);
   }
