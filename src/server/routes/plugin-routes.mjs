@@ -14,6 +14,30 @@ export async function handlePluginRoutes({ request, response, url, context }) {
   if (!router || typeof router.match !== 'function')
     return false;
 
+  // Plugin inventory. Read-only, and deliberately not under /plugin/ so it cannot
+  // collide with a plugin mount.
+  if (url.pathname === '/api/v1/plugins' && request.method === 'GET') {
+    let registry = context.has?.('pluginRegistry') ? context.require('pluginRegistry') : null;
+    let map = registry?._pluginRegistrations;
+    let records = map instanceof Map ? [...map.values()] : [];
+    let bus = context.has?.('pluginEventBus') ? context.require('pluginEventBus') : null;
+    let routerForList = context.has?.('pluginRouter') ? context.require('pluginRouter') : null;
+
+    response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    response.end(JSON.stringify({
+      data: {
+        plugins: records.map((r) => ({
+          name: r.pluginName,
+          path: r.pluginPath,
+          module: r.modulePath,
+          mounted: routerForList?.listMounts?.().some((m) => m.pluginId === r.pluginName) || false,
+          subscriptions: bus?.list?.().find((s) => s.pluginId === r.pluginName) || null,
+        })),
+      },
+    }));
+    return true;
+  }
+
   let match = router.match(url.pathname);
   if (!match)
     return false;
