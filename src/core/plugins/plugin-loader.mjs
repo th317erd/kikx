@@ -34,6 +34,31 @@ function pluginLocation(pluginPath) {
   return `${name}#${hash}`;
 }
 
+
+// Optional kikx-plugin.json beside index.mjs. Declares what the plugin is, so an
+// inventory can describe it without loading the module, and so a future install step
+// has something to validate against.
+async function readPluginManifest(pluginPath) {
+  let candidates = ['kikx-plugin.json', 'package.json'];
+  for (let name of candidates) {
+    let full = path.join(pluginPath, name);
+    try {
+      let raw = await fs.readFile(full, 'utf8');
+      let parsed = JSON.parse(raw);
+      return {
+        file: name,
+        name: parsed.name || null,
+        version: parsed.version || null,
+        description: parsed.description || null,
+        kikxVersion: parsed.kikxVersion || null,
+      };
+    } catch (_error) {
+      continue;   // absent or unparseable: try the next candidate
+    }
+  }
+  return null;
+}
+
 export async function loadPlugins(options = {}) {
   let {
     pluginPaths = '',
@@ -68,6 +93,7 @@ export async function loadPlugins(options = {}) {
           registry._pluginLoadErrors = registry._pluginLoadErrors.filter((e) => e.location !== loc);
         }
         let record = { pluginPath, pluginName, modulePath, pluginLocation: pluginLocation(pluginPath), callbacks: [], teardown: null };
+        record.manifest = await readPluginManifest(pluginPath);
         let providerIDsBefore = agentProviderIDs(registry);
         let teardown = await withTimeout(
           Promise.resolve(pluginModule.setup(createPluginSetupContext({

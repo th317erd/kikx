@@ -33,6 +33,7 @@ export async function handlePluginRoutes({ request, response, url, context }) {
           location: r.pluginLocation || null,
           mounted: routerForList?.listMounts?.().some((m) => m.pluginId === r.pluginName) || false,
           subscriptions: bus?.list?.().find((s) => s.pluginId === r.pluginName) || null,
+          manifest: r.manifest || null,
         })),
         failures: registry?._pluginLoadErrors || [],
       },
