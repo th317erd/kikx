@@ -169,12 +169,15 @@ test('no newly added kikx-* class is left without a CSS rule', async () => {
   );
 });
 
-test('the Inbox/Activities question styling survives in a loaded stylesheet', async () => {
+test('the Inbox question styling survives in a loaded stylesheet', async () => {
   let css = await readLinkedClientCss(await readFile(INDEX_HTML, 'utf8'));
 
   for (let required of [
-    '.kikx-activities__card',
-    '.kikx-activities__stat-label',
+    // Was '.kikx-activities__card' / '.kikx-activities__stat-label'. Those classes are
+    // gone with the view (owner request, 2026-10-28); the status-bar counts took their
+    // place in the same stylesheet, so those are what must now be present.
+    '.kikx-statusbar__stat',
+    '.kikx-statusbar__stat-label',
     '.kikx-inbox__card',
     '.kikx-question-frame__answer',
     '.kikx-question-card',

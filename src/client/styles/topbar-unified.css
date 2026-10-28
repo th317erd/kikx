@@ -248,7 +248,7 @@
  * should go up into the 'Session View' items." So there are two clusters, and
  * BOTH carry the base class `kikx-session-objects`:
  *
- *   --view    Agents, Teams. Rendered beside Inbox and Activities, above the
+ *   --view    Agents, Teams. Rendered beside the Inbox, above the
  *             tree, because they are views into the tree rather than identity.
  *   --footer  the account chip, Account, Sign out. Pinned to the foot.
  *
@@ -270,7 +270,7 @@
   flex-wrap: nowrap;
 }
 
-/* Owner item 1 (2026-10-27): "grouped WITH" Inbox and Activities.
+/* Owner item 1 (2026-10-27): "grouped WITH" the Inbox.
  *
  * This cluster used to open with a `border-top` divider and its own margin, which
  * drew a visual boundary right between Activities and Agents -- the opposite of

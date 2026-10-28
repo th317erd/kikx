@@ -1,6 +1,7 @@
 'use strict';
 
-// Header chrome for the stack views (Inbox, Activities).
+// Header chrome for the stack views (currently the Inbox only; Activities was removed
+// at the owner's request, 2026-10-28).
 //
 // Why this module exists: a view entry replaces the work area
 // (`kikx-shell-builders.mjs:236-238` renders `buildInboxView`/

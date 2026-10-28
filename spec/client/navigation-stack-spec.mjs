@@ -120,14 +120,27 @@ test('stack URL round-trips', () => {
   assert.deepEqual(stackFromSearchParams(search).stack, stack);
 });
 
-// --- Non-session view entries (plan §6 inbox, §6.4 activities) ---------------
+// --- Non-session view entries (plan §6 inbox) -------------------------------
 // `navigation-stack-spec.mjs` predates the view entries, so the stack's view
-// behaviour was never covered. These tests pin the contract that made the
-// Activities view possible without disturbing the Inbox.
+// behaviour was never covered. These tests pin that contract.
+//
+// The Activities view was removed at the owner's request (2026-10-28) and its name
+// dropped from VIEW_NAMES; the Inbox is now the only member. The *mechanism* is still
+// general, so it is still tested — just through Inbox, and with 'activities' asserted
+// as a rejected name so its removal cannot silently regress into acceptance.
 
 test('VIEW_NAMES lists every addressable non-session view', async () => {
   const { VIEW_NAMES } = await import('../../src/client/state/navigation-stack.mjs');
-  assert.deepEqual(VIEW_NAMES, [ 'inbox', 'activities' ]);
+  assert.deepEqual(VIEW_NAMES, [ 'inbox' ]);
+});
+
+test('a removed view name is refused, not accepted as a dangling entry', async () => {
+  const { createNavigationStack, pushView } =
+    await import('../../src/client/state/navigation-stack.mjs');
+
+  // Keeping 'activities' in VIEW_NAMES would let pushView build an entry that no
+  // builder can render — a blank work area. Rejection is the correct behaviour.
+  assert.throws(() => pushView(createNavigationStack(), 'activities'), /unknown view/);
 });
 
 test('pushView is idempotent for the same view and refuses unknown names', async () => {
@@ -145,11 +158,11 @@ test('pushView is idempotent for the same view and refuses unknown names', async
   assert.throws(() => pushView(root, 'nonsense'), TypeError);
 });
 
-test('switching views replaces the view entry instead of burying the session', async () => {
+test('pushing a view over a session keeps the session underneath so Back reaches it', async () => {
   const {
     createNavigationStack,
     pushInbox,
-    pushActivities,
+    pushView,
     pushThread,
     currentViewName,
     stackDepth,
@@ -158,42 +171,42 @@ test('switching views replaces the view entry instead of burying the session', a
   let stack = pushThread(createNavigationStack(), 'session-1');
   let inbox = pushInbox(stack);
   assert.equal(currentViewName(inbox), 'inbox');
-  let depthWithInbox = stackDepth(inbox);
-
-  // Inbox -> Activities must swap the top entry, not add a second one: otherwise
-  // Back from Activities lands on Inbox rather than the session underneath.
-  let activities = pushActivities(inbox);
-  assert.equal(currentViewName(activities), 'activities');
-  assert.equal(stackDepth(activities), depthWithInbox, 'no extra stack entry');
+  assert.equal(stackDepth(inbox), stackDepth(stack) + 1, 'the view adds one entry');
 
   // The session entry survives underneath, so Back still reaches it.
-  assert.equal(activities.at(-2).sessionID, 'session-1');
+  assert.equal(inbox.at(-2).sessionID, 'session-1');
+
+  // Re-pushing the same view is idempotent: no second copy, so Back never appears
+  // to do nothing. Compared structurally — `pushView` returns a fresh array, so `===`
+  // would fail even when the stack is unchanged.
+  assert.deepEqual(pushView(inbox, 'inbox'), inbox);
 });
 
 test('a view entry reports no session for the grid and the deep link', async () => {
   const {
     createNavigationStack,
-    pushActivities,
+    pushInbox,
     gridParentSessionID,
     stackToURL,
   } = await import('../../src/client/state/navigation-stack.mjs');
 
-  let stack = pushActivities(createNavigationStack());
+  let stack = pushInbox(createNavigationStack());
   assert.equal(gridParentSessionID(stack), null, 'a view has no parent session');
 
   // The view is encoded by name, never as a `session=` param.
   let url = stackToURL(stack, { pathname: '/' });
-  assert.match(url, /view=activities/);
+  assert.match(url, /view=inbox/);
   assert.doesNotMatch(url, /session=/);
 });
 
 test('stackFromSearchParams restores the activities view', async () => {
   const { stackFromSearchParams } = await import('../../src/client/state/navigation-stack.mjs');
 
+  // 'activities' is no longer addressable: an old bookmark carrying it parses to the
+  // plain stack (no view), which is what "degrade to a normal window" means here.
   let parsed = stackFromSearchParams('?view=activities');
-  assert.equal(parsed.view, 'activities');
-  assert.equal(parsed.stack.at(-1).view, 'activities');
-  // `viewInbox` stays meaningful for existing §6.6 callers.
+  assert.equal(parsed.view, null);
+  assert.equal(parsed.stack.at(-1).view, undefined);
   assert.equal(parsed.viewInbox, false);
 
   let inbox = stackFromSearchParams('?view=inbox');
@@ -215,8 +228,16 @@ test('an unknown view param falls back to the session stack, not a broken entry'
 test('normalizeNavigationStack preserves a known view and drops an unknown one', async () => {
   const { normalizeNavigationStack } = await import('../../src/client/state/navigation-stack.mjs');
 
-  let kept = normalizeNavigationStack([ { view: 'activities' } ]);
-  assert.equal(kept.at(-1).view, 'activities');
+  // A lone view entry normalizes into the root entry itself: the root has no session
+  // and the view rides on it, so `at(-1)` is that one entry.
+  let kept = normalizeNavigationStack([ { view: 'inbox' } ]);
+  assert.equal(kept.length, 1);
+  assert.equal(kept[0].view, 'inbox');
+
+  // A removed view name is dropped by normalization too, so a stack persisted while
+  // Activities existed cannot resurrect the entry.
+  let removed = normalizeNavigationStack([ { sessionID: null }, { view: 'activities' } ]);
+  assert.equal(removed.at(-1).view, undefined, 'a removed view name is dropped');
 
   let dropped = normalizeNavigationStack([ { sessionID: null }, { view: 'bogus' } ]);
   assert.equal(dropped.at(-1).view, undefined);

@@ -1,7 +1,14 @@
 'use strict';
 
 // Every non-session surface the stack can address. Order is the URL/UI order.
-export const VIEW_NAMES = [ 'inbox', 'activities' ];
+//
+// 'activities' was REMOVED at the owner's request (2026-10-28): the view, its sidebar
+// entry and its counts are gone, and the counts now live in the status bar
+// (`statusbar-stats.mjs`). Keeping the name here is not a compatibility measure -- it
+// would let `pushView` accept a view no builder can render, which is a blank work
+// area. A legacy `?view=activities` therefore fails this membership test at the parse
+// site (`:204` below) and degrades to a normal window.
+export const VIEW_NAMES = [ 'inbox' ];
 
 // A navigation stack of "windows" over a single work area. Each entry is either
 // the root (top-level projects) or an entered session. A session entry always
@@ -11,10 +18,12 @@ export const VIEW_NAMES = [ 'inbox', 'activities' ];
 // Root:  { sessionID: null, collapsed: true }
 //
 // `view` marks a non-session surface pushed on top of the stack. The pinned
-// Inbox ('inbox', plan §6) and the Activities rollup ('activities', §6.4) are
-// both places you enter from the sidebar and leave with Back, so they have to be
-// stack entries rather than app-global state — otherwise Back would skip over
-// them and deep links could not address them.
+// Inbox ('inbox', plan §6) is a place you enter from the sidebar and leave with
+// Back, so it has to be a stack entry rather than app-global state — otherwise
+// Back would skip over it and deep links could not address it. The mechanism is
+// kept general (VIEW_NAMES is a list) even though the Inbox is now its only
+// member, because the alternative is a boolean that has to be generalised again
+// the next time a surface is added.
 
 export function createNavigationStack() {
   return [ { sessionID: null, collapsed: true } ];
@@ -107,7 +116,7 @@ export function pushView(stack, view) {
   let base = normalizeNavigationStack(stack);
   // Idempotent: entering the same view twice must not stack two copies (Back
   // would then appear broken). Entering a *different* view replaces the current
-  // one, so Inbox <-> Activities never buries the session underneath.
+  // one, so switching between views never buries the session underneath.
   if (isViewOpen(base, view))
     return base;
 
@@ -125,14 +134,6 @@ export function isInboxView(stack) {
 
 export function pushInbox(stack) {
   return pushView(stack, 'inbox');
-}
-
-export function isActivitiesView(stack) {
-  return isViewOpen(stack, 'activities');
-}
-
-export function pushActivities(stack) {
-  return pushView(stack, 'activities');
 }
 
 // The parent session ID for the current level's grid, i.e. the session whose
