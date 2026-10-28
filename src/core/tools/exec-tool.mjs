@@ -27,9 +27,9 @@ export class ExecTool extends PluginInterface {
         description: 'Optional text to write to stdin before closing it.',
       },
       timeoutMs: {
-        type: 'integer',
-        minimum: 1,
-        description: 'Optional timeout in milliseconds for the async process. By default async exec has no timeout.',
+        type: [ 'integer', 'string' ],
+        minimum: 0,
+        description: 'Optional timeout in milliseconds for the async process. Defaults to 900000 (15 minutes). Pass 0 or "Infinity" for no timeout at all; any positive millisecond value is accepted.',
       },
       env: {
         type: 'object',
@@ -45,6 +45,7 @@ export class ExecTool extends PluginInterface {
   static help = [
     'Use exec to run local commands through the Kikx server process login shell.',
     'Exec is always async: Kikx starts a managed process, waits briefly for very short commands, and either returns the completed output immediately or returns an async process ID.',
+    'Every shell command has a timeout. It defaults to 15 minutes (900000 ms); pass timeoutMs to change it to any value, or 0 / "Infinity" to give the process no deadline at all. A long server or prototype that must outlive the default should be started with an explicit timeout.',
     'For servers and other long-running work, prefer running the foreground command directly, then use exec-read or exec-status to inspect it while it remains managed.',
     'Exec automatically uses your session-specific shell cwd when one is set with cwd-set. Omit cwd for normal work; pass cwd only for a one-off override.',
     'If a command truly needs shell detaching such as trailing &, nohup, disown, or setsid, Kikx will complete the shell wrapper when it exits; detached child processes may no longer be manageable with exec-status or exec-kill.',

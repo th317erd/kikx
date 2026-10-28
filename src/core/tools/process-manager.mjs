@@ -105,9 +105,12 @@ export class ProcessManager {
     if (frameRuntime?.isAgentSuspended?.(sessionID, agentID))
       throw new Error('This session is suspended by the user; commands cannot start until it is resumed.');
 
+    // The executor owns the timeout policy: 15 minutes by default, and any value
+    // the agent asks for -- including no deadline at all. Do not pass
+    // `defaultTimeoutMs` here; passing null was what made every async exec
+    // unbounded regardless of the executor's own default.
     let handle = this.commandExecutor.startProcess(executionParams, {
       allowNoTimeout: true,
-      defaultTimeoutMs: null,
     });
     let stdoutPath = path.join(processDir, 'stdout.txt');
     let stderrPath = path.join(processDir, 'stderr.txt');
