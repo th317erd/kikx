@@ -1,5 +1,6 @@
 'use strict';
 
+import { isThreadVisibleFrame } from '../../shared/coordination-visibility.mjs';
 import {
   DEFAULT_MAX_PREVIEW_SESSIONS,
   DEFAULT_PREVIEW_COUNT,
@@ -157,8 +158,11 @@ export function isPendingScheduledFrame(frame) {
 }
 
 export function isPreviewVisibleFrame(frame) {
+  // Visibility is decided by the shared predicate rather than by `hidden`
+  // alone: a coordination wake stays `hidden: true` for compaction and recovery
+  // but must still reach the browser so the owner can see who woke which bot.
   return Boolean(frame?.id)
-    && frame.hidden !== true
+    && isThreadVisibleFrame(frame)
     && frame.deleted !== true
     && frame.phantom !== true
     && frame.type !== 'MessageDone';

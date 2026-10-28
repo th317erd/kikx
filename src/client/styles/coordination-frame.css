@@ -1,0 +1,143 @@
+/* The system-handoff card for a coordination wake.
+ *
+ * Deliberately NOT in app.css (a standing offender at ~4k lines): this is a
+ * self-contained component sheet, registered by one <link> in
+ * src/client/index.html, exactly as topbar-unified.css is.
+ *
+ * Three visual registers must stay distinguishable at a glance:
+ *   owner chat   - right-aligned bubble, accent fill   (kikx-user-message)
+ *   agent output - plain prose, no chrome              (kikx-frame markdown)
+ *   system waking a bot - this file: full width, dashed edge, muted, monospace
+ *                         eyebrow. It reads as a system event, not a speaker.
+ */
+
+.kikx-coordination {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px dashed var(--kikx-border, rgb(255 255 255 / 0.22));
+  border-radius: 8px;
+  background: var(--kikx-surface-muted, rgb(255 255 255 / 0.035));
+  /* A left rule is the fastest "this is not a chat message" cue, and it does
+     not fight the dashed border for attention. */
+  border-left: 3px solid var(--kikx-coordination-accent, rgb(150 160 190 / 0.85));
+  color: var(--kikx-text-muted, rgb(226 232 240 / 0.86));
+}
+
+.kikx-coordination__header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.kikx-coordination__eyebrow {
+  font-family: var(--kikx-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--kikx-coordination-accent, rgb(150 160 190 / 0.85));
+}
+
+.kikx-coordination__headline {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--kikx-text, inherit);
+  /* Long agent names must not force the thread wider. */
+  overflow-wrap: anywhere;
+}
+
+.kikx-coordination__meta {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--kikx-text-muted, rgb(226 232 240 / 0.62));
+  overflow-wrap: anywhere;
+}
+
+.kikx-coordination__meta[hidden] {
+  display: none;
+}
+
+/* The instruction is collapsed by default so a long brief adds ONE line to the
+ * thread, not twenty. Opening is the reader's choice, per wake. */
+.kikx-coordination__details {
+  min-width: 0;
+}
+
+.kikx-coordination__details[hidden] {
+  display: none;
+}
+
+.kikx-coordination__summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--kikx-text-muted, rgb(226 232 240 / 0.7));
+  user-select: none;
+}
+
+.kikx-coordination__summary:hover {
+  color: var(--kikx-text, inherit);
+}
+
+.kikx-coordination__instruction {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--kikx-surface-sunken, rgb(0 0 0 / 0.22));
+  font-size: 12px;
+  line-height: 1.5;
+  /* Preserve the instruction's own paragraphing without trusting it as markup:
+     the component sets this as text, and these rules keep that text readable. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+/* The frame wrapper as well as the card.
+ *
+ * A wake is persisted as a UserMessage, so the item carries
+ * `kikx-frame--UserMessage`, and app.css:678 right-aligns that frame for owner
+ * chat. A system handoff is not a message from a person: it must span the
+ * thread like agent output does, or it reads as something the owner said.
+ * Selectors here carry both classes so they outrank the single-class rule in
+ * app.css regardless of load order. */
+.kikx-frame--UserMessage.kikx-frame--coordination {
+  /* `width: fit-content` + `max-width: min(78%, 960px)` on `.kikx-frame`
+     (app.css:875) is right for a chat bubble and wrong for a system banner: it
+     shrink-wraps the card to a narrow column. Stretch it to the thread.
+     Two classes outrank the single-class rule regardless of load order. */
+  width: 100%;
+  max-width: none;
+  justify-self: stretch;
+  margin: 0;
+  /* The card draws its own dashed frame; a nested solid border plus padding
+     would read as a box inside a box. */
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.kikx-frame--UserMessage.kikx-frame--coordination > .kikx-frame__content,
+.kikx-frame__content--coordination {
+  min-width: 0;
+  width: 100%;
+}
+
+/* The custom element itself.
+ *
+ * This is the rule that decides the card's footprint, and it is easy to omit:
+ * an undefined-layout custom element defaults to `display: inline`, so it
+ * shrink-wraps to its text and the card ends up a narrow column hugging one
+ * edge of the thread instead of a full-width system banner. Verified in a real
+ * browser: without this the card measured 278px wide inside an 880px thread. */
+kikx-coordination-frame {
+  display: block;
+  min-width: 0;
+  width: 100%;
+}
