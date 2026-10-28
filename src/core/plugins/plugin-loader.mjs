@@ -46,6 +46,10 @@ async function readPluginManifest(pluginPath) {
       let raw = await fs.readFile(full, 'utf8');
       let parsed = JSON.parse(raw);
       return {
+        // A plugin that ships its own kikx-plugin.json has declared itself. One that
+        // only has package.json happens to be a Node package - not the same thing, and
+        // an inventory should not present them identically.
+        source: name === 'kikx-plugin.json' ? 'declared' : 'fallback',
         file: name,
         name: parsed.name || null,
         version: parsed.version || null,
