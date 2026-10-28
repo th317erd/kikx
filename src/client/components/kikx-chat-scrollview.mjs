@@ -27,6 +27,7 @@ export function createKikxPageContext(app, sessionID) {
     pageSize: PAGE_SIZE,
     loadPage: (pageIndex, pageSize) => app._loadFramePage(sessionID, pageIndex, pageSize),
     getFilters: () => app?._state?.frameFilters || null,
+    getQuery: () => app?._state?.sessionSearch || '',
     getTotalRawFrames: () => Number(getSessionPaging(app?._state, sessionID).total) || total,
   };
 }
@@ -87,6 +88,7 @@ export class KikxChatScrollView {
       totalRawFrames: this.pageContext.totalRawFrames,
       loadPage: this.pageContext.loadPage,
       getFilters: this.pageContext.getFilters,
+      getQuery: this.pageContext.getQuery,
     });
     this.pageSource.renderItem = (item) => this.createFrameItem(item.frame);
     this.source = this.pageSource;
@@ -221,7 +223,8 @@ export class KikxChatScrollView {
     // The state window is only the newest live tail; older server pages live in
     // the scrollview source. A trim or a new tail frame must not reset that
     // source. Only a different first frame means a different session/filter.
-    let structural = next.length > 0 && previous.length > 0 && next[0]?.id !== previous[0]?.id;
+    let structural = (next.length > 0 && previous.length > 0 && next[0]?.id !== previous[0]?.id)
+      || (options.force === true && next.length !== previous.length);
     this.frames = next;
     if (structural) {
       this._mountPagedSource();

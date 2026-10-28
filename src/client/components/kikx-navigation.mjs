@@ -374,6 +374,11 @@ export function setFrameFilters(app, filters) {
 
   app._frameLoadSignature = signature;
   app._state.frameFilters = next;
+  // Apply the new selection to the mounted page source immediately. The
+  // server window scan can take seconds on a large session; leaving the old
+  // unfiltered page on screen until it returns is what made a filter click look
+  // like a no-op. The server result replaces this provisional page view.
+  app._syncFrameThread?.(app._state.selectedSessionID, { force: true });
 
   // The Deleted row also governs the session grid's soft-deleted bucket. These
   // two used to be separate controls (a frame filter here, an eye in the search

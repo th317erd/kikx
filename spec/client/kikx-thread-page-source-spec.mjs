@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { KikxThreadPageSource } from '../../src/client/components/kikx-thread-page-source.mjs';
+import { defaultFrameWindowFilters, FRAME_FILTER_CATEGORY_KEYS } from '../../src/shared/frame-window-filters.mjs';
 
 function rawPage(index, frames) {
   return {
@@ -95,4 +96,35 @@ test('page height estimates learn from measured pages', () => {
   source.measured(0, 900);
   assert.equal(source.estimatePageHeight(1), 900);
   assert.notEqual(source.estimatePageHeight(1), before);
+});
+
+
+test('the page source applies the active category filters to projected heads', async () => {
+  let pages = {
+    0: rawPage(0, [
+      { id: 'user_1', type: 'UserMessage', order: 1, authorType: 'user', content: { text: 'hello' } },
+      {
+        id: 'create_2',
+        type: 'SessionCreateToolFrame',
+        order: 2,
+        authorType: 'agent',
+        content: { toolName: 'session-create', phase: 'result', references: [ { type: 'session', id: 'child_1' } ] },
+      },
+    ]),
+  };
+  let source = new KikxThreadPageSource({
+    pageSize: 120,
+    totalRawFrames: 2,
+    loadPage: async (index) => pages[index],
+    getFilters: () => {
+      let filters = defaultFrameWindowFilters();
+      for (let key of FRAME_FILTER_CATEGORY_KEYS)
+        filters[key] = key === 'session';
+      return filters;
+    },
+    getQuery: () => '',
+  });
+
+  let result = await source.loadPage({ pageIndex: 0 });
+  assert.deepEqual(result.items.map((item) => item.frame.id), [ 'create_2' ]);
 });

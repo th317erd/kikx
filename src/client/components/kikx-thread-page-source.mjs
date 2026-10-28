@@ -11,6 +11,7 @@
 // exactly one chunk and prevents duplicate heads at the seam.
 
 import { projectFrameMessages } from '../../shared/frame-manager/frame-manager.mjs';
+import { frameMatchesWindowFilters } from '../../shared/frame-window-filters.mjs';
 import { threadRenderFrames } from '../state/thinking-state.mjs';
 
 const DEFAULT_PAGE_HEIGHT = 3500;
@@ -24,13 +25,14 @@ function frameOrder(frame) {
 }
 
 export class KikxThreadPageSource {
-  constructor({ pageSize, totalRawFrames, loadPage, getFilters }) {
+  constructor({ pageSize, totalRawFrames, loadPage, getFilters, getQuery }) {
     this.pageSize = Math.max(1, Number(pageSize) || 120);
     this.totalRawFrames = Math.max(0, Number(totalRawFrames) || 0);
     this.totalItems = this.totalRawFrames;
     this.totalPages = Math.max(0, Math.ceil(this.totalRawFrames / this.pageSize));
     this.loadRawPage = loadPage;
     this.getFilters = getFilters;
+    this.getQuery = getQuery;
     this.rawPages = new Map();
     this.pageHeights = new Map();
     this.averagePageHeight = DEFAULT_PAGE_HEIGHT;
@@ -104,7 +106,11 @@ export class KikxThreadPageSource {
         return order < nextStart;
       return end == null || order <= end;
     });
-    heads = threadRenderFrames(heads, this.getFilters?.() || null)
+    let filters = this.getFilters?.() || null;
+    let query = this.getQuery?.() || '';
+    if (filters)
+      heads = heads.filter((frame) => frameMatchesWindowFilters(frame, filters, query));
+    heads = threadRenderFrames(heads)
       .filter((frame) => frame.deleted !== true);
     let items = heads.map((frame, offset) => ({
       key: frame.id,

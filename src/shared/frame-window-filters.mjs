@@ -582,6 +582,10 @@ export function frameFilterCounts(frames = []) {
 export function countFilterMatches(paths = []) {
   let counts = emptyFilterCounts();
   counts.deleted = null;
+  // The reference half of Child Sessions lives in frame bodies. A path scan can
+  // count only the type-derived Session/SessionSpawn frames, so reporting 0
+  // would be a confident lie (the live session had references but no such type).
+  counts.session = null;
 
   for (let path of Array.isArray(paths) ? paths : []) {
     let type = frameTypeFromPath(path);
