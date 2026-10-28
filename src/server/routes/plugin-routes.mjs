@@ -36,6 +36,7 @@ export async function handlePluginRoutes({ request, response, url, context }) {
           mounted: routerForList?.listMounts?.().some((m) => m.pluginId === r.pluginName) || false,
           subscriptions: bus?.list?.().find((s) => s.pluginId === r.pluginName) || null,
         })),
+        failures: registry?._pluginLoadErrors || [],
       },
     }));
     return true;

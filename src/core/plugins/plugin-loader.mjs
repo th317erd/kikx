@@ -105,6 +105,14 @@ export async function loadPlugins(options = {}) {
         loaded.push({ path: pluginPath, modulePath, pluginName });
       } catch (error) {
         logger.warn?.(`Failed to load plugin at ${pluginPath}: ${error.message}`);
+        // Keep the failure so the inventory can report it. Omission would make
+        // "not installed" and "installed and broken" look identical.
+        if (!registry._pluginLoadErrors) registry._pluginLoadErrors = [];
+        registry._pluginLoadErrors.push({
+          location: String(pluginPath).split(/[/\\]/).filter(Boolean).pop() || null,
+          message: String(error?.message || error),
+          at: new Date().toISOString(),
+        });
       }
     }
   }
