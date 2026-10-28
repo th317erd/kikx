@@ -158,7 +158,10 @@ export async function createServer(options = {}) {
     let pluginRouter = getPluginRouter();
     context.set('pluginRouter', pluginRouter);
 
-    let pluginMigrations = getPluginMigrations(options.pluginMigrations);
+    let pluginMigrations = getPluginMigrations({
+      ...options.pluginMigrations,
+      url: options.pluginMigrations?.url || options.databaseURL || databaseURL || null,
+    });
     let pluginRegistry = new PluginRegistry();
     pluginRegistry.setPluginRouter(pluginRouter);
     pluginRegistry.setPluginMigrations(pluginMigrations);

@@ -45,12 +45,15 @@ export class PluginMigrations {
     this.plugins = new Map();
     this.logger = options.logger || console;
     this.pool = null;
-    this.url = options.url || process.env.MIRI_KIKX_MIGRATION_URL
-      || 'postgres://miri-kikx-dev:mirikikxdevlocal@127.0.0.1:5434/miri-kikx-dev';
+    // The URL is supplied by the caller. Reading process.env here would bypass the
+    // config module, which the architecture spec forbids outside src/core/config.
+    this.url = options.url || null;  // required; supplied by the caller
   }
 
   async getPool() {
     if (this.pool) return this.pool;
+    if (!this.url)
+      throw new Error('plugin migrations require a database url; pass { url } to getPluginMigrations');
     let { Pool } = await import('pg');
     this.pool = new Pool({ connectionString: this.url });
     return this.pool;
