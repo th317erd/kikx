@@ -115,7 +115,9 @@ export class PluginInterface {
 
 function timeout(ms, message) {
   return new Promise((_, reject) => {
-    setTimeout(() => reject(new Error(message)), ms).unref?.();
+    // Not unref'd: a permission check that never settles must still be cut off by this
+    // timer, and an unref'd timer lets the process exit instead of timing out.
+    setTimeout(() => reject(new Error(message)), ms);
   });
 }
 

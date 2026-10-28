@@ -74,7 +74,9 @@ export class PluginRouter {
             () => reject(Object.assign(new Error('Plugin handler timed out'), { status: 504 })),
             this.handlerTimeoutMS,
           );
-          if (typeof timer.unref === 'function') timer.unref();
+          // Deliberately NOT unref'd: an unref'd timer cannot keep the loop alive, so a
+          // handler that never settles would let the process exit before the timeout
+          // fires. See the same fix in plugin-loader.mjs.
         }),
       ]);
       return true;
