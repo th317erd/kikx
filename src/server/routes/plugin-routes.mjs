@@ -28,8 +28,11 @@ export async function handlePluginRoutes({ request, response, url, context }) {
       data: {
         plugins: records.map((r) => ({
           name: r.pluginName,
-          path: r.pluginPath,
-          module: r.modulePath,
+          // Directories only, never absolute paths: this endpoint is reachable
+          // unauthenticated and the operator's filesystem layout is not public.
+          location: typeof r.pluginPath === 'string'
+            ? r.pluginPath.split(/[/\\]/).filter(Boolean).pop() || null
+            : null,
           mounted: routerForList?.listMounts?.().some((m) => m.pluginId === r.pluginName) || false,
           subscriptions: bus?.list?.().find((s) => s.pluginId === r.pluginName) || null,
         })),
