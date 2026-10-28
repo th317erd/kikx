@@ -62,6 +62,7 @@ import { registerQuestionScheduleRouting } from '../core/questions/question-sche
 import { CommandRegistry, registerInternalCommands } from '../core/commands/index.mjs';
 import { PluginRegistry } from '../core/plugins/index.mjs';
 import { getPluginRouter } from '../core/plugins/plugin-router.mjs';
+import { PluginEventBus } from '../core/plugins/plugin-events.mjs';
 import { getPluginMigrations } from '../core/plugins/plugin-migrations.mjs';
 import { loadPlugins } from '../core/plugins/plugin-loader.mjs';
 import { mergePluginPaths } from '../core/plugins/plugin-paths.mjs';
@@ -158,6 +159,11 @@ export async function createServer(options = {}) {
     let pluginRouter = getPluginRouter();
     context.set('pluginRouter', pluginRouter);
 
+    // Created before plugins load and attached to the runtime later: a plugin
+    // subscribes during its own load, which happens before FrameRuntime exists.
+    let pluginEventBus = new PluginEventBus({ logger: console });
+    context.set('pluginEventBus', pluginEventBus);
+
     let pluginMigrations = getPluginMigrations({
       ...options.pluginMigrations,
       url: options.pluginMigrations?.url || options.databaseURL || databaseURL || null,
@@ -165,6 +171,7 @@ export async function createServer(options = {}) {
     let pluginRegistry = new PluginRegistry();
     pluginRegistry.setPluginRouter(pluginRouter);
     pluginRegistry.setPluginMigrations(pluginMigrations);
+    pluginRegistry.setPluginEventBus(pluginEventBus);
     context.set('pluginMigrations', pluginMigrations);
     context.set('pluginRegistry', pluginRegistry);
   }
@@ -455,6 +462,11 @@ export async function createServer(options = {}) {
       frameRouter: context.require('frameRouter'),
       services: { context },
     }));
+
+    // Plugins subscribed during their load, before this runtime existed. Attaching
+    // here starts delivery for everything that queued.
+    if (context.has('pluginEventBus'))
+      context.require('pluginEventBus').attach(context.require('frameRuntime'));
   }
 
   if (!context.has('runtimeEventGateway')) {

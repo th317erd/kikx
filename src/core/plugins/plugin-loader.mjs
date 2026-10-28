@@ -214,6 +214,11 @@ function registerPluginRecord(registry, record) {
   registry._pluginRegistrations.set(record.pluginName, record);
 }
 
+function dropPluginSubscriptions(registry, pluginName) {
+  if (registry?._pluginEventBus && typeof registry._pluginEventBus.unsubscribe === 'function')
+    registry._pluginEventBus.unsubscribe(pluginName);
+}
+
 function removePluginRecord(registry, pluginName) {
   let map = registry._pluginRegistrations;
   if (!map || !map.has(pluginName))
@@ -246,6 +251,13 @@ function createPluginSetupContext({ registry, commandRegistry, context, pluginPa
     registerClass,
     registerTool: (...args) => registry.registerTool(...args),
     mountHttp: (handler) => registry.mountHttp(pluginName, handler),
+    // Scoped events. A subscription must name the sessions it cares about; naming none
+    // receives nothing. Safe to call before the runtime exists - it queues.
+    subscribe: (handler, options = {}) => {
+      if (!registry._pluginEventBus)
+        throw new Error('subscribe() called before the plugin event bus was attached');
+      return registry._pluginEventBus.subscribe(pluginName, handler, options);
+    },
     registerMigrations: (options = {}) => {
       // A relative directory is resolved against the plugin, so a plugin never has to
       // know where it is installed.

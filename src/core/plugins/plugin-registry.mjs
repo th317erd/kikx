@@ -49,6 +49,14 @@ export class PluginRegistry extends ClassRegistry {
     return this._pluginMigrations.register(pluginId, options);
   }
 
+  setPluginEventBus(bus) {
+    this._pluginEventBus = bus;
+  }
+
+  listEventSubscriptions() {
+    return this._pluginEventBus ? this._pluginEventBus.list() : [];
+  }
+
   setPluginMigrations(migrations) {
     this._pluginMigrations = migrations;
   }
