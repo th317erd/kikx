@@ -49,6 +49,13 @@ export async function loadPlugins(options = {}) {
           continue;
 
         let pluginName = pluginModule.pluginName || pluginNameFromPath(pluginPath);
+
+        // A successful load clears any stale failure for this location, so a
+        // fixed plugin stops being reported as broken.
+        if (registry._pluginLoadErrors?.length) {
+          let loc = String(pluginPath).split(/[/\\]/).filter(Boolean).pop() || null;
+          registry._pluginLoadErrors = registry._pluginLoadErrors.filter((e) => e.location !== loc);
+        }
         let record = { pluginPath, pluginName, modulePath, callbacks: [], teardown: null };
         let providerIDsBefore = agentProviderIDs(registry);
         let teardown = await withTimeout(
