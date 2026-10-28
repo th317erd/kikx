@@ -1,7 +1,13 @@
 'use strict';
 
-// Client-derived Activities stats (plan §6.4, phase P4, [D-10]). Pure helpers: no
+// Client-derived per-session stats (plan §6.4, phase P4, [D-10]). Pure helpers: no
 // DOM, no fetch, no ReactiveState — data is passed in, so the math is testable.
+//
+// The Activities *view* that originally consumed these was removed at the owner's
+// request (2026-10-28). This module survives because it is the derivation library, not
+// presentation: the status bar's counts (`statusbar-stats.mjs`) call
+// `buildSessionStats` / `questionCountsBySession` directly, so there is exactly one
+// rule for "how many agents" instead of two that could drift.
 //
 // Inputs: (1) sessions from `GET /api/v1/sessions` (`{ sessions: [...] }`,
 // `session-routes.mjs:22-30`, cap 50), merged by `loadSessions` (`kikx-data.mjs:83`) and
@@ -100,9 +106,9 @@ export function questionCountsBySession(questions = []) {
  * Stats for one session. Every field is present, so a renderer never null-checks: an
  * unusable input yields a zeroed card, not `undefined`. A blank title is `null` not a
  * placeholder — presentation belongs to the view, which supplies
- * `stats.title || 'Untitled'` (`kikx-activities-view.mjs:122`). `updatedAt` passes
- * through untouched (Unix *microseconds*, `hybrid-logical-clock.mjs:73-75`), converted
- * only by `formatActivityAge` (`kikx-activities-view.mjs:44`).
+ * Defaulting a blank title is the *renderer's* job, not this module's. `updatedAt`
+ * passes through untouched (Unix *microseconds*, `hybrid-logical-clock.mjs:73-75`);
+ * formatting it for display belongs to whoever renders it.
  */
 export function buildSessionStats(session, options = {}) {
   let normalized = normalizeSession(session);
@@ -224,9 +230,8 @@ function rollupProject(rootID, { byID, childrenByParent, counts, claimed }) {
     lastActivity,
     agentCount: agentIDs.length,
     agentIDs,
-    // Additive to §6.4 because the P4 consumer reads it: `deriveActivities` finds
-    // the current project via `stats.sessionIDs.includes(...)`
-    // (`kikx-activities-view.mjs:96`).
+    // Additive to §6.4: the consumer finds the current project via
+    // `stats.sessionIDs.includes(...)`.
     sessionIDs,
   };
 }
@@ -235,9 +240,8 @@ function rollupProject(rootID, { byID, childrenByParent, counts, claimed }) {
  * Newest activity first, stable: ties keep input order via an explicit index tiebreak
  * (`Array#sort` stability is ES2019+, but leaning on it while comparing possibly-missing
  * values is how "the grid reshuffled" bugs start). A missing/non-finite timestamp sorts
- * as oldest rather than poisoning the compare with NaN. Reads `lastActivity` (rollups) or
- * `updatedAt` (session stats), mirroring `lastActivity ?? updatedAt` at
- * `kikx-activities-view.mjs:128`.
+ * as oldest rather than poisoning the compare with NaN. Reads `lastActivity` (rollups)
+ * or `updatedAt` (session stats).
  */
 export function sortStatsByActivity(stats = []) {
   return (Array.isArray(stats) ? stats : [])

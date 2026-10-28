@@ -147,18 +147,12 @@ test('syncSessionShell claims a view surface instead of forcing a full rebuild',
   );
 });
 
-test('syncSessionShell also claims the Activities view', () => {
-  // Same reasoning, same surface rule: the fix is about views, not about Inbox.
-  let root = document.createElement('div');
-  root.className = 'kikx-app';
-  root._state = {
-    navigationStack: pushView(createNavigationStack(), 'activities'),
-    selectedSessionID: '',
-    sessionIDs: [],
-    sessionDetailsByID: {},
-  };
-
-  assert.equal(syncSessionShell(root), true);
+test('the Activities view can no longer be pushed, so there is nothing to claim', () => {
+  // Was 'syncSessionShell also claims the Activities view'. The view is gone (owner
+  // request, 2026-10-28), so the surface rule is asserted through the Inbox — which
+  // the test above already covers — and what is pinned here is that the removed view
+  // name is refused at the stack layer instead of producing an unrenderable entry.
+  assert.throws(() => pushView(createNavigationStack(), 'activities'), /unknown view/);
 });
 
 test('syncSessionShell still reports unhandled when a session surface is missing', () => {

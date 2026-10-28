@@ -1,6 +1,8 @@
 'use strict';
 
 import './kikx-user-message-frame.mjs';
+import './kikx-coordination-frame.mjs';
+import { isCoordinationWakeFrame } from '../../shared/coordination-visibility.mjs';
 import { buildFrameQuickActions } from './kikx-frame-quick-actions.mjs';
 import { elements, $, cleanupBindings } from '../lib/aeor-ui.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
@@ -104,6 +106,12 @@ function frameContentDescriptor(frame, appState) {
 
   if (frame.type === 'AgentThinking')
     return { kind: 'thinking', tagName: null };
+
+  // A coordination wake is persisted as a UserMessage but is not chat: it is the
+  // system telling one bot what to do. It gets its own card so a person can tell
+  // "the system woke this bot" apart from "a human said this".
+  if (isCoordinationWakeFrame(frame))
+    return { kind: 'coordination', tagName: 'kikx-coordination-frame' };
 
   if (frame.type === 'UserMessage')
     return { kind: 'user-message', tagName: 'kikx-user-message-frame' };
@@ -388,6 +396,12 @@ export class KikxFrameItem extends HTMLElement {
     let status = frameStatus(frame);
     let tinted = compact || isBotCommunicationFrame(frame) || frame.type === 'Question';
     let className = `kikx-frame kikx-frame--${frame.type}`;
+    // A coordination wake is persisted as a UserMessage, and `.kikx-frame--
+    // UserMessage` right-aligns the frame for owner chat (app.css:678). The wake
+    // is a system event, not a message from a person, so it carries a modifier
+    // that resets that alignment and the bubble treatment.
+    if (isCoordinationWakeFrame(frame))
+      className += ' kikx-frame--coordination';
     if (compact)
       className += ' kikx-frame--compact';
     if (this._minimized)
@@ -707,6 +721,12 @@ export class KikxFrameItem extends HTMLElement {
     let descriptor = frameContentDescriptor(frame, this._appState);
     this._contentKind = descriptor.kind;
     this._contentTag = descriptor.tagName;
+
+    if (descriptor.kind === 'coordination') {
+      let element = document.createElement('kikx-coordination-frame');
+      element.updateFrame(frame, this._appState);
+      return div.class('kikx-frame__content kikx-frame__content--coordination')(element).build(document);
+    }
 
     if (descriptor.kind === 'user-message') {
       let element = document.createElement('kikx-user-message-frame');

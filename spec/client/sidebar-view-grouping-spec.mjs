@@ -202,7 +202,7 @@ test('selecting a view row calls its own action, once', () => {
 // rule in a linked sheet: if Agents/Teams carried their own copy of the metrics,
 // the two would drift the first time someone tweaked Inbox.
 
-test('Inbox, Activities, Agents and Teams are styled by ONE shared rule', async () => {
+test('Inbox, Agents and Teams are styled by ONE shared rule', async () => {
   const { readFile } = await import('node:fs/promises');
   const { fileURLToPath } = await import('node:url');
 
@@ -218,7 +218,9 @@ test('Inbox, Activities, Agents and Teams are styled by ONE shared rule', async 
   while ((match = pattern.exec(stripped)) !== null) {
     let selectors = match[1].split(',').map((part) => part.trim());
     let has = (name) => selectors.some((selector) => selector === `.${name}`);
-    if ([ 'kikx-sidebar__inbox', 'kikx-sidebar__activities', 'kikx-sidebar__view' ].every(has)) {
+    // '.kikx-sidebar__activities' was removed with the view (owner request,
+    // 2026-10-28); the shared-rule contract still applies to the three that remain.
+    if ([ 'kikx-sidebar__inbox', 'kikx-sidebar__view' ].every(has)) {
       shared = { selectors, body: match[2] };
       break;
     }

@@ -1,5 +1,7 @@
 'use strict';
 
+import { isThreadVisibleFrame } from '../../shared/coordination-visibility.mjs';
+
 // Pure helpers for the pinned "thinking" rack.
 //
 // The rack replaces the old inline thinking/streaming bubble. Two jobs:
@@ -35,10 +37,14 @@ export function isLiveThreadFrame(frame) {
 export function threadVisibleFrames(frames = [], { includeDeleted = false } = {}) {
   let completedCallIDs = new Set();
   let completedCallFrameIDs = new Set();
-  // `hidden` is system-only bookkeeping and is dropped unconditionally. `deleted`
-  // is soft-deleted content the user may still want back, so it is dropped only
-  // while the Deleted reveal is off.
-  let isGated = (frame) => frame.hidden === true
+  // `hidden` is system-only bookkeeping and is dropped, with one deliberate
+  // exception: a coordination wake (the instruction a coordinator sends when it
+  // wakes a bot) stays hidden on disk and in agent context, but a person may see
+  // it in the thread. `isThreadVisibleFrame` owns that judgement so this gate and
+  // the server's window projection cannot disagree.
+  // `deleted` is soft-deleted content the user may still want back, so it is
+  // dropped only while the Deleted reveal is off.
+  let isGated = (frame) => !isThreadVisibleFrame(frame)
     || (frame.deleted === true && includeDeleted !== true);
 
   for (let frame of frames) {
@@ -79,9 +85,10 @@ export function threadVisibleFrames(frames = [], { includeDeleted = false } = {}
 // The server already applied the filter set when it chose this window, so this
 // must NOT filter again: a second, partial pass over a loaded window would drop
 // frames the server deliberately sent and make the two disagree. The one thing
-// still enforced here is `hidden`, which is absolute — a system-only frame is
-// never content, whatever the popup says, and this stays true even if a hidden
-// frame reaches the client through an event rather than a window fetch.
+// still enforced here is frame-level visibility, whatever the popup says, and it
+// stays true even if a frame reaches the client through an event rather than a
+// window fetch. `isThreadVisibleFrame` is that rule: `hidden` stays absolute for
+// bookkeeping, except for a coordination wake a person is meant to see.
 export function threadRenderFrames(frames = []) {
   return threadVisibleFrames(frames, { includeDeleted: true });
 }
@@ -90,13 +97,14 @@ export function threadRenderFrames(frames = []) {
 // not the current filters keep them. Distinguishes "nothing here yet" from
 // "you filtered it away".
 //
-// Hidden frames are excluded on purpose: they are internal bookkeeping and can
-// never be rendered. Soft-deleted frames DO count, because the Deleted row can
+// Frames a person can never see are excluded on purpose: they are internal
+// bookkeeping, and only a coordination wake escapes that (see
+// `isThreadVisibleFrame`). Soft-deleted frames DO count, because the Deleted row can
 // bring them back - a session holding only deleted messages should say "no
 // frames match the current filters", not "there is nothing here".
 export function hasAnyFrames(frames = []) {
   return (Array.isArray(frames) ? frames : [])
-    .some((frame) => frame && frame.hidden !== true);
+    .some((frame) => isThreadVisibleFrame(frame));
 }
 
 function isToolCallFrame(frame) {

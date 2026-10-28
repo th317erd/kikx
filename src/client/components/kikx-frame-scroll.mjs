@@ -243,7 +243,7 @@ export function syncSessionShell(app) {
     return true;
   }
 
-  // A view (Inbox, Activities) displaces `buildWindow` entirely -- see
+  // A view (currently just the Inbox) displaces `buildWindow` entirely -- see
   // `buildRunnerShell` -- so while one is on top there is deliberately no thread
   // title, no session grid and no frame list to repaint.
   //

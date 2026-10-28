@@ -12,6 +12,7 @@ import {
 } from '../../../src/core/mentions/index.mjs';
 import { createServer } from '../../../src/server/create-server.mjs';
 import { CORE_TAG_DEFINITIONS } from '../../../src/core/tags/tag-definitions.mjs';
+import { isThreadVisibleFrame } from '../../../src/shared/coordination-visibility.mjs';
 
 let cachedOpenAIAPIKey = null;
 
@@ -217,8 +218,15 @@ class StagehandFrameRuntime extends EventEmitter {
   async listFrameWindow(sessionID, options = {}) {
     let limit = Number.isInteger(options.limit) ? options.limit : 100;
     let before = options.before;
+    // Ask the SAME predicate the production window projection uses
+    // (`isPreviewVisibleFrame` -> `isThreadVisibleFrame`) rather than re-deriving
+    // `hidden !== true` here. A hand-copied filter is how this fixture drifted
+    // from the server once already: production admitted a coordination wake and
+    // the fixture silently dropped it, so the browser spec failed on its fixture
+    // instead of on the shipped code. Deleted/phantom stay local because they
+    // are fixture concerns rather than visibility policy.
     let frames = (this.framesBySessionID.get(sessionID) || [])
-      .filter((frame) => frame && frame.hidden !== true && frame.deleted !== true && frame.phantom !== true);
+      .filter((frame) => frame && isThreadVisibleFrame(frame) && frame.deleted !== true && frame.phantom !== true);
     let eligible = before == null
       ? frames
       : frames.filter((frame) => frame.order == null || frame.order < before);

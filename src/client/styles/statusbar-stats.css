@@ -1,0 +1,62 @@
+/* Status-bar session counts — owner review 3 (2026-10-28).
+ *
+ * Screenshot `session-2026-10-28-00-32-44.404.png`: "I want all of this information
+ * removed, and remove the 'Activities' sidebar too. I want all the information in each
+ * one of these cards to be shown in the statusbar below" + "Move information display to
+ * statusbar (changes for each session navigation)".
+ *
+ * The five Activities stat cards and the Activities view are gone; the same four
+ * numbers now render in the status bar, fed by `src/client/state/statusbar-stats.mjs`
+ * and built by `buildStatusBar` in `src/client/components/kikx-shell-builders.mjs`.
+ *
+ * WHY THIS IS ITS OWN FILE: these rules first landed inside `questions.css`, which was
+ * already 1185 lines — past the 800-line hard limit in AGENTS.md — and is named for the
+ * questions feature, not the status bar. A new sheet keeps the new surface findable and
+ * stops the over-cap file growing. The base `.kikx-statusbar` row layout stays in
+ * `app.css`; only the four count cells live here.
+ */
+
+/* `__stats` is one flex group so the four cells keep a constant gap at any width, and
+   `min-width: 0` on each cell lets long values shrink instead of pushing the Debug
+   toggle and the token total off the row. */
+.kikx-statusbar__stats {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: baseline;
+  gap: 14px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.kikx-statusbar__stat {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.kikx-statusbar__stat-value {
+  color: #f5f7fa;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.kikx-statusbar__stat-label {
+  color: #6b7684;
+  font-size: calc(10px * 1.25);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* Below the point where the bar would otherwise wrap, drop the labels and keep the
+   numbers: a bare tally is still useful, a wrapped status bar is not. */
+@media (max-width: 760px) {
+  .kikx-statusbar__stat-label {
+    display: none;
+  }
+
+  .kikx-statusbar__stats {
+    gap: 10px;
+  }
+}

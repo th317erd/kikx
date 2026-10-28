@@ -1,5 +1,7 @@
 'use strict';
 
+import { isThreadVisibleFrame } from './coordination-visibility.mjs';
+
 // Server-side frame-window filtering.
 //
 // The frame filter popup is a visibility control, but it also has to be a
@@ -499,7 +501,12 @@ export function frameMatchesWindowFilters(frame, filters, query = DEFAULT_FRAME_
   if (!frame)
     return false;
 
-  if (frame.hidden === true)
+  // `hidden` is not read directly: a coordination wake (the instruction that
+  // wakes an invited bot) is `hidden: true` on disk and in agent context but is
+  // meant to be read in the thread. `isThreadVisibleFrame` owns that judgement,
+  // and the client's render gate calls it too, so the served window and the
+  // rendered thread cannot disagree about which frames exist.
+  if (!isThreadVisibleFrame(frame))
     return false;
   if (frame.phantom === true)
     return false;

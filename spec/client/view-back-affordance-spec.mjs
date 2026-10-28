@@ -31,8 +31,8 @@ installDom();
 
 const { buildViewBackButton } = await import('../../src/client/components/kikx-view-chrome.mjs');
 const { inboxHeader } = await import('../../src/client/components/kikx-inbox-list.mjs');
-const { buildActivitiesView } = await import('../../src/client/components/kikx-activities-view.mjs');
-const { getNavigationStack, kikxState, navigateInbox, navigateActivities } =
+const { buildInboxView } = await import('../../src/client/components/kikx-inbox-view.mjs');
+const { getNavigationStack, kikxState, navigateInbox } =
   await import('../../src/client/state/kikx-state.mjs');
 const { popStack, pushThread, createNavigationStack, currentViewName } =
   await import('../../src/client/state/navigation-stack.mjs');
@@ -98,10 +98,6 @@ function inboxStack() {
   return [ ...pushThread(createNavigationStack(), 'ses_1'), { sessionID: null, collapsed: true, view: 'inbox' } ];
 }
 
-function activitiesStack() {
-  return [ ...pushThread(createNavigationStack(), 'ses_1'), { sessionID: null, collapsed: true, view: 'activities' } ];
-}
-
 // --- the primitive ---------------------------------------------------------
 
 test('buildViewBackButton renders a labelled, accessible control', () => {
@@ -159,13 +155,15 @@ test('the Inbox header carries the way back', () => {
   assert.match(textOf(header), /Inbox/);
 });
 
-test('the Activities header carries the way back', () => {
-  let app = appWith(activitiesStack());
-  let view = buildActivitiesView(app);
+test('the Inbox header carries the way back', () => {
+  // Was the Activities header. That view is gone (owner request, 2026-10-28); the
+  // Inbox header is built by the same `buildViewBackButton` path, so the contract is
+  // the same one and stays covered.
+  let app = appWith(inboxStack());
+  let view = buildInboxView(app);
 
   let back = byClass(view, 'kikx-view__back');
-  assert.equal(back.length, 1, 'exactly one Back control in the Activities header');
-  assert.match(textOf(view), /Activities/);
+  assert.equal(back.length, 1, 'exactly one Back control in the Inbox header');
 });
 
 test('pressing Back from the Inbox leaves the user on a session surface', () => {
@@ -180,9 +178,9 @@ test('pressing Back from the Inbox leaves the user on a session surface', () => 
   assert.equal(stack.length, 2, 'the stack returned to root + session');
 });
 
-test('pressing Back from Activities leaves the user on a session surface', () => {
-  let app = appWith(activitiesStack());
-  let view = buildActivitiesView(app);
+test('pressing Back from the Inbox leaves the user on a session surface', () => {
+  let app = appWith(inboxStack());
+  let view = buildInboxView(app);
   let back = byClass(view, 'kikx-view__back')[0];
 
   back.dispatchEvent({ type: 'click', bubbles: true });
@@ -190,29 +188,17 @@ test('pressing Back from Activities leaves the user on a session surface', () =>
   assert.equal(currentViewName(app._state.navigationStack), null);
 });
 
-test('Activities at workspace scope still offers the way back', () => {
-  // The workspace branch renders its own header (derived.scope === 'workspace',
-  // which is what you get when no session is entered). That branch was missed by
-  // the first fix, so Activities opened from the root still stranded the user.
-  let app = appWith(activitiesStack());
+test('the Inbox at workspace scope still offers the way back', () => {
+  // Was the Activities workspace-scope branch. The Activities view rendered two
+  // structurally different branches (session rollup vs project grid) and the first
+  // Back fix missed one of them, so this test existed to pin that. The Inbox has a
+  // single branch, so what survives is the part that still means something: with no
+  // session entered, the header still carries a working Back control rather than
+  // stranding the user.
+  let app = appWith(inboxStack());
 
-  let view = buildActivitiesView(app);
-  let header = byClass(view, 'kikx-activities__header')[0];
-
-  // Prove this really rendered the workspace branch. Asserting only that a Back
-  // control exists would pass on the session branch too, so the test would
-  // silently stop covering the branch it was written for. The two branches
-  // differ structurally: workspace renders a project grid, the session branch
-  // renders a `__summary` card plus a `__scope` label.
-  assert.equal(byClass(view, 'kikx-activities__summary').length, 0,
-    'no session summary card in workspace scope');
-  assert.equal(byClass(header, 'kikx-activities__scope').length, 0,
-    'the "project rollup" label is the session branch only');
-  assert.equal(
-    byClass(view, 'kikx-activities__grid').length + byClass(view, 'kikx-activities__empty').length, 1,
-    'workspace scope renders the project grid, or its empty state when there are no projects');
-
-  let back = byClass(header, 'kikx-view__back');
+  let view = buildInboxView(app);
+  let back = byClass(view, 'kikx-view__back');
   assert.equal(back.length, 1, 'the workspace-scope header carries a Back control');
 
   back[0].dispatchEvent({ type: 'click', bubbles: true });
@@ -244,34 +230,18 @@ test('navigateInbox then Back restores the pre-existing session context', () => 
   assert.equal(getNavigationStack(state).at(-1).sessionID, 'ses_42');
 });
 
-test('navigateActivities then Back restores the pre-existing session context', () => {
-  let state = { navigationStack: pushThread(createNavigationStack(), 'ses_7') };
-
-  navigateActivities(state);
-  assert.equal(currentViewName(getNavigationStack(state)), 'activities');
-
-  let app = {
-    _state: state,
-    _minimizeCurrent() {
-      this._state.navigationStack = popStack(this._state.navigationStack);
-    },
-  };
-  buildViewBackButton(app).dispatchEvent({ type: 'click', bubbles: true });
-
-  assert.equal(currentViewName(getNavigationStack(state)), null);
-  assert.equal(getNavigationStack(state).at(-1).sessionID, 'ses_7');
-});
-
-test('switching Inbox -> Activities keeps one Back, not a buried stack', () => {
-  // `pushView` replaces the current view rather than stacking a second one, so
-  // Back from Activities must land on the session, never on the Inbox.
+// The Activities view and its two "Back from Activities" tests were deleted with it
+// (owner request, 2026-10-28). The stack property they protected is re-pinned through
+// the Inbox here, so the removal did not cost coverage.
+test('re-entering the Inbox does not bury the session under a second view entry', () => {
   let state = { navigationStack: pushThread(createNavigationStack(), 'ses_9') };
 
   navigateInbox(state);
-  navigateActivities(state);
+  let depthAfterFirst = getNavigationStack(state).length;
+  navigateInbox(state);
 
-  assert.equal(getNavigationStack(state).length, 3, 'the view was replaced, not stacked');
-  assert.equal(currentViewName(getNavigationStack(state)), 'activities');
+  assert.equal(getNavigationStack(state).length, depthAfterFirst, 'the view was not stacked twice');
+  assert.equal(currentViewName(getNavigationStack(state)), 'inbox');
 
   state.navigationStack = popStack(state.navigationStack);
   assert.equal(currentViewName(getNavigationStack(state)), null);

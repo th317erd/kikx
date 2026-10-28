@@ -30,8 +30,6 @@ import { visibleSessions } from './session-visibility.mjs';
 import {
   createNavigationStack,
   isInboxView,
-  isActivitiesView,
-  pushActivities,
   pushInbox,
   currentEntry,
   currentSessionID,
@@ -317,14 +315,6 @@ export function navigateInbox(state = kikxState) {
 
 export function isInboxOpen(state = kikxState) {
   return isInboxView(getNavigationStack(state));
-}
-
-export function navigateActivities(state = kikxState) {
-  state.navigationStack = pushActivities(getNavigationStack(state));
-}
-
-export function isActivitiesOpen(state = kikxState) {
-  return isActivitiesView(getNavigationStack(state));
 }
 
 export function getQuestionsState(state = kikxState) {

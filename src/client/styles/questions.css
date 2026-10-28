@@ -1,10 +1,11 @@
 /*
- * Question surfaces: sidebar entries, the Inbox view, the Activities view, and
- * the inline `Question` frame.
+ * Question surfaces: sidebar entries, the Inbox view, the inline `Question`
+ * frame, and (since 2026-10-28) the status-bar session counts that replaced the
+ * Activities view.
  *
  * These shipped in P3/P4 with NO styling at all — `app.css` contained zero
  * rules for any `kikx-inbox*`, `kikx-inbox-list*`, `kikx-question-card*`,
- * `kikx-activities*`, `kikx-question-frame*` or `kikx-sidebar__*` class, so
+ * `kikx-question-frame*` or `kikx-sidebar__*` class, so
  * every one of them rendered as raw unstyled block flow. A separate file
  * rather than an append to `app.css` (~2300 lines, already the largest client
  * asset) so the debt file does not grow.
@@ -25,11 +26,11 @@
 /* --- Sidebar entries ---------------------------------------------------- */
 
 .kikx-sidebar__inbox,
-.kikx-sidebar__activities,
 /* Owner item 1 (2026-10-27): Agents and Teams are views into the session tree,
- * exactly like Inbox and Activities, so they join these rules instead of
- * carrying their own copy of the metrics. One rule, four controls: a future
- * tweak to the sidebar view style cannot update three of them and miss one. */
+ * exactly like the Inbox, so they join these rules instead of carrying their own
+ * copy of the metrics. One rule, three controls: a future tweak to the sidebar
+ * view style cannot update two of them and miss one. (Activities was removed
+ * 2026-10-28 at the owner's request.) */
 .kikx-sidebar__view {
   display: flex;
   align-items: center;
@@ -50,22 +51,19 @@
 }
 
 .kikx-sidebar__inbox:hover,
-.kikx-sidebar__activities:hover,
 .kikx-sidebar__view:hover {
   border-color: #3c444d;
   background: #1c222a;
   color: #f5f7fa;
 }
 
-.kikx-sidebar__inbox--active,
-.kikx-sidebar__activities--active {
+.kikx-sidebar__inbox--active {
   border-color: #3d6cff;
   background: #17203a;
   color: #f5f7fa;
 }
 
 .kikx-sidebar__inbox-label,
-.kikx-sidebar__activities-label,
 .kikx-sidebar__view-label {
   flex: 1 1 auto;
   min-width: 0;
@@ -89,10 +87,9 @@
   text-align: center;
 }
 
-/* --- Inbox and Activities shells ---------------------------------------- */
+/* --- Inbox shell -------------------------------------------------------- */
 
-.kikx-inbox,
-.kikx-activities {
+.kikx-inbox {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
@@ -101,14 +98,7 @@
   background: #12161a;
 }
 
-/* Activities scrolls as a whole (it has several stacked sections); the Inbox
-   scrolls only its list so the header stays pinned. */
-.kikx-activities {
-  overflow: auto;
-}
-
-.kikx-inbox-header,
-.kikx-activities__header {
+.kikx-inbox-header {
   display: flex;
   align-items: baseline;
   gap: 10px;
@@ -118,8 +108,7 @@
 }
 
 .kikx-inbox-header__title,
-.kikx-inbox > h2,
-.kikx-activities__header h2 {
+.kikx-inbox > h2 {
   margin: 0;
   color: #dce3ea;
   font-size: calc(14px * 1.25);
@@ -706,8 +695,7 @@
 /* --- Empty states ------------------------------------------------------- */
 
 .kikx-inbox-empty,
-.kikx-inbox__empty,
-.kikx-activities__empty {
+.kikx-inbox__empty {
   display: grid;
   place-content: center;
   gap: 6px;
@@ -724,8 +712,7 @@
 }
 
 .kikx-inbox-empty__detail,
-.kikx-inbox__empty-hint,
-.kikx-activities__empty-hint {
+.kikx-inbox__empty-hint {
   margin: 0;
   color: #6b7684;
   font-size: calc(13px * 1.25);
@@ -770,141 +757,6 @@
   font-size: calc(14px * 1.25);
   line-height: 1.5;
   overflow-wrap: anywhere;
-}
-
-/* --- Activities --------------------------------------------------------- */
-
-.kikx-activities__header {
-  flex-wrap: wrap;
-}
-
-.kikx-activities__scope {
-  color: #6b7684;
-  font-size: calc(12px * 1.25);
-}
-
-.kikx-activities__summary,
-.kikx-activities__grid {
-  display: grid;
-  gap: 12px;
-  padding: 16px 18px 24px;
-}
-
-.kikx-activities__grid {
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  align-content: start;
-}
-
-.kikx-activities__stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.kikx-activities__card-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.kikx-activities__stat {
-  display: grid;
-  gap: 1px;
-  min-width: 62px;
-}
-
-.kikx-activities__stat-value {
-  color: #f5f7fa;
-  font-size: calc(15px * 1.25);
-  font-weight: 700;
-}
-
-.kikx-activities__stat-label {
-  color: #6b7684;
-  font-size: calc(11px * 1.25);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.kikx-activities__card {
-  display: grid;
-  gap: 10px;
-  padding: 13px 14px;
-  border: 1px solid #2a3138;
-  border-radius: 10px;
-  background: #171c21;
-}
-
-/* A card with open questions needs a human. Amber, not the blue used for
-   "selected", so the two states can never be confused. */
-.kikx-activities__card--attention {
-  border-color: #d29922;
-}
-
-.kikx-activities__card-title {
-  margin: 0;
-  overflow: hidden;
-  color: #dce3ea;
-  font-size: calc(13px * 1.25);
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.kikx-activities__card-age {
-  flex: 0 0 auto;
-  color: #6b7684;
-  font-size: calc(11px * 1.25);
-}
-
-.kikx-activities__enterable {
-  display: block;
-  border-radius: 10px;
-  cursor: pointer;
-}
-
-.kikx-activities__enterable:hover .kikx-activities__card {
-  border-color: #3c444d;
-}
-
-.kikx-activities__children {
-  display: grid;
-  gap: 8px;
-  padding: 12px 18px 24px;
-}
-
-.kikx-activities__section-title {
-  margin: 0;
-  color: #97a3ae;
-  font-size: calc(11px * 1.25);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.kikx-activities__child-list {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.kikx-activities__child {
-  padding: 10px 12px;
-  border: 1px solid #232a31;
-  border-radius: 8px;
-  background: #14181d;
-  color: #dce3ea;
-  font-size: calc(13px * 1.25);
-}
-
-.kikx-activities__hint {
-  margin: 0;
-  padding: 4px 18px 18px;
-  color: #6b7684;
-  font-size: calc(13px * 1.25);
 }
 
 /* --- Inline Question frame --------------------------------------------- */
@@ -983,7 +835,7 @@
   font-style: italic;
 }
 
-/* --- Stack-view chrome (Back out of Inbox / Activities) ------------------ */
+/* --- Stack-view chrome (Back out of the Inbox) -------------------------- */
 /* A view entry replaces the work area (`kikx-shell-builders.mjs:236-238`), so
    the window header -- and with it the only Back control -- is not rendered
    while a view is on top of the stack. The replacement control is injected into
@@ -1001,7 +853,7 @@
   background: #171c21;
   color: #aeb8c2;
   cursor: pointer;
-  /* The Inbox and Activities headers are `display: flex; align-items:
+  /* The Inbox header is `display: flex; align-items:
      baseline`, which would hang a 26px box off the text baseline; the button
      centres itself in the row instead, and the margin separates it from the
      title now that it no longer relies on a wrapper's gap. */

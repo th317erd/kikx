@@ -15,7 +15,9 @@ import { reattachAnswerNotice } from './answer-notice.mjs';
 import './kikx-thinking-rack.mjs';
 import {
   getCurrentEntry,
+  getCurrentSessionID,
   getDeletedSessions,
+  getQuestionsState,
   getScopeNoun,
   getSelectedFrames,
   getSelectedSession,
@@ -38,10 +40,7 @@ import {
 // Owner point 2: User / Account / Agents / Teams / Sign out as sidebar session objects.
 import { buildSidebarSessionObjects } from './kikx-sidebar-session-objects.mjs';
 import { buildInboxSidebarEntry, buildInboxView } from './kikx-inbox-view.mjs';
-import {
-  buildActivitiesSidebarEntry,
-  buildActivitiesView,
-} from './kikx-activities-view.mjs';
+import { STATUSBAR_STAT_LABELS, buildStatusBarStats } from '../state/statusbar-stats.mjs';
 
 const { div, main, nav, section, header, h2, p, span, button, form, input, label, textarea } = elements;
 const aeorInput = elements['aeor-input'];
@@ -251,7 +250,11 @@ export function buildEditableTitle(app, title, sessionID) {
 export function buildRunnerShell(app) {
   let entry = getCurrentEntry(app._state);
   // A view entry displaces the work area; the stack decides which one is on top
-  // (plan §6: Inbox, §6.4: Activities).
+  // (plan §6: Inbox). Activities was removed at the owner's request
+  // (2026-10-28): its counts now live in the status bar.
+  // `entry.view` can still be a stale 'activities' from an old bookmark; the
+  // parser drops it (`navigation-stack.mjs:204`, VIEW_NAMES), so this falls
+  // through to a normal window rather than a blank surface.
   let viewName = entry.view || null;
 
   return [
@@ -263,9 +266,6 @@ export function buildRunnerShell(app) {
         // Pinned at the top of the sidebar header (plan §6.1): the Inbox is the
         // one thing that must be visible from anywhere, above the project tree.
         buildInboxSidebarEntry(app),
-        // Activities sits directly under it (§6.4): the same glance-then-drill
-        // relationship, one level out from the questions themselves.
-        buildActivitiesSidebarEntry(app),
         // Owner item 2 (2026-10-27): "Agents and Teams should go up into the
         // 'Session View' items. They are views into the session tree, so
         // they render here with Inbox and Activities, above the tree.
@@ -278,9 +278,7 @@ export function buildRunnerShell(app) {
       ),
       // A view replaces the work area while it is the top stack entry; Back pops
       // to whatever window was underneath.
-      viewName === 'inbox'
-        ? buildInboxView(app)
-        : (viewName === 'activities' ? buildActivitiesView(app) : buildWindow(app, entry)),
+      viewName === 'inbox' ? buildInboxView(app) : buildWindow(app, entry),
     ),
   ];
 }
@@ -506,9 +504,44 @@ export function buildThreadSection(app, sessionID) {
 }
 
 export function buildStatusBar(app) {
+  // Owner review 3 (2026-10-28): the Activities view and its sidebar entry are gone;
+  // its four counts live here instead and follow the session on top of the stack.
+  // These are PLAIN values, not bindings: the whole shell is rebuilt on every render
+  // (`:112-115` -> `$(app).empty()` then `appendChild`), so this recomputes on every
+  // navigation by construction. A binding here would allocate listeners for text that
+  // is always fresh -- see the note in `statusbar-stats.mjs`.
+  //
+  // Every lookup is defensive because this runs inside the shell's error boundary: a
+  // throw here blanks the entire app, not just the bar.
+  let sessions = [];
+  let questions = [];
+  try {
+    sessions = Array.isArray(getSessions(app._state)) ? getSessions(app._state) : [];
+    questions = Array.isArray(getQuestionsState(app._state)?.questions)
+      ? getQuestionsState(app._state).questions
+      : [];
+  } catch {
+    // Leave both empty: the bar degrades to a zeroed row rather than killing the shell.
+  }
+
+  let stats = buildStatusBarStats({
+    sessions,
+    questions,
+    currentSessionID: getCurrentSessionID(app._state),
+  });
+
   return div.class.bindState((state) => `kikx-statusbar kikx-statusbar--${state.connectionStatusKind}`, ['connectionStatusKind'])(
     span.class('kikx-statusbar__dot')(),
     span.textContent.bindState((state) => state.connectionStatus, ['connectionStatus'])(),
+    span.class('kikx-statusbar__spacer')(),
+    // The counts sit AFTER the spacer, so the connection/dot cluster stays left and
+    // the tallies read as a right-aligned group next to Debug and the token total.
+    div.class('kikx-statusbar__stats').title(`Counts for ${stats.scopeLabel}`)(
+      stats.cells.map((cell) => span.class('kikx-statusbar__stat')(
+        span.class('kikx-statusbar__stat-value')(String(cell.value)),
+        span.class('kikx-statusbar__stat-label')(cell.label),
+      )),
+    ),
     span.class('kikx-statusbar__spacer')(),
     button
       .type('button')
