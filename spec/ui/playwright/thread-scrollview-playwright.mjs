@@ -133,6 +133,7 @@ test('the thread mounts the shared scrollview and follows live tail appends', as
         break;
     }
     assert.equal(older.gaps > 0, true, 'an unloaded older page should be represented by a gap');
+    assert.ok(older.scrollTop <= 5, `loading older history at the top must keep the viewport at the top, got ${older.scrollTop}`);
     await page.evaluate(() => {
       let list = document.querySelector('.kikx-frame-list');
       list.scrollTop = list.scrollHeight;

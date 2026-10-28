@@ -354,9 +354,10 @@ function syncFrameThreadBody(app, sessionID, options) {
   let previousFrameCount = previousFrames.length;
   let previousLastFrameID = previousFrames.at(-1)?.id || '';
   let frameList = view.frameList;
-  let focus = app._pendingScrollFocus
-    ? null
-    : captureScrollFocus(app, frameList, { bottom: locked && lockMode === 'bottom' });
+  let shared = view.usesSharedScrollview === true;
+  let focus = !shared && !app._pendingScrollFocus
+    ? captureScrollFocus(app, frameList, { bottom: locked && lockMode === 'bottom' })
+    : null;
   let result = view.syncFrames(frames, app._state, locked ? { ...options, followLatest: true } : options);
   if (frameList && focus)
     restoreScrollFocus(app, frameList, focus);
@@ -623,8 +624,14 @@ export function onFrameContentResize(app) {
     return;
   }
 
+  // The shared scrollview owns geometry and its own focal transaction. Do not
+  // replay Kikx's old hash/focus anchor over it: after an older page loads at
+  // the top that stale focus is the *old* top frame, so restoring it pushes the
+  // just-loaded page above the viewport and undoes the user's upward scroll.
+  let view = app.querySelector('.kikx-thread__body kikx-chat-view');
+  let shared = view?.usesSharedScrollview === true;
   let focus = app._lastScrollFocus;
-  if (focus)
+  if (!shared && focus)
     restoreScrollFocus(app, frameList, focus);
 
   let sessionID = app._state.selectedSessionID;

@@ -58,6 +58,10 @@ export class KikxChatView extends HTMLElement {
     return this._frames;
   }
 
+  get usesSharedScrollview() {
+    return Boolean(this._scrollview?.element);
+  }
+
   connectedCallback() {
     if (this.childNodes.length === 0 && this._frames.length > 0)
       this._render();

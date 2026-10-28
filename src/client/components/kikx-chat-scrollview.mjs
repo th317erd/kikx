@@ -4,7 +4,7 @@
 // Kikx owns frame identity, item rendering and the app state; the shared
 // element owns page/gap geometry, page loading and programmatic scrolling.
 
-import { captureFrameListAnchor, frameItemTopWithinList } from './frame-scroll-anchor.mjs';
+import { captureFrameListAnchor, frameItemTopWithinList, restoreFrameListAnchor } from './frame-scroll-anchor.mjs';
 
 const CSS_ESCAPE = globalThis.CSS?.escape || ((value) => String(value).replace(/["\\]/g, '\\$&'));
 
@@ -75,8 +75,7 @@ export class KikxChatScrollView {
   _setSource(frames, { anchor = null, page = null, align = 'end' } = {}) {
     this.frames = Array.isArray(frames) ? frames : [];
     this.source = this._createSource(this.frames);
-    this.element.setSource(this.source);
-    this.element.follow = false;
+    this.element.setSource(this.source, { follow: false });
     let targetPage = Number.isInteger(page)
       ? page
       : Math.max(0, pageCount(this.frames, this.pageSize) - 1);
@@ -123,6 +122,7 @@ export class KikxChatScrollView {
   }
 
   syncFrames(frames, appState, options = {}) {
+    let anchor = captureFrameListAnchor(this.frameList);
     let previous = this.frames;
     let next = Array.isArray(frames) ? frames : [];
     let overlap = Math.min(next.length, previous.length);
@@ -130,9 +130,19 @@ export class KikxChatScrollView {
       || options.prepend === true
       || next.slice(0, overlap).some((frame, index) => frame?.id !== previous[index]?.id);
     if (!this.element || structural) {
-      let anchor = captureFrameListAnchor(this.frameList);
+      // Older history is inserted above the current source. Show the newly
+      // loaded oldest page instead of restoring the old top frame: restoring it
+      // puts the entire fetched page above the viewport and undoes the upward
+      // scroll that requested the page.
+      let olderInserted = next.length > previous.length
+        && (options.prepend === true || next[0]?.id !== previous[0]?.id);
+      let showOlderPage = olderInserted;
       this.frames = next;
-      this._setSource(next, { anchor, page: this._pageForFrame(next, anchor?.frameID), align: 'start' });
+      this._setSource(next, {
+        anchor: showOlderPage ? null : anchor,
+        page: showOlderPage ? 0 : this._pageForFrame(next, anchor?.frameID),
+        align: 'start',
+      });
       return { insertedNew: true };
     }
 
@@ -157,6 +167,10 @@ export class KikxChatScrollView {
       item?.updateFrame?.(frame, appState || this.getAppState(), { force: options.force === true });
     }
     this.windowEnd = next.length;
+    // Preserve the frame under the reader when a streaming item changes size
+    // or a tail item is appended. Kikx's old focus driver is bypassed in shared
+    // mode; this is the equivalent synchronous transaction.
+    restoreFrameListAnchor(this.frameList, anchor);
     return { insertedNew: insertedNew || structural };
   }
 
