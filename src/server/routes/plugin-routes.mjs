@@ -41,6 +41,36 @@ export async function handlePluginRoutes({ request, response, url, context }) {
     return true;
   }
 
+  // Re-scan plugin paths without restarting. Installs a plugin by putting a directory
+  // where the boot would find it, then asking for a reload.
+  if (url.pathname === '/api/v1/plugins/reload' && request.method === 'POST') {
+    let registry = context.has?.('pluginRegistry') ? context.require('pluginRegistry') : null;
+    let pluginPaths = context.has?.('pluginPaths') ? context.require('pluginPaths') : null;
+    if (!registry || !pluginPaths) {
+      response.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ error: { message: 'plugin reload is unavailable' } }));
+      return true;
+    }
+    let before = new Set((registry._pluginRegistrations || new Map()).keys());
+    try {
+      const { loadPlugins } = await import('../../core/plugins/plugin-loader.mjs');
+      await loadPlugins({ pluginPaths, registry, commandRegistry: context.require('commandRegistry'), context });
+      let after = new Set((registry._pluginRegistrations || new Map()).keys());
+      response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({
+        data: {
+          added: [...after].filter((k) => !before.has(k)),
+          total: after.size,
+          failures: registry._pluginLoadErrors || [],
+        },
+      }));
+    } catch (error) {
+      response.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ error: { message: String(error?.message || error) } }));
+    }
+    return true;
+  }
+
   let match = router.match(url.pathname);
   if (!match)
     return false;

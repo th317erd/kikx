@@ -159,6 +159,8 @@ export async function createServer(options = {}) {
   if (!context.has('pluginRegistry')) {
     let pluginRouter = getPluginRouter();
     context.set('pluginRouter', pluginRouter);
+    // A reload needs the same path list the boot used.
+    context.set('pluginPaths', pluginPaths);
 
     // Created before plugins load and attached to the runtime later: a plugin
     // subscribes during its own load, which happens before FrameRuntime exists.
