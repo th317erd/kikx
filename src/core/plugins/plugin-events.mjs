@@ -11,13 +11,27 @@
 // nothing receives nothing - deny by default, opened explicitly.
 
 export class PluginEventBus {
-  constructor({ frameRuntime, logger = console } = {}) {
-    if (!frameRuntime || typeof frameRuntime.on !== 'function')
-      throw new TypeError('PluginEventBus requires a frameRuntime with on()');
-    this.frameRuntime = frameRuntime;
+  // frameRuntime may be null at construction time. Plugins subscribe during their
+  // load, which happens BEFORE the runtime is created, so the bus has to exist first
+  // and be attached afterwards: attach() flushes whatever was queued.
+  constructor({ frameRuntime = null, logger = console } = {}) {
+    this.frameRuntime = null;
     this.logger = logger;
     this.subscriptions = new Map();
     this._listening = false;
+    if (frameRuntime) this.attach(frameRuntime);
+  }
+
+  attach(frameRuntime) {
+    if (!frameRuntime || typeof frameRuntime.on !== 'function')
+      throw new TypeError('PluginEventBus.attach requires a frameRuntime with on()');
+    this.frameRuntime = frameRuntime;
+    this.#listen();
+    return this;
+  }
+
+  get attached() {
+    return this._listening;
   }
 
   subscribe(pluginId, handler, { sessions = null } = {}) {
@@ -31,7 +45,10 @@ export class PluginEventBus {
     let list = this.subscriptions.get(pluginId) || [];
     list.push({ handler, allowed });
     this.subscriptions.set(pluginId, list);
-    this.#listen();
+    // Subscription is recorded whether or not the runtime exists yet; attach() starts
+    // delivery. Nothing is delivered before an attach, so a queued subscription sees
+    // no events rather than seeing them late.
+    if (this._listening) return true;
     return true;
   }
 
