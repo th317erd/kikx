@@ -235,6 +235,19 @@ export async function createServer(options = {}) {
         commandRegistry: context.require('commandRegistry'),
         context,
       });
+    // Plugins registered their migrations during load, so this is the first point at
+    // which the full set is known. A failure stops startup: a half-migrated
+    // database is worse than a server that refuses to boot.
+    if (context.has('pluginMigrations')) {
+      try {
+        let result = await context.require('pluginMigrations').run({ logger: console });
+        if (result?.skipped)
+          console.warn('[plugin-migrations] skipped:', result.reason);
+      } catch (error) {
+        console.error('[plugin-migrations] startup aborted:', error.message);
+        throw error;
+      }
+    }
       context.require('frameRouter').loadFromRegistry(context.require('pluginRegistry'));
       // Question schedule routing MUST come before agent routing. A fired
       // deadline that resolves to an already-answered question calls done()
@@ -243,19 +256,6 @@ export async function createServer(options = {}) {
       registerQuestionScheduleRouting(context.require('frameRouter'));
       registerAgentRouting(context.require('frameRouter'));
     })());
-  }
-  // Plugins registered their migrations during load, so this is the first point at
-  // which the full set is known. A failure stops startup: a half-migrated
-  // database is worse than a server that refuses to boot.
-  if (context.has('pluginMigrations')) {
-    try {
-      let result = await context.require('pluginMigrations').run({ logger: console });
-      if (result?.skipped)
-        console.warn('[plugin-migrations] skipped:', result.reason);
-    } catch (error) {
-      console.error('[plugin-migrations] startup aborted:', error.message);
-      throw error;
-    }
   }
 
   // Plugins must be loaded before the driver is resolved: a plugin may register
