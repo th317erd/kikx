@@ -46,6 +46,27 @@ export async function loadPlugins(options = {}) {
         if (typeof teardown === 'function')
           record.teardown = teardown;
 
+        // A plugin may return an object instead of a function, declaring lifecycle
+        // hooks explicitly. onInit runs after every provide callback for this plugin
+        // has fired, so initialisation sees the full registry.
+        if (teardown && typeof teardown === 'object') {
+          record.onShutdown = typeof teardown.onShutdown === 'function' ? teardown.onShutdown : null;
+          record.onInit = typeof teardown.onInit === 'function' ? teardown.onInit : null;
+          if (typeof teardown.teardown === 'function')
+            record.teardown = teardown.teardown;
+        }
+
+        // Provide callbacks have already been invoked synchronously during setup(),
+        // so the registry is complete for this plugin by this point.
+        if (record.onInit) {
+          try {
+            await record.onInit();
+          } catch (error) {
+            logger.error?.(`Plugin "${pluginName}" onInit failed: ${error.message}`);
+            throw error;
+          }
+        }
+
         if (typeof registry.registerPluginPath === 'function') {
           let registeredProviderIDs = [];
           for (let key of agentProviderIDs(registry)) {
@@ -111,6 +132,32 @@ async function hasPluginEntry(pluginPath) {
 
 // Unload a plugin: run its teardown, pop its class overrides, and forget its
 // registrations. Returns true if a plugin by that name was loaded.
+// Run every loaded plugin's shutdown hooks, newest first, then its teardown.
+// Never throws: one misbehaving plugin must not prevent the others from closing, and
+// must not stop the process from exiting.
+export async function shutdownPlugins(registry, { logger = console } = {}) {
+  let map = registry?._pluginRegistrations;
+  let records = map instanceof Map ? [...map.values()] : [];
+
+  for (let record of [...records].reverse()) {
+    let name = record?.pluginName || 'unknown';
+    if (typeof record?.onShutdown === 'function') {
+      try {
+        await record.onShutdown();
+      } catch (error) {
+        logger.warn?.(`Plugin "${name}" onShutdown failed: ${error.message}`);
+      }
+    }
+    if (typeof record?.teardown === 'function') {
+      try {
+        await record.teardown();
+      } catch (error) {
+        logger.warn?.(`Plugin "${name}" teardown failed: ${error.message}`);
+      }
+    }
+  }
+}
+
 export async function unloadPlugin(registry, pluginName, { logger = console } = {}) {
   let record = removePluginRecord(registry, pluginName);
   if (!record)
