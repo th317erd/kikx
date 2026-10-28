@@ -174,8 +174,7 @@ function createPluginSetupContext({ registry, commandRegistry, context, pluginPa
     AgentInterface,
     registerClass,
     registerTool: (...args) => registry.registerTool(...args),
-    registerRoute: (method, path, handler, options = {}) =>
-      registry.registerRoute(method, path, handler, { ...options, pluginName }),
+    mountHttp: (handler) => registry.mountHttp(pluginName, handler),
     registerAgentProvider: (...args) => registry.registerAgentProvider(...args),
     registerAgentType: (...args) => registry.registerAgentType(...args),
     registerCommand: (...args) => {

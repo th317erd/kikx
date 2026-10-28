@@ -42,19 +42,13 @@ export class PluginRegistry extends ClassRegistry {
     return this._pluginPaths.get(pluginID) || null;
   }
 
-  // Plugin HTTP routes. The prefix rule lives in PluginRouter so every caller gets it:
-  // a plugin may only register under "/plugin/<its own name>/".
-  registerRoute(method, path, handler, options = {}) {
-    let router = this.getPluginRouter();
-    let pluginName = options.pluginName || this._defaultPluginName || null;
-    if (!pluginName)
-      throw new TypeError('registerRoute requires a pluginName');
-
-    return router.register({ method, path, handler, pluginName });
+  // HTTP mounting. A plugin gets one mount point; everything below it is its own.
+  mountHttp(pluginId, handler) {
+    return this.getPluginRouter().mount(pluginId, handler);
   }
 
-  listRoutes(pluginName = null) {
-    return this.getPluginRouter().list(pluginName);
+  listHttpMounts() {
+    return this.getPluginRouter().listMounts();
   }
 
   setPluginRouter(router) {
@@ -63,7 +57,7 @@ export class PluginRegistry extends ClassRegistry {
 
   getPluginRouter() {
     if (!this._pluginRouter)
-      throw new Error('registerRoute called before the plugin router was attached');
+      throw new Error('mountHttp called before the plugin router was attached');
     return this._pluginRouter;
   }
 
