@@ -448,7 +448,11 @@ export function connectFrameListObserver(app) {
   let sentinel = document.createElement('div');
   sentinel.className = 'kikx-frame-load-sentinel';
   sentinel.setAttribute('aria-hidden', 'true');
-  frameStream.insertBefore(sentinel, frameStream.firstChild);
+  // A scrollview rebuilds its window element on page changes. Keep the
+  // sentinel beside that window (still inside the scrolling viewport) so the
+  // page render cannot wipe the pagination trigger.
+  let sentinelParent = frameStream.parentElement === frameList ? frameList : frameStream;
+  sentinelParent.insertBefore(sentinel, sentinelParent === frameList ? frameStream : frameStream.firstChild);
   app._frameLoadSentinel = sentinel;
 
   if (typeof IntersectionObserver === 'function') {

@@ -1,8 +1,9 @@
 # Plan: `aeor-scrollview` — deterministic lazy history and virtual layout
 
-**Status: DRAFT revision 3 — owner design session incorporated. No production
-scroll code changes are authorized by this document.** The testbed under
-`spec/ui/scrollview-testbed/` is the only implementation exception.
+**Status: ACTIVE DRAFT revision 3 — owner design session incorporated. No
+production scroll code changes are authorized beyond the shared component and
+Kikx adapter that now consume it.** The original testbed under
+`spec/ui/scrollview-testbed/` remains experimental.
 
 Revision 3 keeps native browser flow but sharpens it into a **container
 projection**: consecutive real messages and blank page ranges share containers;

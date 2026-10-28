@@ -608,6 +608,12 @@ kikx-app {
   color: #9ca7b1;
 }
 
+.kikx-thread-scrollview {
+  display: block;
+  height: 100%;
+  min-height: 0;
+}
+
 .kikx-frame-list {
   height: 100%;
   min-height: 0;

@@ -5,6 +5,7 @@ import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { miniPreviewFrames, miniScale, MINI_DESIGN_WIDTH, MINI_DESIGN_HEIGHT } from './chat-view-model.mjs';
 import { countRebuild } from './render-stats.mjs';
 import { captureFrameListAnchor, restoreFrameListAnchor } from './frame-scroll-anchor.mjs';
+import { KikxChatScrollView } from './kikx-chat-scrollview.mjs';
 
 const FRAME_ENTER_ANIMATION_MS = 220;
 
@@ -26,6 +27,7 @@ export class KikxChatView extends HTMLElement {
     this._frameStream = null;
     this._miniScaler = null;
     this._resizeObserver = null;
+    this._scrollview = null;
     this._windowStart = 0;
     this._windowEnd = 0;
     this._windowStartFrameID = null;
@@ -45,11 +47,11 @@ export class KikxChatView extends HTMLElement {
   }
 
   get frameList() {
-    return this.querySelector('.kikx-frame-list');
+    return this._scrollview?.frameList || this.querySelector('.kikx-frame-list');
   }
 
   get frameStream() {
-    return this.querySelector('.kikx-frame-stream');
+    return this._scrollview?.frameStream || this.querySelector('.kikx-frame-stream');
   }
 
   get frames() {
@@ -103,19 +105,25 @@ export class KikxChatView extends HTMLElement {
     if (appState)
       this._appState = appState;
 
+    if (this._canUseShared() && this._mode === 'full') {
+      this._renderFullShared();
+      return;
+    }
     this._render();
   }
 
   get windowStart() {
-    return this._windowStart;
+    return this._scrollview?.windowStart ?? this._windowStart;
   }
 
   get windowStartFrameID() {
-    return this._windowStartFrameID;
+    return this._scrollview
+      ? this._frames[this.windowStart]?.id || null
+      : this._windowStartFrameID;
   }
 
   get windowEnd() {
-    return this._windowEnd;
+    return this._scrollview?.windowEnd ?? this._windowEnd;
   }
 
   // Incremental update used by the app's frame-runtime flush path. Preserves
@@ -123,6 +131,19 @@ export class KikxChatView extends HTMLElement {
   // contract the UI tests assert. Only the active render window is materialized;
   // frames outside it stay in `_frames` and can be revealed by scrolling up.
   syncFrames(frames, appState, options = {}) {
+    if (this._canUseShared() && this._mode === 'full') {
+      this._frames = Array.isArray(frames) ? frames : [];
+      if (appState)
+        this._appState = appState;
+      if (!this._scrollview?.element?.isConnected)
+        this._renderFullShared();
+      let result = this._scrollview.syncFrames(this._frames, this._appState, options);
+      this._windowStart = this.windowStart;
+      this._windowEnd = this.windowEnd;
+      this._windowStartFrameID = this.windowStartFrameID;
+      return result;
+    }
+
     let previousFrames = this._frames;
     this._frames = Array.isArray(frames) ? frames : [];
     if (appState)
@@ -213,6 +234,8 @@ export class KikxChatView extends HTMLElement {
   // Reveal older frames already held in state. Returns true when the window
   // actually moved; the caller can then avoid an unnecessary server fetch.
   expandOlderFrames(count = RENDER_WINDOW_REVEAL) {
+    if (this._canUseShared() && this._scrollview)
+      return this._scrollview.expandOlderFrames(count);
     let amount = Math.max(1, Number.isFinite(count) ? Math.trunc(count) : RENDER_WINDOW_REVEAL);
     let nextStart = Math.max(0, this._windowStart - amount);
     if (nextStart === this._windowStart)
@@ -247,6 +270,8 @@ export class KikxChatView extends HTMLElement {
   // The previous top-visible frame stays fixed, so reaching the bottom extends
   // the list downward instead of jumping thousands of pixels to a new window.
   expandNewerFrames(count = RENDER_WINDOW_REVEAL) {
+    if (this._canUseShared() && this._scrollview)
+      return this._scrollview.expandNewerFrames(count);
     let amount = Math.max(1, Number.isFinite(count) ? Math.trunc(count) : RENDER_WINDOW_REVEAL);
     if (this._windowEnd >= this._frames.length)
       return false;
@@ -279,6 +304,8 @@ export class KikxChatView extends HTMLElement {
   // Return to the newest window after the user has finished reading older
   // frames. Returns true when the window changed.
   showLatestFrames() {
+    if (this._canUseShared() && this._scrollview)
+      return this._scrollview.showLatestFrames();
     let latestStart = Math.max(0, this._frames.length - MAX_RENDERED_FRAMES);
     if (latestStart === this._windowStart)
       return false;
@@ -342,7 +369,17 @@ export class KikxChatView extends HTMLElement {
     });
   }
 
+  _canUseShared() {
+    return typeof customElements !== 'undefined'
+      && customElements.get('aeor-scrollview')
+      && typeof ResizeObserver === 'function';
+  }
+
   _renderFull() {
+    if (this._canUseShared()) {
+      this._renderFullShared();
+      return;
+    }
     countRebuild('chatView');
     this.textContent = '';
     this.classList.add('kikx-chat-view--full');
@@ -374,6 +411,35 @@ export class KikxChatView extends HTMLElement {
 
     list.appendChild(stream);
     this.appendChild(list);
+  }
+
+  _renderFullShared() {
+    countRebuild('chatView');
+    this.classList.add('kikx-chat-view--full');
+    this.classList.remove('kikx-chat-view--mini');
+    this.setAttribute('role', 'list');
+    if (this._frames.length === 0) {
+      this.textContent = '';
+      this._scrollview = null;
+      let empty = document.createElement('div');
+      empty.className = 'kikx-thread__empty';
+      let message = document.createElement('p');
+      message.textContent = 'No messages yet.';
+      empty.appendChild(message);
+      this.appendChild(empty);
+      return;
+    }
+    if (!this._scrollview)
+      this._scrollview = new KikxChatScrollView({
+        host: this,
+        pageSize: MAX_RENDERED_FRAMES,
+        createFrameItem: (frame) => this._createFrameItem(frame),
+        getAppState: () => this._appState,
+      });
+    this._scrollview.mount(this._frames);
+    this._windowStart = this._scrollview.windowStart;
+    this._windowEnd = this._scrollview.windowEnd;
+    this._windowStartFrameID = this._frames[this._windowStart]?.id || null;
   }
 
   _syncMiniFrames() {

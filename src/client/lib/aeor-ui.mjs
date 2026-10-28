@@ -23,6 +23,7 @@ const OPTIONAL_COMPONENT_URLS = [
   '/vendor/aeor-web-components/components/aeor-checkbox.js',
   '/vendor/aeor-web-components/components/aeor-confirm-button.js',
   '/vendor/aeor-web-components/components/aeor-progress-button.js',
+  '/vendor/aeor-web-components/components/aeor-scrollview.js',
 ];
 
 const optionalComponentFailures = await loadOptionalModules(OPTIONAL_COMPONENT_URLS, {
