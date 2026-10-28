@@ -1063,7 +1063,7 @@ do not depend on a page/item and are not notifications.
 | `mounted-page-budget` | `mountedPageBudget` | `3` | Maximum non-anchor loaded pages kept mounted. |
 | `mounted-item-budget` | `mountedItemBudget` | `400` | Soft cap on mounted item elements. |
 | `page-cache-budget` | `pageCacheBudget` | `40` | Soft cap on loaded page/item data retained in memory; the anchor page is exempt. |
-| `prefetch-pages` | `prefetchPages` | `1` | Adjacent pages to prefetch after settling. |
+| `prefetch-pages` | `prefetchPages` | `3` | Pages to prefetch on each side after settling; `3` keeps a seven-page working band around the viewport. |
 | `follow-on-open` | `followOnOpen` | `true` | Initial tail-follow intent (maps to `initial-mode: follow-tail`). |
 | `initial-mode` | `initialMode` | `follow-tail` | `follow-tail` or `free`; `pinned` requires an explicit anchor and is not an initial scalar. |
 | `top-loading-label` | `topLoadingLabel` | component default | Localized loading text. |
