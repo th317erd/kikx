@@ -123,6 +123,11 @@ export const STANDARD_TOOL_NOTES_LINES = [
   '- Scripts: use exec-script for cohesive multi-step computation or transformation,',
   '  not as a file-editing escape hatch. Use read-file/write-file/exec for ordinary',
   '  files and commands; prefer targeted edits over shell rewrites.',
+  '- Shell commands: all shell commands are async, and can be set to never timeout.',
+  '  Start a server, a prototype, or any long service you need. exec and exec-script',
+  '  default to a 15-minute timeout; pass timeoutMs to change it, or 0 / "Infinity"',
+  '  for none. Do not background a server with & to escape the default -- set the',
+  '  timeout and let the process stay managed, so exec-status/exec-read can see it.',
 ];
 
 // The communication contract lives only in the stable system prompt. The

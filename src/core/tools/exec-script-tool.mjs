@@ -75,9 +75,9 @@ export class ExecScriptTool extends PluginInterface {
         description: 'Optional text to write to the script process stdin before closing it.',
       },
       timeoutMs: {
-        type: 'integer',
-        minimum: 1,
-        description: 'Optional timeout in milliseconds for the managed install-and-run process. By default it has no timeout.',
+        type: [ 'integer', 'string' ],
+        minimum: 0,
+        description: 'Optional timeout in milliseconds for the managed install-and-run process. Defaults to 900000 (15 minutes). Pass 0 or "Infinity" for no timeout at all.',
       },
       install: {
         type: 'boolean',

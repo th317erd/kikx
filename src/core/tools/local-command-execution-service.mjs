@@ -6,8 +6,14 @@ import path from 'node:path';
 
 import { snapshotEnvironment } from '../config/index.mjs';
 
-const DEFAULT_TIMEOUT_MS = 60000;
-const MAX_TIMEOUT_MS = 10 * 60 * 1000;
+// Owner decision 2026-10-27: a shell command is bounded by default, but the bound
+// is generous and any agent may replace it with a larger value or with no deadline
+// at all. The previous 60s default plus a hard 10-minute ceiling meant a real build
+// could not be started, and an explicit "never timeout" request was rejected.
+const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000;
+// No ceiling by default: "anything, including Infinity" is the contract. A finite
+// maximum remains available as an option for embedders that want a guard rail.
+const MAX_TIMEOUT_MS = Infinity;
 const FORCE_KILL_DELAY_MS = 1000;
 const DEFAULT_EXIT_STDIO_GRACE_MS = 250;
 const RVM_NOUNSET_COMPAT_PROLOGUE = [
@@ -28,20 +34,28 @@ export class LocalCommandExecutionService {
       ...(options.env || {}),
     };
     this.defaultTimeoutMs = normalizeTimeout(options.defaultTimeoutMs ?? DEFAULT_TIMEOUT_MS, 'defaultTimeoutMs');
-    this.maxTimeoutMs = normalizeTimeout(options.maxTimeoutMs ?? MAX_TIMEOUT_MS, 'maxTimeoutMs');
+    this.maxTimeoutMs = normalizeOptionalTimeout(options.maxTimeoutMs ?? MAX_TIMEOUT_MS, 'maxTimeoutMs');
     this.exitStdioGraceMs = normalizeNonNegativeTimeout(options.exitStdioGraceMs ?? DEFAULT_EXIT_STDIO_GRACE_MS, 'exitStdioGraceMs');
   }
 
   async exec(params = {}) {
+    // `exec` awaits the full output, so it has no independent policy of its own:
+    // it honours the same contract as startProcess, including an explicit request
+    // for no deadline. Leaving allowNoTimeout false here made `exec(cmd, {
+    // timeoutMs: 0 })` throw while the identical call through ProcessManager
+    // succeeded, which is the kind of split a caller cannot reason about.
     return await runLoginShellCommand(this.startProcess(params, {
-      defaultTimeoutMs: this.defaultTimeoutMs,
-      allowNoTimeout: false,
+      allowNoTimeout: true,
     }));
   }
 
   startProcess(params = {}, options = {}) {
+    // Only an explicitly supplied defaultTimeoutMs may override the service
+    // default. `?? null` looked equivalent but was not: an absent option became
+    // null, which normalizeRequestedTimeout reads as "no deadline", so every
+    // caller that did not opt in silently lost the 15-minute default.
     let request = this.normalizeExecutionRequest(params, {
-      defaultTimeoutMs: options.defaultTimeoutMs ?? null,
+      defaultTimeoutMs: options.defaultTimeoutMs === undefined ? undefined : options.defaultTimeoutMs,
       allowNoTimeout: options.allowNoTimeout !== false,
     });
 
@@ -226,24 +240,78 @@ function normalizeCWD(baseCWD, value) {
 }
 
 function normalizeRequestedTimeout(value, defaultTimeoutMs, maxTimeoutMs, options = {}) {
+  let allowNoTimeout = options.allowNoTimeout !== false;
+
   if (value == null || value === '') {
-    if (defaultTimeoutMs == null && options.allowNoTimeout)
+    if (defaultTimeoutMs == null && allowNoTimeout)
       return null;
 
     return defaultTimeoutMs;
   }
 
-  let timeoutMs = normalizeTimeout(value, 'timeoutMs');
-  if (timeoutMs > maxTimeoutMs)
+  let timeoutMs = parseTimeoutValue(value, 'timeoutMs');
+  if (timeoutMs === null) {
+    if (!allowNoTimeout)
+      throw new TypeError('this command executor requires a bounded timeoutMs; omit the parameter to use its default');
+
+    return null;
+  }
+
+  if (maxTimeoutMs != null && timeoutMs > maxTimeoutMs)
     throw new TypeError(`timeoutMs must be less than or equal to ${maxTimeoutMs}`);
 
   return timeoutMs;
+}
+
+// "No deadline" is `null` everywhere downstream: spawnLoginShellCommand only arms
+// a timer when timeoutMs != null. Infinity must never reach setTimeout, because
+// Node clamps it to 1ms and warns TimeoutOverflowWarning, which would kill every
+// process the instant it started. So every "never" spelling normalises to null.
+const NO_TIMEOUT_SENTINELS = new Set([ 'infinity', 'infinite', 'inf', 'none', 'never', 'no-timeout', 'notimeout' ]);
+
+function parseTimeoutValue(value, fieldName) {
+  if (typeof value === 'string' && NO_TIMEOUT_SENTINELS.has(value.trim().toLowerCase()))
+    return null;
+
+  let number = Number(value);
+  if (!Number.isFinite(number)) {
+    if (number === Infinity)
+      return null;
+
+    throw new TypeError(`${fieldName} must be a positive integer, 0, or Infinity`);
+  }
+
+  if (number < 0 || (number > 0 && number < 1))
+    throw new TypeError(`${fieldName} must be a positive integer, 0, or Infinity`);
+
+  // Zero is accepted as "no deadline": a model reasoning "no timeout" reaches for
+  // 0 as readily as for Infinity, and the two mean the same thing to the caller.
+  if (number === 0)
+    return null;
+
+  return Math.trunc(number);
 }
 
 function normalizeTimeout(value, fieldName) {
   let number = Number(value);
   if (!Number.isFinite(number) || number < 1)
     throw new TypeError(`${fieldName} must be a positive integer`);
+
+  return Math.trunc(number);
+}
+
+// Unlike normalizeTimeout, this accepts Infinity: it configures a ceiling, and an
+// infinite ceiling is the documented way to say "no ceiling".
+function normalizeOptionalTimeout(value, fieldName) {
+  if (value == null)
+    return null;
+
+  let number = Number(value);
+  if (number === Infinity)
+    return Infinity;
+
+  if (!Number.isFinite(number) || number < 1)
+    throw new TypeError(`${fieldName} must be a positive integer or Infinity`);
 
   return Math.trunc(number);
 }
