@@ -244,6 +244,21 @@ function registerPluginRecord(registry, record) {
   if (!registry._pluginRegistrations)
     registry._pluginRegistrations = new Map();
 
+    // A duplicate name silently replaced the earlier plugin - data loss with no trace.
+    // Refuse instead, and record it so the inventory can report it.
+    let existing = registry._pluginRegistrations.get(record.pluginName);
+    if (existing && existing.pluginPath !== record.pluginPath) {
+      // Locations only: this message is served to unauthenticated callers.
+      let message = 'plugin name "' + record.pluginName + '" is already registered as '
+        + (existing.pluginLocation || 'unknown') + '; refusing ' + (record.pluginLocation || 'unknown');
+      if (!registry._pluginLoadErrors) registry._pluginLoadErrors = [];
+      registry._pluginLoadErrors = registry._pluginLoadErrors
+        .filter((e) => e.location !== record.pluginLocation)
+        .concat([{ location: record.pluginLocation, message, at: new Date().toISOString() }])
+        .slice(-50);
+      return false;
+    }
+
   registry._pluginRegistrations.set(record.pluginName, record);
 }
 
