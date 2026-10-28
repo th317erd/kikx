@@ -349,6 +349,11 @@ function createPluginSetupContext({ registry, commandRegistry, context, pluginPa
       if (!store || typeof store.get !== 'function') return Promise.resolve(fallback);
       return Promise.resolve(store.get(path)).then((v) => (v === undefined || v === null ? fallback : v));
     },
+    appendToSessionQuietly: (sessionID, input) => {
+      if (!registry._pluginFrameRuntime)
+        throw new Error('appendToSessionQuietly called before the frame runtime was attached');
+      return registry._pluginFrameRuntime.appendUserMessageQuietly(sessionID, input);
+    },
     appendToSession: (sessionID, input) => {
       if (!registry._pluginFrameRuntime)
         throw new Error('appendToSession called before the frame runtime was attached');
