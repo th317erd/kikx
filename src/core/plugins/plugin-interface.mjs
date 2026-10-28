@@ -114,10 +114,15 @@ export class PluginInterface {
 }
 
 function timeout(ms, message) {
-  return new Promise((_, reject) => {
+  let timer = null;
+  let promise = new Promise((_, reject) => {
     // Not unref'd: a permission check that never settles must still be cut off by this
     // timer, and an unref'd timer lets the process exit instead of timing out.
-    setTimeout(() => reject(new Error(message)), ms);
+    timer = setTimeout(() => reject(new Error(message)), ms);
   });
+  // Clear on settle either way. Without this the referenced timer keeps the process
+  // alive for its full duration after the race has already resolved - the mirror of the
+  // bug the unref removal fixed.
+  return promise.finally(() => { if (timer) clearTimeout(timer); });
 }
 
