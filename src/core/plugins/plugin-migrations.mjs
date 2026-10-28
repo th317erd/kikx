@@ -53,7 +53,7 @@ export class PluginMigrations {
   async getPool() {
     if (this.pool) return this.pool;
     if (!this.url)
-      throw new Error('plugin migrations require a database url; pass { url } to getPluginMigrations');
+      throw new Error('plugin migrations require a database url');
     let { Pool } = await import('pg');
     this.pool = new Pool({ connectionString: this.url });
     return this.pool;
@@ -125,6 +125,20 @@ export class PluginMigrations {
 
   async run(options = {}) {
     let logger = options.logger || this.logger;
+
+    // Nothing registered means nothing to do. This is the common case for a server
+    // started without plugins, including most tests.
+    if (!this.plugins.size)
+      return { skipped: true, reason: 'no plugins registered migrations' };
+
+    // No url means the caller has no database to migrate. Skipping with a warning is
+    // correct here: refusing would make every plugin-less or database-less boot fail,
+    // and an actual migration error is still fatal.
+    if (!this.url) {
+      logger?.warn?.('[plugin-migrations] no database url supplied; skipping migrations');
+      return { skipped: true, reason: 'no database url' };
+    }
+
     let connection = await this.getPool();
     await connection.query(`
       CREATE TABLE IF NOT EXISTS ${MIGRATIONS_TABLE} (
