@@ -62,6 +62,7 @@ import { registerQuestionScheduleRouting } from '../core/questions/question-sche
 import { CommandRegistry, registerInternalCommands } from '../core/commands/index.mjs';
 import { PluginRegistry } from '../core/plugins/index.mjs';
 import { getPluginRouter } from '../core/plugins/plugin-router.mjs';
+import { getPluginMigrations } from '../core/plugins/plugin-migrations.mjs';
 import { loadPlugins } from '../core/plugins/plugin-loader.mjs';
 import { mergePluginPaths } from '../core/plugins/plugin-paths.mjs';
 import { registerCoreClasses, resolveCoreClass } from '../core/plugins/core-classes.mjs';
@@ -157,8 +158,11 @@ export async function createServer(options = {}) {
     let pluginRouter = getPluginRouter();
     context.set('pluginRouter', pluginRouter);
 
+    let pluginMigrations = getPluginMigrations(options.pluginMigrations);
     let pluginRegistry = new PluginRegistry();
     pluginRegistry.setPluginRouter(pluginRouter);
+    pluginRegistry.setPluginMigrations(pluginMigrations);
+    context.set('pluginMigrations', pluginMigrations);
     context.set('pluginRegistry', pluginRegistry);
   }
 
@@ -242,6 +246,18 @@ export async function createServer(options = {}) {
   // the selected driver. The built-in aeordb driver is registered by
   // registerCoreClasses, so a default boot always has at least one driver.
   await context.require('pluginLoadPromise');
+
+  // Plugins registered their migrations during load, so this is the first point at
+  // which the full set is known. A failure stops startup: a half-migrated
+  // database is worse than a server that refuses to boot.
+  if (context.has('pluginMigrations')) {
+    try {
+      await context.require('pluginMigrations').run({ logger: console });
+    } catch (error) {
+      console.error('[plugin-migrations] startup aborted:', error.message);
+      throw error;
+    }
+  }
 
   if (!context.has('db')) {
     // `aeordb` remains an alias for hosts/tests that inject it directly.

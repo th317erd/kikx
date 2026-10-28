@@ -175,6 +175,14 @@ function createPluginSetupContext({ registry, commandRegistry, context, pluginPa
     registerClass,
     registerTool: (...args) => registry.registerTool(...args),
     mountHttp: (handler) => registry.mountHttp(pluginName, handler),
+    registerMigrations: (options = {}) => {
+      // A relative directory is resolved against the plugin, so a plugin never has to
+      // know where it is installed.
+      let directory = options.directory || 'sql';
+      if (!path.isAbsolute(directory))
+        directory = path.join(pluginPath, directory);
+      return registry.registerMigrations(pluginName, { ...options, directory });
+    },
     registerAgentProvider: (...args) => registry.registerAgentProvider(...args),
     registerAgentType: (...args) => registry.registerAgentType(...args),
     registerCommand: (...args) => {

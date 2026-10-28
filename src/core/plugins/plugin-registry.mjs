@@ -42,6 +42,17 @@ export class PluginRegistry extends ClassRegistry {
     return this._pluginPaths.get(pluginID) || null;
   }
 
+  // Schema migrations. The directory is relative to the plugin, resolved by the caller.
+  registerMigrations(pluginId, options = {}) {
+    if (!this._pluginMigrations)
+      throw new Error('registerMigrations called before the migrations registry was attached');
+    return this._pluginMigrations.register(pluginId, options);
+  }
+
+  setPluginMigrations(migrations) {
+    this._pluginMigrations = migrations;
+  }
+
   // HTTP mounting. A plugin gets one mount point; everything below it is its own.
   mountHttp(pluginId, handler) {
     return this.getPluginRouter().mount(pluginId, handler);
