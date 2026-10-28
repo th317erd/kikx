@@ -69,7 +69,7 @@ export async function handlePluginRoutes({ request, response, url, context, json
       response.end(JSON.stringify({
         error: {
           message: 'plugin install is disabled',
-          hint: 'set ORG_AEOR_KIKX_PLUGIN_INSTALL_ENABLED=true to allow installing code at runtime',
+          hint: 'set KIKX_PLUGIN_INSTALL_ENABLED=true to allow installing code at runtime',
         },
       }));
       return true;
