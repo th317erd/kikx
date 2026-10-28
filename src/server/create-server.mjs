@@ -244,23 +244,25 @@ export async function createServer(options = {}) {
       registerAgentRouting(context.require('frameRouter'));
     })());
   }
+  // Plugins registered their migrations during load, so this is the first point at
+  // which the full set is known. A failure stops startup: a half-migrated
+  // database is worse than a server that refuses to boot.
+  if (context.has('pluginMigrations')) {
+    try {
+      let result = await context.require('pluginMigrations').run({ logger: console });
+      if (result?.skipped)
+        console.warn('[plugin-migrations] skipped:', result.reason);
+    } catch (error) {
+      console.error('[plugin-migrations] startup aborted:', error.message);
+      throw error;
+    }
+  }
 
   // Plugins must be loaded before the driver is resolved: a plugin may register
   // the selected driver. The built-in aeordb driver is registered by
   // registerCoreClasses, so a default boot always has at least one driver.
   await context.require('pluginLoadPromise');
 
-  // Plugins registered their migrations during load, so this is the first point at
-  // which the full set is known. A failure stops startup: a half-migrated
-  // database is worse than a server that refuses to boot.
-  if (context.has('pluginMigrations')) {
-    try {
-      await context.require('pluginMigrations').run({ logger: console });
-    } catch (error) {
-      console.error('[plugin-migrations] startup aborted:', error.message);
-      throw error;
-    }
-  }
 
   if (!context.has('db')) {
     // `aeordb` remains an alias for hosts/tests that inject it directly.
