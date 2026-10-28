@@ -3,7 +3,7 @@
 // Routes /api/plugins/<id>/... to the plugin that owns that mount.
 // Returns false when the path is not under a plugin mount, so the built-in chain continues.
 
-export async function handlePluginRoutes({ request, response, url, context }) {
+export async function handlePluginRoutes({ request, response, url, context, json, rawBody }) {
   let router = null;
   try {
     router = context.has?.('pluginRouter') ? context.require('pluginRouter') : null;
@@ -37,6 +37,68 @@ export async function handlePluginRoutes({ request, response, url, context }) {
         })),
         failures: registry?._pluginLoadErrors || [],
       },
+    }));
+    return true;
+  }
+
+  // Install a plugin from a directory, without a restart. Takes the path directly rather
+  // than re-reading configuration: KIKX_PLUGIN_PATHS is an environment variable a running
+  // process cannot re-read, which is why reload alone could never find a new plugin.
+  if (url.pathname === '/api/v1/plugins/install' && request.method === 'POST') {
+    let registry = context.has?.('pluginRegistry') ? context.require('pluginRegistry') : null;
+    if (!registry) {
+      response.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ error: { message: 'plugin registry unavailable' } }));
+      return true;
+    }
+
+    // This branch runs before router.invoke, which is what normally supplies a body
+    // reader, so the request body is read here. Bounded: an install payload is a path.
+    let body = null;
+    try {
+      const chunks = []; let size = 0;
+      for await (const chunk of request) {
+        size += chunk.length;
+        if (size > 4096) throw new Error('install payload too large');
+        chunks.push(chunk);
+      }
+      body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : null;
+    } catch (_e) { body = null; }
+    let target = typeof body?.path === 'string' ? body.path.trim() : '';
+    if (!target) {
+      response.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ error: { message: 'install requires a path' } }));
+      return true;
+    }
+    if (!target.startsWith('/')) {
+      response.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ error: { message: 'install path must be absolute' } }));
+      return true;
+    }
+
+    let before = new Set((registry._pluginRegistrations || new Map()).keys());
+    let failuresBefore = (registry._pluginLoadErrors || []).length;
+    try {
+      const { loadPlugins } = await import('../../core/plugins/plugin-loader.mjs');
+      await loadPlugins({
+        pluginPaths: target,
+        registry,
+        commandRegistry: context.require('commandRegistry'),
+        context,
+      });
+    } catch (error) {
+      response.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ error: { message: String(error?.message || error) } }));
+      return true;
+    }
+
+    let after = new Set((registry._pluginRegistrations || new Map()).keys());
+    let added = [...after].filter((k) => !before.has(k));
+    let newFailures = (registry._pluginLoadErrors || []).slice(failuresBefore);
+
+    response.writeHead(added.length ? 201 : 200, { 'Content-Type': 'application/json; charset=utf-8' });
+    response.end(JSON.stringify({
+      data: { path: target, added, total: after.size, failures: newFailures },
     }));
     return true;
   }
