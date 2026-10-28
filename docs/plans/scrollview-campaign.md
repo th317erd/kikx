@@ -3,7 +3,10 @@
 **Status: ACTIVE DRAFT revision 3 — owner design session incorporated. No
 production scroll code changes are authorized beyond the shared component and
 Kikx adapter that now consume it.** The original testbed under
-`spec/ui/scrollview-testbed/` remains experimental.
+`spec/ui/scrollview-testbed/` remains experimental. The server page index and
+`frame-page` body endpoint now expose whole-session raw pages, and the Kikx page
+source projects each page into display heads with a one-page look-ahead for
+boundary tool pairs.
 
 Revision 3 keeps native browser flow but sharpens it into a **container
 projection**: consecutive real messages and blank page ranges share containers;

@@ -43,6 +43,7 @@ async function metrics(page) {
     return {
       scrollview: Boolean(document.querySelector('aeor-scrollview')),
       pages: document.querySelectorAll('.aeor-scrollview__page').length,
+      totalPages: document.querySelector('aeor-scrollview')?.metrics?.().totalPages || 0,
       gaps: document.querySelectorAll('.aeor-scrollview__gap').length,
       items: items.length,
       first: items[0]?.dataset.frameId || '',
@@ -103,36 +104,22 @@ test('the thread mounts the shared scrollview and follows live tail appends', as
       });
       throw new Error(`${error.message}; pageErrors=${pageErrors.join(' | ')}; debug=${JSON.stringify(debug)}`);
     }
-    assert.equal(initial.first, 'frame_181', 'the initial tail page should hold the newest 120 frames');
+    assert.equal(initial.first, 'frame_241', 'the initial tail raw page should hold the newest 60 frames');
     assert.equal(initial.last, 'frame_300');
-    assert.equal(initial.pages >= 1, true);
+    assert.equal(initial.totalPages, 3, 'the source must expose every raw session page, not just the loaded window');
+    assert.equal(initial.gaps > 0, true, 'pages outside the tail must begin as gaps');
 
-    // Pull one older page through the real sentinel/paging path, then return to
-    // the tail. The new state window must leave a gap for the still-unloaded
-    // first page rather than pretending every page is mounted.
+    // Pull an older page through the real sentinel/paging path. It must load
+    // into the existing gap and keep the viewport at the top.
     await page.evaluate(() => {
+      let app = document.querySelector('kikx-app');
+      app._ignoreFrameScrollUntil = 0;
       let list = document.querySelector('.kikx-frame-list');
+      list.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, bubbles: true }));
       list.scrollTop = 0;
       list.dispatchEvent(new Event('scroll', { bubbles: true }));
     });
-    let previousFirst = initial.first;
-    let older;
-    for (let step = 0; step < 3; step++) {
-      await page.waitForTimeout(300);
-      await page.evaluate(() => {
-        let app = document.querySelector('kikx-app');
-        app._ignoreFrameScrollUntil = 0;
-        let list = document.querySelector('.kikx-frame-list');
-        list.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, bubbles: true }));
-        list.scrollTop = 0;
-        list.dispatchEvent(new Event('scroll', { bubbles: true }));
-      });
-      older = await waitFor(page, (value) => value.first && value.first < previousFirst, 15000);
-      previousFirst = older.first;
-      if (older.gaps > 0)
-        break;
-    }
-    assert.equal(older.gaps > 0, true, 'an unloaded older page should be represented by a gap');
+    let older = await waitFor(page, (value) => value.first && value.first < initial.first, 15000);
     assert.ok(older.scrollTop <= 5, `loading older history at the top must keep the viewport at the top, got ${older.scrollTop}`);
     await page.evaluate(() => {
       let list = document.querySelector('.kikx-frame-list');
@@ -190,7 +177,7 @@ test('the default locked thread still renders and receives live appends through 
 
     await page.goto(`${fixture.baseURL}/?code=scrollview-locked-test&view=thread`, { waitUntil: 'domcontentloaded', timeout: 15000 });
     let initial = await waitFor(page, (value) => value.scrollview && value.last === 'frame_300');
-    assert.equal(initial.first, 'frame_181');
+    assert.equal(initial.first, 'frame_241');
 
     let liveFrame = {
       id: 'frame_301',

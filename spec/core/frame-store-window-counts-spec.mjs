@@ -247,3 +247,39 @@ test('counts ignore the current filter selection entirely', async () => {
   assert.deepEqual(first.counts, second.counts);
   assert.equal(first.counts.tools, 1);
 });
+
+// --- whole-session raw page index (scrollview source) --------------------
+
+test('the page index spans the whole session and page tokens survive tail growth', async () => {
+  let { aeordb, store } = createStore();
+  for (let order = 1; order <= 300; order += 1)
+    addFrame(aeordb, order, 'UserMessage');
+
+  let index = await store.listFramePageIndex('ses_1', { pageSize: 120 });
+  assert.equal(index.totalRawFrames, 300);
+  assert.equal(index.totalPages, 3);
+
+  let oldest = await store.listFramePage('ses_1', { pageIndex: 0, pageSize: 120 });
+  let tail = await store.listFramePage('ses_1', { pageIndex: 2, pageSize: 120 });
+  assert.equal(oldest.totalPages, 3);
+  assert.equal(oldest.frames.length, 120);
+  assert.equal(oldest.frames[0].order, 1);
+  assert.equal(tail.frames.length, 60);
+  assert.equal(tail.frames[0].order, 241);
+
+  addFrame(aeordb, 301, 'UserMessage');
+  let grown = await store.listFramePageIndex('ses_1', { pageSize: 120 });
+  let grownTail = await store.listFramePage('ses_1', { pageIndex: 2, pageSize: 120 });
+  assert.equal(grown.totalPages, 3, 'append must not renumber existing pages');
+  assert.equal(grownTail.frames.length, 61);
+  assert.equal(grownTail.frames[0].order, 241);
+});
+
+test('an out-of-range frame page is a 404, not a silently empty last page', async () => {
+  let { aeordb, store } = createStore();
+  addFrame(aeordb, 1, 'UserMessage');
+  await assert.rejects(
+    store.listFramePage('ses_1', { pageIndex: 9, pageSize: 120 }),
+    (error) => error?.status === 404,
+  );
+});

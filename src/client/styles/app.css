@@ -2547,6 +2547,10 @@ kikx-typing-indicator {
   inset: 0;
   overflow: hidden;
   display: block;
+  /* A preview is a picture of a thread, not a second wheel target. Its hidden
+     overflow is still a scroll container in Chromium, so a pointer over the
+     preview consumed wheel gestures instead of scrolling the parent thread. */
+  pointer-events: none;
 }
 
 .kikx-chat-view--mini .kikx-chat-view__scaler {

@@ -5,26 +5,48 @@
 // element owns page/gap geometry, page loading and programmatic scrolling.
 
 import { captureFrameListAnchor, frameItemTopWithinList, restoreFrameListAnchor } from './frame-scroll-anchor.mjs';
+import { KikxThreadPageSource } from './kikx-thread-page-source.mjs';
+import { getSessionPaging } from '../state/kikx-state.mjs';
 
 const CSS_ESCAPE = globalThis.CSS?.escape || ((value) => String(value).replace(/["\\]/g, '\\$&'));
+const PAGE_SIZE = 120;
 
-function pageCount(frames, pageSize) {
+function pageCount(frames, pageSize = PAGE_SIZE) {
   return Math.max(1, Math.ceil(frames.length / pageSize));
+}
+
+export function createKikxPageContext(app, sessionID) {
+  let paging = getSessionPaging(app?._state, sessionID);
+  let total = Number(paging.total);
+  if (!Number.isFinite(total) || total <= 0)
+    return null;
+  return {
+    key: `${sessionID}:${JSON.stringify(app?._state?.frameFilters || null)}`,
+    sessionID,
+    totalRawFrames: total,
+    pageSize: PAGE_SIZE,
+    loadPage: (pageIndex, pageSize) => app._loadFramePage(sessionID, pageIndex, pageSize),
+    getFilters: () => app?._state?.frameFilters || null,
+    getTotalRawFrames: () => Number(getSessionPaging(app?._state, sessionID).total) || total,
+  };
 }
 
 export class KikxChatScrollView {
   constructor({ host, pageSize, createFrameItem, getAppState }) {
     this.host = host;
-    this.pageSize = Math.max(1, pageSize);
+    this.pageSize = Math.max(1, pageSize || PAGE_SIZE);
     this.createFrameItem = createFrameItem;
     this.getAppState = getAppState;
     this.element = null;
     this.frames = [];
     this.source = null;
+    this.pageContext = null;
+    this.pageSource = null;
     this.windowStart = 0;
     this.windowEnd = 0;
     this._pendingAnchor = null;
     this._pendingPage = null;
+    this._appendOffset = 0;
   }
 
   get frameList() {
@@ -35,7 +57,11 @@ export class KikxChatScrollView {
     return this.element?.querySelector?.('.kikx-frame-stream') || null;
   }
 
-  mount(frames) {
+  get usesPagedSource() {
+    return Boolean(this.pageSource);
+  }
+
+  mount(frames, pageContext = this.pageContext) {
     this.host.textContent = '';
     this.element = document.createElement('aeor-scrollview');
     this.element.className = 'kikx-thread-scrollview';
@@ -44,9 +70,33 @@ export class KikxChatScrollView {
     this.host.appendChild(this.element);
     this._installEvents();
     this.frames = Array.isArray(frames) ? frames : [];
-    this._setSource(this.frames);
+    this.pageContext = pageContext || null;
+    this.pageSource = null;
+    this._appendOffset = 0;
+    if (this.pageContext?.loadPage)
+      this._mountPagedSource();
+    else
+      this._setSource(this.frames);
     this._applyClasses();
     return this;
+  }
+
+  _mountPagedSource() {
+    this.pageSource = new KikxThreadPageSource({
+      pageSize: this.pageContext.pageSize || this.pageSize,
+      totalRawFrames: this.pageContext.totalRawFrames,
+      loadPage: this.pageContext.loadPage,
+      getFilters: this.pageContext.getFilters,
+    });
+    this.pageSource.renderItem = (item) => this.createFrameItem(item.frame);
+    this.source = this.pageSource;
+    this.element.setSource(this.source, { follow: false });
+    let last = Math.max(0, this.source.totalPages - 1);
+    this.windowStart = last * this.pageSize;
+    this.windowEnd = this.frames.length;
+    this._pendingPage = last;
+    this._pendingAnchor = null;
+    this.element.scrollToPage(last, { align: 'end', animate: false });
   }
 
   _installEvents() {
@@ -56,6 +106,7 @@ export class KikxChatScrollView {
         return;
       this.windowStart = Math.min(this.windowStart, pageIndex * this.pageSize);
       this.windowEnd = this.frames.length;
+      this.pageSource?.measured?.(pageIndex, event.detail?.measuredHeight);
       if (this._pendingPage === pageIndex) {
         let anchor = this._pendingAnchor;
         this._pendingPage = null;
@@ -122,6 +173,9 @@ export class KikxChatScrollView {
   }
 
   syncFrames(frames, appState, options = {}) {
+    if (this.pageSource)
+      return this._syncPagedFrames(frames, appState, options);
+
     let anchor = captureFrameListAnchor(this.frameList);
     let previous = this.frames;
     let next = Array.isArray(frames) ? frames : [];
@@ -130,17 +184,12 @@ export class KikxChatScrollView {
       || options.prepend === true
       || next.slice(0, overlap).some((frame, index) => frame?.id !== previous[index]?.id);
     if (!this.element || structural) {
-      // Older history is inserted above the current source. Show the newly
-      // loaded oldest page instead of restoring the old top frame: restoring it
-      // puts the entire fetched page above the viewport and undoes the upward
-      // scroll that requested the page.
       let olderInserted = next.length > previous.length
         && (options.prepend === true || next[0]?.id !== previous[0]?.id);
-      let showOlderPage = olderInserted;
       this.frames = next;
       this._setSource(next, {
-        anchor: showOlderPage ? null : anchor,
-        page: showOlderPage ? 0 : this._pageForFrame(next, anchor?.frameID),
+        anchor: olderInserted ? null : anchor,
+        page: olderInserted ? 0 : this._pageForFrame(next, anchor?.frameID),
         align: 'start',
       });
       return { insertedNew: true };
@@ -159,19 +208,57 @@ export class KikxChatScrollView {
         insertedNew = true;
       }
     }
+    this._updateMountedItems(next, appState, options);
+    this.windowEnd = next.length;
+    restoreFrameListAnchor(this.frameList, anchor);
+    return { insertedNew: insertedNew || structural };
+  }
+
+  _syncPagedFrames(frames, appState, options = {}) {
+    let anchor = captureFrameListAnchor(this.frameList);
+    let previous = this.frames;
+    let next = Array.isArray(frames) ? frames : [];
+    // The state window is only the newest live tail; older server pages live in
+    // the scrollview source. A trim or a new tail frame must not reset that
+    // source. Only a different first frame means a different session/filter.
+    let structural = next.length > 0 && previous.length > 0 && next[0]?.id !== previous[0]?.id;
+    this.frames = next;
+    if (structural) {
+      this._mountPagedSource();
+      return { insertedNew: true };
+    }
+
+    let total = Number(this.pageContext?.getTotalRawFrames?.());
+    if (Number.isFinite(total) && total > this.pageSource.totalRawFrames) {
+      this.pageSource.totalRawFrames = total;
+      this.pageSource.totalPages = Math.ceil(total / this.pageSource.pageSize);
+    }
+    let insertedNew = false;
+    if (next.length > previous.length) {
+      let lastPage = Math.max(0, this.pageSource.totalPages - 1);
+      for (let index = previous.length; index < next.length; index++) {
+        let frame = next[index];
+        if (!frame?.id)
+          continue;
+        let itemIndex = lastPage * this.pageSize + (this._appendOffset++ % this.pageSize);
+        this.element.appendItem({ key: frame.id, index: itemIndex, frame });
+        insertedNew = true;
+      }
+    }
+    this._updateMountedItems(next, appState, options);
+    this.windowEnd = next.length;
+    restoreFrameListAnchor(this.frameList, anchor);
+    return { insertedNew };
+  }
+
+  _updateMountedItems(frames, appState, options) {
     let touched = options.touchedFrameIDs instanceof Set ? options.touchedFrameIDs : null;
-    for (let frame of next) {
+    for (let frame of frames) {
       if (options.force !== true && touched && !touched.has(frame.id))
         continue;
       let item = this.frameList?.querySelector(`kikx-frame-item[data-frame-id="${CSS_ESCAPE(frame.id)}"]`);
       item?.updateFrame?.(frame, appState || this.getAppState(), { force: options.force === true });
     }
-    this.windowEnd = next.length;
-    // Preserve the frame under the reader when a streaming item changes size
-    // or a tail item is appended. Kikx's old focus driver is bypassed in shared
-    // mode; this is the equivalent synchronous transaction.
-    restoreFrameListAnchor(this.frameList, anchor);
-    return { insertedNew: insertedNew || structural };
   }
 
   _pageForFrame(frames, frameID) {
@@ -180,9 +267,18 @@ export class KikxChatScrollView {
   }
 
   expandOlderFrames(count = 40) {
-    if (!this.element || this.windowStart <= 0)
+    if (!this.element)
       return false;
     let page = Math.max(0, Math.floor(this.windowStart / this.pageSize) - 1);
+    if (this.pageSource) {
+      if (page >= this.pageSource.totalPages || page === Math.floor(this.windowStart / this.pageSize))
+        return false;
+      this.windowStart = page * this.pageSize;
+      this.element.preloadPage(page);
+      return true;
+    }
+    if (this.windowStart <= 0)
+      return false;
     let anchor = captureFrameListAnchor(this.frameList);
     this.windowStart = page * this.pageSize;
     this._pendingAnchor = anchor;
@@ -194,7 +290,7 @@ export class KikxChatScrollView {
   showLatestFrames() {
     if (!this.element)
       return false;
-    let page = pageCount(this.frames, this.pageSize) - 1;
+    let page = (this.pageSource?.totalPages || pageCount(this.frames, this.pageSize)) - 1;
     if (this.windowStart === page * this.pageSize)
       return false;
     this.windowStart = page * this.pageSize;

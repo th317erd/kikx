@@ -28,6 +28,8 @@ export class KikxChatView extends HTMLElement {
     this._miniScaler = null;
     this._resizeObserver = null;
     this._scrollview = null;
+    this._pageContext = null;
+    this._pageContextKey = '';
     this._windowStart = 0;
     this._windowEnd = 0;
     this._windowStartFrameID = null;
@@ -60,6 +62,20 @@ export class KikxChatView extends HTMLElement {
 
   get usesSharedScrollview() {
     return Boolean(this._scrollview?.element);
+  }
+
+  get usesPagedScrollview() {
+    return Boolean(this._scrollview?.usesPagedSource);
+  }
+
+  setPageContext(context) {
+    let key = context?.key || '';
+    if (key === this._pageContextKey)
+      return;
+    this._pageContextKey = key;
+    this._pageContext = context || null;
+    if (this._mode === 'full' && this.isConnected && this._frames.length > 0)
+      this._renderFullShared();
   }
 
   connectedCallback() {
@@ -95,6 +111,8 @@ export class KikxChatView extends HTMLElement {
 
     if (input.appState)
       this._appState = input.appState;
+    if (input.pageContext !== undefined)
+      this.setPageContext(input.pageContext);
 
     this._pendingWindowStart = Number.isInteger(input.windowStart) ? input.windowStart : null;
     if (this._mode === 'mini') {
@@ -440,7 +458,7 @@ export class KikxChatView extends HTMLElement {
         createFrameItem: (frame) => this._createFrameItem(frame),
         getAppState: () => this._appState,
       });
-    this._scrollview.mount(this._frames);
+    this._scrollview.mount(this._frames, this._pageContext);
     this._windowStart = this._scrollview.windowStart;
     this._windowEnd = this._scrollview.windowEnd;
     this._windowStartFrameID = this._frames[this._windowStart]?.id || null;

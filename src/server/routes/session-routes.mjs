@@ -23,6 +23,7 @@ import {
   matchSessionComposerRoute,
   matchSessionCompactionRetryRoute,
   matchSessionDeleteRoute,
+  matchSessionFramePageRoute,
   matchSessionPreferencesRoute,
   matchSessionRestoreRoute,
   matchSessionRoute,
@@ -333,6 +334,30 @@ export async function handleSessionRoutes({ request, response, url, context }) {
       userID: account.id,
     });
     writeJSON(response, 200, { data: { frame: redacted } });
+    return true;
+  }
+
+  let framePageRoute = matchSessionFramePageRoute(url.pathname);
+  if (framePageRoute && request.method === 'GET') {
+    let frameRuntime = context.require('frameRuntime');
+    if (framePageRoute.index) {
+      writeJSON(response, 200, {
+        data: await frameRuntime.listFramePageIndex(framePageRoute.sessionID, {
+          pageSize: parsePositiveInteger(url.searchParams.get('pageSize'), 120),
+        }),
+      });
+      return true;
+    }
+
+    let pageIndex = parseNonNegativeInteger(framePageRoute.pageIndex, null);
+    if (pageIndex == null)
+      throw httpError(400, 'frame page index must be a non-negative integer');
+    writeJSON(response, 200, {
+      data: await frameRuntime.listFramePage(framePageRoute.sessionID, {
+        pageIndex,
+        pageSize: parsePositiveInteger(url.searchParams.get('pageSize'), 120),
+      }),
+    });
     return true;
   }
 

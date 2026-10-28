@@ -216,6 +216,89 @@ export class FrameStorePreviewBase extends FrameStoreScheduledBase {
     };
   }
 
+  // Whole-session page index for the lazy thread scrollview. Pages are raw
+  // frame ranges counted from the oldest frame, so appending new frames grows
+  // the page count without changing existing page tokens. Bodies are read only
+  // by listFramePage(); this method is path/total work only.
+  async listFramePageIndex(sessionID, options = {}) {
+    if (!sessionID)
+      throw new TypeError('listFramePageIndex() requires sessionID');
+
+    let pageSize = normalizeLargeLimit(options.pageSize, 120);
+    let interactionsPath = `${this.rootPath}/sessions/${encodeSegment(sessionID)}/interactions`;
+    let probe;
+    try {
+      probe = await this.aeordb.listDirectory(interactionsPath, {
+        depth: -1,
+        glob: '**/frames/*.json',
+        limit: 1,
+        offset: 0,
+      });
+    } catch (error) {
+      if (error?.status === 404)
+        return { pageSize, totalRawFrames: 0, totalPages: 0, oldestOrder: null, newestOrder: null };
+      throw error;
+    }
+
+    let totalRawFrames = normalizePreviewTotal(probe?.total);
+    return {
+      pageSize,
+      totalRawFrames,
+      totalPages: totalRawFrames > 0 ? Math.ceil(totalRawFrames / pageSize) : 0,
+      oldestOrder: null,
+      newestOrder: null,
+    };
+  }
+
+  async listFramePage(sessionID, options = {}) {
+    if (!sessionID)
+      throw new TypeError('listFramePage() requires sessionID');
+
+    let pageSize = normalizeLargeLimit(options.pageSize, 120);
+    let pageIndex = Math.max(0, Math.trunc(Number(options.pageIndex) || 0));
+    let index = await this.listFramePageIndex(sessionID, { pageSize });
+    if (index.totalPages === 0)
+      return { ...index, pageIndex, frames: [], hasMoreBefore: false, hasMoreAfter: false, oldestOrder: null, newestOrder: null };
+    if (pageIndex >= index.totalPages)
+      throw Object.assign(new Error('frame page is out of range'), { status: 404 });
+
+    let interactionsPath = `${this.rootPath}/sessions/${encodeSegment(sessionID)}/interactions`;
+    let paths = await this.listDirectoryPaths(interactionsPath, {
+      depth: -1,
+      glob: '**/frames/*.json',
+      limit: pageSize,
+      offset: pageIndex * pageSize,
+    });
+    paths = sortFramePathsByOrder(paths.filter((path) => path.includes('/frames/')));
+    if (paths.length === 0)
+      return { ...index, pageIndex, frames: [], hasMoreBefore: pageIndex > 0, hasMoreAfter: pageIndex + 1 < index.totalPages };
+    let frames = [];
+    let reads = await readJSONFiles(this.aeordb, paths, {
+      fallbackOnBatchError: true,
+      continueOnError: true,
+    });
+    for (let read of reads) {
+      if (read.error) {
+        frames.push(createFrameLoadError(sessionID, read.path, read.error));
+        continue;
+      }
+      if (read.value?.id && read.value.type)
+        frames.push(read.value);
+    }
+
+    return {
+      ...index,
+      pageIndex,
+      frames,
+      startOffset: pageIndex * pageSize,
+      endOffset: pageIndex * pageSize + paths.length,
+      hasMoreBefore: pageIndex > 0,
+      hasMoreAfter: pageIndex + 1 < index.totalPages,
+      oldestOrder: frameOrderFromPath(paths[0]),
+      newestOrder: frameOrderFromPath(paths[paths.length - 1]),
+    };
+  }
+
   // Per-row counts for the whole session, derived from frame paths only.
   //
   // Counting the loaded page instead is what made the popup report a page-sized

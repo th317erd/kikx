@@ -232,6 +232,34 @@ class StagehandFrameRuntime extends EventEmitter {
     };
   }
 
+  async listFramePageIndex(sessionID, options = {}) {
+    let pageSize = Math.max(1, Number(options.pageSize) || 120);
+    let frames = this.framesBySessionID.get(sessionID) || [];
+    return {
+      pageSize,
+      totalRawFrames: frames.length,
+      totalPages: frames.length > 0 ? Math.ceil(frames.length / pageSize) : 0,
+      oldestOrder: frames[0]?.order ?? null,
+      newestOrder: frames[frames.length - 1]?.order ?? null,
+    };
+  }
+
+  async listFramePage(sessionID, options = {}) {
+    let pageIndex = Math.max(0, Math.trunc(Number(options.pageIndex) || 0));
+    let index = await this.listFramePageIndex(sessionID, options);
+    let start = pageIndex * index.pageSize;
+    let frames = (this.framesBySessionID.get(sessionID) || []).slice(start, start + index.pageSize);
+    return {
+      ...index,
+      pageIndex,
+      frames,
+      hasMoreBefore: pageIndex > 0,
+      hasMoreAfter: pageIndex + 1 < index.totalPages,
+      oldestOrder: frames[0]?.order ?? null,
+      newestOrder: frames[frames.length - 1]?.order ?? null,
+    };
+  }
+
   // Whole-session frame counts, the server answer behind the filter popup's
   // badges. The real runtime derives these from frame PATHS without reading
   // bodies; the fixture has the frames in memory, so it can tally them

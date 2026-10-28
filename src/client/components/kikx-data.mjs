@@ -563,6 +563,18 @@ export async function loadFrames(app, sessionID, options = {}) {
 // Load a single window beginning at a stable frame id. This is the reload
 // anchor path: one request lands on the message the user was reading instead
 // of walking backward through every newer page.
+export async function loadFramePage(app, sessionID, pageIndex, pageSize = 120) {
+  let params = new URLSearchParams({ pageSize: String(pageSize) });
+  let result = await getJSON(app, `/api/v1/sessions/${encodeURIComponent(sessionID)}/frame-page/${encodeURIComponent(pageIndex)}?${params}`);
+  return result.data;
+}
+
+export async function loadFramePageIndex(app, sessionID, pageSize = 120) {
+  let params = new URLSearchParams({ pageSize: String(pageSize) });
+  let result = await getJSON(app, `/api/v1/sessions/${encodeURIComponent(sessionID)}/frame-page-index?${params}`);
+  return result.data;
+}
+
 export async function loadFramesAtMessage(app, sessionID, frameID, options = {}) {
   if (!sessionID || !frameID)
     return null;

@@ -57,6 +57,22 @@ export function matchSessionPreferencesRoute(pathname) {
   };
 }
 
+export function matchSessionFramePageRoute(pathname) {
+  let index = /^\/api\/v1\/sessions\/([^/]+)\/frame-page-index$/.exec(pathname);
+  if (index)
+    return { sessionID: decodeURIComponent(index[1]), index: true, pageIndex: null };
+
+  let page = /^\/api\/v1\/sessions\/([^/]+)\/frame-page\/([^/]+)$/.exec(pathname);
+  if (!page)
+    return null;
+
+  return {
+    sessionID: decodeURIComponent(page[1]),
+    index: false,
+    pageIndex: decodeURIComponent(page[2]),
+  };
+}
+
 export function matchSessionRoute(pathname) {
   let match = /^\/api\/v1\/sessions\/([^/]+)\/(frames|frame-counts|messages)$/.exec(pathname);
   if (!match)

@@ -4,6 +4,7 @@ import { elements, $ } from '../lib/aeor-ui.mjs';
 import { createIcon } from '../lib/icons.mjs';
 import { stateHasFilters } from '../lib/frame-filters.mjs';
 import { buildScrollLockFloatingButton } from './kikx-scroll-lock.mjs';
+import { createKikxPageContext } from './kikx-chat-scrollview.mjs';
 import { activateComposerDraftSession } from './composer-drafts.mjs';
 import './kikx-composer-history.mjs';
 import './kikx-participants-popup.mjs';
@@ -584,6 +585,7 @@ export function buildFrameThread(app) {
 export function createChatViewElement(app, frames, mode = 'full') {
   let view = document.createElement('kikx-chat-view');
   view.mode = mode;
+  view.setPageContext?.(createKikxPageContext(app, app._state.selectedSessionID));
   let startFrameID = app._frameWindowStartFrameID;
   let startIndex = startFrameID ? frames.findIndex((frame) => frame?.id === startFrameID) : -1;
   app._frameWindowStartFrameID = null;

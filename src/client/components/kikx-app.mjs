@@ -73,6 +73,8 @@ import {
   loadClientComponents,
   loadFrameCounts,
   loadFrames,
+  loadFramePage,
+  loadFramePageIndex,
   loadFramesAtMessage,
   loadNewerFrames,
   loadOlderFrames,
@@ -296,6 +298,8 @@ export class KikxApp extends HTMLElement {
     this._loadClientComponents = async () => loadClientComponents(this);
     this._cancelAgents = (target = null) => cancelAgents(this, target);
     this._loadFrames = async (sessionID, options = {}) => loadFrames(this, sessionID, options);
+    this._loadFramePage = async (sessionID, pageIndex, pageSize) => loadFramePage(this, sessionID, pageIndex, pageSize);
+    this._loadFramePageIndex = async (sessionID, pageSize) => loadFramePageIndex(this, sessionID, pageSize);
     // Whole-session counts for the filter popup. Deliberately not derived from
     // `_state.framesBySessionID`, which only holds the loaded window.
     this._loadFrameCounts = async (sessionID, options = {}) => loadFrameCounts(this, sessionID, options);

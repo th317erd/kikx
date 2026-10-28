@@ -30,6 +30,7 @@ import {
   updateMessageHash,
   updateMessageHashFromScroll,
 } from './kikx-frame-scroll-lock.mjs';
+import { createKikxPageContext } from './kikx-chat-scrollview.mjs';
 
 export { ANCHOR_THRESHOLD };
 export { lockScrollToLatest, scrollToLatestMessageTop, toggleScrollLock } from './kikx-frame-scroll-lock.mjs';
@@ -353,6 +354,7 @@ function syncFrameThreadBody(app, sessionID, options) {
   let previousFrames = Array.isArray(view.frames) ? view.frames : [];
   let previousFrameCount = previousFrames.length;
   let previousLastFrameID = previousFrames.at(-1)?.id || '';
+  view.setPageContext?.(createKikxPageContext(app, sessionID));
   let frameList = view.frameList;
   let shared = view.usesSharedScrollview === true;
   let focus = !shared && !app._pendingScrollFocus
@@ -745,6 +747,10 @@ export function maybeLoadOlderFrames(app, frameList = app.querySelector('.kikx-f
   // Reveal frames already in state first; only fetch an older page once the
   // render window has reached the oldest loaded frame.
   let view = app.querySelector('.kikx-thread__body kikx-chat-view');
+  if (view?.usesPagedScrollview === true) {
+    view.expandOlderFrames?.();
+    return false;
+  }
   if (view?.expandOlderFrames?.())
     return true;
 
