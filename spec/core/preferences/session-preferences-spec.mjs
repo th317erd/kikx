@@ -177,3 +177,38 @@ function createRuntime(store, ids) {
     idGenerator: createIDGenerator(ids),
   });
 }
+
+test('FrameRuntime inherits session agents and teams from ancestors in the stored session record', async () => {
+  let store = createMemoryFrameStore();
+  let runtime = createRuntime(store, [ 'root', 'child', 'grandchild' ]);
+
+  await runtime.createSession({
+    id: 'root',
+    title: 'Root',
+    participantAgentIDs: [ 'agent_root' ],
+    teamIDs: [ 'team_root' ],
+  });
+  await runtime.createSession({
+    id: 'child',
+    title: 'Child',
+    parentSessionID: 'root',
+    participantAgentIDs: [ 'agent_child' ],
+    teamIDs: [ 'team_child' ],
+  });
+  await runtime.createSession({
+    id: 'grandchild',
+    title: 'Grandchild',
+    parentSessionID: 'child',
+    participantAgentIDs: [ 'agent_grandchild' ],
+  });
+
+  let child = runtime.sessions.get('child').session;
+  let grandchild = runtime.sessions.get('grandchild').session;
+  assert.deepEqual(child.participantAgentIDs, [ 'agent_root', 'agent_child' ]);
+  assert.deepEqual(child.teamIDs, [ 'team_root', 'team_child' ]);
+  assert.deepEqual(grandchild.participantAgentIDs, [ 'agent_root', 'agent_child', 'agent_grandchild' ]);
+  assert.deepEqual(grandchild.teamIDs, [ 'team_root', 'team_child' ]);
+
+  let persisted = await store.loadSession('grandchild');
+  assert.deepEqual(persisted.teamIDs, [ 'team_root', 'team_child' ]);
+});

@@ -14,6 +14,7 @@ import {
   normalizePreferences,
   resolveEffectivePreferences,
 } from '../preferences/index.mjs';
+import { effectiveSessionAgentIDs, effectiveSessionTeamIDs } from '../../shared/session-actors.mjs';
 import {
   buildUserMessageContent,
   normalizeCoordinatorAgentID,
@@ -76,6 +77,23 @@ export class FrameRuntime extends EventEmitter {
     this._indexesReady = false;
   }
 
+  async sessionScopeLookup(sessionID) {
+    let sessions = new Map();
+    let current = sessionID;
+    let seen = new Set();
+    while (current && !seen.has(current)) {
+      seen.add(current);
+      let session = this.sessions.get(current)?.session || null;
+      if (!session && typeof this.frameStore?.loadSession === 'function')
+        session = await this.frameStore.loadSession(current);
+      if (!session)
+        break;
+      sessions.set(current, session);
+      current = normalizeOptionalString(session.parentSessionID || session.parentSessionId);
+    }
+    return (id) => sessions.get(id) || null;
+  }
+
   async createSession(input = {}) {
     let stamp = this.nextClockStamp();
     let now = stamp.at;
@@ -83,6 +101,13 @@ export class FrameRuntime extends EventEmitter {
     let participantAgentIDs = normalizeStringArray(input.participantAgentIDs);
     let participantUserIDs = normalizeStringArray(input.participantUserIDs);
     let parentSessionID = normalizeOptionalString(input.parentSessionID || input.parentSessionId);
+    if (parentSessionID) {
+      let getSession = await this.sessionScopeLookup(parentSessionID);
+      let inheritedParticipants = effectiveSessionAgentIDs(parentSessionID, getSession);
+      let inheritedTeams = effectiveSessionTeamIDs(parentSessionID, getSession);
+      participantAgentIDs = normalizeStringArray([ ...inheritedParticipants, ...participantAgentIDs ]);
+      input = { ...input, teamIDs: [ ...inheritedTeams, ...normalizeStringArray(input.teamIDs) ] };
+    }
     let session = {
       id: input.id || this.idGenerator(),
       title,
@@ -94,6 +119,7 @@ export class FrameRuntime extends EventEmitter {
       messageCount: normalizeCount(input.messageCount),
       participantAgentIDs,
       participantUserIDs,
+      teamIDs: normalizeStringArray(input.teamIDs),
       coordinatorAgentID: normalizeStoredCoordinatorAgentID(input.coordinatorAgentID, participantAgentIDs),
       compactionAgentID: normalizeDesignationAgentID(input.compactionAgentID, participantAgentIDs, 'compactionAgentID'),
       createdAt: input.createdAt || now,
@@ -152,6 +178,16 @@ export class FrameRuntime extends EventEmitter {
     }
 
     let participantAgentIDs = normalizeStringArray(session.participantAgentIDs);
+
+    if (Object.hasOwn(input, 'participantAgentIDs')) {
+      participantAgentIDs = normalizeStringArray(input.participantAgentIDs);
+      session.participantAgentIDs = participantAgentIDs;
+      session.coordinatorAgentID = normalizeStoredCoordinatorAgentID(session.coordinatorAgentID, participantAgentIDs);
+      session.compactionAgentID = normalizeStoredCoordinatorAgentID(session.compactionAgentID, participantAgentIDs);
+    }
+
+    if (Object.hasOwn(input, 'teamIDs'))
+      session.teamIDs = normalizeStringArray(input.teamIDs);
 
     if (Object.hasOwn(input, 'title'))
       session.title = normalizeTitle(input.title);

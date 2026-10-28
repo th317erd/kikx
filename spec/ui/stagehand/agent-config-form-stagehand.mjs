@@ -104,7 +104,7 @@ test('Stagehand renders a plugin-owned agent-config-form served from plugin asse
           select.dispatchEvent(new Event('change', { bubbles: true }));
         }
       } else {
-        Array.from(document.querySelectorAll('aeor-modal[title="Agents"] button'))
+        Array.from(document.querySelectorAll('.kikx-agent-view button'))
           .find((candidate) => candidate.textContent.trim() === '+ Add Agent')?.click();
       }
 

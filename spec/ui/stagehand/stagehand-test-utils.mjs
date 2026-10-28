@@ -338,6 +338,10 @@ class StagehandFrameRuntime extends EventEmitter {
       session.title = input.title || session.title;
     if (Object.hasOwn(input, 'deletedAt'))
       session.deletedAt = input.deletedAt || null;
+    if (Object.hasOwn(input, 'participantAgentIDs'))
+      session.participantAgentIDs = Array.isArray(input.participantAgentIDs) ? input.participantAgentIDs : [];
+    if (Object.hasOwn(input, 'teamIDs'))
+      session.teamIDs = Array.isArray(input.teamIDs) ? input.teamIDs : [];
     session.updatedAt = Date.now();
     this.emitEvent('session.saved', {
       sessionID: session.id,
@@ -469,6 +473,7 @@ function normalizeSession(input = {}) {
     generation: Number.isInteger(input.generation) ? input.generation : (input.parentSessionID ? 1 : 0),
     messageCount: input.messageCount || 0,
     participantAgentIDs: Array.isArray(input.participantAgentIDs) ? input.participantAgentIDs : [],
+    teamIDs: Array.isArray(input.teamIDs) ? input.teamIDs : [],
     createdAt: input.createdAt || Date.now(),
     updatedAt: input.updatedAt || input.createdAt || Date.now(),
     createdClock: input.createdClock || null,

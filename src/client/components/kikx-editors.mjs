@@ -1,7 +1,10 @@
 'use strict';
 
 import {
+  navigateBack,
+  navigateView,
   getAgents,
+  getScopeSessionID,
   getGridParentSessionID,
   removeTeam,
   resetAccountState,
@@ -78,25 +81,28 @@ export async function onAccountSubmit(app, event) {
 }
 
 export function openTeamManager(app) {
-  app._state.managingTeams = true;
+  app._state.managingTeams = false;
   app._state.managingAgents = false;
   app._state.teamEditorOpen = false;
   app._state.agentEditorOpen = false;
   app._state.teamStatus = '';
   app._state.teamStatusKind = 'pending';
   resetTeamForm(app._state);
+  navigateView('teams', app._state);
+  app._syncURLFromStack?.({ push: true });
   app._render();
   app._loadTeams();
 }
 
 export function closeTeamManager(app) {
   app._state.managingTeams = false;
+  navigateBack(app._state);
   app._render();
 }
 
 export function closeTeamEditor(app) {
   app._state.teamEditorOpen = false;
-  app._state.managingTeams = true;
+  app._state.managingTeams = false;
   app._render();
 }
 
@@ -132,6 +138,8 @@ export async function onTeamFormSubmit(app, event) {
       : await app._postJSON('/api/v1/teams', body);
 
     upsertTeam(result.data.team, app._state);
+    if (app._state.teamFormMode !== 'edit')
+      await assignTeamToCurrentSession(app, result.data.team);
     let message = app._state.teamFormMode === 'edit' ? 'Team saved' : 'Team created';
     resetTeamForm(app._state);
     app._state.teamEditorOpen = false;
@@ -143,6 +151,29 @@ export async function onTeamFormSubmit(app, event) {
     app._state.teamStatus = error.message;
     app._state.teamStatusKind = 'error';
     app._render();
+  }
+}
+
+export async function assignTeamToCurrentSession(app, team) {
+  let sessionID = getScopeSessionID(app._state);
+  let session = app._state.sessionDetailsByID?.[sessionID];
+  if (!sessionID || !session || !team?.id)
+    return;
+
+  let teamIDs = Array.isArray(session.teamIDs) ? session.teamIDs : [];
+  if (teamIDs.includes(team.id))
+    return;
+
+  try {
+    let result = await app._patchJSON(`/api/v1/sessions/${encodeURIComponent(sessionID)}`, {
+      teamIDs: [ ...teamIDs, team.id ],
+    });
+    if (result.data?.session)
+      upsertSession(result.data.session, app._state);
+    app._render();
+  } catch (error) {
+    app._state.teamStatus = `Team created, but could not add it to this session: ${error.message}`;
+    app._state.teamStatusKind = 'error';
   }
 }
 

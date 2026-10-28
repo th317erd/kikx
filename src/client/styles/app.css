@@ -4029,3 +4029,93 @@ kikx-frame-filter-popup:not(.is-all-on) .kikx-frame-filter__button {
   color: #aab7c1;
   opacity: 0.78;
 }
+
+/* Agents and Teams are full main-area views, not dialogs. They use the same
+   view header/back contract as Inbox while the manager body keeps its existing
+   row/filter styling. */
+.kikx-view {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  padding: 18px;
+}
+
+.kikx-view-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.kikx-view-header__title {
+  margin: 0;
+  font-size: 18px;
+}
+
+.kikx-view-header__count {
+  color: #8f9ba7;
+  font-size: 12px;
+}
+
+.kikx-view-header__scope {
+  flex: 1 1 100%;
+  margin: 0;
+  color: #8f9ba7;
+  font-size: 12px;
+}
+
+.kikx-view-editor {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #2a3138;
+}
+
+.kikx-view-editor__title {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.kikx-agent-view .kikx-agent-manager,
+.kikx-team-view .kikx-agent-manager {
+  margin: 0;
+}
+
+.kikx-view-available {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid #2a3138;
+}
+
+.kikx-view-available__title {
+  margin: 0 0 10px;
+  color: #8f9ba7;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.kikx-view-available__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.kikx-view-available__item {
+  border: 1px solid #2a3138;
+  border-radius: 7px;
+  background: #171c21;
+  color: #dce3ea;
+  padding: 6px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.kikx-view-available__item:hover,
+.kikx-view-available__item:focus-visible {
+  border-color: #3c444d;
+  background: #1c222a;
+}

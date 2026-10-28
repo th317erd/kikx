@@ -150,6 +150,7 @@ import {
 } from './kikx-composer.mjs';
 import {
   availableTeamActors,
+  assignTeamToCurrentSession,
   closeAccountEditor,
   closeSessionEditor,
   closeTeamEditor,
@@ -177,6 +178,7 @@ import {
   applyAuth,
 } from './kikx-editors.mjs';
 import {
+  assignAgentToCurrentSession,
   closeAgentEditor,
   closeAgentManager,
   createAgent,
@@ -333,11 +335,13 @@ export class KikxApp extends HTMLElement {
     this._closeAgentManager = () => closeAgentManager(this);
     this._closeAgentEditor = () => closeAgentEditor(this);
     this._createAgent = () => createAgent(this);
+    this._assignAgentToSession = (agent) => assignAgentToCurrentSession(this, agent);
     this._editAgent = (agent) => editAgent(this, agent);
     this._openTeamManager = () => openTeamManager(this);
     this._closeTeamManager = () => closeTeamManager(this);
     this._closeTeamEditor = () => closeTeamEditor(this);
     this._createTeam = () => createTeam(this);
+    this._assignTeamToSession = (team) => assignTeamToCurrentSession(this, team);
     this._editTeam = (team) => editTeam(this, team);
     this._onTeamFormSubmit = async (event) => onTeamFormSubmit(this, event);
     this._deleteTeam = async (teamID) => deleteTeam(this, teamID);

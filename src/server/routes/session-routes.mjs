@@ -113,6 +113,8 @@ export async function handleSessionRoutes({ request, response, url, context }) {
       organizationID: body.organizationID || null,
       createdByUserID: body.createdByUserID || body.userID || null,
       parentSessionID: parentSessionID ? parentSessionID.trim() : null,
+      ...(body.participantAgentIDs !== undefined ? { participantAgentIDs: body.participantAgentIDs } : {}),
+      ...(body.teamIDs !== undefined ? { teamIDs: body.teamIDs } : {}),
     });
 
     writeJSON(response, 201, {
@@ -160,13 +162,11 @@ export async function handleSessionRoutes({ request, response, url, context }) {
   let sessionUpdateRoute = matchSessionUpdateRoute(url.pathname);
   if (request.method === 'PATCH' && sessionUpdateRoute) {
     let body = await readJSON(request);
-    if (!body.title || typeof body.title !== 'string' || body.title.trim() === '')
+    if (Object.hasOwn(body, 'title') && (typeof body.title !== 'string' || body.title.trim() === ''))
       throw httpError(400, 'title must be a non-empty string');
 
     let frameRuntime = context.require('frameRuntime');
-    let session = await frameRuntime.updateSession(sessionUpdateRoute.sessionID, {
-      title: body.title,
-    });
+    let session = await frameRuntime.updateSession(sessionUpdateRoute.sessionID, body);
 
     writeJSON(response, 200, {
       data: {

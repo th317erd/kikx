@@ -11,7 +11,7 @@ import {
   startStagehandUIServer,
 } from './stagehand-test-utils.mjs';
 
-test('Stagehand creates, edits, and deletes teams from the topbar Teams modal', async (t) => {
+test('Stagehand creates, edits, and deletes teams from the topbar Teams view', async (t) => {
   let chromePath = findChromeExecutable();
   if (!chromePath) {
     t.skip('Stagehand local mode requires Chrome');
@@ -65,15 +65,15 @@ test('Stagehand creates, edits, and deletes teams from the topbar Teams modal', 
 
     await page.waitForSelector('.kikx-session-objects button', { timeout: 10000 });
     await clickButtonByText(page, 'Teams', '.kikx-session-objects');
-    await waitForPagePredicate(page, () => document.querySelector('aeor-modal[title="Teams"]')?.textContent?.includes('+ Add Team'));
-    await clickButtonByText(page, '+ Add Team', 'aeor-modal[title="Teams"]');
+    await waitForPagePredicate(page, () => document.querySelector('.kikx-team-view')?.textContent?.includes('+ Add Team'));
+    await clickButtonByText(page, '+ Add Team', '.kikx-team-view');
     await waitForPagePredicate(page, () => Boolean(document.querySelector('.kikx-team-form')));
 
     await fillTeamForm(page, {
       name: 'Build Team',
       checked: [ 'agent:agent_iron', 'agent:agent_bennett' ],
     });
-    await clickButtonByText(page, 'Create', 'aeor-modal[title="Create team"]');
+    await clickButtonByText(page, 'Create', '.kikx-view-editor');
     await waitForPagePredicate(page, () => document.querySelector('.kikx-team-list')?.textContent?.includes('Build Team'));
     await waitForPagePredicate(page, () => document.querySelector('.kikx-team-list')?.textContent?.includes('2 agents'));
 
@@ -83,12 +83,12 @@ test('Stagehand creates, edits, and deletes teams from the topbar Teams modal', 
       name: 'Build Team',
       checked: [ 'agent:agent_iron' ],
     });
-    await clickButtonByText(page, 'Save', 'aeor-modal[title="Edit team"]');
+    await clickButtonByText(page, 'Save', '.kikx-view-editor');
     await waitForPagePredicate(page, () => document.querySelector('.kikx-team-list')?.textContent?.includes('1 agent'));
 
     await page.locator('.kikx-team-list__edit').first().click();
     await waitForPagePredicate(page, () => Boolean(document.querySelector('.kikx-team-form')));
-    await clickButtonByText(page, 'Delete', 'aeor-modal[title="Edit team"]');
+    await clickButtonByText(page, 'Delete', '.kikx-view-editor');
     await waitForPagePredicate(page, () => document.querySelector('.kikx-team-manager')?.textContent?.includes('No teams.'));
 
     let result = await page.evaluate(() => ({

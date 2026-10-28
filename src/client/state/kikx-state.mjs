@@ -27,10 +27,14 @@ import {
   upsertSessionState,
 } from './session-state-utils.mjs';
 import { visibleSessions } from './session-visibility.mjs';
+import { effectiveSessionAgentIDs, effectiveSessionTeamIDs } from '../../shared/session-actors.mjs';
 import {
   createNavigationStack,
   isInboxView,
   pushInbox,
+  pushView,
+  currentViewName,
+  scopeSessionID,
   currentEntry,
   currentSessionID,
   gridParentSessionID,
@@ -195,6 +199,22 @@ export function getSelectedSession(state = kikxState) {
   return state.sessionDetailsByID[state.selectedSessionID] || null;
 }
 
+export function getScopeSessionID(state = kikxState) {
+  return scopeSessionID(getNavigationStack(state));
+}
+
+// Session-scoped actor views use the same inheritance rule as the server: own
+// assignments plus every ancestor, never descendants or siblings.
+export function getEffectiveSessionAgentIDs(state = kikxState, sessionID = state.selectedSessionID) {
+  let sessions = { ...(state.deletedSessionDetailsByID || {}), ...(state.sessionDetailsByID || {}) };
+  return effectiveSessionAgentIDs(sessionID, (id) => sessions[id] || null);
+}
+
+export function getEffectiveSessionTeamIDs(state = kikxState, sessionID = state.selectedSessionID) {
+  let sessions = { ...(state.deletedSessionDetailsByID || {}), ...(state.sessionDetailsByID || {}) };
+  return effectiveSessionTeamIDs(sessionID, (id) => sessions[id] || null);
+}
+
 // Resolve a session's effective preferences from the session records the client
 // already holds. The same rules as the server apply: defaults, then ancestors
 // root-to-leaf, then the session's own values. If an ancestor is missing (for
@@ -315,6 +335,14 @@ export function navigateInbox(state = kikxState) {
 
 export function isInboxOpen(state = kikxState) {
   return isInboxView(getNavigationStack(state));
+}
+
+export function navigateView(view, state = kikxState) {
+  state.navigationStack = pushView(getNavigationStack(state), view);
+}
+
+export function isViewOpen(view, state = kikxState) {
+  return currentViewName(getNavigationStack(state)) === view;
 }
 
 export function getQuestionsState(state = kikxState) {

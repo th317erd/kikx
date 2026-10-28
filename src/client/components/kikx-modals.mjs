@@ -69,6 +69,13 @@ export function buildAgentManager(app) {
   );
 }
 
+export function buildAgentManagerContent(app, agents = getAgents(app._state)) {
+  return [
+    div.class('kikx-agent-manager')(buildAgentManagerBody(app, agents)),
+    buildAgentManagerFooter(app),
+  ];
+}
+
 export function buildAgentManagerFooter(app) {
   return div.class('modal-footer-actions kikx-agent-manager__footer').slot('footer')(
     p.class(`kikx-auth-status kikx-auth-status--${app._state.agentStatusKind}`)(
@@ -82,8 +89,7 @@ export function buildAgentManagerFooter(app) {
 // just this content without rebuilding the modal element (which replays the
 // modal's open animation and looks like a close/reopen). The footer lives in
 // buildAgentManagerFooter().
-export function buildAgentManagerBody(app) {
-  let allAgents = getAgents(app._state);
+export function buildAgentManagerBody(app, allAgents = getAgents(app._state)) {
   let filter = app._state.agentFilter || 'all';
   let pills = agentFilterPills(allAgents, app._state.agentProviders);
 
@@ -153,13 +159,16 @@ export function buildAgentManagerBody(app) {
 // provider-specific config UI (the "guts") is a separate custom element hosted
 // in the config section, resolved per provider by agent-config-form-registry.
 export function buildAgentEditor(app) {
+  return aeorModal
+    .title(app._state.agentFormMode === 'edit' ? 'Edit agent' : 'Create agent')
+    .onClose(app._closeAgentEditor)(buildAgentEditorForm(app));
+}
+
+export function buildAgentEditorForm(app) {
   let providers = app._state.agentProviders;
   let provider = getSelectedAgentProvider(app._state);
 
-  return aeorModal
-    .title(app._state.agentFormMode === 'edit' ? 'Edit agent' : 'Create agent')
-    .onClose(app._closeAgentEditor)(
-      form.class('kikx-agent-form').onSubmit(app._onAgentFormSubmit)(
+  return form.class('kikx-agent-form').onSubmit(app._onAgentFormSubmit)(
         providers.length === 0
           ? p.class('kikx-muted')('No agent provider plugins are registered.')
           : [
@@ -193,48 +202,52 @@ export function buildAgentEditor(app) {
             ),
           ],
         buildAgentFormStatus(app),
-      ),
-    );
+      );
 }
 
 export function buildTeamManager(app) {
-  let teams = getTeams(app._state);
-
   return aeorModal.title('Teams').onClose(app._closeTeamManager)(
-    div.class('kikx-agent-manager kikx-team-manager')(
-      teams.length === 0
-        ? p.class('kikx-muted')('No teams.')
-        : ul.class('kikx-agent-list kikx-team-list')(
-          teams.map((team) => li(
-            div.class('kikx-agent-list__details')(
-              strong(team.name),
-              span(teamMemberSummary(team)),
-            ),
-            button
-              .type('button')
-              .class('kikx-agent-list__edit kikx-team-list__edit')
-              .title('Edit team')
-              .ariaLabel('Edit team')
-              .onClick(() => app._editTeam(team))(createIcon('gear')),
-          )),
-        ),
-      div.class('modal-footer-actions')(
-        button.type('button').class('kikx-send-button').onClick(app._createTeam)('+ Add Team'),
+    buildTeamManagerBody(app),
+  );
+}
+
+export function buildTeamManagerBody(app, teams = getTeams(app._state)) {
+  return div.class('kikx-agent-manager kikx-team-manager')(
+    teams.length === 0
+      ? p.class('kikx-muted')('No teams.')
+      : ul.class('kikx-agent-list kikx-team-list')(
+        teams.map((team) => li(
+          div.class('kikx-agent-list__details')(
+            strong(team.name),
+            span(teamMemberSummary(team)),
+          ),
+          button
+            .type('button')
+            .class('kikx-agent-list__edit kikx-team-list__edit')
+            .title('Edit team')
+            .ariaLabel('Edit team')
+            .onClick(() => app._editTeam(team))(createIcon('gear')),
+        )),
       ),
-      p.class.bindState((state) => `kikx-auth-status kikx-auth-status--${state.teamStatusKind}`, ['teamStatusKind'])(
-        span.textContent.bindState((state) => state.teamStatus, ['teamStatus'])(),
-      ),
+    div.class('modal-footer-actions')(
+      button.type('button').class('kikx-send-button').onClick(app._createTeam)('+ Add Team'),
+    ),
+    p.class.bindState((state) => `kikx-auth-status kikx-auth-status--${state.teamStatusKind}`, ['teamStatusKind'])(
+      span.textContent.bindState((state) => state.teamStatus, ['teamStatus'])(),
     ),
   );
 }
 
 export function buildTeamEditor(app) {
-  let actors = app._availableTeamActors();
-
   return aeorModal
     .title(app._state.teamFormMode === 'edit' ? 'Edit team' : 'Create team')
-    .onClose(app._closeTeamEditor)(
-      form.class('kikx-agent-form kikx-team-form').onSubmit(app._onTeamFormSubmit)(
+    .onClose(app._closeTeamEditor)(buildTeamEditorForm(app));
+}
+
+export function buildTeamEditorForm(app) {
+  let actors = app._availableTeamActors();
+
+  return form.class('kikx-agent-form kikx-team-form').onSubmit(app._onTeamFormSubmit)(
         label('Name'),
         aeorInput
           .type('text')
@@ -265,8 +278,7 @@ export function buildTeamEditor(app) {
         p.class.bindState((state) => `kikx-auth-status kikx-auth-status--${state.teamStatusKind}`, ['teamStatusKind'])(
           span.textContent.bindState((state) => state.teamStatus, ['teamStatus'])(),
         ),
-      ),
-    );
+      );
 }
 
 // Build the guts element for the selected provider and seed it from app state.

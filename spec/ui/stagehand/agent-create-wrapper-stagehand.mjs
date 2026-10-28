@@ -85,7 +85,7 @@ test('Stagehand wrapper reads Codex guts values and blocks invalid default-endpo
 
     await page.waitForSelector('.kikx-session-objects button', { timeout: 10000 });
 
-    // Open the Agents modal.
+    // Open the Agents view.
     await waitForPagePredicate(page, () => {
       if (document.querySelector('.kikx-agent-manager'))
         return true;
@@ -113,7 +113,7 @@ test('Stagehand wrapper reads Codex guts values and blocks invalid default-endpo
           select.dispatchEvent(new Event('change', { bubbles: true }));
         }
       } else {
-        Array.from(document.querySelectorAll('aeor-modal button'))
+        Array.from(document.querySelectorAll('.kikx-view button'))
           .find((candidate) => candidate.textContent.trim() === '+ Add Agent')?.click();
       }
 
@@ -230,7 +230,7 @@ async function setFormFields(page, { name, baseUrl }) {
 
 async function clickCreate(page) {
   await page.evaluate(() => {
-    let button = Array.from(document.querySelectorAll('aeor-modal button'))
+    let button = Array.from(document.querySelectorAll('.kikx-view button'))
       .find((candidate) => candidate.textContent.trim() === 'Create');
     if (!button)
       throw new Error('Missing Create button');

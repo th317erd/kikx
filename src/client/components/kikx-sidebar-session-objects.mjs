@@ -23,6 +23,7 @@
 
 import { elements } from '../lib/aeor-ui.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
+import { getScopeSessionID, isViewOpen } from '../state/kikx-state.mjs';
 
 const { div, span, button } = elements;
 
@@ -47,9 +48,7 @@ export const SESSION_OBJECT_GROUPS = Object.freeze(['view', 'footer']);
 // expressible: an item created at session S is visible at S and below, never
 // above.
 export function buildSessionObjectItems(app) {
-  let scopeSessionID = app?._state
-    ? (app._state.navigationStack?.at(-1)?.sessionID || null)
-    : null;
+  let scopeSessionID = app?._state ? getScopeSessionID(app._state) : null;
 
   return [
     {
@@ -75,6 +74,7 @@ export function buildSessionObjectItems(app) {
       group: 'view',
       label: 'Agents',
       scopeSessionID,
+      active: isViewOpen('agents', app?._state),
       onSelect: () => app._openAgentManager(),
     },
     {
@@ -83,6 +83,7 @@ export function buildSessionObjectItems(app) {
       group: 'view',
       label: 'Teams',
       scopeSessionID,
+      active: isViewOpen('teams', app?._state),
       onSelect: () => app._openTeamManager(),
     },
     {
@@ -141,7 +142,7 @@ function renderItem(item) {
   if (item.group === 'view')
     return button
       .type('button')
-      .class('kikx-sidebar__view')
+      .class(`kikx-sidebar__view${item.active ? ' kikx-sidebar__view--active' : ''}`)
       .onClick(item.onSelect)(span.class('kikx-sidebar__view-label')(item.label));
 
   return button

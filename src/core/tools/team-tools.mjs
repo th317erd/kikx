@@ -4,6 +4,7 @@ import { PluginInterface } from '../plugins/index.mjs';
 import { builtInToolComponent } from './tool-client-components.mjs';
 import { wakeInvitedAgent } from './session-invite-wake.mjs';
 import { missingExplicitSessionTargetError } from './session-tool-helpers.mjs';
+import { effectiveSessionTeamIDs } from '../../shared/session-actors.mjs';
 
 const DEFAULT_TEAM_LIST_LIMIT = 50;
 const MAX_TEAM_LIST_LIMIT = 200;
@@ -107,6 +108,13 @@ export class TeamListTool extends TeamTool {
     let limit = clampInteger(params.limit, DEFAULT_TEAM_LIST_LIMIT, 1, MAX_TEAM_LIST_LIMIT);
     let offset = clampInteger(params.offset, 0, 0, Number.MAX_SAFE_INTEGER);
     let teams = await this.teamManager().listTeams({ limit, offset });
+    let session = this.context.session || null;
+    if (session?.id) {
+      let runtime = this.frameRuntime();
+      let getSession = (id) => id === session.id ? session : runtime.getSession?.(id) || null;
+      let ids = new Set(effectiveSessionTeamIDs(session.id, getSession));
+      teams = teams.filter((team) => ids.has(team.id));
+    }
     return {
       teams: teams.map((team) => sanitizeTeam(team)),
       count: teams.length,
@@ -145,6 +153,16 @@ export class TeamCreateTool extends TeamTool {
       name: normalizeRequiredString(params.name, 'name'),
       members: Array.isArray(params.members) ? params.members : [],
     });
+    let session = this.context.session || null;
+    if (session?.id) {
+      let runtime = this.frameRuntime();
+      let getSession = (id) => id === session.id ? session : runtime.getSession?.(id) || null;
+      let teamIDs = effectiveSessionTeamIDs(session.id, getSession);
+      if (typeof runtime.updateSession === 'function')
+        await runtime.updateSession(session.id, { teamIDs: [ ...teamIDs, team.id ] });
+      else if (session && typeof session === 'object')
+        session.teamIDs = [ ...teamIDs, team.id ];
+    }
     return {
       team: sanitizeTeam(team),
       created: true,
@@ -412,6 +430,7 @@ function sanitizeSession(session = {}) {
     title: session.title || session.id || '',
     participantAgentIDs: normalizeStringArray(session.participantAgentIDs),
     participantUserIDs: normalizeStringArray(session.participantUserIDs),
+    teamIDs: normalizeStringArray(session.teamIDs),
     coordinatorAgentID: session.coordinatorAgentID || null,
     messageCount: normalizeNonNegativeInteger(session.messageCount, 0),
     createdAt: session.createdAt || null,

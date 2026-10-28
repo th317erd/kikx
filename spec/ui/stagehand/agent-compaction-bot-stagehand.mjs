@@ -11,7 +11,7 @@ import {
   startStagehandUIServer,
 } from './stagehand-test-utils.mjs';
 
-test('Stagehand designates compaction bots from the Agents modal with a distinct glyph', async (t) => {
+test('Stagehand designates compaction bots from the Agents view with a distinct glyph', async (t) => {
   let chromePath = findChromeExecutable();
   if (!chromePath) {
     t.skip('Stagehand local mode requires Chrome');

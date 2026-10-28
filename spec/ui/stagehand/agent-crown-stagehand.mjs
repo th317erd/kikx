@@ -11,7 +11,7 @@ import {
   startStagehandUIServer,
 } from './stagehand-test-utils.mjs';
 
-test('Stagehand crowns master agents from the Agents modal with ranked styling', async (t) => {
+test('Stagehand crowns master agents from the Agents view with ranked styling', async (t) => {
   let chromePath = findChromeExecutable();
   if (!chromePath) {
     t.skip('Stagehand local mode requires Chrome');
@@ -67,7 +67,7 @@ test('Stagehand crowns master agents from the Agents modal with ranked styling',
     await page.goto(`${fixture.baseURL}/?code=stagehand-test`, { waitUntil: 'domcontentloaded', timeout: 10000 });
     await page.waitForSelector('.kikx-session-objects button', { timeout: 10000 });
 
-    // Open the Agents modal via a real click.
+    // Open the Agents view via a real click.
     await page.evaluate(() => {
       let button = Array.from(document.querySelectorAll('.kikx-session-objects button'))
         .find((candidate) => candidate.textContent.trim() === 'Agents');

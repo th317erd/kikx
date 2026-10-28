@@ -8,6 +8,7 @@ import { wakeInvitedAgent } from './session-invite-wake.mjs';
 import { planSessionFork } from '../context/session-fork.mjs';
 import { resolveForkParentFrames } from '../context/session-fork-source.mjs';
 import { WHERE_SHAPE_HELP } from '../database/where-clause.mjs';
+import { effectiveSessionAgentIDs, effectiveSessionTeamIDs } from '../../shared/session-actors.mjs';
 
 import {
   clampInteger,
@@ -269,6 +270,11 @@ export class SessionCreateTool extends SessionTool {
       participantAgentIDs.push(this.context.agent.id);
 
     let sourceSession = this.sourceSession();
+    let runtime = this.frameRuntime();
+    let getSession = (id) => id === sourceSession?.id ? sourceSession : runtime.getSession?.(id) || null;
+    let inheritedAgentIDs = sourceSession?.id ? effectiveSessionAgentIDs(sourceSession.id, getSession) : [];
+    let inheritedTeamIDs = sourceSession?.id ? effectiveSessionTeamIDs(sourceSession.id, getSession) : [];
+    participantAgentIDs = uniqueStrings([ ...inheritedAgentIDs, ...participantAgentIDs ]);
     let createdByAgentID = normalizeOptionalString(this.context.agent?.id);
     let title = typeof params.title === 'string' && params.title.trim() ? params.title.trim() : '';
     if (params.reuseExisting !== false) {
@@ -301,6 +307,7 @@ export class SessionCreateTool extends SessionTool {
     let session = await this.frameRuntime().createSession({
       ...(title ? { title } : {}),
       participantAgentIDs,
+      teamIDs: inheritedTeamIDs,
       // A caller that joins the child owns accountability for it. Without this
       // explicit designation, createSession would promote the first invitee to
       // coordinator and silently transfer the caller's role to a worker.

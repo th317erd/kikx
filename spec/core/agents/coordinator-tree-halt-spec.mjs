@@ -116,7 +116,7 @@ test('a coordinator halting a descendant actually freezes that session\'s agent'
   // A real run in the grandchild, in a session z is not a participant of.
   startRun(runtime, 'G', 'x');
   assert.equal(isRunActive(runtime, 'G', 'x'), true, 'precondition: the run is live');
-  assert.deepEqual(runtime.getSession('G').participantAgentIDs, [ 'x', 'y' ]);
+  assert.deepEqual(runtime.getSession('G').participantAgentIDs, [ 'z', 'p2', 'c1', 'c2', 'x', 'y' ]);
   assert.equal(runtime.getSession('G').coordinatorAgentID, null);
 
   let result = await haltSessionTree({

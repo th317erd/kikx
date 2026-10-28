@@ -94,7 +94,7 @@ test('Stagehand renders plugin-declared agent provider fields including a dynami
     await clickButtonByText(page, 'Agents', '.kikx-session-objects');
     await waitForPagePredicate(page, () => Boolean(document.querySelector('.kikx-agent-manager')));
 
-    await clickButtonByText(page, '+ Add Agent', 'aeor-modal[title="Agents"]');
+    await clickButtonByText(page, '+ Add Agent', '.kikx-agent-view');
     await waitForPagePredicate(page, () => Boolean(document.querySelector('.kikx-agent-form')));
 
     await selectProvider(page, 'ollama-agent');

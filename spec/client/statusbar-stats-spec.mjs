@@ -284,7 +284,7 @@ test('the bar still builds when the session/question state is missing', () => {
 // --- 3. the deletion -----------------------------------------------------
 
 test('activities is gone from VIEW_NAMES and cannot be pushed', () => {
-  assert.deepEqual([ ...VIEW_NAMES ], [ 'inbox' ]);
+  assert.deepEqual([ ...VIEW_NAMES ], [ 'inbox', 'agents', 'teams' ]);
   assert.throws(() => pushView(createNavigationStack(), 'activities'), /unknown view/);
 });
 

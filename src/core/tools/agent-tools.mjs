@@ -132,6 +132,14 @@ export class AgentCreateTool extends AgentTool {
       ...(params.tags !== undefined ? { tags: params.tags } : {}),
     });
 
+    let session = this.context.session || null;
+    let runtime = this.frameRuntime?.() || this.context.frameRuntime || this.context.services?.frameRuntime;
+    if (session?.id && runtime?.updateSession) {
+      let current = Array.isArray(session.participantAgentIDs) ? session.participantAgentIDs : [];
+      if (!current.includes(agent.id))
+        await runtime.updateSession(session.id, { participantAgentIDs: [ ...current, agent.id ] });
+    }
+
     return {
       agent: sanitizeAgent(agent),
       created: true,

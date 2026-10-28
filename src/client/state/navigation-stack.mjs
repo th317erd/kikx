@@ -8,7 +8,7 @@
 // would let `pushView` accept a view no builder can render, which is a blank work
 // area. A legacy `?view=activities` therefore fails this membership test at the parse
 // site (`:204` below) and degrades to a normal window.
-export const VIEW_NAMES = [ 'inbox' ];
+export const VIEW_NAMES = [ 'inbox', 'agents', 'teams' ];
 
 // A navigation stack of "windows" over a single work area. Each entry is either
 // the root (top-level projects) or an entered session. A session entry always
@@ -58,6 +58,17 @@ export function currentEntry(stack) {
 
 export function currentSessionID(stack) {
   return currentEntry(stack).sessionID;
+}
+
+// The session a view is scoped to. A view entry itself has no session, so walk
+// back past view entries to the window that is still underneath it.
+export function scopeSessionID(stack) {
+  let base = normalizeNavigationStack(stack);
+  for (let index = base.length - 1; index >= 0; index--) {
+    if (!isViewEntry(base[index]) && base[index].sessionID)
+      return base[index].sessionID;
+  }
+  return null;
 }
 
 export function stackDepth(stack) {

@@ -1,6 +1,6 @@
 'use strict';
 
-import { getAgents, removeAgent, resetAgentForm, setAgentFormFromAgent, setAgentFormProvider, upsertAgent } from '../state/kikx-state.mjs';
+import { getAgents, getScopeSessionID, navigateView, navigateBack, removeAgent, resetAgentForm, setAgentFormFromAgent, setAgentFormProvider, upsertAgent, upsertSession } from '../state/kikx-state.mjs';
 import { masterRankByAgentID } from './master-agent-helpers.mjs';
 import {
   compactionBotButtonAriaLabel,
@@ -15,9 +15,11 @@ import { agentTagActionActive, nextPriorityTimestamp } from './agent-tag-actions
 import { readAgentGutsValues, validateAgentGuts } from './agent-config-form-registry.mjs';
 
 export function openAgentManager(app) {
-  app._state.managingAgents = true;
+  app._state.managingAgents = false;
   app._state.managingTeams = false;
   app._state.agentEditorOpen = false;
+  navigateView('agents', app._state);
+  app._syncURLFromStack?.({ push: true });
   app._state.teamEditorOpen = false;
   app._state.agentStatus = '';
   app._state.agentStatusKind = 'pending';
@@ -28,12 +30,13 @@ export function openAgentManager(app) {
 
 export function closeAgentManager(app) {
   app._state.managingAgents = false;
+  navigateBack(app._state);
   app._render();
 }
 
 export function closeAgentEditor(app) {
   app._state.agentEditorOpen = false;
-  app._state.managingAgents = true;
+  app._state.managingAgents = false;
   app._render();
 }
 
@@ -100,6 +103,8 @@ export async function onAgentFormSubmit(app, event) {
       : await app._postJSON('/api/v1/agents', body);
 
     upsertAgent(result.data.agent, app._state);
+    if (app._state.agentFormMode !== 'edit')
+      await assignAgentToCurrentSession(app, result.data.agent);
     let message = app._state.agentFormMode === 'edit' ? 'Agent saved' : 'Agent created';
     resetAgentForm(app._state);
     app._state.agentEditorOpen = false;
@@ -111,6 +116,29 @@ export async function onAgentFormSubmit(app, event) {
     app._state.agentStatus = error.message;
     app._state.agentStatusKind = 'error';
     app._render();
+  }
+}
+
+export async function assignAgentToCurrentSession(app, agent) {
+  let sessionID = getScopeSessionID(app._state);
+  let session = app._state.sessionDetailsByID?.[sessionID];
+  if (!sessionID || !session || !agent?.id)
+    return;
+
+  let participantAgentIDs = Array.isArray(session.participantAgentIDs) ? session.participantAgentIDs : [];
+  if (participantAgentIDs.includes(agent.id))
+    return;
+
+  try {
+    let result = await app._patchJSON(`/api/v1/sessions/${encodeURIComponent(sessionID)}`, {
+      participantAgentIDs: [ ...participantAgentIDs, agent.id ],
+    });
+    if (result.data?.session)
+      upsertSession(result.data.session, app._state);
+    app._render();
+  } catch (error) {
+    app._state.agentStatus = `Agent created, but could not add it to this session: ${error.message}`;
+    app._state.agentStatusKind = 'error';
   }
 }
 

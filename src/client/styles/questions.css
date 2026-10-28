@@ -57,6 +57,7 @@
   color: #f5f7fa;
 }
 
+.kikx-sidebar__view--active,
 .kikx-sidebar__inbox--active {
   border-color: #3d6cff;
   background: #17203a;

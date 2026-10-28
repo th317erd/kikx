@@ -40,6 +40,7 @@ import {
 // Owner point 2: User / Account / Agents / Teams / Sign out as sidebar session objects.
 import { buildSidebarSessionObjects } from './kikx-sidebar-session-objects.mjs';
 import { buildInboxSidebarEntry, buildInboxView } from './kikx-inbox-view.mjs';
+import { buildAgentsView, buildTeamsView } from './kikx-agent-team-views.mjs';
 import { STATUSBAR_STAT_LABELS, buildStatusBarStats } from '../state/statusbar-stats.mjs';
 
 const { div, main, nav, section, header, h2, p, span, button, form, input, label, textarea } = elements;
@@ -92,18 +93,6 @@ export function renderAppShell(app) {
 
     if (app._state.accountEditorOpen)
       shellChildren.push(app._buildAccountEditor());
-
-    if (app._state.managingAgents)
-      shellChildren.push(app._buildAgentManager());
-
-    if (app._state.agentEditorOpen)
-      shellChildren.push(app._buildAgentEditor());
-
-    if (app._state.managingTeams)
-      shellChildren.push(app._buildTeamManager());
-
-    if (app._state.teamEditorOpen)
-      shellChildren.push(app._buildTeamEditor());
 
     shellChildren.push(createErrorSurfaceElement());
 
@@ -278,7 +267,13 @@ export function buildRunnerShell(app) {
       ),
       // A view replaces the work area while it is the top stack entry; Back pops
       // to whatever window was underneath.
-      viewName === 'inbox' ? buildInboxView(app) : buildWindow(app, entry),
+      viewName === 'inbox'
+        ? buildInboxView(app)
+        : viewName === 'agents'
+          ? buildAgentsView(app)
+          : viewName === 'teams'
+            ? buildTeamsView(app)
+            : buildWindow(app, entry),
     ),
   ];
 }
