@@ -108,11 +108,18 @@ export async function loadPlugins(options = {}) {
         // Keep the failure so the inventory can report it. Omission would make
         // "not installed" and "installed and broken" look identical.
         if (!registry._pluginLoadErrors) registry._pluginLoadErrors = [];
-        registry._pluginLoadErrors.push({
-          location: String(pluginPath).split(/[/\\]/).filter(Boolean).pop() || null,
-          message: String(error?.message || error),
-          at: new Date().toISOString(),
-        });
+        // One entry per location, newest wins: a plugin that fails on every reload
+        // must not grow this list without limit, and a stale failure for a location
+        // that has since been fixed should not survive a later successful load.
+        let location = String(pluginPath).split(/[/\\]/).filter(Boolean).pop() || null;
+        registry._pluginLoadErrors = registry._pluginLoadErrors
+          .filter((e) => e.location !== location)
+          .concat([{
+            location,
+            message: String(error?.message || error),
+            at: new Date().toISOString(),
+          }])
+          .slice(-50);
       }
     }
   }
