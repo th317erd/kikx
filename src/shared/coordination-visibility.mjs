@@ -42,34 +42,58 @@
 const COORDINATION_FRAME_TYPE = 'UserMessage';
 const COORDINATION_AUTHOR_PREFIX = 'internal:';
 
-// SCOPE: not every `internal:` frame surfaces.
+// SCOPE: exactly ONE internal author surfaces.
 //
-// A wake is admitted only when it is a hidden, directed, prose message to one
-// agent. The authors below are refused outright even if they someday grow a
-// targetAgentID, because they are machine bookkeeping and would add thread
-// noise without answering "who told this bot what to do":
+// This was a DENYLIST and that was the bug. There are 36 `internal:<name>`
+// authorIDs in `src/`, of which the denylist named 11; the other 25 failed OPEN.
+// Two of them were live in `kikx-dev2` and admitted 24 real frames by this
+// predicate before the fix:
 //
-//   internal:compaction          compaction is already its own visible frame type
-//   internal:runtime-recovery    recovery re-issues a wake; the original shows once
-//   internal:session-merge       merge bookkeeping, not a directed instruction
-//   internal:session-participant participant-list churn, not an instruction
-//   internal:scheduled-frame-cancel / -queue   scheduling bookkeeping
-//   internal:frame-store         store housekeeping
-//   internal:slash-command-router, internal:process-manager,
-//   internal:autonomous-chain, internal:agent-continuation
-//                                control-plane signals, not messages to a bot
+//   internal:pending-tool-recovery  23 frames  "Kikx resumed pending tool call(s)
+//     after a restart. - exec: success — {…tool output JSON…}"
+//   internal:question-deadline       1 frame   "Question <id> reaches its
+//     default-answer deadline."
 //
-// They are excluded by `targetAgentID` and `type`, and this list is the belt to
-// that braces: if one of them ever grows a targetAgentID it still stays hidden
-// until somebody adds a case here on purpose.
+// Both are hidden AND carry a `targetAgentID` AND carry `content.text`, which is
+// every gate the old predicate checked. They are machine bookkeeping — recovery
+// replays and a timer firing — and they answer "what happened to the runtime",
+// not "who told this bot what to do". Surfacing them would have buried the one
+// card the owner actually asked for under resume-noise, including raw tool
+// output JSON.
+//
+// The direction of the test is therefore reversed: an unknown author is REFUSED.
+// A future `internal:` writer that genuinely carries a human-readable handoff has
+// to be added here deliberately, and the spec fails until it is. Failing closed
+// is the right bias for a rule whose failure mode is "leak internal bookkeeping
+// into the owner's conversation".
+//
+// Why exactly this author: `inviteWakeText`
+// (src/core/tools/session-invite-wake.mjs:12-16) is the only writer that builds
+// prose FOR A PERSON about who invited whom, and `session-invite-wake.mjs:25-28`
+// is the only caller of `wakeAgentInSession` that passes an authorID at all.
+const SURFACED_WAKE_AUTHORS = new Set([
+  'internal:session-invite',
+]);
+
+// Named for the report's benefit and to keep the reasoning above checkable: these
+// are the internal authors that must NOT surface even though they are hidden,
+// directed, and carry text. Listed rather than left implicit so that adding one
+// of them to SURFACED_WAKE_AUTHORS requires deleting its line here too.
 const NEVER_SURFACED_AUTHORS = new Set([
+  // The two that were actually leaking. See the comment above.
+  'internal:pending-tool-recovery',
+  'internal:question-deadline',
+  // Compaction is already its own visible frame type.
   'internal:compaction',
+  // Recovery re-issues a wake; the original shows once, on its own.
   'internal:runtime-recovery',
+  // Merge, participant, and scheduling bookkeeping, not instructions.
   'internal:session-merge',
   'internal:session-participant',
   'internal:scheduled-frame-cancel',
   'internal:scheduled-frame-queue',
   'internal:frame-store',
+  // Control-plane signals, not messages to a bot.
   'internal:slash-command-router',
   'internal:process-manager',
   'internal:autonomous-chain',
@@ -99,6 +123,14 @@ export function isCoordinationWakeFrame(frame) {
 
   let authorID = typeof frame.authorID === 'string' ? frame.authorID : '';
   if (!authorID.startsWith(COORDINATION_AUTHOR_PREFIX))
+    return false;
+
+  // Fails CLOSED: an author that is not on the surfaced list stays hidden, so a
+  // new internal writer cannot leak into the thread by accident. The explicit
+  // NEVER_SURFACED_AUTHORS check is redundant today (the two sets are disjoint)
+  // and is kept as the second belt: if somebody adds an author to
+  // SURFACED_WAKE_AUTHORS without removing it here, refusal still wins.
+  if (!SURFACED_WAKE_AUTHORS.has(authorID))
     return false;
 
   if (NEVER_SURFACED_AUTHORS.has(authorID))

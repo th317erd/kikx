@@ -177,3 +177,64 @@ test('a dotted inviter and a dotted name together still split at the invitee', (
   });
   assert.equal(describeCoordinationWake(frame).inviter, 'Dr. A. B. Smith');
 });
+
+// Regression: the author rule was a DENYLIST of 11 names out of 36 `internal:`
+// authorIDs in `src/`, so the other 25 failed OPEN. Two of them were live in
+// `kikx-dev2` and admitted 24 real frames before this was fixed. Reproduced here
+// with the exact persisted shapes, not a hand-written lookalike.
+test('runtime bookkeeping authors that carry a target and text stay hidden', () => {
+  // Exactly what `pending-tool-recovery.mjs:206-211,213-221` persists.
+  let recovered = inviteWake({
+    authorID: 'internal:pending-tool-recovery',
+    content: {
+      text: [
+        'Kikx resumed pending tool call(s) after a restart.',
+        '- exec: success — {"type":"ToolOutput","toolName":"exec","toolOutputID":"…"}',
+        'Continue the task from the current state. Do not repeat calls that already completed.',
+      ].join('\n'),
+      status: 'scheduled',
+      agentID: 'agent-worker',
+    },
+  });
+  // `question-deadline-schedule.mjs:42` author, text per the persisted frame.
+  let deadline = inviteWake({
+    authorID: 'internal:question-deadline',
+    content: {
+      text: 'Question b8d949ce-1286-4586-a8fb-4c416eb4eb7a reaches its default-answer deadline.',
+      status: 'scheduled',
+      agentID: 'agent-worker',
+    },
+  });
+
+  // These pass every OTHER gate the predicate used to check — hidden, directed,
+  // prose, UserMessage — so only the author rule can refuse them.
+  for (let frame of [ recovered, deadline ]) {
+    assert.equal(frame.hidden, true);
+    assert.equal(frame.type, 'UserMessage');
+    assert.ok(frame.targetAgentID);
+    assert.ok(frame.content.text.trim() !== '');
+  }
+
+  assert.equal(isCoordinationWakeFrame(recovered), false);
+  assert.equal(isCoordinationWakeFrame(deadline), false);
+
+  // And the real consequence: they must not become visible in the thread.
+  assert.equal(isThreadVisibleFrame(recovered), false);
+  assert.equal(isThreadVisibleFrame(deadline), false);
+});
+
+// The direction of the test matters as much as the outcome. An allowlist means a
+// NEW internal author is refused by default; a denylist meant it leaked by
+// default. This pinning test fails the moment somebody "fixes" the leak by
+// re-adding a denylist, because a novel author would then be admitted.
+test('an unknown internal author is refused, not admitted', () => {
+  let frame = inviteWake({ authorID: 'internal:a-bot-someone-adds-next-week' });
+
+  assert.equal(isCoordinationWakeFrame(frame), false);
+  assert.equal(isThreadVisibleFrame(frame), false);
+
+  // The two authors that DO surface are exactly the invite handoff, so this
+  // cannot pass by refusing everything: the positive control is in the first
+  // test of this file (`an invite wake is recognised as coordination`).
+  assert.equal(isCoordinationWakeFrame(inviteWake()), true);
+});
