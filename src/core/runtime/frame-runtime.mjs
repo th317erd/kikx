@@ -457,6 +457,11 @@ export class FrameRuntime extends EventEmitter {
       // The active route checks this flag between streamed outputs and yields to
       // the new turn instead of finishing its old plan first.
       let steering = this.noteSteering(sessionID, frames[0]);
+      // Callers need the frame they just appended - a transport has to remember which
+      // frame a message became so a later edit can update it rather than duplicate it.
+      // Returning it here rather than at the end keeps the value available on every exit
+      // path below, and costs nothing when nobody looks.
+      this._lastAppendedFrame = frames[0] || frame;
 
       let manifestSave = this._sessionManifestSaves.get(sessionID);
       await this.frameStore.flush();
