@@ -7,6 +7,22 @@ import { pathToFileURL } from 'node:url';
 import { AgentInterface } from './agent-interface.mjs';
 import { PluginInterface } from './plugin-interface.mjs';
 
+const SETUP_TIMEOUT_MS = Number(globalThis.__KIKX_PLUGIN_SETUP_TIMEOUT_MS) || 15000;
+
+// Resolve with the promise, or reject if it takes too long. The losing promise is not
+// cancelled - JavaScript cannot - but startup stops waiting on it, which is the
+// property that matters: one wedged plugin must not hang the whole server.
+function withTimeout(promise, ms, message) {
+  let timer = null;
+  return Promise.race([
+    promise,
+    new Promise((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), ms);
+      if (typeof timer.unref === 'function') timer.unref();
+    }),
+  ]).finally(() => { if (timer) clearTimeout(timer); });
+}
+
 export async function loadPlugins(options = {}) {
   let {
     pluginPaths = '',
@@ -35,14 +51,18 @@ export async function loadPlugins(options = {}) {
         let pluginName = pluginModule.pluginName || pluginNameFromPath(pluginPath);
         let record = { pluginPath, pluginName, modulePath, callbacks: [], teardown: null };
         let providerIDsBefore = agentProviderIDs(registry);
-        let teardown = await pluginModule.setup(createPluginSetupContext({
-          registry,
-          commandRegistry,
-          context,
-          pluginPath,
-          pluginName,
-          onProvide: (callback) => record.callbacks.push(callback),
-        }));
+        let teardown = await withTimeout(
+          Promise.resolve(pluginModule.setup(createPluginSetupContext({
+            registry,
+            commandRegistry,
+            context,
+            pluginPath,
+            pluginName,
+            onProvide: (callback) => record.callbacks.push(callback),
+          }))),
+          SETUP_TIMEOUT_MS,
+          `Plugin "${pluginName}" setup did not finish within ${SETUP_TIMEOUT_MS}ms`,
+        );
         if (typeof teardown === 'function')
           record.teardown = teardown;
 
@@ -60,7 +80,11 @@ export async function loadPlugins(options = {}) {
         // so the registry is complete for this plugin by this point.
         if (record.onInit) {
           try {
-            await record.onInit();
+            await withTimeout(
+              Promise.resolve(record.onInit()),
+              SETUP_TIMEOUT_MS,
+              `Plugin "${pluginName}" onInit did not finish within ${SETUP_TIMEOUT_MS}ms`,
+            );
           } catch (error) {
             logger.error?.(`Plugin "${pluginName}" onInit failed: ${error.message}`);
             throw error;
