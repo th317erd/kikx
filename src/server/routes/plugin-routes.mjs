@@ -45,7 +45,19 @@ export async function handlePluginRoutes({ request, response, url, context }) {
   // where the boot would find it, then asking for a reload.
   if (url.pathname === '/api/v1/plugins/reload' && request.method === 'POST') {
     let registry = context.has?.('pluginRegistry') ? context.require('pluginRegistry') : null;
-    let pluginPaths = context.has?.('pluginPaths') ? context.require('pluginPaths') : null;
+    // Re-read the configured paths rather than using the boot snapshot: installing a
+    // plugin means adding a directory to the configuration, and a reload that scans the
+    // old list can never find it.
+    let pluginPaths = null;
+    try {
+      let config = context.has?.('config') ? context.require('config') : null;
+      if (config && typeof config.get === 'function') {
+        const { KIKX_PLUGIN_PATHS_PATH } = await import('../../core/config/config-paths.mjs');
+        pluginPaths = await config.get(KIKX_PLUGIN_PATHS_PATH);
+      }
+    } catch (_e) { pluginPaths = null; }
+    if (!pluginPaths && context.has?.('pluginPaths'))
+      pluginPaths = context.require('pluginPaths');
     if (!registry || !pluginPaths) {
       response.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' });
       response.end(JSON.stringify({ error: { message: 'plugin reload is unavailable' } }));
