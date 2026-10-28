@@ -342,6 +342,13 @@ function createPluginSetupContext({ registry, commandRegistry, context, pluginPa
     // receives nothing. Safe to call before the runtime exists - it queues.
     // Drop a message into a session as a user frame. Real-time transports use this to
     // put an inbound message where the session's agents will see it.
+    // Config access. Plugins must not read process.env directly - that bypasses the
+    // ConfigStore and the architecture spec forbids it outside src/core/config.
+    readConfig: (path, fallback = null) => {
+      let store = context?.config || (typeof context?.require === 'function' && context.has?.('config') ? context.require('config') : null);
+      if (!store || typeof store.get !== 'function') return Promise.resolve(fallback);
+      return Promise.resolve(store.get(path)).then((v) => (v === undefined || v === null ? fallback : v));
+    },
     appendToSession: (sessionID, input) => {
       if (!registry._pluginFrameRuntime)
         throw new Error('appendToSession called before the frame runtime was attached');

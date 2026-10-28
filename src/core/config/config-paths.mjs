@@ -58,3 +58,9 @@ export const KIKX_MONITORING_MEMORY_INTERVAL_SECONDS_PATH = '/kikx/monitoring/me
 export const KIKX_MONITORING_MEMORY_SAMPLES_PATH = '/kikx/monitoring/memory/samples';
 export const KIKX_MONITORING_MEMORY_GROWTH_THRESHOLD_MB_PATH = '/kikx/monitoring/memory/growth/threshold/mb';
 export const KIKX_MONITORING_MEMORY_GROWTH_WINDOW_SAMPLES_PATH = '/kikx/monitoring/memory/growth/window/samples';
+
+// Discord transport credentials. Env keys derive from these paths, so the public key is
+// ORG_AEOR_KIKX_DISCORD_PUBLIC_KEY etc. Plugins read them through the ConfigStore rather
+// than process.env, which the architecture spec forbids outside this module.
+export const KIKX_DISCORD_PUBLIC_KEY_PATH = '/kikx/discord/public/key';
+export const KIKX_DISCORD_BOT_TOKEN_PATH = '/kikx/discord/bot/token';
