@@ -479,6 +479,9 @@ export async function createServer(options = {}) {
 
     // Plugins subscribed during their load, before this runtime existed. Attaching
     // here starts delivery for everything that queued.
+    if (context.has('pluginRegistry'))
+      context.require('pluginRegistry').setPluginFrameRuntime(context.require('frameRuntime'));
+
     if (context.has('pluginEventBus'))
       context.require('pluginEventBus').attach(context.require('frameRuntime'));
   }

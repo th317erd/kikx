@@ -60,6 +60,10 @@ export class PluginRegistry extends ClassRegistry {
     return this._pluginAuthorities.get(pluginId);
   }
 
+  setPluginFrameRuntime(runtime) {
+    this._pluginFrameRuntime = runtime;
+  }
+
   setPluginAuthorityFactory(factory) {
     this._pluginAuthorityFactory = factory;
   }

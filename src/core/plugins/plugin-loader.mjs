@@ -340,6 +340,13 @@ function createPluginSetupContext({ registry, commandRegistry, context, pluginPa
     authorize: (request) => registry.getPluginAuthority(pluginName).authorize(request),
     // Scoped events. A subscription must name the sessions it cares about; naming none
     // receives nothing. Safe to call before the runtime exists - it queues.
+    // Drop a message into a session as a user frame. Real-time transports use this to
+    // put an inbound message where the session's agents will see it.
+    appendToSession: (sessionID, input) => {
+      if (!registry._pluginFrameRuntime)
+        throw new Error('appendToSession called before the frame runtime was attached');
+      return registry._pluginFrameRuntime.appendUserMessage(sessionID, input);
+    },
     subscribe: (handler, options = {}) => {
       if (!registry._pluginEventBus)
         throw new Error('subscribe() called before the plugin event bus was attached');
