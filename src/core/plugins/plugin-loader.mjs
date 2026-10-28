@@ -15,13 +15,16 @@ const SETUP_TIMEOUT_MS = Number(globalThis.__KIKX_PLUGIN_SETUP_TIMEOUT_MS) || 15
 // property that matters: one wedged plugin must not hang the whole server.
 function withTimeout(promise, ms, message) {
   let timer = null;
-  return Promise.race([
-    promise,
-    new Promise((_resolve, reject) => {
-      timer = setTimeout(() => reject(new Error(message)), ms);
-      if (typeof timer.unref === 'function') timer.unref();
-    }),
-  ]).finally(() => { if (timer) clearTimeout(timer); });
+  return new Promise((resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+    // Deliberately NOT unref'd. An unref'd timer does not keep the event loop alive, so
+    // with a plugin that never settles there is nothing outstanding and the process
+    // exits before the timer can fire. The timeout must be able to hold the loop open.
+    promise.then(
+      (value) => { if (timer) clearTimeout(timer); resolve(value); },
+      (error) => { if (timer) clearTimeout(timer); reject(error); },
+    );
+  });
 }
 
 
