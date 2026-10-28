@@ -64,3 +64,8 @@ export const KIKX_MONITORING_MEMORY_GROWTH_WINDOW_SAMPLES_PATH = '/kikx/monitori
 // than process.env, which the architecture spec forbids outside this module.
 export const KIKX_DISCORD_PUBLIC_KEY_PATH = '/kikx/discord/public/key';
 export const KIKX_DISCORD_BOT_TOKEN_PATH = '/kikx/discord/bot/token';
+
+// Installing a plugin loads code from an arbitrary path into the running process. Off by
+// default: an endpoint that can do that is remote code execution with a JSON body, and a
+// dev convenience is not worth shipping open.
+export const KIKX_PLUGIN_INSTALL_ENABLED_PATH = '/kikx/plugin/install/enabled';

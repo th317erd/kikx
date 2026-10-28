@@ -52,6 +52,29 @@ export async function handlePluginRoutes({ request, response, url, context, json
       return true;
     }
 
+    // Installing loads code from an arbitrary path into this process. Denied unless the
+    // operator has explicitly turned it on - an open install endpoint is remote code
+    // execution with a JSON body.
+    let enabled = false;
+    try {
+      let config = context.has?.('config') ? context.require('config') : null;
+      if (config && typeof config.get === 'function') {
+        const { KIKX_PLUGIN_INSTALL_ENABLED_PATH } = await import('../../core/config/config-paths.mjs');
+        let value = await config.get(KIKX_PLUGIN_INSTALL_ENABLED_PATH);
+        enabled = value === true || value === 'true' || value === '1';
+      }
+    } catch (_e) { enabled = false; }
+    if (!enabled) {
+      response.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({
+        error: {
+          message: 'plugin install is disabled',
+          hint: 'set ORG_AEOR_KIKX_PLUGIN_INSTALL_ENABLED=true to allow installing code at runtime',
+        },
+      }));
+      return true;
+    }
+
     // This branch runs before router.invoke, which is what normally supplies a body
     // reader, so the request body is read here. Bounded: an install payload is a path.
     let body = null;
