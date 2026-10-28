@@ -101,3 +101,57 @@ The fix would be worthless if it simply refused everything.
   against real stored frames, which is the part that could not be faked.
 - An actual invite during a live turn was not observed end-to-end; the two
   admitted frames are historical.
+
+## 9. Post-hoc audit of the gate numbers (why two gates report different totals)
+
+A completed gate process (`proc-c8c88a6f90a54a32`, started `05:40:28Z`) reported
+**2772 / 2743 / 0 / 29**, contradicting the **2774 / 2745 / 0 / 29** recorded in
+§7. Root cause, established by timestamp and commit order — not by guesswork:
+
+| run | log | started | totals | includes the two new tests? |
+|---|---|---|---|---|
+| pre-fix | `.gate/sync-verify.log` | 22:40:34 | 2772 / 2743 / 0 / 29 | no — 12 of 14 decls |
+| post-fix | `.gate/fix-verify.log` | 22:43:45 | 2774 / 2745 / 0 / 29 | yes — both, lines 3627-3628 |
+| `e348263e` committed | — | 22:44:05 | — | — |
+
+`sync-verify.log` predates the fix by ~3.5 minutes, so the two tests the fix added
+genuinely did not exist when it ran. Both numbers are correct for their tree; they
+describe different trees. §7's figure stands.
+
+### 9.1 Fresh gate at current HEAD (not reconstructed)
+
+`.gate/head-verify.log`, run at `HEAD=958b4ede` with `tree=0` and
+`ahead_behind=0 0`:
+
+```
+EXIT=0
+ℹ tests 2774
+ℹ pass 2745
+ℹ fail 0
+ℹ skipped 29
+ℹ duration_ms 5641.883764
+--- new tests this gate must include ---
+2
+--- concurrent writes ---
+(empty)
+```
+
+The `find src spec -type f -newermt "@$START"` check printed nothing, so no
+concurrent writer invalidated the count. Both tests added by `e348263e` are
+collected and green at HEAD.
+
+### 9.2 Measurement errors made during this audit (kept, not hidden)
+
+- `git show HEAD:src/core/aeordb/coordination-visibility.mjs` returned empty. The
+  file is at **`src/shared/coordination-visibility.mjs`**; the `aeordb/` path was
+  wrong, so the first "fix is not in HEAD" read was a false negative.
+- A `sed` that was meant to strip `test('` kept the prefix, so the per-name check
+  reported all 14 tests MISSING. That result was purely an artifact of a broken
+  harness. Re-done in Node: **12 ran, 2 missing** — and the 2 were missing only
+  because that log predates the commit.
+- The two `.gate` logs were not distinguishable by name; `sync-verify` vs
+  `fix-verify` differ by one word. The discriminator had to be mtime vs commit
+  time.
+
+No test was skipped, quarantined, or excluded at any point. The two logs differ by
+which tree they ran against, and nothing else.
