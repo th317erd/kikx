@@ -113,8 +113,13 @@ export async function handlePluginRoutes({ request, response, url, context, json
       // Migrations run at startup, so a plugin installed afterwards has registered its
       // SQL and never had it applied - it would load and then fail on its first query.
       // Run them here for exactly this install.
-      if (context.has?.('pluginMigrations'))
-        await context.require('pluginMigrations').run({ logger: console });
+      if (context.has?.('pluginMigrations')) {
+        let outcome = await context.require('pluginMigrations').run({ logger: console });
+        // run() returns { skipped, reason } when it does nothing. Discarding that made a
+        // silent skip indistinguishable from a silent success.
+        if (outcome?.skipped)
+          console.warn('[plugin-install] migrations skipped:', outcome.reason);
+      }
     } catch (error) {
       response.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
       response.end(JSON.stringify({ error: { message: String(error?.message || error) } }));
