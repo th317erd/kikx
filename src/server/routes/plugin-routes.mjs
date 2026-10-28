@@ -86,6 +86,12 @@ export async function handlePluginRoutes({ request, response, url, context, json
         commandRegistry: context.require('commandRegistry'),
         context,
       });
+
+      // Migrations run at startup, so a plugin installed afterwards has registered its
+      // SQL and never had it applied - it would load and then fail on its first query.
+      // Run them here for exactly this install.
+      if (context.has?.('pluginMigrations'))
+        await context.require('pluginMigrations').run({ logger: console });
     } catch (error) {
       response.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
       response.end(JSON.stringify({ error: { message: String(error?.message || error) } }));
