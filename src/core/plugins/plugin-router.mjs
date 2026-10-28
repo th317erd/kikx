@@ -44,8 +44,14 @@ export class PluginRouter {
     if (typeof handler !== 'function')
       throw new TypeError('mount requires a handler function');
     let path = PluginRouter.mountPathFor(pluginId);
-    if (this.mounts.has(pluginId))
-      throw new TypeError(`plugin "${pluginId}" already has an HTTP mount`);
+    let existing = this.mounts.get(pluginId);
+    if (existing) {
+      // A reload supplies a fresh handler for the same mount. Replace rather than throw;
+      // a different path for the same plugin is still a conflict.
+      if (existing.path !== path)
+        throw new TypeError(`plugin "${pluginId}" already mounted at ${existing.path}, cannot move to ${path}`);
+      this.mounts.delete(pluginId);
+    }
     this.mounts.set(pluginId, { pluginId, path, handler });
     return path;
   }

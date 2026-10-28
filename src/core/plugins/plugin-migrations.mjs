@@ -68,8 +68,16 @@ export class PluginMigrations {
       throw new TypeError('registerMigrations requires a plugin id');
     if (typeof directory !== 'string' || !directory)
       throw new TypeError('registerMigrations requires a directory');
-    if (this.plugins.has(pluginId))
-      throw new TypeError(`migrations already registered for "${pluginId}"`);
+    let existing = this.plugins.get(pluginId);
+    if (existing) {
+      // A reload re-registers what boot already registered. Same directory means the
+      // same migrations, so this is idempotent; a different directory is a real conflict.
+      if (existing.directory === directory) return true;
+      throw new TypeError(
+        `migrations already registered for "${pluginId}" from ${existing.directory}, `
+        + `cannot re-register from ${directory}`,
+      );
+    }
     this.plugins.set(pluginId, { directory, allowUnprefixed });
     return true;
   }

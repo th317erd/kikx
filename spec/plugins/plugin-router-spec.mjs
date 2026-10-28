@@ -50,10 +50,17 @@ test('unsafe plugin ids are refused', () => {
   }
 });
 
-test('duplicate mount is refused', () => {
+test('re-mounting the same plugin replaces its handler', () => {
+  // A reload re-registers what boot registered. Same plugin, same path: replace,
+  // do not throw, or every reload reports a failure.
   let router = new PluginRouter({ logger: { error() {} } });
-  router.mount('miri', async () => {});
-  assert.throws(() => router.mount('miri', async () => {}), /already has an HTTP mount/);
+  let first = async () => 'first';
+  let second = async () => 'second';
+  router.mount('miri', first);
+  router.mount('miri', second);
+  let mounts = router.listMounts();
+  assert.equal(mounts.length, 1);
+  assert.equal(mounts[0].pluginId, 'miri');
 });
 
 test('a non-function handler is refused', () => {
