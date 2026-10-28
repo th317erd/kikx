@@ -268,7 +268,12 @@ export async function createServer(options = {}) {
   // Plugins must be loaded before the driver is resolved: a plugin may register
   // the selected driver. The built-in aeordb driver is registered by
   // registerCoreClasses, so a default boot always has at least one driver.
-  await context.require('pluginLoadPromise');
+  try {
+    await context.require('pluginLoadPromise');
+  } catch (error) {
+    // Plugin loading must never be able to stop the server from starting.
+    console.error('[plugin-load] continuing with whatever loaded:', error?.message || error);
+  }
 
 
   if (!context.has('db')) {

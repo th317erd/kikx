@@ -82,6 +82,8 @@ export async function loadPlugins(options = {}) {
   for (let configuredPath of normalizePluginPaths(pluginPaths)) {
     for (let pluginPath of await expandPluginPathSites(configuredPath)) {
       try {
+        // HARD BOUNDARY: nothing a plugin does may escape this iteration.
+        // Not a throw, not a rejection, not a timer that never fires.
         let modulePath = await resolvePluginModule(pluginPath);
         let pluginModule = await import(`${pathToFileURL(modulePath).href}?t=${Date.now()}`);
 
