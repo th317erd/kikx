@@ -51,6 +51,19 @@ export class PluginRegistry extends ClassRegistry {
 
   // A plugin gets a scoped handle, never a pool. Created lazily from the shared pool so
   // a plugin that never touches the database costs nothing.
+  getPluginAuthority(pluginId) {
+    if (!this._pluginAuthorityFactory)
+      throw new Error('authorize() called before the plugin authority was attached');
+    if (!this._pluginAuthorities) this._pluginAuthorities = new Map();
+    if (!this._pluginAuthorities.has(pluginId))
+      this._pluginAuthorities.set(pluginId, this._pluginAuthorityFactory(pluginId));
+    return this._pluginAuthorities.get(pluginId);
+  }
+
+  setPluginAuthorityFactory(factory) {
+    this._pluginAuthorityFactory = factory;
+  }
+
   setPluginDatabaseFactory(factory) {
     this._pluginDatabaseFactory = factory;
   }

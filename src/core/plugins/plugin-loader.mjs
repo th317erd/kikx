@@ -336,6 +336,8 @@ function createPluginSetupContext({ registry, commandRegistry, context, pluginPa
     mountHttp: (handler) => registry.mountHttp(pluginName, handler),
     // Scoped database handle. Enforces the plugin's table prefix and refuses DDL.
     db: () => registry.getPluginDatabase(pluginName),
+    // Deny-by-default capability check. A transport must call this before acting.
+    authorize: (request) => registry.getPluginAuthority(pluginName).authorize(request),
     // Scoped events. A subscription must name the sessions it cares about; naming none
     // receives nothing. Safe to call before the runtime exists - it queues.
     subscribe: (handler, options = {}) => {
