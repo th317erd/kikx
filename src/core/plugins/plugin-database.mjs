@@ -23,7 +23,11 @@
 
 const ALLOWED_STATEMENTS = /^\s*(select|insert|update|delete)\b/i;
 const FORBIDDEN = /\b(create|alter|drop|truncate|grant|revoke|copy|vacuum|reindex|comment|security|attach|detach)\b/i;
+// `update` is followed by a table name in a plain UPDATE, but by nothing in
+// `ON CONFLICT ... DO UPDATE SET`, where the next word is the SET keyword. Reserved
+// words are excluded so an upsert is not read as touching a table called "set".
 const TABLE_REFERENCE = /\b(?:from|join|into|update)\s+["'`]?([a-z0-9_]+)["'`]?/gi;
+const NOT_A_TABLE = new Set(['set', 'where', 'values', 'select', 'returning', 'on']);
 
 export class PluginDatabase {
   constructor({ pluginId, pool, logger = console }) {
@@ -55,6 +59,7 @@ export class PluginDatabase {
     while ((m = TABLE_REFERENCE.exec(sql)) !== null) tables.push(m[1].toLowerCase());
 
     for (let table of tables) {
+      if (NOT_A_TABLE.has(table)) continue;
       if (table.startsWith(this.prefix)) continue;
       // Subqueries and CTEs can introduce aliases; anything unrecognised is refused
       // rather than assumed safe.
