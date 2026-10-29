@@ -59,10 +59,18 @@ export class FrameRuntime extends EventEmitter {
       runnerID,
     });
     this.idGenerator = idGenerator;
-    this.frameStore = frameStore || new FrameStore({ db });
+    this.services = services || {};
+    let pluginRegistry = options.pluginRegistry
+      || resolveService(this.services, 'pluginRegistry')
+      || this.services?.context?.get?.('pluginRegistry')
+      || null;
+    this.pluginRegistry = pluginRegistry;
+    this.frameStore = frameStore || new FrameStore({
+      db,
+      extraSessionIndexes: () => pluginRegistry?.getFrameIndexes?.() || [],
+    });
     this.db = this.frameStore.aeordb || db || null;
     this.frameRouter = frameRouter;
-    this.services = services || {};
     this.tokenUsage = options.tokenUsage || resolveService(this.services, 'tokenUsage');
     this._disconnectTokenUsage = this.connectTokenUsage(this.tokenUsage);
     this.logger = options.logger || console;

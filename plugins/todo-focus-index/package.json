@@ -1,0 +1,11 @@
+{
+  "name": "kikx-plugin-todo-focus-index",
+  "version": "0.1.0",
+  "description": "Stamp frames with the authoring agent's focused todo item and index that field",
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "main": "index.mjs",
+  "engines": {
+    "node": ">=22"
+  }
+}

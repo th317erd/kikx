@@ -25,7 +25,7 @@ import { DEFAULT_ROOT_PATH } from './frame-store-constants.mjs';
 export class FrameStoreSessionBase {
   constructor(options = {}) {
     let db = options.db || options.aeordb;
-    let { rootPath = DEFAULT_ROOT_PATH } = options;
+    let { rootPath = DEFAULT_ROOT_PATH, extraSessionIndexes = null } = options;
 
     if (!db)
       throw new TypeError('FrameStore requires db (or the aeordb alias)');
@@ -33,6 +33,7 @@ export class FrameStoreSessionBase {
     this.aeordb = db;
     this.db = db;
     this.rootPath = normalizeRoot(rootPath);
+    this.extraSessionIndexes = typeof extraSessionIndexes === 'function' ? extraSessionIndexes : null;
     this._writeChain = Promise.resolve();
   }
 
@@ -85,7 +86,7 @@ export class FrameStoreSessionBase {
   }
 
   sessionIndexConfigs(sessionID) {
-    return buildSessionIndexConfigs(this.rootPath, sessionID);
+    return buildSessionIndexConfigs(this.rootPath, sessionID, this.extraSessionIndexes?.() || []);
   }
 
   async saveSession(session) {

@@ -156,6 +156,19 @@ export class PostgreSQLConnection extends DatabaseConnectionBase {
     }
   }
 
+  async ensureScalarIndex(name) {
+    let field = String(name || '').trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(field))
+      throw new TypeError(`invalid scalar index name: ${name}`);
+    if (!this.pool)
+      return;
+
+    let indexName = `documents_${field}_idx`;
+    await this.pool.query(
+      `CREATE INDEX IF NOT EXISTS ${indexName} ON documents (((body::jsonb) -> '${field}')) WHERE raw = false`,
+    );
+  }
+
   async close() {
     let pool = this.pool;
     this.pool = null;

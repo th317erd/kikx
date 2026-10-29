@@ -22,6 +22,7 @@ export class PluginRegistry extends ClassRegistry {
     this._toolComponents = new Map();
     this._agentConfigForms = new Map();
     this._tagDefinitions = new Map();
+    this._frameIndexes = new Map();
     this._pluginPaths = new Map();
   }
 
@@ -180,6 +181,27 @@ export class PluginRegistry extends ClassRegistry {
 
   // Generic client component registration keyed by kind. `frame` and `tool`
   // are keyed by frameType/toolName; `agent-config-form` is keyed by pluginID.
+  // A plugin may contribute an index for the frame documents it annotates.
+  // FrameStore merges these into each session's interaction index config; the
+  // plugin never owns or replaces the core index list.
+  registerFrameIndex(name, definition = {}) {
+    if (!name || typeof name !== 'string')
+      throw new TypeError('Frame index name must be a non-empty string');
+
+    let normalized = {
+      ...definition,
+      name,
+    };
+    if (!normalized.type)
+      throw new TypeError(`Frame index "${name}" requires a type`);
+    this._frameIndexes.set(name, normalized);
+    return normalized;
+  }
+
+  getFrameIndexes() {
+    return [ ...this._frameIndexes.values() ].map((index) => ({ ...index }));
+  }
+
   registerComponent(kind, key, descriptor = {}) {
     switch (kind) {
       case 'frame':

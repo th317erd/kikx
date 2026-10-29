@@ -122,6 +122,11 @@ export class DatabaseConnectionBase extends PluginInterface {
   // concept inherit the no-op and simply ignore the request.
   async configureIndexes(_configs) {}
 
+  // Optional hook for a plugin index that is not expressed as an AeorDB index
+  // document. Drivers with real schema indexes can implement this; drivers
+  // without one fall back to their normal query scan.
+  async ensureScalarIndex(_name) {}
+
   async batch() {
     throw unimplemented(this, 'batch');
   }
