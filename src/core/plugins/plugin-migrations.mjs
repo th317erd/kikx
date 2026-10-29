@@ -133,6 +133,7 @@ export class PluginMigrations {
 
   async run(options = {}) {
     let logger = options.logger || this.logger;
+    this.applied = [];
 
     // Nothing registered means nothing to do. This is the common case for a server
     // started without plugins, including most tests.
@@ -208,6 +209,7 @@ export class PluginMigrations {
     for (let file of files) {
       if (byVersion.has(file.version)) continue;
       this.validatePrefix(pluginId, file);
+      this.applied.push(`${pluginId}:${file.name}`);
 
       await connection.query('BEGIN');
       try {

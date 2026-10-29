@@ -119,6 +119,8 @@ export async function handlePluginRoutes({ request, response, url, context, json
         // silent skip indistinguishable from a silent success.
         if (outcome?.skipped)
           console.warn('[plugin-install] migrations skipped:', outcome.reason);
+        else
+          console.warn('[plugin-install] migrations applied:', JSON.stringify(context.require('pluginMigrations').applied || []));
       }
     } catch (error) {
       response.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
