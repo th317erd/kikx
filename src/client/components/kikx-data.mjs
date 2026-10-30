@@ -38,6 +38,13 @@ import { refreshSubSessionCards } from './kikx-sub-session-frame.mjs';
 import { readResponse } from './kikx-app-helpers.mjs';
 import { createThinkingBuffer } from '../state/thinking-state.mjs';
 
+// Initial rendering can mount the scrollview twice (shell/frame-window
+// settling). Deduplicate the same page request while it is in flight and for a
+// short completion window, keyed by the session's raw total. A growing tail
+// changes the key, so this cannot hide new frames.
+const framePageRequests = new Map();
+const FRAME_PAGE_CACHE_MS = 1500;
+
 async function requestJSON(app, url, options = {}) {
   let request = {
     ...options,
@@ -460,6 +467,7 @@ function frameWindowPaging(data = {}, limit = DEFAULT_FRAME_WINDOW_LIMIT) {
     oldestOrder: data.oldestOrder ?? null,
     newestOrder: data.newestOrder ?? null,
     total: data.total ?? null,
+    startOffset: Number.isInteger(data.startOffset) ? data.startOffset : null,
     limit,
   };
 }
@@ -564,9 +572,30 @@ export async function loadFrames(app, sessionID, options = {}) {
 // anchor path: one request lands on the message the user was reading instead
 // of walking backward through every newer page.
 export async function loadFramePage(app, sessionID, pageIndex, pageSize = 120) {
+  let total = Number(getSessionPaging(app?._state, sessionID).total);
+  let cacheKey = `${sessionID}:${pageIndex}:${pageSize}:${Number.isFinite(total) ? total : ''}`;
+  let cached = framePageRequests.get(cacheKey);
+  if (cached) {
+    if (cached.promise)
+      return await cached.promise;
+    if (Date.now() - cached.at < FRAME_PAGE_CACHE_MS)
+      return cached.data;
+    framePageRequests.delete(cacheKey);
+  }
+
   let params = new URLSearchParams({ pageSize: String(pageSize) });
-  let result = await getJSON(app, `/api/v1/sessions/${encodeURIComponent(sessionID)}/frame-page/${encodeURIComponent(pageIndex)}?${params}`);
-  return result.data;
+  let promise = getJSON(app, `/api/v1/sessions/${encodeURIComponent(sessionID)}/frame-page/${encodeURIComponent(pageIndex)}?${params}`)
+    .then((result) => {
+      framePageRequests.set(cacheKey, { at: Date.now(), data: result.data });
+      return result.data;
+    })
+    .finally(() => {
+      let current = framePageRequests.get(cacheKey);
+      if (current?.promise === promise && !current.data)
+        framePageRequests.delete(cacheKey);
+    });
+  framePageRequests.set(cacheKey, { promise });
+  return await promise;
 }
 
 export async function loadFramePageIndex(app, sessionID, pageSize = 120) {

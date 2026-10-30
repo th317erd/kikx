@@ -458,7 +458,16 @@ export class KikxChatView extends HTMLElement {
         createFrameItem: (frame) => this._createFrameItem(frame),
         getAppState: () => this._appState,
       });
-    this._scrollview.mount(this._frames, this._pageContext);
+    // A full repaint is common during startup and filter changes. Reusing a
+    // connected scrollview for the same session/filter keeps its page source,
+    // in-flight requests and mounted pages; remounting it issued every visible
+    // page request twice.
+    let pageKey = this._pageContext?.key || '';
+    let scrollKey = this._scrollview.pageContext?.key || '';
+    if (this._scrollview.element?.isConnected && pageKey === scrollKey)
+      this._scrollview.syncFrames(this._frames, this._appState);
+    else
+      this._scrollview.mount(this._frames, this._pageContext);
     this._windowStart = this._scrollview.windowStart;
     this._windowEnd = this._scrollview.windowEnd;
     this._windowStartFrameID = this._frames[this._windowStart]?.id || null;

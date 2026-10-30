@@ -1037,6 +1037,7 @@ test('FrameStore window starts at a frame id and pages both directions', async (
   assert.deepEqual(anchored.frames.map((frame) => frame.order), Array.from({ length: 20 }, (_value, index) => 150 + index));
   assert.equal(anchored.oldestOrder, 150);
   assert.equal(anchored.newestOrder, 169);
+  assert.equal(anchored.startOffset, 149);
   assert.equal(anchored.hasMore, true);
   assert.equal(anchored.hasMoreNewer, true);
 
@@ -1136,6 +1137,14 @@ test('a single-frame-type window pushes that type into the directory glob', asyn
 });
 
 test('client frame windows drop model-only and lazily loaded payloads', () => {
+  let projectedText = projectClientFrameForWindow({
+    id: 'a0',
+    type: 'UserMessage',
+    contentText: 'duplicate search projection',
+    content: { text: 'hello' },
+  });
+  assert.equal(projectedText.contentText, undefined);
+
   let agent = projectClientFrameForWindow({
     id: 'a1',
     type: 'AgentMessage',

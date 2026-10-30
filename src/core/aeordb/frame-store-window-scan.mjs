@@ -349,6 +349,18 @@ function framesOnly(page) {
 
 async function findFramePathByID(store, interactionsPath, frameID, listOptions, total) {
   let suffix = `-${encodeSegment(frameID)}.json`;
+
+  // Prefer a targeted filename lookup; the fallback below exists for drivers
+  // whose directory glob implementation cannot filter a suffix.
+  let direct = await store.listDirectoryPaths(interactionsPath, {
+    ...listOptions,
+    glob: `**/frames/*${suffix}`,
+    limit: 1,
+    offset: 0,
+  });
+  if (direct.length > 0 && String(direct[0]).endsWith(suffix))
+    return direct[0];
+
   let cursor = 0;
   let cap = Math.min(total, MAX_FILTERED_SCAN_FRAMES);
 

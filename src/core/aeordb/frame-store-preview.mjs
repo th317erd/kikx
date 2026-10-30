@@ -208,6 +208,7 @@ export class FrameStorePreviewBase extends FrameStoreScheduledBase {
     return {
       frames: outputFrames,
       total,
+      startOffset,
       hasMore: startOffset > 0,
       ...(pagedFromCursor ? { hasMoreNewer: startOffset + (windowPaths.length || 0) < total } : {}),
       ...(startID ? { startFound: true } : {}),
@@ -320,6 +321,32 @@ export class FrameStorePreviewBase extends FrameStoreScheduledBase {
   // `-<encoded id>.json`; scan names only (never frame bodies) in bounded pages.
   async findFrameOffsetByID(interactionsPath, frameID, total) {
     let suffix = `-${encodeSegment(frameID)}.json`;
+
+    // The frame id is in the filename. Ask the directory provider for that one
+    // path instead of walking every frame in 500-path pages; a 24k-frame session
+    // used to spend ~7 seconds locating a deep-linked message this way.
+    let direct = await this.listDirectoryPaths(interactionsPath, {
+      depth: -1,
+      glob: `**/frames/*${suffix}`,
+      limit: 1,
+      offset: 0,
+    });
+    if (direct.length > 0 && String(direct[0]).endsWith(suffix)) {
+      // One full ordered path read is cheaper than a binary search here: the
+      // PostgreSQL directory query applies pagination in JS, so each binary
+      // probe would fetch and sort the whole session again.
+      let all = await this.aeordb.listDirectory(interactionsPath, {
+        depth: -1,
+        glob: '**/frames/*.json',
+        limit: total,
+        offset: 0,
+      });
+      let paths = pathsFromItems(all?.items);
+      let offset = paths.indexOf(direct[0]);
+      if (offset >= 0)
+        return offset;
+    }
+
     let cursor = 0;
 
     while (cursor < total) {
@@ -459,6 +486,15 @@ export function projectClientFrameForWindow(frame) {
   if (!content || typeof content !== 'object' || Array.isArray(content))
     return frame;
 
+  // `contentText` is a persisted search projection, not client display data.
+  // Frame pages used to send it in addition to `content`, doubling the largest
+  // pages; the browser never reads it.
+  let result = frame;
+  if ('contentText' in frame) {
+    result = { ...frame };
+    delete result.contentText;
+  }
+
   let next = { ...content };
   let changed = false;
 
@@ -483,5 +519,5 @@ export function projectClientFrameForWindow(frame) {
     changed = true;
   }
 
-  return changed ? { ...frame, content: next } : frame;
+  return changed ? { ...result, content: next } : result;
 }

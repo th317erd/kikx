@@ -21,7 +21,7 @@ export function createKikxPageContext(app, sessionID) {
   if (!Number.isFinite(total) || total <= 0)
     return null;
   return {
-    key: `${sessionID}:${JSON.stringify(app?._state?.frameFilters || null)}`,
+    key: `${sessionID}:${JSON.stringify(app?._state?.frameFilters || null)}:${app?._state?.sessionSearch || ''}`,
     sessionID,
     totalRawFrames: total,
     pageSize: PAGE_SIZE,
@@ -29,6 +29,10 @@ export function createKikxPageContext(app, sessionID) {
     getFilters: () => app?._state?.frameFilters || null,
     getQuery: () => app?._state?.sessionSearch || '',
     getTotalRawFrames: () => Number(getSessionPaging(app?._state, sessionID).total) || total,
+    getStartPage: () => {
+      let offset = Number(getSessionPaging(app?._state, sessionID).startOffset);
+      return Number.isInteger(offset) && offset >= 0 ? Math.floor(offset / PAGE_SIZE) : null;
+    },
   };
 }
 
@@ -73,6 +77,7 @@ export class KikxChatScrollView {
     this.frames = Array.isArray(frames) ? frames : [];
     this.pageContext = pageContext || null;
     this.pageSource = null;
+    this._pageSourceKey = '';
     this._pendingLiveFrames.clear();
     if (this.pageContext?.loadPage)
       this._mountPagedSource();
@@ -84,6 +89,7 @@ export class KikxChatScrollView {
 
   _mountPagedSource() {
     this._pendingLiveFrames.clear();
+    this._pageSourceKey = this.pageContext?.key || '';
     this.pageSource = new KikxThreadPageSource({
       pageSize: this.pageContext.pageSize || this.pageSize,
       totalRawFrames: this.pageContext.totalRawFrames,
@@ -95,11 +101,15 @@ export class KikxChatScrollView {
     this.source = this.pageSource;
     this.element.setSource(this.source, { follow: false });
     let last = Math.max(0, this.source.totalPages - 1);
-    this.windowStart = last * this.pageSize;
+    let startPage = this.pageContext?.getStartPage?.();
+    let target = Number.isInteger(startPage)
+      ? Math.max(0, Math.min(last, startPage))
+      : last;
+    this.windowStart = target * this.pageSize;
     this.windowEnd = this.frames.length;
-    this._pendingPage = last;
+    this._pendingPage = target;
     this._pendingAnchor = null;
-    this.element.scrollToPage(last, { align: 'end', animate: false });
+    this.element.scrollToPage(target, { align: target === last ? 'end' : 'start', animate: false });
   }
 
   _installEvents() {
@@ -225,8 +235,12 @@ export class KikxChatScrollView {
     // The state window is only the newest live tail; older server pages live in
     // the scrollview source. A trim or a new tail frame must not reset that
     // source. Only a different first frame means a different session/filter.
-    let structural = (next.length > 0 && previous.length > 0 && next[0]?.id !== previous[0]?.id)
-      || (options.force === true && next.length !== previous.length);
+    // The loaded state window trims its oldest frame on every live append once
+    // it reaches its cap. That is not a session/filter change; remounting the
+    // page source here re-requested every visible page on every append and made
+    // streaming progressively slower.
+    let contextKey = this.pageContext?.key || '';
+    let structural = !this.pageSource || contextKey !== this._pageSourceKey;
     this.frames = next;
     if (structural) {
       this._mountPagedSource();

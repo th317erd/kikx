@@ -11,6 +11,7 @@ import {
   writeJSON,
 } from '../http-helpers.mjs';
 import { suspendSessionAgents } from '../../core/agents/agent-cancellation.mjs';
+import { projectClientFrameForWindow } from '../../core/aeordb/frame-store-preview.mjs';
 import {
   effectivePreference,
   normalizePreferenceKey,
@@ -352,11 +353,20 @@ export async function handleSessionRoutes({ request, response, url, context }) {
     let pageIndex = parseNonNegativeInteger(framePageRoute.pageIndex, null);
     if (pageIndex == null)
       throw httpError(400, 'frame page index must be a non-negative integer');
+    let page = await frameRuntime.listFramePage(framePageRoute.sessionID, {
+      pageIndex,
+      pageSize: parsePositiveInteger(url.searchParams.get('pageSize'), 120),
+    });
+    // A page is browser display state. Send the same projection as the bounded
+    // frame window so raw contentText/model-only fields do not make each page
+    // megabytes over the loopback link.
     writeJSON(response, 200, {
-      data: await frameRuntime.listFramePage(framePageRoute.sessionID, {
-        pageIndex,
-        pageSize: parsePositiveInteger(url.searchParams.get('pageSize'), 120),
-      }),
+      data: {
+        ...page,
+        frames: Array.isArray(page.frames)
+          ? page.frames.map(projectClientFrameForWindow)
+          : page.frames,
+      },
     });
     return true;
   }
