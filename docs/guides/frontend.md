@@ -65,12 +65,12 @@ The magic-link HTML handoff writes the issued session into browser storage and r
 
 ## Rendering and lifecycle rules
 
-> **Current architecture gap (2026-10-30).** AEOR provides reactive leaf
-> bindings and individual component properties, but it does not yet provide a
-> general keyed child/list reconciler or scoped property-store layer. Kikx's
-> shell still contains broad replacement paths. The evidence is in the
-> [client targeted-update audit](../reports/client-targeted-update-audit-2026-10-30.md);
-> the correction design is in the
+> **Current migration (2026-10-30).** AEOR now supplies `PropertyStore` and
+> keyed reconciliation helpers, and Kikx has completed the topbar-preview pilot
+> plus in-place filter/query page re-scoping. The shell section registry and the
+> remaining broad render paths are still in migration. The pre-layer evidence is
+> in the [client targeted-update audit](../reports/client-targeted-update-audit-2026-10-30.md);
+> the sequence and remaining gates are in the
 > [client targeted-update layer plan](../plans/client-targeted-update-layer.md).
 
 - Prefer stable keyed updates over whole-subtree rebuilds. Prefer property

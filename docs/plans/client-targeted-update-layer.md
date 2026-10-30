@@ -1,6 +1,6 @@
 ---
 title: Client targeted-update layer and migration plan
-status: proposed
+status: active
 doc_type: plan
 audience: [owner, client-developers, framework-maintainers, qa]
 applies_to: development-v3
@@ -49,6 +49,29 @@ The intended result:
 - No generic component framework for every future UI.
 - No claim that all full rebuilds are forbidden. Authentication, navigation,
   and explicit recovery may require a structural swap.
+
+## Implementation progress
+
+- **Phase 0, partial:** render outcomes now record kind, reason, scope,
+  structural flag, touched frame IDs, and timestamp in a bounded ring. Plain
+  counter calls remain allocation-free. The existing Kikx and browser tests were
+  used as the baseline.
+- **Phase 1, framework layer complete:** AEOR now has `property-store.js` and
+  `reconcile.js` (keyed lists, property/attribute patches, property binding),
+  with a real-browser harness covering narrow notifications, identity-preserving
+  updates/reorders/removals, and focused-input behaviour.
+- **Phase 1, pilot complete:** the topbar preview caption uses a scoped
+  `PropertyStore` and a direct observer. Its unit and browser-adjacent tests show
+  the caption updating without a shell rebuild.
+- **Phase 3, first slice complete:** filter/query re-scoping now updates mounted
+  pages in place through `aeor-scrollview.updatePage` and a Kikx page-source item
+  updater. The thread, page wrappers, and scroll position survive a search/filter
+  change. The full shell and runtime shell phases remain.
+- **Not started:** the shell section registry, the full chat-view migration, and
+  replacement of runtime/data/editor full-render fallbacks. Those remain behind
+  the Phase 2 approval/verification gate described below.
+
+Commits: AEOR `03befd3`, `1c1d882`; Kikx `d52aeed2`, `5d06fe74`.
 
 ## Current evidence
 
