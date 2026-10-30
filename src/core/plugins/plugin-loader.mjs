@@ -104,6 +104,9 @@ export async function loadPlugins(options = {}) {
         let record = { pluginPath, pluginName, modulePath, pluginLocation: pluginLocation(pluginPath), callbacks: [], teardown: null };
         record.manifest = await readPluginManifest(pluginPath);
         let providerIDsBefore = agentProviderIDs(registry);
+        // Everything the plugin registers during setup belongs to it.
+        if (typeof registry.beginPluginLoad === 'function')
+          registry.beginPluginLoad(pluginName);
         let teardown = await withTimeout(
           Promise.resolve(pluginModule.setup(createPluginSetupContext({
             registry,
@@ -122,6 +125,9 @@ export async function loadPlugins(options = {}) {
         // A plugin may return an object instead of a function, declaring lifecycle
         // hooks explicitly. onInit runs after every provide callback for this plugin
         // has fired, so initialisation sees the full registry.
+        if (typeof registry.endPluginLoad === 'function')
+          registry.endPluginLoad();
+
         if (teardown && typeof teardown === 'object') {
           record.onShutdown = typeof teardown.onShutdown === 'function' ? teardown.onShutdown : null;
           record.onInit = typeof teardown.onInit === 'function' ? teardown.onInit : null;
@@ -133,6 +139,8 @@ export async function loadPlugins(options = {}) {
         // so the registry is complete for this plugin by this point.
         if (record.onInit) {
           try {
+            if (typeof registry.beginPluginLoad === 'function')
+              registry.beginPluginLoad(pluginName);
             await withTimeout(
               Promise.resolve(record.onInit()),
               SETUP_TIMEOUT_MS,
@@ -141,6 +149,9 @@ export async function loadPlugins(options = {}) {
           } catch (error) {
             logger.error?.(`Plugin "${pluginName}" onInit failed: ${error.message}`);
             throw error;
+          } finally {
+            if (typeof registry.endPluginLoad === 'function')
+              registry.endPluginLoad();
           }
         }
 
@@ -157,6 +168,8 @@ export async function loadPlugins(options = {}) {
         registerPluginRecord(registry, record);
         loaded.push({ path: pluginPath, modulePath, pluginName });
       } catch (error) {
+        if (typeof registry.endPluginLoad === 'function')
+          registry.endPluginLoad();
         logger.warn?.(`Failed to load plugin at ${pluginPath}: ${error.message}`);
         // Keep the failure so the inventory can report it. Omission would make
         // "not installed" and "installed and broken" look identical.
@@ -255,6 +268,9 @@ export async function unloadPlugin(registry, pluginName, { logger = console } = 
   if (!record)
     return false;
 
+  // Plugin first, then the generic release. A teardown that throws must not stop the
+  // registry from letting go: an unreleased mount keeps serving requests through a
+  // handler whose plugin is gone, which is worse than a noisy shutdown.
   try {
     if (typeof record.teardown === 'function')
       await record.teardown();
@@ -262,6 +278,15 @@ export async function unloadPlugin(registry, pluginName, { logger = console } = 
     logger.warn?.(`Plugin "${pluginName}" teardown failed: ${error.message}`);
   }
 
+  // Subscriptions are keyed by plugin id in a bus the registry does not own the
+  // lifecycle of, so they are dropped here rather than in releasePlugin().
+  dropPluginSubscriptions(registry, pluginName);
+
+  if (typeof registry.releasePlugin === 'function')
+    await registry.releasePlugin(pluginName, { logger });
+
+  // Class overrides (registerClass) are attributed by the ClassRegistry, not by the
+  // ownership ledger, so they are popped separately.
   if (typeof registry.unregisterPlugin === 'function')
     registry.unregisterPlugin(pluginName);
 
@@ -332,7 +357,7 @@ function createPluginSetupContext({ registry, commandRegistry, context, pluginPa
     PluginInterface,
     AgentInterface,
     registerClass,
-    registerTool: (...args) => registry.registerTool(...args),
+    registerTool: (...args) => registry.registerTool(...attributeToPlugin(args, pluginName)),
     mountHttp: (handler) => registry.mountHttp(pluginName, handler),
     // Scoped database handle. Enforces the plugin's table prefix and refuses DDL.
     db: () => registry.getPluginDatabase(pluginName),
@@ -372,22 +397,33 @@ function createPluginSetupContext({ registry, commandRegistry, context, pluginPa
         directory = path.join(pluginPath, directory);
       return registry.registerMigrations(pluginName, { ...options, directory });
     },
-    registerAgentProvider: (...args) => registry.registerAgentProvider(...args),
-    registerAgentType: (...args) => registry.registerAgentType(...args),
+    registerAgentProvider: (...args) => registry.registerAgentProvider(...attributeToPlugin(args, pluginName)),
+    registerAgentType: (...args) => registry.registerAgentType(...attributeToPlugin(args, pluginName)),
     registerCommand: (...args) => {
       if (!commandRegistry)
         throw new Error('Command registry is not available in this plugin context');
 
       return commandRegistry.registerCommand(...args);
     },
-    registerSelector: (...args) => registry.registerSelector(...args),
-    registerComponent: (...args) => registry.registerComponent(...args),
-    registerFrameComponent: (...args) => registry.registerFrameComponent(...args),
-    registerToolComponent: (...args) => registry.registerToolComponent(...args),
-    registerAgentConfigForm: (...args) => registry.registerAgentConfigForm(...args),
-    registerTagDefinition: (...args) => registry.registerTagDefinition(...args),
-    registerFrameIndex: (...args) => registry.registerFrameIndex?.(...args),
-    registerDatabaseDriver: (...args) => registry.registerDatabaseDriver(...args),
+    registerSelector: (...args) => registry.registerSelector(...attributeToPlugin(args, pluginName)),
+    // Descriptor-taking registrations put the descriptor in the second slot and
+    // options in the third (the fourth for registerComponent). A helper that always
+    // writes slot 2 is correct only when the call has exactly two arguments; on a
+    // three-argument call it replaces the caller options with { pluginName }, so the
+    // registration lands unattributed and unloadPlugin() can never undo it.
+    registerComponent: (kind, key, descriptor = {}, options = {}) =>
+      registry.registerComponent(kind, key, descriptor, withPluginName(options, pluginName)),
+    registerFrameComponent: (frameType, descriptor = {}, options = {}) =>
+      registry.registerFrameComponent(frameType, descriptor, withPluginName(options, pluginName)),
+    registerToolComponent: (toolName, descriptor = {}, options = {}) =>
+      registry.registerToolComponent(toolName, descriptor, withPluginName(options, pluginName)),
+    registerAgentConfigForm: (pluginID, descriptor = {}, options = {}) =>
+      registry.registerAgentConfigForm(pluginID, descriptor, withPluginName(options, pluginName)),
+    registerTagDefinition: (name, definition = {}, options = {}) =>
+      registry.registerTagDefinition(name, definition, withPluginName(options, pluginName)),
+    registerFrameIndex: (name, definition = {}, options = {}) =>
+      registry.registerFrameIndex(name, definition, withPluginName(options, pluginName)),
+    registerDatabaseDriver: (...args) => registry.registerDatabaseDriver(...attributeToPlugin(args, pluginName)),
   };
 
   return (callback) => {
@@ -398,6 +434,17 @@ function createPluginSetupContext({ registry, commandRegistry, context, pluginPa
 
     return directContext;
   };
+}
+
+// Descriptor-taking registrations carry options in the third slot, after the
+// descriptor. Merge the plugin name into those options instead of splatting a new
+// object into a fixed position.
+function withPluginName(options, pluginName) {
+  if (!pluginName)
+    return options;
+
+  let merged = (options && typeof options === 'object') ? options : {};
+  return { pluginName: merged.pluginName || pluginName, ...merged };
 }
 
 // registerClass(...) may take options as the 2nd (class + options) or 3rd

@@ -82,6 +82,14 @@ export class PluginMigrations {
     return true;
   }
 
+  // Forget a plugin's migration directory without touching what was applied. The
+  // ledger rows stay: they record that the schema exists, and re-applying them on a
+  // later reload is exactly what the checksums are there to prevent. Only the claim
+  // on the directory is released, so a different plugin may register it.
+  unregister(pluginId) {
+    return this.plugins.delete(pluginId);
+  }
+
   async loadFiles(pluginId) {
     let entry = this.plugins.get(pluginId);
     if (!entry) throw new Error(`no migrations registered for "${pluginId}"`);

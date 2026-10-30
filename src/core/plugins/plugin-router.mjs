@@ -60,6 +60,13 @@ export class PluginRouter {
     return [...this.mounts.values()].map(({ pluginId, path }) => ({ pluginId, path }));
   }
 
+  // Remove a mount. Returns true when one was removed, so a caller can tell the
+  // difference between "nothing to release" and "released". Without this an
+  // unloaded plugin keeps serving requests through a handler nothing owns.
+  unmount(pluginId) {
+    return this.mounts.delete(pluginId);
+  }
+
   match(pathname) {
     if (!pathname.startsWith(PLUGIN_MOUNT_ROOT))
       return null;
