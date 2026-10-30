@@ -35,8 +35,10 @@ export function shutdownHTTPServer(server, options = {}) {
       finish({ timedOut: true, error: null });
     }, timeoutMS);
 
-    forceTimer.unref?.();
-    timeoutTimer.unref?.();
+    // Deliberately NOT unref'd. These are the shutdown bounds: if the server never
+    // closes, timeoutTimer is the only thing that ends the wait, and an unref'd timer
+    // cannot do that - the process would exit with the shutdown unfinished instead.
+    // finish() clears both, so nothing is left holding the loop open.
 
     try {
       server.close((error) => {

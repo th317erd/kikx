@@ -61,6 +61,11 @@ import { repairQuestionIndex } from '../core/questions/question-index-repair.mjs
 import { registerQuestionScheduleRouting } from '../core/questions/question-schedule-plugin.mjs';
 import { CommandRegistry, registerInternalCommands } from '../core/commands/index.mjs';
 import { PluginRegistry } from '../core/plugins/index.mjs';
+import { getPluginRouter } from '../core/plugins/plugin-router.mjs';
+import { PluginDatabase } from '../core/plugins/plugin-database.mjs';
+import { PluginAuthority } from '../core/plugins/plugin-authority.mjs';
+import { PluginEventBus } from '../core/plugins/plugin-events.mjs';
+import { getPluginMigrations } from '../core/plugins/plugin-migrations.mjs';
 import { loadPlugins } from '../core/plugins/plugin-loader.mjs';
 import { mergePluginPaths } from '../core/plugins/plugin-paths.mjs';
 import { registerCoreClasses, resolveCoreClass } from '../core/plugins/core-classes.mjs';
@@ -152,8 +157,33 @@ export async function createServer(options = {}) {
     aeorWebComponents: aeorWebComponentsRoot,
   };
 
-  if (!context.has('pluginRegistry'))
-    context.set('pluginRegistry', new PluginRegistry());
+  if (!context.has('pluginRegistry')) {
+    let pluginRouter = getPluginRouter();
+    context.set('pluginRouter', pluginRouter);
+    // A reload needs the same path list the boot used.
+    context.set('pluginPaths', pluginPaths);
+
+    // Created before plugins load and attached to the runtime later: a plugin
+    // subscribes during its own load, which happens before FrameRuntime exists.
+    let pluginEventBus = new PluginEventBus({ logger: console });
+    context.set('pluginEventBus', pluginEventBus);
+
+    let pluginMigrations = getPluginMigrations({
+      ...options.pluginMigrations,
+      url: options.pluginMigrations?.url || options.databaseURL || databaseURL || null,
+    });
+    let pluginRegistry = new PluginRegistry();
+    pluginRegistry.setPluginRouter(pluginRouter);
+    pluginRegistry.setPluginMigrations(pluginMigrations);
+    pluginRegistry.setPluginEventBus(pluginEventBus);
+    // Same connection as migrations, but every statement is filtered by PluginDatabase.
+    pluginRegistry.setPluginAuthorityFactory((pluginId) =>
+      new PluginAuthority({ pluginId, db: pluginRegistry.getPluginDatabase(pluginId) }));
+    pluginRegistry.setPluginDatabaseFactory((pluginId) =>
+      new PluginDatabase({ pluginId, pool: { query: (...a) => pluginMigrations.pool.query(...a) } }));
+    context.set('pluginMigrations', pluginMigrations);
+    context.set('pluginRegistry', pluginRegistry);
+  }
 
   if (!context.has('memorySampler')) {
     context.set('memorySampler', createMemorySampler({
@@ -221,6 +251,19 @@ export async function createServer(options = {}) {
         commandRegistry: context.require('commandRegistry'),
         context,
       });
+    // Plugins registered their migrations during load, so this is the first point at
+    // which the full set is known. A failure stops startup: a half-migrated
+    // database is worse than a server that refuses to boot.
+    if (context.has('pluginMigrations')) {
+      try {
+        let result = await context.require('pluginMigrations').run({ logger: console });
+        if (result?.skipped)
+          console.warn('[plugin-migrations] skipped:', result.reason);
+      } catch (error) {
+        console.error('[plugin-migrations] startup aborted:', error.message);
+        throw error;
+      }
+    }
       context.require('frameRouter').loadFromRegistry(context.require('pluginRegistry'));
       // Question schedule routing MUST come before agent routing. A fired
       // deadline that resolves to an already-answered question calls done()
@@ -234,7 +277,13 @@ export async function createServer(options = {}) {
   // Plugins must be loaded before the driver is resolved: a plugin may register
   // the selected driver. The built-in aeordb driver is registered by
   // registerCoreClasses, so a default boot always has at least one driver.
-  await context.require('pluginLoadPromise');
+  try {
+    await context.require('pluginLoadPromise');
+  } catch (error) {
+    // Plugin loading must never be able to stop the server from starting.
+    console.error('[plugin-load] continuing with whatever loaded:', error?.message || error);
+  }
+
 
   if (!context.has('db')) {
     // `aeordb` remains an alias for hosts/tests that inject it directly.
@@ -427,6 +476,14 @@ export async function createServer(options = {}) {
       frameRouter: context.require('frameRouter'),
       services: { context },
     }));
+
+    // Plugins subscribed during their load, before this runtime existed. Attaching
+    // here starts delivery for everything that queued.
+    if (context.has('pluginRegistry'))
+      context.require('pluginRegistry').setPluginFrameRuntime(context.require('frameRuntime'));
+
+    if (context.has('pluginEventBus'))
+      context.require('pluginEventBus').attach(context.require('frameRuntime'));
   }
 
   if (!context.has('runtimeEventGateway')) {

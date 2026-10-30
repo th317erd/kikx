@@ -431,7 +431,17 @@ export class FrameRuntime extends EventEmitter {
     return await this.attachEffectivePreferences(visible, { seed: sessions });
   }
 
+  // Append without waking anything. An edit to a message already in the session must not
+  // start an agent turn: the bot sees the change in its context when it next runs.
+  async appendUserMessageQuietly(sessionID, input = {}) {
+    return this.#appendUserMessage(sessionID, input, { wake: false });
+  }
+
   async appendUserMessage(sessionID, input = {}) {
+    return this.#appendUserMessage(sessionID, input, { wake: true });
+  }
+
+  async #appendUserMessage(sessionID, input = {}, { wake = true } = {}) {
     let entry = await this.ensureSessionEntry(sessionID);
     // cancelAutonomousWakes() and the router flush both yield. Ordinary LRU
     // pressure could evict this runtime in between and detach the captured
@@ -439,7 +449,8 @@ export class FrameRuntime extends EventEmitter {
     // for the whole call; release on both the success and throw paths.
     this.pinSession(sessionID);
     try {
-      await this.cancelAutonomousWakes(sessionID);
+      if (wake)
+        await this.cancelAutonomousWakes(sessionID);
       let text = normalizeText(input.text ?? input.content?.text);
       let stamp = this.nextClockStamp();
       let now = stamp.at;
@@ -490,6 +501,11 @@ export class FrameRuntime extends EventEmitter {
       // The active route checks this flag between streamed outputs and yields to
       // the new turn instead of finishing its old plan first.
       let steering = this.noteSteering(sessionID, frames[0]);
+      // Callers need the frame they just appended - a transport has to remember which
+      // frame a message became so a later edit can update it rather than duplicate it.
+      // Returning it here rather than at the end keeps the value available on every exit
+      // path below, and costs nothing when nobody looks.
+      this._lastAppendedFrame = frames[0] || frame;
 
       let manifestSave = this._sessionManifestSaves.get(sessionID);
       await this.frameStore.flush();

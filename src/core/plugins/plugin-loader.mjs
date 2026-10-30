@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 'use strict';
 
 import fs from 'node:fs/promises';
@@ -6,6 +7,64 @@ import { pathToFileURL } from 'node:url';
 
 import { AgentInterface } from './agent-interface.mjs';
 import { PluginInterface } from './plugin-interface.mjs';
+
+const SETUP_TIMEOUT_MS = Number(globalThis.__KIKX_PLUGIN_SETUP_TIMEOUT_MS) || 15000;
+
+// Resolve with the promise, or reject if it takes too long. The losing promise is not
+// cancelled - JavaScript cannot - but startup stops waiting on it, which is the
+// property that matters: one wedged plugin must not hang the whole server.
+function withTimeout(promise, ms, message) {
+  let timer = null;
+  return new Promise((resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+    // Deliberately NOT unref'd. An unref'd timer does not keep the event loop alive, so
+    // with a plugin that never settles there is nothing outstanding and the process
+    // exits before the timer can fire. The timeout must be able to hold the loop open.
+    promise.then(
+      (value) => { if (timer) clearTimeout(timer); resolve(value); },
+      (error) => { if (timer) clearTimeout(timer); reject(error); },
+    );
+  });
+}
+
+
+// A stable, non-disclosing identifier for a plugin directory. Two installs with the
+// same directory name must not share a failure slot, and the absolute path must not be
+// served to unauthenticated callers.
+function pluginLocation(pluginPath) {
+  let name = String(pluginPath).split(/[/\\]/).filter(Boolean).pop() || 'unknown';
+  let hash = crypto.createHash('sha256').update(String(pluginPath)).digest('hex').slice(0, 8);
+  return `${name}#${hash}`;
+}
+
+
+// Optional kikx-plugin.json beside index.mjs. Declares what the plugin is, so an
+// inventory can describe it without loading the module, and so a future install step
+// has something to validate against.
+async function readPluginManifest(pluginPath) {
+  let candidates = ['kikx-plugin.json', 'package.json'];
+  for (let name of candidates) {
+    let full = path.join(pluginPath, name);
+    try {
+      let raw = await fs.readFile(full, 'utf8');
+      let parsed = JSON.parse(raw);
+      return {
+        // A plugin that ships its own kikx-plugin.json has declared itself. One that
+        // only has package.json happens to be a Node package - not the same thing, and
+        // an inventory should not present them identically.
+        source: name === 'kikx-plugin.json' ? 'declared' : 'fallback',
+        file: name,
+        name: parsed.name || null,
+        version: parsed.version || null,
+        description: parsed.description || null,
+        kikxVersion: parsed.kikxVersion || null,
+      };
+    } catch (_error) {
+      continue;   // absent or unparseable: try the next candidate
+    }
+  }
+  return null;
+}
 
 export async function loadPlugins(options = {}) {
   let {
@@ -26,6 +85,8 @@ export async function loadPlugins(options = {}) {
   for (let configuredPath of normalizePluginPaths(pluginPaths)) {
     for (let pluginPath of await expandPluginPathSites(configuredPath)) {
       try {
+        // HARD BOUNDARY: nothing a plugin does may escape this iteration.
+        // Not a throw, not a rejection, not a timer that never fires.
         let modulePath = await resolvePluginModule(pluginPath);
         let pluginModule = await import(`${pathToFileURL(modulePath).href}?t=${Date.now()}`);
 
@@ -33,18 +94,55 @@ export async function loadPlugins(options = {}) {
           continue;
 
         let pluginName = pluginModule.pluginName || pluginNameFromPath(pluginPath);
-        let record = { pluginPath, pluginName, modulePath, callbacks: [], teardown: null };
+
+        // A successful load clears any stale failure for this location, so a
+        // fixed plugin stops being reported as broken.
+        if (registry._pluginLoadErrors?.length) {
+          let loc = pluginLocation(pluginPath);
+          registry._pluginLoadErrors = registry._pluginLoadErrors.filter((e) => e.location !== loc);
+        }
+        let record = { pluginPath, pluginName, modulePath, pluginLocation: pluginLocation(pluginPath), callbacks: [], teardown: null };
+        record.manifest = await readPluginManifest(pluginPath);
         let providerIDsBefore = agentProviderIDs(registry);
-        let teardown = await pluginModule.setup(createPluginSetupContext({
-          registry,
-          commandRegistry,
-          context,
-          pluginPath,
-          pluginName,
-          onProvide: (callback) => record.callbacks.push(callback),
-        }));
+        let teardown = await withTimeout(
+          Promise.resolve(pluginModule.setup(createPluginSetupContext({
+            registry,
+            commandRegistry,
+            context,
+            pluginPath,
+            pluginName,
+            onProvide: (callback) => record.callbacks.push(callback),
+          }))),
+          SETUP_TIMEOUT_MS,
+          `Plugin "${pluginName}" setup did not finish within ${SETUP_TIMEOUT_MS}ms`,
+        );
         if (typeof teardown === 'function')
           record.teardown = teardown;
+
+        // A plugin may return an object instead of a function, declaring lifecycle
+        // hooks explicitly. onInit runs after every provide callback for this plugin
+        // has fired, so initialisation sees the full registry.
+        if (teardown && typeof teardown === 'object') {
+          record.onShutdown = typeof teardown.onShutdown === 'function' ? teardown.onShutdown : null;
+          record.onInit = typeof teardown.onInit === 'function' ? teardown.onInit : null;
+          if (typeof teardown.teardown === 'function')
+            record.teardown = teardown.teardown;
+        }
+
+        // Provide callbacks have already been invoked synchronously during setup(),
+        // so the registry is complete for this plugin by this point.
+        if (record.onInit) {
+          try {
+            await withTimeout(
+              Promise.resolve(record.onInit()),
+              SETUP_TIMEOUT_MS,
+              `Plugin "${pluginName}" onInit did not finish within ${SETUP_TIMEOUT_MS}ms`,
+            );
+          } catch (error) {
+            logger.error?.(`Plugin "${pluginName}" onInit failed: ${error.message}`);
+            throw error;
+          }
+        }
 
         if (typeof registry.registerPluginPath === 'function') {
           let registeredProviderIDs = [];
@@ -60,6 +158,21 @@ export async function loadPlugins(options = {}) {
         loaded.push({ path: pluginPath, modulePath, pluginName });
       } catch (error) {
         logger.warn?.(`Failed to load plugin at ${pluginPath}: ${error.message}`);
+        // Keep the failure so the inventory can report it. Omission would make
+        // "not installed" and "installed and broken" look identical.
+        if (!registry._pluginLoadErrors) registry._pluginLoadErrors = [];
+        // One entry per location, newest wins: a plugin that fails on every reload
+        // must not grow this list without limit, and a stale failure for a location
+        // that has since been fixed should not survive a later successful load.
+        let location = pluginLocation(pluginPath);
+        registry._pluginLoadErrors = registry._pluginLoadErrors
+          .filter((e) => e.location !== location)
+          .concat([{
+            location,
+            message: String(error?.message || error),
+            at: new Date().toISOString(),
+          }])
+          .slice(-50);
       }
     }
   }
@@ -111,6 +224,32 @@ async function hasPluginEntry(pluginPath) {
 
 // Unload a plugin: run its teardown, pop its class overrides, and forget its
 // registrations. Returns true if a plugin by that name was loaded.
+// Run every loaded plugin's shutdown hooks, newest first, then its teardown.
+// Never throws: one misbehaving plugin must not prevent the others from closing, and
+// must not stop the process from exiting.
+export async function shutdownPlugins(registry, { logger = console } = {}) {
+  let map = registry?._pluginRegistrations;
+  let records = map instanceof Map ? [...map.values()] : [];
+
+  for (let record of [...records].reverse()) {
+    let name = record?.pluginName || 'unknown';
+    if (typeof record?.onShutdown === 'function') {
+      try {
+        await record.onShutdown();
+      } catch (error) {
+        logger.warn?.(`Plugin "${name}" onShutdown failed: ${error.message}`);
+      }
+    }
+    if (typeof record?.teardown === 'function') {
+      try {
+        await record.teardown();
+      } catch (error) {
+        logger.warn?.(`Plugin "${name}" teardown failed: ${error.message}`);
+      }
+    }
+  }
+}
+
 export async function unloadPlugin(registry, pluginName, { logger = console } = {}) {
   let record = removePluginRecord(registry, pluginName);
   if (!record)
@@ -140,7 +279,27 @@ function registerPluginRecord(registry, record) {
   if (!registry._pluginRegistrations)
     registry._pluginRegistrations = new Map();
 
+    // A duplicate name silently replaced the earlier plugin - data loss with no trace.
+    // Refuse instead, and record it so the inventory can report it.
+    let existing = registry._pluginRegistrations.get(record.pluginName);
+    if (existing && existing.pluginPath !== record.pluginPath) {
+      // Locations only: this message is served to unauthenticated callers.
+      let message = 'plugin name "' + record.pluginName + '" is already registered as '
+        + (existing.pluginLocation || 'unknown') + '; refusing ' + (record.pluginLocation || 'unknown');
+      if (!registry._pluginLoadErrors) registry._pluginLoadErrors = [];
+      registry._pluginLoadErrors = registry._pluginLoadErrors
+        .filter((e) => e.location !== record.pluginLocation)
+        .concat([{ location: record.pluginLocation, message, at: new Date().toISOString() }])
+        .slice(-50);
+      return false;
+    }
+
   registry._pluginRegistrations.set(record.pluginName, record);
+}
+
+function dropPluginSubscriptions(registry, pluginName) {
+  if (registry?._pluginEventBus && typeof registry._pluginEventBus.unsubscribe === 'function')
+    registry._pluginEventBus.unsubscribe(pluginName);
 }
 
 function removePluginRecord(registry, pluginName) {
@@ -174,6 +333,45 @@ function createPluginSetupContext({ registry, commandRegistry, context, pluginPa
     AgentInterface,
     registerClass,
     registerTool: (...args) => registry.registerTool(...args),
+    mountHttp: (handler) => registry.mountHttp(pluginName, handler),
+    // Scoped database handle. Enforces the plugin's table prefix and refuses DDL.
+    db: () => registry.getPluginDatabase(pluginName),
+    // Deny-by-default capability check. A transport must call this before acting.
+    authorize: (request) => registry.getPluginAuthority(pluginName).authorize(request),
+    // Scoped events. A subscription must name the sessions it cares about; naming none
+    // receives nothing. Safe to call before the runtime exists - it queues.
+    // Drop a message into a session as a user frame. Real-time transports use this to
+    // put an inbound message where the session's agents will see it.
+    // Config access. Plugins must not read process.env directly - that bypasses the
+    // ConfigStore and the architecture spec forbids it outside src/core/config.
+    readConfig: (path, fallback = null) => {
+      let store = context?.config || (typeof context?.require === 'function' && context.has?.('config') ? context.require('config') : null);
+      if (!store || typeof store.get !== 'function') return Promise.resolve(fallback);
+      return Promise.resolve(store.get(path)).then((v) => (v === undefined || v === null ? fallback : v));
+    },
+    appendToSessionQuietly: (sessionID, input) => {
+      if (!registry._pluginFrameRuntime)
+        throw new Error('appendToSessionQuietly called before the frame runtime was attached');
+      return registry._pluginFrameRuntime.appendUserMessageQuietly(sessionID, input);
+    },
+    appendToSession: (sessionID, input) => {
+      if (!registry._pluginFrameRuntime)
+        throw new Error('appendToSession called before the frame runtime was attached');
+      return registry._pluginFrameRuntime.appendUserMessage(sessionID, input);
+    },
+    subscribe: (handler, options = {}) => {
+      if (!registry._pluginEventBus)
+        throw new Error('subscribe() called before the plugin event bus was attached');
+      return registry._pluginEventBus.subscribe(pluginName, handler, options);
+    },
+    registerMigrations: (options = {}) => {
+      // A relative directory is resolved against the plugin, so a plugin never has to
+      // know where it is installed.
+      let directory = options.directory || 'sql';
+      if (!path.isAbsolute(directory))
+        directory = path.join(pluginPath, directory);
+      return registry.registerMigrations(pluginName, { ...options, directory });
+    },
     registerAgentProvider: (...args) => registry.registerAgentProvider(...args),
     registerAgentType: (...args) => registry.registerAgentType(...args),
     registerCommand: (...args) => {

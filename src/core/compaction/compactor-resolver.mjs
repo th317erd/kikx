@@ -6,6 +6,7 @@
 // that must survive degenerate sessions (no participants, unloadable agents).
 // Keeping it out of the service keeps the orchestration file focused.
 
+import { resolveService } from '../agents/agent-route/normalize.mjs';
 import { resolveSessionWindows } from './effective-windows.mjs';
 import { selectCompactor } from './select-compactor.mjs';
 
@@ -42,6 +43,11 @@ export async function resolveCompactionAgent({
     agentManager,
     pluginRegistry,
     catalog,
+    // Selection needs the session TREE, not just this session's record: rung 4
+    // asks who owns the run, and the answer may live on an ancestor. Without a
+    // lookup, `selectCompactor` degrades to the local coordinator field and an
+    // inherited coordinator is invisible again.
+    getSession: resolveSessionLookup(input, session),
   });
 
   if (!selection.agentID) {
@@ -63,6 +69,31 @@ export async function resolveCompactionAgent({
     return input.agent;
 
   return null;
+}
+
+// The session lookup rung 4 needs. Same two-step shape `session-control-tool`
+// uses, so there is one idiom for "get me a session by id" rather than a third.
+// A caller may pass a lookup directly; otherwise reach the frame runtime through
+// the service registry. Returning null (not a throwing stub) is deliberate: the
+// caller then falls back to the local field instead of failing the turn.
+function resolveSessionLookup(input, session) {
+  if (typeof input?.getSession === 'function')
+    return input.getSession;
+
+  let frameRuntime = input?.frameRuntime || resolveService(input?.services, 'frameRuntime');
+  if (!frameRuntime)
+    return null;
+
+  return (id) => {
+    // The compacting session is already in hand; prefer it so a runtime that
+    // does not cache the current session cannot make rung 4 fall back.
+    if (session?.id && id === session.id)
+      return session;
+
+    return frameRuntime.getSession?.(id)
+      || frameRuntime.requireSessionEntry?.(id)?.session
+      || null;
+  };
 }
 
 export async function loadCompactionAgent(agentManager, agentID, input = {}) {

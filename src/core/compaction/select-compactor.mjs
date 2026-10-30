@@ -15,6 +15,7 @@
 // trigger rule (R1): the trigger follows the smallest bot, while selection can
 // move to a larger model.
 
+import { resolveSessionCoordinator } from '../agents/coordinator-scope.mjs';
 import { resolveCoordinatorAgentID } from '../agents/agent-route/normalize.mjs';
 import { resolveEffectiveContextWindow } from './effective-windows.mjs';
 import { tagNumber } from '../tags/tag-definitions.mjs';
@@ -27,7 +28,14 @@ export const COMPACTOR_REASON = {
   LARGEST: 'largest',
 };
 
-export function selectCompactor({ session, participantAgentsWithMeta, agentManager, pluginRegistry, catalog } = {}) {
+export function selectCompactor({
+  session,
+  participantAgentsWithMeta,
+  agentManager,
+  pluginRegistry,
+  catalog,
+  getSession = null,
+} = {}) {
   let participants = normalizeParticipants(participantAgentsWithMeta, { pluginRegistry, catalog });
   if (participants.length === 0)
     return { agentID: null, reason: null };
@@ -62,14 +70,27 @@ export function selectCompactor({ session, participantAgentsWithMeta, agentManag
     }
   }
 
-  // 4. Session coordinator — only when one is explicitly assigned to a
-  // participant. `resolveCoordinatorAgentID` falls back to the first participant
-  // when unset; that fallback is not a designation, so rung 4 must still be
-  // reachable for sessions without a coordinator.
-  let explicitCoordinatorID = normalizeOptionalString(session?.coordinatorAgentID);
-  if (explicitCoordinatorID) {
-    let coordinatorAgentID = resolveCoordinatorAgentID(session, participants.map((participant) => participant.id));
-    if (coordinatorAgentID === explicitCoordinatorID && byID.has(coordinatorAgentID))
+  // 4. The session coordinator, resolved through the session tree.
+  //
+  // This rung used to read `session.coordinatorAgentID` directly, which made a
+  // coordinator INHERITED from an ancestor invisible: the child session stores no
+  // field of its own, so selection silently fell to the largest window and
+  // compaction ignored who actually owns the run. `resolveSessionCoordinator`
+  // walks the ancestors and reports *why* it answered, which is what lets this
+  // rung stay a designation test rather than a guess:
+  //
+  //   'explicit'  the session's own coordinator, still a participant.   -> counts
+  //   'inherited' an ancestor's coordinator, a participant here.        -> counts
+  //   'promoted'  no session in the chain named one, so the highest     -> does NOT
+  //               participant-holding session's first bot was crowned.     count
+  //
+  // Promotion must not count: rung 5 exists for "no coordinator was assigned".
+  // Treating a forced fallback as a designation would collapse rung 5 entirely
+  // and hand compaction to a bot nobody chose.
+  let resolution = resolveCoordinator(session, participants, getSession);
+  if (resolution && (resolution.source === 'explicit' || resolution.source === 'inherited')) {
+    let coordinatorAgentID = resolution.coordinatorAgentID;
+    if (byID.has(coordinatorAgentID))
       return { agentID: coordinatorAgentID, reason: COMPACTOR_REASON.COORDINATOR };
   }
 
@@ -93,6 +114,33 @@ function callListCompactionBots(agentManager) {
     let result = agentManager?.listCompactionBots?.();
     return Array.isArray(result) ? result : null;
   } catch (_error) {
+    return null;
+  }
+}
+
+// Resolve the session coordinator for rung 4. With no session lookup in scope the
+// tree is unknowable, so degrade to the local field (the pre-existing behaviour)
+// rather than pretending an inheritance question was answered. The local answer
+// is reported as 'explicit' only when the field is actually set and is a
+// participant -- exactly the old guard.
+function resolveCoordinator(session, participants, getSession) {
+  let participantIDs = participants.map((participant) => participant.id);
+
+  if (typeof getSession !== 'function') {
+    let localID = normalizeOptionalString(session?.coordinatorAgentID);
+    if (!localID)
+      return null;
+
+    let local = resolveCoordinatorAgentID(session, participantIDs);
+    return local === localID ? { coordinatorAgentID: local, source: 'explicit' } : null;
+  }
+
+  try {
+    let resolved = resolveSessionCoordinator({ sessionID: session?.id, getSession });
+    return resolved?.coordinatorAgentID ? resolved : null;
+  } catch (_error) {
+    // Resolution must never make compaction unavailable. A session tree that
+    // cannot be walked degrades to rung 5, not to a thrown turn.
     return null;
   }
 }

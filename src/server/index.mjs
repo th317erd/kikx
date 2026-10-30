@@ -1,6 +1,7 @@
 'use strict';
 
 import { createConfigStore, KIKX_HOST_PATH, KIKX_PORT_PATH } from '../core/config/index.mjs';
+import { shutdownPlugins } from '../core/plugins/plugin-loader.mjs';
 import { createServer } from './create-server.mjs';
 import { installProcessErrorPolicy } from './process-error-policy.mjs';
 import { shutdownHTTPServer } from './shutdown.mjs';
@@ -38,6 +39,7 @@ installProcessErrorPolicy({
 // the process before shutdown wiring exists. `shutdown()` is a no-op until the
 // server is assigned.
 for (let signal of [ 'SIGINT', 'SIGTERM' ]) {
+  // Plugins close their own resources before the process goes away.
   process.on(signal, () => {
     shutdown(signal).catch((error) => {
       console.error(`Kikx shutdown failed after ${signal}:`, error);
@@ -64,6 +66,7 @@ async function main() {
 await main();
 
 async function shutdown(signal, exitCode = 0) {
+
   if (shuttingDown || !server)
     return;
 
@@ -85,6 +88,18 @@ async function shutdown(signal, exitCode = 0) {
 }
 
 async function shutdownRuntimeServices(server) {
+  // Plugins close their own sockets and timers first: a Discord gateway left open
+  // holds the process alive past the shutdown deadline.
+  try {
+    let registry = server?.kikxContext?.has?.('pluginRegistry')
+      ? server.kikxContext.require('pluginRegistry')
+      : null;
+    if (registry)
+      await shutdownPlugins(registry);
+  } catch (error) {
+    console.warn('Plugin shutdown failed:', error.message);
+  }
+
   let context = server.kikxContext;
   if (!context)
     return;
