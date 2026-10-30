@@ -364,7 +364,7 @@ test('a frame send reports busy, then replaces the form with the answer', async 
   assert.equal(textOf(given[0]), 'Use PostgreSQL');
 
   let label = byClass(el, 'kikx-question-frame__answer-label')[0];
-  assert.equal(textOf(label), 'Your answer');
+  assert.equal(textOf(label), 'You replied');
 });
 
 test('an already-answered question shows the answer it holds', () => {
@@ -478,7 +478,7 @@ test('an answer block painted by a re-render is not duplicated when the send res
   assert.equal(
     byClass(el, 'kikx-question-frame__answer-label').length,
     1,
-    'one "Your answer" label, not two',
+    'one "You replied" label, not two',
   );
   assert.equal(
     textOf(byClass(el, 'kikx-question-frame__answer-text')[0]),

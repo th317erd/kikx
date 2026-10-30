@@ -241,7 +241,7 @@ test('the Inbox lists open questions in the browser and posts a free-form answer
     assert.equal(receipt, answerText, 'the answered row shows the answer that was actually submitted');
 
     let receiptLabel = ((await answeredCard.locator('.kikx-question-card__receipt-label').textContent()) || '').trim();
-    assert.equal(receiptLabel, 'Your answer', 'the answer is attributed, not anonymous');
+    assert.equal(receiptLabel, 'You replied', 'the answer is attributed, not anonymous');
 
     assert.equal(
       await answeredCard.locator('.kikx-question-card__receipt').getAttribute('data-answer-source'),

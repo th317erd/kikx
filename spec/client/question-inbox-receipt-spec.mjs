@@ -67,7 +67,9 @@ test('an answered row shows the answer itself, labelled and marked as the user\'
     'the answer text is what the row must show — the whole point of the change');
 
   let label = card.querySelector('.kikx-question-card__receipt-label');
-  assert.equal(label.textContent, 'Your answer', 'the words are attributed, not anonymous');
+  assert.equal(label.textContent, 'You replied', 'the words are attributed, not anonymous');
+  // Owner wording (2026-10-24): the human answer reads "You replied", and ONE
+  // shared constant produces it on both surfaces, so this cannot drift again.
 
   assert.equal(receipt.getAttribute('data-answer-source'), 'user',
     'provenance is published as data so the stylesheet and specs never match on prose');
@@ -106,7 +108,7 @@ test('a still-revisable default answer is never labelled as the user\'s words', 
   }));
 
   let label = card.querySelector('.kikx-question-card__receipt-label');
-  assert.notEqual(label.textContent, 'Your answer',
+  assert.notEqual(label.textContent, 'You replied',
     'this is the lie the receipt exists to prevent');
   assert.match(label.textContent, /Default/);
 });
@@ -123,7 +125,7 @@ test('an acknowledged default is still labelled a default', async () => {
   }));
 
   let label = card.querySelector('.kikx-question-card__receipt-label');
-  assert.notEqual(label.textContent, 'Your answer',
+  assert.notEqual(label.textContent, 'You replied',
     'a confirmed default is still the agent\'s words, not the user\'s');
   assert.match(label.textContent, /Default/);
 
@@ -320,5 +322,5 @@ test('a coordinator-agent answer is labelled as agent-provided, not as the user\
   assert.ok(receipt);
   assert.equal(receipt.getAttribute('data-answer-source'), 'agent');
   assert.match(card.querySelector('.kikx-question-card__receipt-label').textContent, /coordinator agent/i);
-  assert.doesNotMatch(card.querySelector('.kikx-question-card__receipt-label').textContent, /Your answer/);
+  assert.doesNotMatch(card.querySelector('.kikx-question-card__receipt-label').textContent, /You replied/);
 });
