@@ -26,16 +26,27 @@ import {
 } from '../../../src/core/plugins/core-classes.mjs';
 
 test('the consumed-key list names only keys with a real construction site', () => {
-  // These four are the audited set: each is resolved through resolveCoreClass() in
-  // create-server.mjs. If a fifth key is added here without a construction site, the
-  // inert machinery below stops reporting a genuine defect and this list becomes a
-  // lie. Keep it exact.
-  assert.deepEqual([ ...CONSUMED_CLASS_KEYS ].sort(), [
-    'CommandRegistry',
-    'CompactionService',
-    'FrameRouter',
-    'FrameRuntime',
-  ]);
+  // The four core keys each resolved through resolveCoreClass() in create-server.mjs.
+  // If a fifth core key is added here without a construction site, the inert
+  // machinery below stops reporting a genuine defect and this list becomes a lie.
+  //
+  // The FrameType<Type> keys are consumed as of the buildModelMessages() registry
+  // fallback: that function now resolves the plugin registry from the services
+  // object core hands every provider, so a frame-type override does apply. They must
+  // therefore NOT appear in listInertOverrides() any more. The proof that the
+  // resolution site is real, rather than this list asserting itself, lives in
+  // spec/core/plugins/frame-type-override-liveness-spec.mjs.
+  assert.deepEqual(
+    [ ...CONSUMED_CLASS_KEYS ].filter((key) => !key.startsWith('FrameType')).sort(),
+    [ 'CommandRegistry', 'CompactionService', 'FrameRouter', 'FrameRuntime' ],
+  );
+
+  let frameTypeKeys = [ ...CONSUMED_CLASS_KEYS ].filter((key) => key.startsWith('FrameType'));
+  assert.ok(frameTypeKeys.length > 0,
+    'frame-type keys are consumed by name, not dropped from the classification');
+  assert.ok(frameTypeKeys.includes('FrameTypeUserMessage'));
+  assert.ok(frameTypeKeys.includes('FrameTypeDefault'),
+    'the fallback key is consumed too, or an unknown-frame override would report inert');
 });
 
 test('boot declares the consumed keys, so inert reporting is enabled by default', () => {

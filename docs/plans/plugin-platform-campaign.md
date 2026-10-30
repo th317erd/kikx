@@ -702,22 +702,36 @@ Still open:
     `listRestartRequired()`/`data.restartRequired`. `CommandRegistry` was the
     audit's real find: registered as overridable but constructed directly, so an
     override was ignored *and* unreported.
-  - **resolved per use, but never reached in production today** — the
-    `FrameType<Type>` keys. `frameTypeClass()` in
-    `src/core/frames/frame-types/create-typed-frame.mjs` (not
-    `core/frames/create-typed-frame.mjs`) does look the class up on every frame
-    creation, and `buildModelMessages()` does forward `options.registry` down to
-    it, so the mechanism is live-capable. But the lookup only runs when a caller
-    passes a registry, and both production providers call
-    `this.constructor.buildModelMessages(params)` with no options
-    (`kikx-plugin-ollama/index.mjs:191`, `kikx-plugin-codex/index.mjs:226`), so
-    `options.registry` is always undefined and the static `FRAME_TYPE_CLASSES`
-    map always wins. A frame-type override therefore registers, appears in the
-    inventory, and changes no message. This path must *not* report
-    `restart-required` - a restart would not help - which is why it is reported
-    as `data.inertOverrides` instead, a category kept separate precisely so a
-    restart is never promised for something a restart cannot fix. Threading a
-    registry through from the providers is a real follow-up, not a doc fix.
+  - ~~**resolved per use, but never reached in production**~~ — **closed**. The
+    `FrameType<Type>` keys were inert: `frameTypeClass()` in
+    `src/core/frames/frame-types/create-typed-frame.mjs` looked the class up on
+    every frame creation, and `buildModelMessages()` forwarded `options.registry`
+    down to it, but the lookup ran only when a caller passed a registry, and both
+    production providers call `this.constructor.buildModelMessages(params)` with
+    no options (`kikx-plugin-ollama/index.mjs:191`,
+    `kikx-plugin-codex/index.mjs:226`). `options.registry` was therefore always
+    undefined, the static `FRAME_TYPE_CLASSES` map always won, and a frame-type
+    override registered, appeared in the inventory, and changed no message.
+
+    The fix threads the registry in from the core side rather than asking three
+    plugin repos to change: `buildModelMessages()` now resolves `pluginRegistry`
+    from the `services` object core already hands every provider, via the existing
+    `resolveService()` helper (the same `services.context.require(...)` path the
+    agent router uses for `agentManager`/`pluginRegistry`). An explicit
+    `options.registry` still wins, and with no registry anywhere the static core
+    rendering is unchanged. Because the keys are now genuinely resolved, they are
+    classified consumed instead of inert, derived from `FRAME_TYPE_REGISTRATIONS`
+    so an added frame type cannot drift out of the classification.
+
+    Proof: `spec/core/plugins/frame-type-override-liveness-spec.mjs` (5 tests)
+    asserts the *message text* a plugin override produces when a provider passes
+    no options, not a registry row. Revert-measured: reverting only the
+    `buildModelMessages()` fallback fails exactly the two liveness tests while the
+    three control tests (no-registry rendering unchanged, explicit registry
+    precedence, consumed classification) stay green. A restart was never the fix
+    here, which is why these keys were reported as `data.inertOverrides` rather
+    than `restart-required`, and that distinction is now resolved at its root
+    instead of being reported.
   - **no construction site to audit** — `PluginInterface`, `AgentInterface`,
     `DatabaseConnectionBase`. They are plugin-facing base classes and subclass
     guards (`isSubclassOf` in `plugin-registry.mjs`), never instantiated by core,

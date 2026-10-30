@@ -42,20 +42,34 @@ import { AeorDBConnection } from '../aeordb/aeordb-connection.mjs';
 //     through registerDatabaseDriver(), a separate registry, not through
 //     getClass(). An override on these keys is accepted and does nothing.
 //   FrameType<Type>
-//     createTypedFrame() reads registry.getClass() only when a caller passes a
-//     registry. The only production path is AgentInterface.buildModelMessages(),
-//     and both providers that call it (ollama, codex) invoke
-//     `this.constructor.buildModelMessages(params)` with no options, so `registry`
-//     is always null. The frame-type override therefore never takes effect today.
+//     No longer inert. createTypedFrame() reads registry.getClass() when a caller
+//     passes a registry. The only production path is
+//     AgentInterface.buildModelMessages(), and both providers that call it (ollama,
+//     codex) invoke `this.constructor.buildModelMessages(params)` with no options.
+//     buildModelMessages() therefore resolves the plugin registry itself from the
+//     services object core hands every provider, and the override applies on the
+//     next frame projection. These keys are listed in consumedClassKeys().
 //
 // These keys are reported by ClassRegistry.listInertOverrides() so an operator is
 // told the override did not apply, instead of inferring it from a registry row.
-export const CONSUMED_CLASS_KEYS = Object.freeze([
+// The frame-type keys are not hand-listed: they are derived from the same map
+// registerFrameTypeClasses() registers, so an added frame type cannot silently
+// drift out of the classification.
+const CONSUMED_CORE_KEYS = Object.freeze([
   'FrameRouter',
   'FrameRuntime',
   'CompactionService',
   'CommandRegistry',
 ]);
+
+const CONSUMED_FRAME_TYPE_KEYS = Object.freeze(Object.keys(FRAME_TYPE_REGISTRATIONS));
+
+// Every key with a real resolution site. Kept frozen and sorted so the registry
+// can compare it directly, and so a missing entry is visible in one place.
+export const CONSUMED_CLASS_KEYS = Object.freeze([
+  ...CONSUMED_CORE_KEYS,
+  ...CONSUMED_FRAME_TYPE_KEYS,
+].sort());
 
 // Classes registered for override. Kept to the classes a plugin has a plausible
 // reason to replace (engine/router/runtime/compaction registries), not the whole
