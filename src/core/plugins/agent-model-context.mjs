@@ -14,6 +14,7 @@
 // into the prompt even though they are hidden.
 
 import { createTypedFrame } from '../frames/frame-types/create-typed-frame.mjs';
+import { resolveService } from '../runtime/frame-runtime-normalize.mjs';
 import { selectCompactionLevels } from '../compaction/compaction-summary.mjs';
 import { shouldSendStartBrief, markStartBriefSent } from './agent-brief-state.mjs';
 import {
@@ -96,6 +97,15 @@ export function frameToModelTurn(frame, options = {}) {
 export function buildModelMessages(params = {}, options = {}) {
   let frames = Array.isArray(params.frames) ? params.frames : [];
   let messages = [];
+  // Which registry resolves a 'FrameType<Type>' override. An explicit
+  // options.registry always wins. No production provider passes options -- both
+  // call `this.constructor.buildModelMessages(params)` -- so fall back to the
+  // plugin registry carried on the services object core already hands every
+  // provider. Without this fallback the override hook is registered, listed in
+  // the inventory, and changes no message.
+  let registry = options.registry
+    || resolveService(options.services || params.services, 'pluginRegistry')
+    || null;
   let currentFrameID = params.frame?.id || null;
   let currentAgentID = params.agent?.id || '';
   let systemPrompt = typeof options.systemPrompt === 'string'
@@ -133,7 +143,7 @@ export function buildModelMessages(params = {}, options = {}) {
     let message = frameToModelTurn(frame, {
       currentAgentID,
       currentFrameID,
-      registry: options.registry || null,
+      registry,
       compactionLevels,
     });
     if (message)

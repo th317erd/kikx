@@ -702,22 +702,36 @@ Still open:
     `listRestartRequired()`/`data.restartRequired`. `CommandRegistry` was the
     audit's real find: registered as overridable but constructed directly, so an
     override was ignored *and* unreported.
-  - **resolved per use, but never reached in production today** — the
-    `FrameType<Type>` keys. `frameTypeClass()` in
-    `src/core/frames/frame-types/create-typed-frame.mjs` (not
-    `core/frames/create-typed-frame.mjs`) does look the class up on every frame
-    creation, and `buildModelMessages()` does forward `options.registry` down to
-    it, so the mechanism is live-capable. But the lookup only runs when a caller
-    passes a registry, and both production providers call
-    `this.constructor.buildModelMessages(params)` with no options
-    (`kikx-plugin-ollama/index.mjs:191`, `kikx-plugin-codex/index.mjs:226`), so
-    `options.registry` is always undefined and the static `FRAME_TYPE_CLASSES`
-    map always wins. A frame-type override therefore registers, appears in the
-    inventory, and changes no message. This path must *not* report
-    `restart-required` - a restart would not help - which is why it is reported
-    as `data.inertOverrides` instead, a category kept separate precisely so a
-    restart is never promised for something a restart cannot fix. Threading a
-    registry through from the providers is a real follow-up, not a doc fix.
+  - ~~**resolved per use, but never reached in production**~~ — **closed**. The
+    `FrameType<Type>` keys were inert: `frameTypeClass()` in
+    `src/core/frames/frame-types/create-typed-frame.mjs` looked the class up on
+    every frame creation, and `buildModelMessages()` forwarded `options.registry`
+    down to it, but the lookup ran only when a caller passed a registry, and both
+    production providers call `this.constructor.buildModelMessages(params)` with
+    no options (`kikx-plugin-ollama/index.mjs:191`,
+    `kikx-plugin-codex/index.mjs:226`). `options.registry` was therefore always
+    undefined, the static `FRAME_TYPE_CLASSES` map always won, and a frame-type
+    override registered, appeared in the inventory, and changed no message.
+
+    The fix threads the registry in from the core side rather than asking three
+    plugin repos to change: `buildModelMessages()` now resolves `pluginRegistry`
+    from the `services` object core already hands every provider, via the existing
+    `resolveService()` helper (the same `services.context.require(...)` path the
+    agent router uses for `agentManager`/`pluginRegistry`). An explicit
+    `options.registry` still wins, and with no registry anywhere the static core
+    rendering is unchanged. Because the keys are now genuinely resolved, they are
+    classified consumed instead of inert, derived from `FRAME_TYPE_REGISTRATIONS`
+    so an added frame type cannot drift out of the classification.
+
+    Proof: `spec/core/plugins/frame-type-override-liveness-spec.mjs` (5 tests)
+    asserts the *message text* a plugin override produces when a provider passes
+    no options, not a registry row. Revert-measured: reverting only the
+    `buildModelMessages()` fallback fails exactly the two liveness tests while the
+    three control tests (no-registry rendering unchanged, explicit registry
+    precedence, consumed classification) stay green. A restart was never the fix
+    here, which is why these keys were reported as `data.inertOverrides` rather
+    than `restart-required`, and that distinction is now resolved at its root
+    instead of being reported.
   - **no construction site to audit** — `PluginInterface`, `AgentInterface`,
     `DatabaseConnectionBase`. They are plugin-facing base classes and subclass
     guards (`isSubclassOf` in `plugin-registry.mjs`), never instantiated by core,
@@ -1094,3 +1108,50 @@ READY with the real Miri token and the fatal-close latch is proven against Disco
 4004, but no `MESSAGE_CREATE` has ever been delivered by Discord into a Kikx session.
 That needs a token in the 3003 container plus the Message Content intent, and it is the
 remaining live gap.
+
+### Discord interaction callback — 202 is not an answer (2026-10-30)
+
+The endpoint answered a slash command with `202 {"ok":true}`. Discord parses the
+response body as an interaction callback and ignores the status code, so what the
+user saw was **"The application did not respond"** while the suite stayed green.
+The old `a slash command option is framed as the message text` test asserted that
+202 — the defect written down as an expectation.
+
+Fixed in `kikx-plugin-discord` `2980203`:
+
+- The callback is now a real deferral, **type 5** for a command and **type 6** for
+  a component, sent *before* the database work so dedupe, authorization and the
+  session write cannot overrun Discord's three-second window.
+- The outcome is delivered by `PATCH /webhooks/{application_id}/{token}/messages/@original`,
+  so it edits the deferred placeholder instead of posting a second message.
+- With no application credential it answers **type 4** (ephemeral) instead of
+  deferring: a deferral with no webhook behind it would strand the user on
+  "thinking…" until the token expired.
+- Authorization is unchanged. The ack is a transport obligation; the frame and the
+  reply text still depend on the gate, and a denied sender gets an ephemeral
+  "Not authorized" with no write.
+
+Measured on a live process (port 3022, `wt-parity`, throwaway Ed25519 key, real Miri
+bot token, disposable database `kikx_ack_probe` — created and dropped for this run):
+
+| request | result |
+| --- | --- |
+| unsigned `type:2` | `401 invalid request signature / missing signature headers` |
+| signed `type:1` | `200 {"type":1}` |
+| signed `type:2` command | `200 {"type":5,"data":{"flags":64}}` |
+| signed `type:3` component | `200 {"type":6,"data":{"flags":64}}` |
+| follow-up PATCH | `HTTP 404 {"message":"Unknown Webhook","code":10015}` ×2 |
+
+The 404 is the proof, not a failure: `10015` is Discord saying the *interaction
+token* is unknown, which it is — a fake token was used deliberately so nothing
+could be written to a real guild. A bad bot credential would have returned `401`,
+so the request is authenticated and well-formed. The router also logged
+`denied inbound … no grant for discord.inbound`, so the ack did not bypass policy.
+
+Reverting `index.mjs` to `00af1d6` fails **9 of the 20** endpoint specs; with it,
+`71/71` plugin specs pass.
+
+Still **not** proven: a real human message reaching a session through the gateway
+(that needs the Message Content privileged intent), and the live image is still
+`f201985` — `deploy.sh` stages `origin/master`, so a fresh deploy would pick up
+`2980203`, but no deploy has been run.
