@@ -13,6 +13,33 @@ import {
   syncComposerDraft,
 } from './composer-drafts.mjs';
 
+export function onComposerValueChange(app, event) {
+  let detail = event?.detail || {};
+  if (app._suppressComposerValueChange === true)
+    return;
+
+  let previous = typeof detail.previous === 'string' ? detail.previous : '';
+  let value = typeof detail.value === 'string' ? detail.value : '';
+
+  // A programmatic assignment is about to overwrite the field. Preserve the
+  // text that existed before that assignment; this is the last line of defense
+  // when a render/reset path does not emit a native input event.
+  if (detail.source === 'property') {
+    if (previous.trim() !== '' && previous !== value && app._state.draft !== previous) {
+      app._state.draft = previous;
+      syncComposerDraft(app, previous);
+    }
+    return;
+  }
+
+  // Native input normally reaches syncDraft; route through the same controller
+  // if another mechanism updated the field first.
+  if (detail.source === 'input' && value !== app._state.draft) {
+    app._state.draft = value;
+    syncComposerDraft(app, value);
+  }
+}
+
 export function syncDraft(app, event) {
   app._state.draft = event.target.value;
   // Do not run frame-list reconciliation/layout under a keystroke. The SSE
@@ -107,10 +134,13 @@ export function clearComposerDraft(app) {
   if (!composer)
     return;
 
-  composer.value = '';
+  app._suppressComposerValueChange = true;
   try {
-    composer.setSelectionRange(0, 0);
-  } catch (_error) {}
+    composer.value = '';
+    composer.setSelectionRange?.(0, 0);
+  } catch (_error) {} finally {
+    app._suppressComposerValueChange = false;
+  }
 }
 
 export function restoreComposerDraftOnFailure(app, submittedDraft) {

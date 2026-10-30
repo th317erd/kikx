@@ -31,6 +31,7 @@ import {
   updateMessageHashFromScroll,
 } from './kikx-frame-scroll-lock.mjs';
 import { createKikxPageContext } from './kikx-chat-scrollview.mjs';
+import { syncComposerDraft } from './composer-drafts.mjs';
 
 export { ANCHOR_THRESHOLD };
 export { lockScrollToLatest, scrollToLatestMessageTop, toggleScrollLock } from './kikx-frame-scroll-lock.mjs';
@@ -67,6 +68,7 @@ export function captureRenderSnapshot(app) {
     composerSelectionStart: composerFocused ? composer.selectionStart : null,
     composerSelectionEnd: composerFocused ? composer.selectionEnd : null,
     composerSelectionDirection: composerFocused ? composer.selectionDirection : 'none',
+    composerValue: composer && typeof composer.value === 'string' ? composer.value : '',
     frameListNearBottom: app._frameListAnchoredToBottom,
     scrollFocus,
     viewFocus,
@@ -110,6 +112,13 @@ export function afterRender(app, snapshot = {}) {
     && !sessionChanged
   );
   let composer = app.querySelector('textarea[name="message"]');
+  // A shell rebuild removes the textarea without changing its value. If the
+  // snapshot saw text but the model is empty, the model lost the user's work:
+  // restore it before the fresh textarea is painted empty.
+  if (!app._state.draft && snapshot.composerValue) {
+    app._state.draft = snapshot.composerValue;
+    syncComposerDraft(app, snapshot.composerValue);
+  }
   if (composer && composer.value !== (app._state.draft || ''))
     composer.value = app._state.draft || '';
 

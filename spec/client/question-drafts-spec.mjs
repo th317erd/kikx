@@ -194,3 +194,24 @@ test('a terminal card renders no answer box at all, so no draft is restored', ()
   assert.ok(!inputOf(card), 'an answered row is read-only, so there is no box to restore into');
   assert.ok(String(card.className).includes(CARD), 'the card itself still renders, just without a box');
 });
+
+test('question draft mutations are exact and contained to the question key', () => {
+  let store = createDraftStore({ sessionID: 'ses_1' });
+  setAnswerDraft(store, 'q_1', 'answer one');
+  setAnswerDraft(store, 'q_2', 'answer two');
+
+  assert.deepEqual(store.mutations.entries().map((entry) => ({
+    scope: entry.scope,
+    owner: entry.owner,
+    key: entry.key,
+    previous: entry.previous,
+    next: entry.next,
+    operation: entry.operation,
+    revision: entry.revision,
+  })), [
+    { scope: 'question-drafts', owner: 'ses_1', key: 'q_1', previous: undefined, next: 'answer one', operation: 'set', revision: 1 },
+    { scope: 'question-drafts', owner: 'ses_1', key: 'q_2', previous: undefined, next: 'answer two', operation: 'set', revision: 2 },
+  ]);
+  assert.equal(getAnswerDraft(store, 'q_1'), 'answer one');
+  assert.equal(getAnswerDraft(store, 'q_2'), 'answer two');
+});

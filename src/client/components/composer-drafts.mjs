@@ -1,9 +1,12 @@
 'use strict';
 
+import { createMutationLedger } from '../state/state-mutations.mjs';
+
 const STORAGE_PREFIX = 'kikx.composerDraft.';
 const SENT_STORAGE_PREFIX = 'kikx.composerSentDraft.';
 const MAX_SENT_DRAFTS = 10;
 const DRAFT_SAVE_DEBOUNCE_MS = 250;
+const LOCAL_DRAFT_WRITE_DEBOUNCE_MS = 120;
 
 export function readLocalComposerDraft(sessionID) {
   if (!sessionID)
@@ -115,6 +118,10 @@ export function createComposerDraftController(sessionID) {
     loadToken: 0,
     revision: 0,
     pendingSaves: 0,
+    localTimer: null,
+    localRevision: 0,
+    localSavedRevision: 0,
+    mutations: createMutationLedger({ scope: 'composer', owner: sessionID }),
   };
 }
 
@@ -165,7 +172,15 @@ export async function activateComposerDraftSession(app, sessionID = app._state.s
 
   // The server is the source of truth once it answers. The local copy is only
   // an offline/reconnect fallback; it must not be painted first, because that
-  // produces a visible resurrection of text that was already sent.
+  // produces a visible resurrection of text that was already sent. If the
+  // in-memory controller is empty, however, the local copy is the only evidence
+  // of the user's work and must be promoted before the server can answer empty.
+  if (controller.text.trim() === '' && local?.text) {
+    controller.draftID = local.draftID || createDraftID();
+    controller.text = local.text;
+    controller.savedText = '';
+    controller.localRevision = Math.max(controller.localRevision || 0, 1);
+  }
   if (controller.text.trim() !== '')
     setComposerText(app, controller.text, sessionID);
   else
@@ -216,19 +231,18 @@ export async function activateComposerDraftSession(app, sessionID = app._state.s
       return latest;
     }
 
-    // A successful empty response is authoritative: there is no draft on the
-    // server. Drop the local fallback instead of leaving a stale message to be
-    // painted on the next reload or view switch.
-    removeLocalComposerDraft(sessionID);
+    // A successful empty response means the server has no draft; it does not
+    // prove that a newer local draft is obsolete. Keep local/controller text
+    // and repopulate the server instead of deleting work while hydration is
+    // racing the user.
     if (controller.text.trim() !== '') {
       if (!controller.draftID)
         controller.draftID = createDraftID();
-      writeLocalComposerDraft(sessionID, {
-        draftID: controller.draftID,
-        text: controller.text,
-      });
+      controller.localRevision = (controller.localRevision || 0) + 1;
+      scheduleLocalComposerDraftFlush(app, sessionID);
       queueComposerDraftSave(app, sessionID);
     } else {
+      removeLocalComposerDraft(sessionID);
       controller.draftID = null;
       controller.savedText = '';
       setComposerText(app, '', sessionID);
@@ -256,18 +270,71 @@ export function syncComposerDraft(app, text) {
 
   let controller = getComposerDraftController(app, sessionID);
   bumpComposerDraftRevision(controller);
-  controller.text = typeof text === 'string' ? text : '';
+  let next = typeof text === 'string' ? text : '';
+  if (controller.text !== next) {
+    let previous = controller.text;
+    controller.text = next;
+    controller.localRevision = (controller.localRevision || 0) + 1;
+    controller.mutations?.record({
+      key: 'text',
+      previous,
+      next,
+      operation: 'setText',
+      cause: 'input',
+      revision: controller.revision,
+      sessionID,
+    });
+  }
   if (controller.text.trim() === '') {
-    writeLocalComposerDraft(sessionID, null);
+    scheduleLocalComposerDraftFlush(app, sessionID);
   } else {
     if (!controller.draftID)
       controller.draftID = createDraftID();
+    scheduleLocalComposerDraftFlush(app, sessionID);
+  }
+  scheduleComposerDraftSave(app, sessionID);
+}
+
+// The input path must not serialize localStorage on every keystroke. Coalesce
+// local persistence into one idle/debounced write, while keeping the controller
+// authoritative immediately. Lifecycle callbacks call flushLocalComposerDraft()
+// explicitly before the page can disappear.
+export function scheduleLocalComposerDraftFlush(app, sessionID) {
+  let controller = getComposerDraftController(app, sessionID);
+  if (!controller)
+    return;
+  if (controller.localTimer)
+    clearTimeout(controller.localTimer);
+  let write = () => {
+    controller.localTimer = null;
+    flushLocalComposerDraft(app, sessionID);
+  };
+  controller.localTimer = setTimeout(write, LOCAL_DRAFT_WRITE_DEBOUNCE_MS);
+  controller.localTimer.unref?.();
+}
+
+export function flushLocalComposerDraft(app, sessionID = app?._state?.selectedSessionID) {
+  if (!sessionID)
+    return false;
+  let controller = getComposerDraftController(app, sessionID);
+  if (!controller)
+    return false;
+  if (controller.localTimer) {
+    clearTimeout(controller.localTimer);
+    controller.localTimer = null;
+  }
+  if (controller.localRevision <= controller.localSavedRevision)
+    return false;
+  if (controller.text.trim() === '') {
+    removeLocalComposerDraft(sessionID);
+  } else {
     writeLocalComposerDraft(sessionID, {
       draftID: controller.draftID,
       text: controller.text,
     });
   }
-  scheduleComposerDraftSave(app, sessionID);
+  controller.localSavedRevision = controller.localRevision;
+  return true;
 }
 
 export function scheduleComposerDraftSave(app, sessionID, { immediate = false } = {}) {
@@ -336,6 +403,7 @@ export async function flushComposerDraft(app, sessionID = app._state.selectedSes
     return true;
   clearTimeout(controller.timer);
   controller.timer = null;
+  flushLocalComposerDraft(app, sessionID);
   if (controller.text === controller.savedText && controller.text.trim() !== '')
     return true;
   return await queueComposerDraftSave(app, sessionID, { immediate: options.keepalive === true });
@@ -384,6 +452,10 @@ export async function clearComposerDraftWithServer(app, sessionID = app._state.s
 
   let draftID = controller.draftID;
   cancelComposerDraftSave(app, sessionID);
+  if (controller.localTimer) {
+    clearTimeout(controller.localTimer);
+    controller.localTimer = null;
+  }
   bumpComposerDraftRevision(controller);
   controller.text = '';
   controller.savedText = '';
@@ -440,11 +512,14 @@ export function setComposerText(app, text, sessionID = app._state.selectedSessio
   let composer = app.querySelector('textarea[name="message"]');
   if (!composer)
     return;
-  composer.value = app._state.draft;
+  app._suppressComposerValueChange = true;
   try {
+    composer.value = app._state.draft;
     let caret = composer.value.length;
-    composer.setSelectionRange(caret, caret);
-  } catch (_error) {}
+    composer.setSelectionRange?.(caret, caret);
+  } catch (_error) {} finally {
+    app._suppressComposerValueChange = false;
+  }
 }
 
 export function createDraftID() {

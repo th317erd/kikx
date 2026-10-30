@@ -189,6 +189,7 @@ export class KikxFrameItem extends HTMLElement {
     this._compactView = null;
     this._contentParent = null;
     this._quickActions = null;
+    this._renderEpoch = 0;
   }
 
   updateFrame(frame, appState = {}, options = {}) {
@@ -364,7 +365,9 @@ export class KikxFrameItem extends HTMLElement {
         // Expanding the compact row builds the details; nested output/arguments
         // disclosures stay lazy until the user opens them too. Collapsing removes
         // the whole details subtree again.
-        this._compactView.element.addEventListener('toggle', () => this._onCompactToggle());
+        let detailsElement = this._compactView.element;
+        let renderEpoch = ++this._renderEpoch;
+        detailsElement.addEventListener('toggle', () => this._onCompactToggle(renderEpoch, detailsElement));
         this.appendChild(this._compactView.element);
         if (this._compactView.element.open)
           this._ensureCompactContent();
@@ -485,9 +488,13 @@ export class KikxFrameItem extends HTMLElement {
     }, { frameID: frame.id, frameType: frame.type });
   }
 
-  _onCompactToggle() {
+  _onCompactToggle(renderEpoch = this._renderEpoch, detailsElement = this._compactView?.element) {
     let details = this._compactView?.element;
-    if (!details)
+    // A removed <details> can still deliver a queued toggle after its owner has
+    // been rebuilt. Only the current render's element may mutate expansion.
+    if (!details
+      || renderEpoch !== this._renderEpoch
+      || detailsElement !== details)
       return;
 
     // Record what the user just did so a later rebuild can restore it.

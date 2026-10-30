@@ -351,6 +351,7 @@ export function installFrameRuntimeVisibilityDrain(app, target = globalThis.docu
 
   app._frameRuntimeVisibilityTarget = target;
   app._frameRuntimeVisibilityHandler = () => {
+    app._onRuntimeVisibilityChange?.(target.visibilityState || 'visible');
     if (target.visibilityState && target.visibilityState !== 'visible')
       return;
 

@@ -1,5 +1,7 @@
 'use strict';
 
+import { createMutationLedger } from './state-mutations.mjs';
+
 // Typed-but-unsent answers, kept outside the DOM so a repaint cannot erase them.
 //
 // Why this is not just "the textarea's value": every question mutation used to
@@ -22,9 +24,72 @@
 // tab from accumulating text for questions that were answered in another tab;
 // eviction is oldest-first, so the box the user is typing in survives.
 export const MAX_ANSWER_DRAFTS = 50;
+const QUESTION_DRAFT_STORAGE_PREFIX = 'kikx.questionDrafts.';
+const QUESTION_DRAFT_WRITE_DELAY_MS = 120;
 
-export function createDraftStore() {
-  return new Map();
+function questionDraftKey(store, questionID) {
+  let id = typeof questionID === 'string' ? questionID.trim() : '';
+  if (!id)
+    return '';
+  return store?.sessionID ? `${store.sessionID}\u0000${id}` : id;
+}
+
+function readStoredQuestionDrafts(sessionID) {
+  if (!sessionID)
+    return null;
+  try {
+    let raw = globalThis.localStorage?.getItem(`${QUESTION_DRAFT_STORAGE_PREFIX}${sessionID}`);
+    if (!raw)
+      return null;
+    let value = JSON.parse(raw);
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function persistQuestionDrafts(store) {
+  if (!store?.sessionID)
+    return;
+  try {
+    let persisted = {};
+    for (let [ key, value ] of store) {
+      let separator = key.indexOf('\u0000');
+      if (separator >= 0 && key.slice(0, separator) === store.sessionID)
+        persisted[key.slice(separator + 1)] = value;
+    }
+    if (Object.keys(persisted).length === 0)
+      globalThis.localStorage?.removeItem(`${QUESTION_DRAFT_STORAGE_PREFIX}${store.sessionID}`);
+    else
+      globalThis.localStorage?.setItem(`${QUESTION_DRAFT_STORAGE_PREFIX}${store.sessionID}`, JSON.stringify(persisted));
+  } catch (_error) {}
+}
+
+function scheduleQuestionDraftPersist(store) {
+  if (!store?.sessionID)
+    return;
+  if (store._persistTimer)
+    clearTimeout(store._persistTimer);
+  store._persistTimer = setTimeout(() => {
+    store._persistTimer = null;
+    persistQuestionDrafts(store);
+  }, QUESTION_DRAFT_WRITE_DELAY_MS);
+  store._persistTimer.unref?.();
+}
+
+export function createDraftStore(options = {}) {
+  let store = new Map();
+  store.sessionID = typeof options.sessionID === 'string' ? options.sessionID : null;
+  store._persistTimer = null;
+  store.mutations = createMutationLedger({ scope: 'question-drafts', owner: store.sessionID || 'app' });
+  if (store.sessionID) {
+    let local = readStoredQuestionDrafts(store.sessionID);
+    for (let [ questionID, text ] of Object.entries(local || {})) {
+      if (typeof text === 'string' && text !== '')
+        store.set(questionDraftKey(store, questionID), text);
+    }
+  }
+  return store;
 }
 
 /**
@@ -45,7 +110,15 @@ export function answerDraftStore(app) {
     return createDraftStore();
 
   if (!(app._answerDrafts instanceof Map))
-    app._answerDrafts = createDraftStore();
+    app._answerDrafts = createDraftStore({ sessionID: app._state?.selectedSessionID || null });
+  else if (app._answerDrafts.sessionID !== (app._state?.selectedSessionID || null)) {
+    app._answerDrafts.sessionID = app._state?.selectedSessionID || null;
+    let local = readStoredQuestionDrafts(app._answerDrafts.sessionID);
+    for (let [ questionID, text ] of Object.entries(local || {})) {
+      if (typeof text === 'string' && text !== '')
+        app._answerDrafts.set(questionDraftKey(app._answerDrafts, questionID), text);
+    }
+  }
 
   return app._answerDrafts;
 }
@@ -61,19 +134,25 @@ export function setAnswerDraft(store, questionID, text) {
   if (!(store instanceof Map))
     return;
 
-  let id = typeof questionID === 'string' ? questionID.trim() : '';
+  let id = questionDraftKey(store, questionID);
   if (!id)
     return;
 
   if (typeof text !== 'string' || text === '') {
+    let previous = store.get(id);
     store.delete(id);
+    if (previous !== undefined)
+      store.mutations?.record({ key: questionID, previous, next: '', operation: 'clear', cause: 'input', sessionID: store.sessionID });
+    scheduleQuestionDraftPersist(store);
     return;
   }
 
+  let previous = store.get(id);
   // Re-inserting moves the id to the end, so eviction order follows "least
   // recently typed" instead of "first ever typed".
   store.delete(id);
   store.set(id, text);
+  store.mutations?.record({ key: questionID, previous, next: text, operation: 'set', cause: 'input', sessionID: store.sessionID });
 
   while (store.size > MAX_ANSWER_DRAFTS) {
     let oldest = store.keys().next();
@@ -82,13 +161,14 @@ export function setAnswerDraft(store, questionID, text) {
 
     store.delete(oldest.value);
   }
+  scheduleQuestionDraftPersist(store);
 }
 
 export function getAnswerDraft(store, questionID) {
   if (!(store instanceof Map))
     return '';
 
-  let id = typeof questionID === 'string' ? questionID.trim() : '';
+  let id = questionDraftKey(store, questionID);
   if (!id)
     return '';
 
@@ -100,9 +180,14 @@ export function clearAnswerDraft(store, questionID) {
   if (!(store instanceof Map))
     return;
 
-  let id = typeof questionID === 'string' ? questionID.trim() : '';
-  if (id)
+  let id = questionDraftKey(store, questionID);
+  if (id) {
+    let previous = store.get(id);
     store.delete(id);
+    if (previous !== undefined)
+      store.mutations?.record({ key: questionID, previous, next: '', operation: 'clear', cause: 'question-closed', sessionID: store.sessionID });
+    scheduleQuestionDraftPersist(store);
+  }
 }
 
 /**
@@ -128,7 +213,9 @@ export function pruneAnswerDrafts(store, openQuestionIDs, options = {}) {
 
   let open = openQuestionIDs instanceof Set ? openQuestionIDs : new Set(openQuestionIDs);
   for (let id of [ ...store.keys() ]) {
-    if (!open.has(id))
+    let questionID = store.sessionID && id.includes('\u0000') ? id.slice(id.indexOf('\u0000') + 1) : id;
+    if (!open.has(questionID))
       store.delete(id);
   }
+  scheduleQuestionDraftPersist(store);
 }

@@ -1,5 +1,7 @@
 'use strict';
 
+import { createMutationLedger } from './state-mutations.mjs';
+
 // Expansion state for message frames.
 //
 // Why this module exists: a frame's expanded/collapsed state used to live only
@@ -49,8 +51,10 @@ export function createFrameExpansionStore(maxEntries = MAX_TRACKED_FRAME_EXPANSI
     ? maxEntries
     : MAX_TRACKED_FRAME_EXPANSIONS;
   let expanded = new Map();
+  let mutations = createMutationLedger({ scope: 'frame-expansion', owner: 'app' });
 
   return {
+    mutations,
     get size() {
       return expanded.size;
     },
@@ -66,11 +70,13 @@ export function createFrameExpansionStore(maxEntries = MAX_TRACKED_FRAME_EXPANSI
       if (!id)
         return false;
 
+      let previous = expanded.has(id);
       if (value === true) {
         // Delete first so a re-expand moves the id to the newest position.
         if (expanded.has(id))
           expanded.delete(id);
         expanded.set(id, true);
+        mutations.record({ key: id, previous, next: true, operation: 'expand', cause: 'user-toggle' });
         while (expanded.size > limit) {
           let oldest = expanded.keys().next();
           if (oldest.done)
@@ -81,6 +87,8 @@ export function createFrameExpansionStore(maxEntries = MAX_TRACKED_FRAME_EXPANSI
       }
 
       expanded.delete(id);
+      if (previous)
+        mutations.record({ key: id, previous, next: false, operation: 'collapse', cause: 'user-toggle' });
       return false;
     },
 
@@ -94,6 +102,7 @@ export function createFrameExpansionStore(maxEntries = MAX_TRACKED_FRAME_EXPANSI
 
     clear() {
       expanded.clear();
+      mutations.clear();
     },
 
     keys() {

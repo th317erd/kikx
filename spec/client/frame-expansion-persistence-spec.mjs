@@ -224,3 +224,38 @@ test('setFrameExpanded only opens for a literal true, never a truthy value', () 
   assert.equal(setFrameExpanded('x', false, store), false);
   assert.equal(isFrameExpanded('x', store), false);
 });
+
+test('a stale toggle from a replaced disclosure cannot collapse the new render', () => {
+  let item = mountItem(toolFrame('f_stale'));
+  let oldDetails = compactDetails(item);
+  setOpen(oldDetails, true);
+
+  item.updateFrame(toolFrame('f_stale'), toolState(), { force: true });
+  let newDetails = compactDetails(item);
+  assert.equal(newDetails.open, true, 'the rebuilt disclosure starts open');
+
+  // Browsers can queue a toggle from a subtree that was just detached. It must
+  // not be allowed to write the user's expansion state for the new node.
+  oldDetails.open = false;
+  oldDetails.dispatchEvent(new CustomEvent('toggle', { bubbles: false }));
+
+  assert.equal(isFrameExpanded('f_stale'), true, 'a stale toggle must not change expansion state');
+  assert.equal(newDetails.open, true, 'the current disclosure remains open');
+});
+
+test('expansion mutations are exact and ordered', () => {
+  frameExpansionStore.clear();
+  setFrameExpanded('f_mutation', true);
+  setFrameExpanded('f_mutation', false);
+
+  assert.deepEqual(frameExpansionStore.mutations.entries().map((entry) => ({
+    key: entry.key,
+    previous: entry.previous,
+    next: entry.next,
+    operation: entry.operation,
+    revision: entry.revision,
+  })), [
+    { key: 'f_mutation', previous: false, next: true, operation: 'expand', revision: 1 },
+    { key: 'f_mutation', previous: true, next: false, operation: 'collapse', revision: 2 },
+  ]);
+});

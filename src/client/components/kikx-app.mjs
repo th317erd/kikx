@@ -14,7 +14,7 @@ import { cleanupBindings } from '../lib/aeor-ui.mjs';
 import { installScrollDebugLogger } from '../lib/scroll-debug-logger.mjs';
 import { hasSessionDeepLink } from './kikx-app-helpers.mjs';
 import { toggleDebugMode } from '../lib/debug-mode.mjs';
-import { flushComposerDraft } from './composer-drafts.mjs';
+import { flushComposerDraft, flushLocalComposerDraft } from './composer-drafts.mjs';
 import {
   buildAuthShell,
   buildBreadcrumb,
@@ -143,6 +143,7 @@ import {
 import {
   clearComposerDraft,
   onComposerKeydown,
+  onComposerValueChange,
   onSubmit,
   quoteFrameIntoComposer,
   restoreComposerDraftOnFailure,
@@ -343,6 +344,7 @@ export class KikxApp extends HTMLElement {
     this._syncEditingSessionTitle = (event) => syncEditingSessionTitle(this, event);
     this._onSubmit = async (event) => onSubmit(this, event);
     this._onComposerKeydown = (event) => onComposerKeydown(this, event);
+    this._onComposerValueChange = (event) => onComposerValueChange(this, event);
     this._loadAccount = async (options = {}) => loadAccount(this, options);
     this._openAccountEditor = async () => openAccountEditor(this);
     this._closeAccountEditor = () => closeAccountEditor(this);
@@ -594,8 +596,17 @@ export class KikxApp extends HTMLElement {
     (globalThis.window || globalThis).addEventListener?.('keydown', this._onAppKeydown, true);
     this._onPageHide = () => {
       let sessionID = this._activeComposerDraftSessionID || this._state.selectedSessionID;
+      if (!sessionID)
+        return;
+      flushLocalComposerDraft(this, sessionID);
+      flushComposerDraft(this, sessionID, { keepalive: true }).catch(() => false);
+    };
+    this._onRuntimeVisibilityChange = (visibility) => {
+      if (visibility !== 'hidden')
+        return;
+      let sessionID = this._activeComposerDraftSessionID || this._state.selectedSessionID;
       if (sessionID)
-        flushComposerDraft(this, sessionID, { keepalive: true }).catch(() => false);
+        flushLocalComposerDraft(this, sessionID);
     };
     (globalThis.window || globalThis).addEventListener?.('pagehide', this._onPageHide);
     installFrameRuntimeVisibilityDrain(this);
@@ -616,6 +627,7 @@ export class KikxApp extends HTMLElement {
       (globalThis.window || globalThis).removeEventListener?.('keydown', this._onAppKeydown, true);
     if (this._onPageHide)
       (globalThis.window || globalThis).removeEventListener?.('pagehide', this._onPageHide);
+    this._onRuntimeVisibilityChange = null;
     this._onSessionEnter = null;
     this._onQuoteFrame = null;
     this._onPopState = null;

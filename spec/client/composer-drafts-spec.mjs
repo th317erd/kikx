@@ -8,6 +8,7 @@ import {
   clearComposerDraftWithServer,
   deleteComposerHistoryEntry,
   flushComposerDraft,
+  flushLocalComposerDraft,
   getComposerDraftController,
   markComposerDraftSent,
   readLocalComposerDraft,
@@ -82,6 +83,7 @@ test('flush sends the active draft to the server with one stable draft id', asyn
   installStorage();
   let { app, textarea, requests } = createApp();
   syncComposerDraft(app, 'draft text');
+  await flushLocalComposerDraft(app, 'ses_1');
   let draftID = readLocalComposerDraft('ses_1').draftID;
 
   assert.equal(await flushComposerDraft(app, 'ses_1'), true);
@@ -92,6 +94,7 @@ test('flush sends the active draft to the server with one stable draft id', asyn
   assert.equal(textarea.value, '');
 
   syncComposerDraft(app, 'draft text plus more');
+  await flushLocalComposerDraft(app, 'ses_1');
   assert.equal(readLocalComposerDraft('ses_1').draftID, draftID, 'typing in the same draft does not rotate its id');
 });
 
@@ -99,6 +102,7 @@ test('selecting history flushes the old draft and starts a fresh draft id', asyn
   installStorage();
   let { app, textarea, requests } = createApp();
   syncComposerDraft(app, 'old unfinished draft');
+  await flushLocalComposerDraft(app, 'ses_1');
   let oldID = readLocalComposerDraft('ses_1').draftID;
 
   assert.equal(await replaceComposerText(app, 'selected historical message'), true);
@@ -138,6 +142,7 @@ test('deleting the active draft clears the composer and local fallback', async (
   installStorage();
   let { app, textarea, requests } = createApp();
   syncComposerDraft(app, 'delete me');
+  await flushLocalComposerDraft(app, 'ses_1');
   let draftID = readLocalComposerDraft('ses_1').draftID;
 
   assert.equal(await deleteComposerHistoryEntry(app, {
@@ -152,16 +157,16 @@ test('deleting the active draft clears the composer and local fallback', async (
 });
 
 
-test('a successful empty server response clears a stale local draft', async () => {
+test('an empty server response cannot erase a local draft that was not delivered', async () => {
   installStorage();
-  writeLocalComposerDraft('ses_1', { draftID: 'draft_sent', text: 'already delivered' });
+  writeLocalComposerDraft('ses_1', { draftID: 'draft_live', text: 'work in progress' });
   let { app, textarea } = createApp();
 
   await activateComposerDraftSession(app, 'ses_1');
 
-  assert.equal(textarea.value, '');
-  assert.equal(app._state.draft, '');
-  assert.equal(readLocalComposerDraft('ses_1'), null, 'server emptiness wins over the local cache');
+  assert.equal(textarea.value, 'work in progress');
+  assert.equal(app._state.draft, 'work in progress');
+  assert.equal(readLocalComposerDraft('ses_1')?.text, 'work in progress');
 });
 
 test('a delivered draft cannot be restored from a stale server row', async () => {
@@ -217,6 +222,7 @@ test('clearing a sent draft waits for an in-flight save before deleting it', asy
   installStorage();
   let { app, requests } = createApp();
   syncComposerDraft(app, 'send this once');
+  await flushLocalComposerDraft(app, 'ses_1');
   let draftID = readLocalComposerDraft('ses_1').draftID;
   let finishPut;
   let putStarted;

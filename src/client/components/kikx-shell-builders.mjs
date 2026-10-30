@@ -6,6 +6,7 @@ import { stateHasFilters } from '../lib/frame-filters.mjs';
 import { buildScrollLockFloatingButton } from './kikx-scroll-lock.mjs';
 import { createKikxPageContext } from './kikx-chat-scrollview.mjs';
 import { activateComposerDraftSession } from './composer-drafts.mjs';
+import { installComposerValueCapture } from './composer-value-capture.mjs';
 import './kikx-composer-history.mjs';
 import './kikx-emoji-picker.mjs';
 import './kikx-participants-popup.mjs';
@@ -112,6 +113,9 @@ export function renderAppShell(app) {
     // swap can replace the parent too; re-attach from the live node so a
     // confirmation on screen when the send resolved is not silently dropped.
     reattachAnswerNotice(app);
+    let composerInput = app.querySelector?.('textarea[name="message"]');
+    if (composerInput)
+      installComposerValueCapture(composerInput);
     app._afterRender(renderSnapshot);
     activateComposerDraftSession(app, app._state.selectedSessionID).catch((error) => {
       app._state.status = error.message;
@@ -515,6 +519,7 @@ export function buildThreadSection(app, sessionID) {
           .placeholder(hasSelectedSession ? 'Send a message' : 'Create or select a session first')
           .disabled(!hasSelectedSession)
           .onKeydown(app._onComposerKeydown)
+          .onValuechange(app._onComposerValueChange)
           .onInput(app._syncDraft)(app._activeComposerDraftSessionID === sessionID ? app._state.draft : ''),
         div.class('kikx-composer__actions')(
           button
