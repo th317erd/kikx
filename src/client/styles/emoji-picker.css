@@ -1,0 +1,73 @@
+/* Composer `:` typeahead (owner request 2026-10-30).
+   Kept in its own sheet rather than app.css: AGENTS.md caps app.css at 800
+   lines and it is already ~4k. */
+
+/* The picker is a child of form.kikx-composer, which is already
+   position:relative (app.css:1998), so it floats without adding a positioning
+   context to the shared .kikx-composer__input-row grid (app.css:452). */
+.kikx-emoji-picker {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  z-index: 40;
+  margin: 0 0 8px;
+  padding: 6px;
+  box-sizing: border-box;
+  background: var(--surface-2, #1c2128);
+  border: 1px solid var(--border-color, #30363d);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.kikx-emoji-picker[hidden] {
+  display: none;
+}
+
+.kikx-emoji-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kikx-emoji-picker__option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-primary, #e6edf3);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  /* scrollIntoView({block:'nearest'}) honours this, so an arrow-key move never
+     parks the active row flush against the popup's 6px padding edge. */
+  scroll-margin-block: 6px;
+}
+
+.kikx-emoji-picker__option:hover,
+.kikx-emoji-picker__option.is-selected {
+  background: var(--kikx-ember-tint, rgba(249, 115, 22, 0.16));
+  color: var(--text-primary, #e6edf3);
+}
+
+.kikx-emoji-picker__option[aria-selected='true'] {
+  outline: 1px solid var(--kikx-dismiss-accent, #f97316);
+  outline-offset: -1px;
+}
+
+.kikx-emoji-picker__glyph {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.kikx-emoji-picker__code {
+  font-size: 0.85rem;
+  color: var(--text-muted, #8b949e);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}

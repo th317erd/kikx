@@ -2,6 +2,7 @@
 
 import { upsertFrame, upsertSession } from '../state/kikx-state.mjs';
 import { shouldSubmitComposerKey } from './composer-keyboard.mjs';
+import { handleEmojiPickerKeydown, updateEmojiPickerFromComposer } from './composer-emoji.mjs';
 import { ensureAutoScrollAfterSend } from './kikx-frame-scroll-lock.mjs';
 import {
   cancelComposerDraftSave,
@@ -18,6 +19,9 @@ export function syncDraft(app, event) {
   // queue is flushed after this short idle window instead of mid-character.
   app._composerTypingUntil = Date.now() + 300;
   syncComposerDraft(app, app._state.draft);
+  // The `:` typeahead rides this same input event, which already has the
+  // caret, so the picker cannot drift from the value the draft recorded.
+  updateEmojiPickerFromComposer(app, event);
 }
 
 export async function onSubmit(app, event) {
@@ -85,6 +89,11 @@ export async function onSubmit(app, event) {
 }
 
 export function onComposerKeydown(app, event) {
+  // While the emoji picker is open it owns Enter/Arrow/Escape: otherwise
+  // typing `:sm` and pressing Enter would send the literal text `:sm`.
+  if (handleEmojiPickerKeydown(app, event))
+    return;
+
   if (!shouldSubmitComposerKey(event))
     return;
 

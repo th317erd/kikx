@@ -7,6 +7,7 @@ import { buildScrollLockFloatingButton } from './kikx-scroll-lock.mjs';
 import { createKikxPageContext } from './kikx-chat-scrollview.mjs';
 import { activateComposerDraftSession } from './composer-drafts.mjs';
 import './kikx-composer-history.mjs';
+import './kikx-emoji-picker.mjs';
 import './kikx-participants-popup.mjs';
 import './kikx-frame-filter-popup.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
@@ -473,6 +474,14 @@ export function buildThreadSection(app, sessionID) {
   let thinkingRack = document.createElement('kikx-thinking-rack');
   let composerHistory = document.createElement('kikx-composer-history');
   composerHistory.configure({ app, sessionID });
+  // Owner request 2026-10-30: a Slack/Discord-style `:` typeahead, mounted
+  // inside the composer form (see the note at the mount site).
+  // Registered by importing the module at the top of this file; the optional
+  // call keeps a harness that never imported it (mini-dom returns a plain
+  // element there) from throwing, exactly as _toggleComposerHistory?.() does
+  // for the history popover.
+  let emojiPicker = document.createElement('kikx-emoji-picker');
+  emojiPicker.configure?.({ app });
   let historyChevron = createIcon('chevron-left');
   historyChevron.classList.add('kikx-composer-history-button__chevron');
 
@@ -486,6 +495,11 @@ export function buildThreadSection(app, sessionID) {
     ),
     form.class('kikx-composer').onSubmit(app._onSubmit)(
       composerHistory,
+      // The picker lives INSIDE the form, whose .kikx-composer is already
+      // position:relative (app.css:1998), so the popup anchors to the input row.
+      // It must NOT be a .kikx-thread child: that grid is a pinned 3-track
+      // layout (thread-dock-grid-spec:222) and a 4th child mis-assigns the rows.
+      emojiPicker,
       div.class('kikx-composer__input-row')(
         button
           .type('button')
