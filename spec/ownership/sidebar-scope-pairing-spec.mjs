@@ -34,7 +34,7 @@ assert.ok(document);
 
 const { createNavigationStack, pushThread } =
   await import('../../src/client/state/navigation-stack.mjs');
-const { buildSessionObjectItems, filterSessionObjectItems } =
+const { buildSessionObjectItems, filterSessionObjectItems, sidebarScopePredicateFor } =
   await import('../../src/client/components/kikx-sidebar-session-objects.mjs');
 const { createSessionScope } = await import('../../src/client/state/session-scope.mjs');
 
@@ -145,23 +145,38 @@ test('an unscoped viewer keeps nothing, loudly or quietly, never everything', ()
   assert.equal(nullScope.owns('S-VIEW'), false);
 });
 
-test('the shipped sidebar is unwired, so all five controls still render', () => {
+test('the sidebar grants all five, because the ROOT carve-out grants them', () => {
   let items = buildSessionObjectItems(appViewing('S-VIEW'));
 
-  // No scopeFilter supplied: `filterSessionObjectItems` is identity. Wiring
-  // `scope.predicate` here today would drop the account chip, and at the tree
-  // root it would drop all five (every descriptor is unscoped there), so the
-  // seam stays unwired and documented rather than wired and wrong.
+  // An absent filter is identity. That legacy call shape stays pinned, but it is
+  // NOT what production does any more: `buildRunnerShell` hands BOTH clusters
+  // `sidebarScopePredicateFor(...)` (kikx-shell-builders.mjs:261). Reachability
+  // of that wiring is asserted at the module boundary in
+  // sidebar-shell-scope-spec.mjs, because the rendered sidebar is byte-identical
+  // wired or not -- output alone cannot tell a live seam from a dead one.
   assert.deepEqual(filterSessionObjectItems(items).map((item) => item.id), ALL_IDS);
 
   let rootItems = buildSessionObjectItems(appViewing(null));
   assert.deepEqual(
     rootItems.map((item) => item.scopeSessionID),
     [ null, null, null, null, null ],
-    'at the root every descriptor is unscoped, so a scope filter would blank the sidebar',
+    'at the root every descriptor is unscoped',
   );
+
+  // The RAW predicate does blank a root sidebar: `createSessionScope(null)` has
+  // an empty owner set, so every unscoped row answers false. This is measured,
+  // and it is precisely why the shell must not hand `scope.predicate` over.
   assert.deepEqual(
     filterSessionObjectItems(rootItems, createSessionScope(null, SESSIONS).predicate),
     [],
+  );
+
+  // What the shell DOES hand over carries the two documented carve-outs, so the
+  // root cluster survives. Nobody asserted this before, and it is the assertion
+  // that would have caught wiring the raw predicate instead.
+  assert.deepEqual(
+    filterSessionObjectItems(rootItems, sidebarScopePredicateFor(null, SESSIONS)).map((item) => item.id),
+    ALL_IDS,
+    'root owns everything below it, so the shipped predicate must not blank it',
   );
 });
