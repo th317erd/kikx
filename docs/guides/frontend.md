@@ -65,7 +65,16 @@ The magic-link HTML handoff writes the issued session into browser storage and r
 
 ## Rendering and lifecycle rules
 
-- Prefer stable keyed updates over whole-subtree rebuilds.
+> **Current architecture gap (2026-10-30).** AEOR provides reactive leaf
+> bindings and individual component properties, but it does not yet provide a
+> general keyed child/list reconciler or scoped property-store layer. Kikx's
+> shell still contains broad replacement paths. The evidence is in the
+> [client targeted-update audit](../reports/client-targeted-update-audit-2026-10-30.md);
+> the correction design is in the
+> [client targeted-update layer plan](../plans/client-targeted-update-layer.md).
+
+- Prefer stable keyed updates over whole-subtree rebuilds. Prefer property
+  updates and keyed node reuse before any structural rebuild.
 - Keep user-authored drafts and expansion state outside replaceable nodes.
 - Clean AEOR bindings and manual state/document/window listeners on disposal.
 - Preserve focus and scroll anchors when a list truly must be rebuilt.

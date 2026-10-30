@@ -93,6 +93,15 @@ These are architectural invariants, not UI conventions.
     components do not reach into unrelated app fields or mutate DOM state
     directly.
 
+## Related correction work
+
+The shell-replacement cost identified here is also the subject of the
+[client targeted-update audit](../reports/client-targeted-update-audit-2026-10-30.md)
+and its [targeted-update layer plan](./client-targeted-update-layer.md). Phase 4
+below is the bridge between the two plans; user-state durability remains the
+first priority, but node reuse is the durable fix for the whole class of
+snapshot-recovery workarounds.
+
 ## Architecture
 
 ### 1. UserWorkState controllers

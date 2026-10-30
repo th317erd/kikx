@@ -149,6 +149,7 @@ roadmap item is shipped.
 - [Plugin platform campaign](./plans/plugin-platform-campaign.md)
 - [Scrollview campaign](./plans/scrollview-campaign.md)
 - [Client user-state integrity](./plans/client-user-state-integrity.md)
+- [Client targeted-update layer](./plans/client-targeted-update-layer.md)
 - [Session-tree consolidation](./roadmap/session-tree-consolidation.md)
 - [Session work area](./roadmap/session-work-area.md)
 - [Owner UI review, 2026-10-27](./roadmap/reviews/owner-ui-review-2026-10-27.md)
@@ -158,6 +159,7 @@ roadmap item is shipped.
 These dated plans and reports are implementation evidence, not general
 architecture. Their own authority banners govern how they may be used.
 
+- [Client targeted-update audit, 2026-10-30](./reports/client-targeted-update-audit-2026-10-30.md)
 - [Plugin-way gap analysis, 2026-10-29](./reports/plugin-way-gap-analysis-2026-10-29.md)
 - [Discord plugin status, 2026-10-30](./reports/discord-plugin-status-2026-10-30.md)
 - [Sidebar scope seam, 2026-10-30](./reports/sidebar-scope-seam-2026-10-30.md)
