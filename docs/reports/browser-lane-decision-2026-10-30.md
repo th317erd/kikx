@@ -19,7 +19,7 @@ applies_to: development-v3
 |---|---|---|---|---|---|
 | `ui:playwright` | 13 | 18 | `playwright` only | **Yes** | **18/18 pass, EXIT=0** (5 of 6 full-lane runs on disk); 17/18 once, pre-merge |
 | `ui:puppeteer` | 17 | 20 | `puppeteer-core` only | **Yes** | **20/20 pass, EXIT=0** (4 consecutive post-merge full-lane runs) |
-| `ui:stagehand` | 26 | 28 | `@browserbasehq/stagehand` | **No** | **never executed on this host** |
+| `ui:stagehand` | 26 | 28 | `@browserbasehq/stagehand` | **No** | **28/28 fail, EXIT=1** (fresh run at `9e9ec60d`; AereoDB `:6830` refused) |
 
 Import counts are exclusive — `grep -ho "from '...'"` yields exactly one browser
 package per lane (`playwright`, `puppeteer-core`, `@browserbasehq/stagehand`), so
@@ -27,17 +27,42 @@ there is no hidden cross-dependency between them.
 
 ### Why Stagehand is disqualified on evidence, not preference
 
-All 26 Stagehand specs gate on `loadStagehandOpenAIAPIKey()`. `OPENAI_API_KEY` is
-unset and AereoDB on `:6830` is not listening, so **every spec skips** and the lane
-exits **0 having asserted nothing**. That is the "PASS having executed zero tests"
-defect in its purest form: it reports success by doing no work. It also drives a
-real browser through a paid model, so it is slow and non-deterministic even when
-it can run. It is the one lane with **zero** measurements behind it.
+**Measured, not assumed.** A full-lane run of `ui:stagehand` at `9e9ec60d`
+(`node scripts/run-test-lanes.mjs ui:stagehand`, `.gate/v6/stagehand-empty.log`)
+reports `tests 28 / pass 0 / fail 28 / skipped 0` and `LANES_EXIT=1`. All 28 die on
+`AeorDBError: AeorDB request failed: fetch failed` / `ECONNREFUSED 127.0.0.1:6830`,
+raised at `spec/ui/stagehand/stagehand-test-utils.mjs:52` (`exchangeAPIKey`) reached
+via `:33` (`loadStagehandOpenAIAPIKey`). Not one test has ever passed here.
+
+**Correction to an earlier version of this report.** It claimed "every spec skips and
+the lane exits 0 having asserted nothing". That is false on this host, and the
+mechanism explains why: the guard only takes its `t.skip` branch when *neither* a
+Chrome binary nor any key is available. `findChromeExecutable()` resolves
+`/opt/google/chrome/chrome`, and `AEORDB_ROOT_KEY` is present in `.env.dev`, so the
+key path is entered, the `:6830` exchange throws, and the spec fails rather than
+skipping. The `skipped 0` counter in the log is the proof that no skip branch ran.
+"Silent zero-test pass" describes a host with no Chrome *and* no root key; it is not
+what this host does.
+
+**The EMPTY guard is real but unexercised.** `4b55c74e` added it to
+`scripts/run-test-lanes.mjs` (`executed = tests - skipped - failed`; any lane with
+`executed === 0` sets `LANES_EXIT=1`). The code is correct and it is the right
+behaviour, but `spec/scripts/test-lane-coverage-spec.mjs` asserts nothing about it
+(`grep EMPTY` returns no hits) and no run on this host has ever entered that branch.
+Treat it as untested rather than proven.
+
+**What disqualifies Stagehand is simpler and unchanged:** it needs a paid
+`OPENAI_API_KEY` plus a live AereoDB on `:6830`, neither is present, and it has
+never produced a single passing test on this machine. Zero passing tests in a lane's
+history is enough to keep it out of the gate.
 
 ## 2. The two viable lanes barely overlap
 
 Exactly **one** file stem is common to both lanes: `thinking-rack`. The globs are
-disjoint (`*-playwright.mjs` vs `*-puppeteer.mjs`), so `npm test` never sees either.
+disjoint (`*-playwright.mjs` vs `*-puppeteer.mjs`). `npm test` now runs
+`scripts/run-test-lanes.mjs` with no lane argument (`4b55c74e`), so it takes
+`DEFAULT_LANE_NAMES` = `unit` + `ui:playwright`: Playwright is inside the default
+gate, Puppeteer and Stagehand remain outside it.
 The overlap is a name, not a spec: **zero test titles are shared**
 (`comm -12` over the two title lists is empty), and the two `thinking-rack` files
 assert different things. Treat the stem count as a floor on duplication, not a
@@ -231,9 +256,11 @@ it. Either way it is upstream of this repo.
 ## 8. Recommendation
 
 1. **Keep both lanes for now.** Both are green; deletion costs 16 specs of coverage.
-2. **Drop Stagehand.** It cannot run on this host, and when it cannot run it
-   silently reports pass. If it is kept, its specs must fail loudly when the key is
-   missing rather than skip.
+2. **Drop Stagehand.** Measured at `9e9ec60d`: 28/28 fail, 0 pass, 0 skipped, on a
+   refused AereoDB connection. It needs a paid key plus a live `:6830` and has never
+   passed a single test here, so it can gate nothing. If it is kept it must be given
+   credentials and a live AereoDB, because a lane that always fails is as useless as
+   one that always silently passes.
 3. **Port the 16 Puppeteer-only specs to Playwright**, highest-value first:
    `frame-window`, `frame-bottom-scroll`, `tool-output-overflow`,
    `frame-filter-popup`, `hidden-frame-filter`, `mobile-layout`,
