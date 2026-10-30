@@ -17,6 +17,8 @@ const SHIMS = new Map([
   [ 'elements.js', './vendor-elements.mjs' ],
   [ 'query.js', './vendor-query.mjs' ],
   [ 'reactive-state.js', './vendor-reactive-state.mjs' ],
+  [ 'property-store.js', './vendor-property-store.mjs' ],
+  [ 'reconcile.js', './vendor-reconcile.mjs' ],
 ]);
 
 export async function resolve(specifier, context, nextResolve) {

@@ -53,6 +53,7 @@ import {
 import { createQuestionsState } from './questions-state.mjs';
 import { readDebugMode } from '../lib/debug-mode.mjs';
 import { readRawMarkdown } from '../lib/raw-markdown.mjs';
+import { previewStatusStore } from './preview-status-store.mjs';
 import {
   normalizePreferences,
   normalizePreferenceKey,
@@ -371,10 +372,12 @@ export function setQuestions(questions, state = kikxState) {
 
 export function setPreviewsLoading(loading, state = kikxState) {
   state.previewsLoading = loading === true;
+  previewStatusStore.set('loading', state.previewsLoading, { source: 'previews.loading' });
 }
 
 export function setPreviewStatus(status, state = kikxState) {
   state.previewStatus = status || '';
+  previewStatusStore.set('status', state.previewStatus, { source: 'previews.status' });
 }
 
 export function getDeletedSessions(state = kikxState) {

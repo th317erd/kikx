@@ -55,6 +55,7 @@ import {
   holdSessionNameFieldFocus,
 } from './kikx-navigation.mjs';
 import { getCurrentEntry, getScopeNoun, getSessions, getStackDepth } from '../state/kikx-state.mjs';
+import { previewStatusStore } from '../state/preview-status-store.mjs';
 
 // Registration side effects for the popup custom elements hosted by the bar.
 // Imported here directly (not via kikx-shell-builders.mjs) so this module never
@@ -314,15 +315,15 @@ export function buildTopbarActions(app, sessionID = null) {
   // there: the Projects grid is exactly where soft-deleted sessions are listed,
   // so a root header without it strands "show deleted" on the one screen that
   // needs it. Only the participants popup is genuinely session-scoped.
-  let previewSpan = span.class.bindState(
-    (state) => `kikx-workspace__status kikx-auth-status--${state.previewsLoading ? 'pending' : 'ready'}`,
-    ['previewsLoading', 'previewStatus'],
-  )(
-    span.textContent.bindState(
-      (state) => state.previewsLoading ? 'Loading previews…' : (state.previewStatus || ''),
-      ['previewsLoading', 'previewStatus'],
-    )(),
-  );
+  let previewSpan = span.class('kikx-workspace__status')(span()).build(document);
+  let previewText = previewSpan.firstElementChild;
+  let paintPreview = () => {
+    let loading = previewStatusStore.get('loading') === true;
+    previewSpan.className = `kikx-workspace__status kikx-auth-status--${loading ? 'pending' : 'ready'}`;
+    previewText.textContent = loading ? 'Loading previews…' : (previewStatusStore.get('status') || '');
+  };
+  paintPreview();
+  previewSpan.__bindings = [ previewStatusStore.observeAll(paintPreview) ];
 
   let participants = document.createElement('kikx-participants-popup');
   participants.configure({ app, appState: app._state, sessionID });

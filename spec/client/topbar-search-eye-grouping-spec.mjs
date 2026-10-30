@@ -217,3 +217,21 @@ test('the sheet centres and gaps the GROUP, not the bare field', async () => {
   assert.doesNotMatch(fieldRule[1], /margin-left\s*:\s*auto/,
     'the field must not centre itself now that the group does');
 });
+
+test('preview status is a narrow property-store update in the topbar', async () => {
+  let { previewStatusStore } = await import('../../src/client/state/preview-status-store.mjs');
+  let app = makeApp();
+  let actions = buildTopbarActions(app).build(document);
+  let status = actions.querySelector('.kikx-workspace__status');
+
+  previewStatusStore.set('loading', true, { source: 'test.loading' });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.match(status.className, /kikx-auth-status--pending/);
+  assert.equal(status.textContent, 'Loading previews…');
+
+  previewStatusStore.set('loading', false, { source: 'test.loading' });
+  previewStatusStore.set('status', '3 previews ready', { source: 'test.status' });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.match(status.className, /kikx-auth-status--ready/);
+  assert.equal(status.textContent, '3 previews ready');
+});

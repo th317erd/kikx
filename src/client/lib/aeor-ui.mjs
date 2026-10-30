@@ -7,6 +7,13 @@ import { loadOptionalModules } from './optional-import.mjs';
 export { elements, cleanupBindings } from '/vendor/aeor-web-components/elements.js';
 export { ReactiveState } from '/vendor/aeor-web-components/reactive-state.js';
 export { $ } from '/vendor/aeor-web-components/query.js';
+export { PropertyStore, createPropertyStore } from '/vendor/aeor-web-components/property-store.js';
+export {
+  bindProperty,
+  createKeyedList,
+  patchAttributes,
+  patchProperties,
+} from '/vendor/aeor-web-components/reconcile.js';
 
 // Component definitions are optional: if a vendored component is missing the
 // app must still boot and render (the session card falls back to plain

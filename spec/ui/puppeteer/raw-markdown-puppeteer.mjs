@@ -81,6 +81,13 @@ test('Puppeteer Raw mode toggles syntax in place without rebuilding the thread',
       del: 'cool',
     });
 
+    // Let any settling scroll observer finish before taking the baseline. The
+    // assertion is that the Raw toggle itself causes no movement, not that a
+    // deliberate scroll write is instantaneous.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await page.evaluate(() => { document.querySelector('.kikx-frame-list').scrollTop = 180; });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
     await page.evaluate(() => {
       let content = document.querySelector('kikx-frame-item[data-frame-id="raw_1"] .kikx-markdown');
       window.__rawBeforeNode = content;
