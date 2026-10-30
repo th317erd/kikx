@@ -33,7 +33,7 @@ import {
 
 export const CATEGORY_ROWS = FRAME_FILTER_ROWS.filter((row) => row.kind === 'category');
 export const DELETED_ROW = FRAME_FILTER_ROWS.find((row) => row.kind === 'gate')
-  || { key: 'deleted', label: 'Deleted', kind: 'gate' };
+  || { key: 'deleted', label: 'Hidden', kind: 'gate' };
 export const FILTER_ROWS = FRAME_FILTER_ROWS;
 export const CATEGORY_KEYS = FRAME_FILTER_CATEGORY_KEYS;
 export const GATE_KEYS = FRAME_FILTER_GATE_KEYS;
@@ -172,7 +172,7 @@ export function filterButtonSummary(filters) {
     parts.push(`${labelFor(selected[0])} + ${selected.length - 1} more`);
 
   if (normal[DELETED_ROW.key] === true)
-    parts.push('with deleted');
+    parts.push('with hidden');
 
   return parts.join(', ');
 }

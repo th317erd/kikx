@@ -38,7 +38,7 @@ test('threadVisibleFrames drops hidden, soft-deleted and live frames by default'
   assert.deepEqual(threadVisibleFrames(frames).map((frame) => frame.id), [ 'u1', 'm2' ]);
 });
 
-test('threadVisibleFrames reveals soft-deleted frames on request, but never hidden ones', () => {
+test('threadVisibleFrames reveals soft-deleted and hidden frames independently', () => {
   let frames = [
     { id: 'u1', type: 'UserMessage' },
     { id: 'd1', type: 'AgentMessage', deleted: true },
@@ -46,11 +46,20 @@ test('threadVisibleFrames reveals soft-deleted frames on request, but never hidd
     { id: 'hd', type: 'AgentMessage', hidden: true, deleted: true },
   ];
 
-  // The Deleted reveal is the only thing that brings soft-deleted content back.
   assert.deepEqual(
     threadVisibleFrames(frames, { includeDeleted: true }).map((frame) => frame.id),
     [ 'u1', 'd1' ],
-    'hidden frames stay out even when deleted content is revealed',
+    'the deleted reveal does not require the hidden reveal',
+  );
+  assert.deepEqual(
+    threadVisibleFrames(frames, { includeHidden: true }).map((frame) => frame.id),
+    [ 'u1', 'h1' ],
+    'the hidden reveal does not require the deleted reveal',
+  );
+  assert.deepEqual(
+    threadVisibleFrames(frames, { includeHidden: true, includeDeleted: true }).map((frame) => frame.id),
+    [ 'u1', 'd1', 'h1', 'hd' ],
+    'both gates reveal both forms',
   );
 });
 

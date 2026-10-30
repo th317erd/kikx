@@ -16,13 +16,13 @@ import {
 } from '../lib/frame-filters.mjs';
 
 // The eyeball popup: a pinned master checkbox, then one checkbox per frame
-// category, then the Deleted reveal. Every category starts checked and the
+// category, then the Hidden reveal. Every category starts checked and the
 // reveal starts off, so opening the popup changes nothing until the user clicks.
 //
-// "Deleted" is the single control for soft-deleted content of every kind: it
-// reveals soft-deleted messages in the thread AND makes the session grid include
-// the soft-deleted session bucket. There is deliberately no second eye: one
-// popup, one idiom, nothing stranded on a screen the popup does not reach.
+// "Hidden" is the single control for soft-deleted and hidden content: it
+// reveals both in the thread AND makes the session grid include the soft-deleted
+// session bucket. There is deliberately no second eye: one popup, one idiom,
+// nothing stranded on a screen the popup does not reach.
 //
 // Click semantics (deliberately unlike a plain checkbox list):
 //   plain click  - flip that one row
@@ -124,7 +124,7 @@ export class KikxFrameFilterPopup extends HTMLElement {
 
     // No session means no frames on screen (the Projects/session grid). Frame
     // categories would be meaningless there, so the popup keeps only the one
-    // control that still applies: the Deleted reveal, which is what brings
+    // control that still applies: the Hidden reveal, which is what brings
     // soft-deleted sessions back into the grid.
     let hasFrames = Boolean(this._sessionID);
 
@@ -170,7 +170,7 @@ export class KikxFrameFilterPopup extends HTMLElement {
     if (!hasFrames)
       list.hidden = true;
 
-    // The Deleted reveal is not a category, so it sits outside the list, below a
+    // The Hidden reveal is not a category, so it sits outside the list, below a
     // rule, with no count-as-category semantics. It stays inside the scrolling
     // area's sibling group but is visually its own block.
     let gate = document.createElement('div');
@@ -264,6 +264,10 @@ export class KikxFrameFilterPopup extends HTMLElement {
 
   // Paint the checkboxes from state. The pinned row is tri-state, and
   // `indeterminate` is a property only: setting the attribute does nothing.
+  refresh() {
+    this._paint();
+  }
+
   _paint() {
     let filters = this._filters;
 

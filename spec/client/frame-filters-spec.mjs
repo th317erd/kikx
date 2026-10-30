@@ -205,21 +205,19 @@ test('clearing every row empties the thread, including unclassifiable frames', (
   assert.equal(frameMatchesFilters(unknown, allFilters(defaultFrameFilters(), false)), false);
 });
 
-// --- hidden is absolute ----------------------------------------------------
+// --- hidden is revealed by the Hidden gate --------------------------------
 
-test('a hidden frame is never rendered, whatever the filters say', () => {
-  // Every hidden:true producer in src/core is internal machinery. There is no
-  // user-facing "show me the drafts and frame groups" mode, so this is absolute.
+test('a hidden frame is revealed only by the Hidden gate', () => {
   let hiddenUser = { type: 'UserMessage', authorType: 'user', hidden: true };
   assert.equal(frameMatchesFilters(hiddenUser, defaultFrameFilters()), false);
   assert.equal(frameMatchesFilters(hiddenUser, allFilters(defaultFrameFilters(), true)), false);
-  assert.equal(frameMatchesFilters(hiddenUser, toggleFilter(defaultFrameFilters(), 'deleted')), false);
+  assert.equal(frameMatchesFilters(hiddenUser, toggleFilter(defaultFrameFilters(), 'deleted')), true);
   assert.equal(frameMatchesFilters(hiddenUser, toggleFilter(defaultFrameFilters(), 'user')), false);
 });
 
-test('a frame that is both hidden and deleted stays hidden', () => {
+test('a frame that is both hidden and deleted is revealed by the same gate', () => {
   let frame = { type: 'UserMessage', authorType: 'user', hidden: true, deleted: true };
-  assert.equal(frameMatchesFilters(frame, toggleFilter(defaultFrameFilters(), 'deleted')), false);
+  assert.equal(frameMatchesFilters(frame, toggleFilter(defaultFrameFilters(), 'deleted')), true);
 });
 
 // --- deleted is a reveal ------------------------------------------------
@@ -294,7 +292,7 @@ test('Ctrl+Click on the reveal turns it on without emptying the categories', () 
   assert.equal(filterSummary(onlyReveal), 'on');
 });
 
-test('filterCounts counts categories and deleted frames separately, and ignores hidden', () => {
+test('filterCounts includes hidden frames in the Hidden gate and its categories', () => {
   let frames = [
     { type: 'UserMessage', authorType: 'user' },
     { type: 'AgentMessage', authorType: 'agent' },
@@ -305,13 +303,13 @@ test('filterCounts counts categories and deleted frames separately, and ignores 
     { type: 'UserMessage', authorType: 'user', hidden: true },
   ];
   let counts = filterCounts(frames);
-  assert.equal(counts.user, 2, 'the hidden message is not part of the user model');
+  assert.equal(counts.user, 3, 'the hidden message is part of the user model');
   assert.equal(counts.agent, 2);
   assert.equal(counts.question, 1);
   assert.equal(counts.tools, 1);
   assert.equal(counts.compaction, 1);
   assert.equal(counts.commands, 0);
-  assert.equal(counts.deleted, 1, 'and the deleted one is also counted as Deleted');
+  assert.equal(counts.deleted, 2, 'the hidden and deleted rows are counted by the Hidden gate');
   for (let key of FILTER_KEYS)
     assert.equal(typeof counts[key], 'number');
 });

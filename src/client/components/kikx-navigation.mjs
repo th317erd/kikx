@@ -374,6 +374,9 @@ export function setFrameFilters(app, filters) {
 
   app._frameLoadSignature = signature;
   app._state.frameFilters = next;
+  // A filter change can originate outside the popup (the header clear button).
+  // Repaint its checkboxes without rebuilding the shell or moving focus.
+  app.querySelector?.('kikx-frame-filter-popup')?.refresh?.();
   // Apply the new selection to the mounted page source immediately. The
   // server window scan can take seconds on a large session; leaving the old
   // unfiltered page on screen until it returns is what made a filter click look
@@ -485,6 +488,7 @@ export function clearFrameFilters(app) {
 export function applyWindowQuery(app, value) {
   let query = typeof value === 'string' ? value : '';
   app._state.sessionSearch = query;
+  paintSearchClear(app);
 
   if (!app._state.selectedSessionID) {
     cancelPendingWindowQuery(app);

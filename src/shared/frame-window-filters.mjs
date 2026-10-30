@@ -35,7 +35,7 @@ export const FRAME_FILTER_ROWS = Object.freeze([
   Object.freeze({ key: 'tools', label: 'Tools', kind: 'category' }),
   Object.freeze({ key: 'commands', label: 'Commands', kind: 'category' }),
   Object.freeze({ key: 'compaction', label: 'Compaction', kind: 'category' }),
-  Object.freeze({ key: 'deleted', label: 'Deleted', kind: 'gate' }),
+  Object.freeze({ key: 'deleted', label: 'Hidden', kind: 'gate' }),
 ]);
 
 export const FRAME_FILTER_CATEGORY_KEYS = Object.freeze(
@@ -488,7 +488,8 @@ export function frameMatchesQuery(frame, query = DEFAULT_FRAME_QUERY) {
 //   1. `hidden` is absolute. System-only records are never shown, whatever the
 //      user selects — there is no category that can rescue them.
 //   2. `phantom` and `MessageDone` are transport scaffolding, never content.
-//   3. `deleted` is a gate: soft-deleted frames appear only when Deleted is on.
+//   3. `deleted` is the Hidden gate: soft-deleted and hidden frames appear only
+//      when Hidden is on.
 //   4. categories are ANY-of.
 //   5. the text query must match.
 //
@@ -501,19 +502,17 @@ export function frameMatchesWindowFilters(frame, filters, query = DEFAULT_FRAME_
   if (!frame)
     return false;
 
-  // `hidden` is not read directly: a coordination wake (the instruction that
-  // wakes an invited bot) is `hidden: true` on disk and in agent context but is
-  // meant to be read in the thread. `isThreadVisibleFrame` owns that judgement,
-  // and the client's render gate calls it too, so the served window and the
-  // rendered thread cannot disagree about which frames exist.
-  if (!isThreadVisibleFrame(frame))
+  let normal = normalizeWindowFilters(filters);
+
+  // The Hidden gate reveals hidden frames as well as soft-deleted frames.
+  // Coordination wakes remain visible without the gate; every other hidden
+  // frame needs it. isThreadVisibleFrame owns the wake exception.
+  if (!isThreadVisibleFrame(frame) && normal.deleted !== true)
     return false;
   if (frame.phantom === true)
     return false;
   if (isNeverVisibleType(frame.type))
     return false;
-
-  let normal = normalizeWindowFilters(filters);
 
   if (frame.deleted === true && normal.deleted !== true)
     return false;
@@ -546,12 +545,12 @@ export function frameFilterCounts(frames = []) {
   let counts = emptyFilterCounts();
 
   for (let frame of Array.isArray(frames) ? frames : []) {
-    if (!frame || frame.hidden === true || frame.phantom === true)
+    if (!frame || frame.phantom === true)
       continue;
     if (isNeverVisibleType(frame.type))
       continue;
 
-    if (frame.deleted === true)
+    if (frame.deleted === true || frame.hidden === true)
       counts.deleted += 1;
 
     for (let key of frameFilterCategories(frame))
@@ -576,7 +575,7 @@ export function frameFilterCounts(frames = []) {
 //
 // Two rows cannot be answered from paths and are returned as `null` rather
 // than as a confident 0:
-//   - `deleted`, because soft-deletion is a body field;
+//   - `deleted`, because soft-deletion/hidden state is a body field;
 //   - the reference half of `session`, because a link to a child session lives
 //     in the body. The type-derived Session/SessionSpawn frames are counted.
 export function countFilterMatches(paths = []) {

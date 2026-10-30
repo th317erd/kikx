@@ -390,7 +390,9 @@ function syncFrameThreadBody(app, sessionID, options) {
   if (!body)
     return;
 
-  let frames = threadRenderFrames(getSelectedFrames(app._state), app._state.frameFilters);
+  let frames = threadRenderFrames(getSelectedFrames(app._state), {
+    includeHidden: app._state.frameFilters?.deleted === true,
+  });
   let view = body.querySelector('kikx-chat-view');
   if (frames.length === 0 || !view) {
     let previousFrameList = app.querySelector('.kikx-frame-list');

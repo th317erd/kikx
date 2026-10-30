@@ -92,12 +92,13 @@ test('windowFiltersAreDefault treats the untouched view as the fast path', () =>
 
 // --- hidden / phantom gates ------------------------------------------------
 
-test('hidden frames are never visible, even with every row on', () => {
+test('hidden frames are visible only with the Hidden gate', () => {
   let hidden = msg({ hidden: true });
 
-  assert.equal(frameMatchesWindowFilters(hidden, allOn()), false);
+  assert.equal(frameMatchesWindowFilters(hidden, allOn()), true);
   assert.equal(frameMatchesWindowFilters(hidden, only('user')), false);
   assert.equal(frameMatchesWindowFilters(hidden, only()), false);
+  assert.equal(frameMatchesWindowFilters(hidden, only('user', 'deleted')), true);
 });
 
 test('phantom frames and MessageDone are never visible', () => {
@@ -139,12 +140,12 @@ test('a soft-deleted user message needs the Deleted gate', () => {
   assert.equal(frameMatchesWindowFilters(deletedMessage, only('user', 'deleted')), true);
 });
 
-test('the Deleted gate alone does not resurrect a hidden frame', () => {
+test('the Hidden gate resurrects a frame that is both hidden and deleted', () => {
   // redactUserMessageFrame sets hidden AND deleted together
-  // (frame-runtime-composer.mjs:102-103). Hidden stays absolute.
+  // (frame-runtime-composer.mjs:102-103). The Hidden gate covers both fields.
   let redacted = msg({ hidden: true, deleted: true });
 
-  assert.equal(frameMatchesWindowFilters(redacted, only('user', 'deleted')), false);
+  assert.equal(frameMatchesWindowFilters(redacted, only('user', 'deleted')), true);
 });
 
 test('live frames are not hidden by the Deleted gate being off', () => {
@@ -327,8 +328,8 @@ test('filterCounts badge every row and skip what cannot be revealed', () => {
 
   let counts = frameFilterCounts(frames);
 
-  assert.equal(counts.user, 2, 'live + deleted user, not the hidden one');
-  assert.equal(counts.deleted, 1);
+  assert.equal(counts.user, 3, 'live, deleted and hidden user frames');
+  assert.equal(counts.deleted, 2, 'hidden and deleted are both behind the Hidden gate');
   assert.equal(counts.question, 1);
   assert.equal(counts.agent, 1);
   assert.equal(counts.tools, 0);

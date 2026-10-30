@@ -614,7 +614,9 @@ export function buildFrameThread(app) {
   }
 
   let allFrames = getSelectedFrames(app._state);
-  let frames = threadRenderFrames(allFrames, app._state.frameFilters)
+  let frames = threadRenderFrames(allFrames, {
+    includeHidden: app._state.frameFilters?.deleted === true,
+  })
     .filter((frame) => frame && !frame.deleted);
   if (frames.length === 0) {
     // A failed load leaves no frames behind, so this state used to fall through

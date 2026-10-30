@@ -141,3 +141,26 @@ test('a duplicated raw delivery projects to one page item', async () => {
   let result = await source.loadPage({ pageIndex: 0 });
   assert.deepEqual(result.items.map((item) => item.key), [ 'user_1' ]);
 });
+
+test('the Hidden gate reveals hidden and soft-deleted raw heads', async () => {
+  let page = rawPage(0, [
+    { id: 'visible_1', type: 'UserMessage', order: 1, authorType: 'user', content: { text: 'visible' } },
+    { id: 'hidden_2', type: 'UserMessage', order: 2, authorType: 'user', hidden: true, content: { text: 'hidden' } },
+    { id: 'deleted_3', type: 'UserMessage', order: 3, authorType: 'user', deleted: true, content: { text: 'deleted' } },
+  ]);
+  let filters = defaultFrameWindowFilters();
+  let source = new KikxThreadPageSource({
+    pageSize: 120,
+    totalRawFrames: 3,
+    loadPage: async (index) => index === 0 ? page : null,
+    getFilters: () => filters,
+    getQuery: () => '',
+  });
+
+  let hiddenOff = await source.loadPage({ pageIndex: 0 });
+  assert.deepEqual(hiddenOff.items.map((item) => item.frame.id), [ 'visible_1' ]);
+
+  filters.deleted = true;
+  let hiddenOn = await source.loadPage({ pageIndex: 0 });
+  assert.deepEqual(hiddenOn.items.map((item) => item.frame.id), [ 'visible_1', 'hidden_2', 'deleted_3' ]);
+});

@@ -66,4 +66,11 @@ test('live frames respect category filters and the deleted gate', () => {
     deleted: true,
     content: { text: 'deleted text' },
   }, 'ses_1', state), false);
+
+  let hiddenReveal = { ...state, frameFilters: { ...state.frameFilters, user: true, deleted: true } };
+  assert.equal(incomingFrameMatchesWindow({
+    type: 'UserMessage',
+    hidden: true,
+    content: { text: 'hidden text' },
+  }, 'ses_1', hiddenReveal), true);
 });

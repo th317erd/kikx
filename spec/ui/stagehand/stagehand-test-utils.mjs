@@ -13,7 +13,7 @@ import {
 } from '../../../src/core/mentions/index.mjs';
 import { createServer } from '../../../src/server/create-server.mjs';
 import { CORE_TAG_DEFINITIONS } from '../../../src/core/tags/tag-definitions.mjs';
-import { isThreadVisibleFrame } from '../../../src/shared/coordination-visibility.mjs';
+import { frameMatchesWindowFilters } from '../../../src/shared/frame-window-filters.mjs';
 
 let cachedOpenAIAPIKey = null;
 
@@ -289,15 +289,14 @@ class StagehandFrameRuntime extends EventEmitter {
   async listFrameWindow(sessionID, options = {}) {
     let limit = Number.isInteger(options.limit) ? options.limit : 100;
     let before = options.before;
-    // Ask the SAME predicate the production window projection uses
-    // (`isPreviewVisibleFrame` -> `isThreadVisibleFrame`) rather than re-deriving
-    // `hidden !== true` here. A hand-copied filter is how this fixture drifted
-    // from the server once already: production admitted a coordination wake and
-    // the fixture silently dropped it, so the browser spec failed on its fixture
-    // instead of on the shipped code. Deleted/phantom stay local because they
-    // are fixture concerns rather than visibility policy.
+    // Use the production predicate, including the Hidden gate. A hand-copied
+    // `hidden !== true` filter is how this fixture drifted from the server
+    // before; the browser lane must exercise the same visibility policy.
+    let filters = options.filters ?? null;
+    // Query matching remains covered by the production/store specs; this
+    // fixture models the visibility gate without reimplementing fuzzy search.
     let frames = (this.framesBySessionID.get(sessionID) || [])
-      .filter((frame) => frame && isThreadVisibleFrame(frame) && frame.deleted !== true && frame.phantom !== true);
+      .filter((frame) => frameMatchesWindowFilters(frame, filters, ''));
     let eligible = before == null
       ? frames
       : frames.filter((frame) => frame.order == null || frame.order < before);

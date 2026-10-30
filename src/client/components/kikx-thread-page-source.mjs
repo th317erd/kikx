@@ -110,8 +110,8 @@ export class KikxThreadPageSource {
     let query = this.getQuery?.() || '';
     if (filters)
       heads = heads.filter((frame) => frameMatchesWindowFilters(frame, filters, query));
-    heads = threadRenderFrames(heads)
-      .filter((frame) => frame.deleted !== true);
+    heads = threadRenderFrames(heads, { includeHidden: filters?.deleted === true })
+      .filter((frame) => frame.deleted !== true || filters?.deleted === true);
     // A projected head can be emitted from two adjacent raw windows during a
     // tool call/result seam. Keep one row per frame id even if the seam logic
     // ever sees the same head twice.

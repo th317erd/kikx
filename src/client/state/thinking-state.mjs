@@ -34,7 +34,7 @@ export function isLiveThreadFrame(frame) {
 // repeats the command (and its output) as two adjacent cards. Hide the call
 // only when its visible result is in the same window, so a running call remains
 // visible until the result arrives.
-export function threadVisibleFrames(frames = [], { includeDeleted = false } = {}) {
+export function threadVisibleFrames(frames = [], { includeDeleted = false, includeHidden = false } = {}) {
   let completedCallIDs = new Set();
   let completedCallFrameIDs = new Set();
   // `hidden` is system-only bookkeeping and is dropped, with one deliberate
@@ -44,8 +44,8 @@ export function threadVisibleFrames(frames = [], { includeDeleted = false } = {}
   // the server's window projection cannot disagree.
   // `deleted` is soft-deleted content the user may still want back, so it is
   // dropped only while the Deleted reveal is off.
-  let isGated = (frame) => !isThreadVisibleFrame(frame)
-    || (frame.deleted === true && includeDeleted !== true);
+  let isGated = (frame) => ((!isThreadVisibleFrame(frame) && !(includeHidden === true && frame.hidden === true))
+    || (frame.deleted === true && includeDeleted !== true));
 
   for (let frame of frames) {
     if (!frame || isGated(frame) || !isToolResultFrame(frame))
@@ -89,8 +89,8 @@ export function threadVisibleFrames(frames = [], { includeDeleted = false } = {}
 // stays true even if a frame reaches the client through an event rather than a
 // window fetch. `isThreadVisibleFrame` is that rule: `hidden` stays absolute for
 // bookkeeping, except for a coordination wake a person is meant to see.
-export function threadRenderFrames(frames = []) {
-  return threadVisibleFrames(frames, { includeDeleted: true });
+export function threadRenderFrames(frames = [], options = {}) {
+  return threadVisibleFrames(frames, { includeDeleted: true, ...options });
 }
 
 // True when the session has frames a person could ever have seen, whether or

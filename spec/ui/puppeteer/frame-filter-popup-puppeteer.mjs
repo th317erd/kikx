@@ -120,7 +120,7 @@ test('Puppeteer drives the frame-filter popup by its label, keeps badges absolut
     // 3) The clear button resets the query and every popup row at once.
     await page.evaluate(() => {
       let input = document.querySelector('.kikx-session-search__input');
-      input.value = 'frame';
+      input.value = 'AgentMessage';
       input.dispatchEvent(new Event('input', { bubbles: true }));
     });
     await waitForCondition(

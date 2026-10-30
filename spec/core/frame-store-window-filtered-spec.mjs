@@ -175,17 +175,23 @@ test('a deleted frame stays hidden while the Deleted gate is off', async () => {
   assert.deepEqual(window.frames.map((frame) => frame.content.text), [ 'keep' ]);
 });
 
-test('hidden frames are unreachable even with Deleted on', async () => {
+test('hidden frames are revealed by the Hidden gate', async () => {
   let { aeordb, store } = createStore();
   addFrame(aeordb, 1, 'UserMessage', { content: { text: 'visible' } });
-  addFrame(aeordb, 2, 'UserMessage', { hidden: true, deleted: true, content: { text: 'bookkeeping' } });
+  addFrame(aeordb, 2, 'UserMessage', { hidden: true, content: { text: 'hidden' } });
+  addFrame(aeordb, 3, 'UserMessage', { hidden: true, deleted: true, content: { text: 'hidden and deleted' } });
 
-  let window = await store.listFrameWindow('ses_1', {
+  let hiddenOff = await store.listFrameWindow('ses_1', {
+    limit: 10,
+    filters: onlyFilters('user'),
+  });
+  assert.deepEqual(hiddenOff.frames.map((frame) => frame.content.text), [ 'visible' ]);
+
+  let hiddenOn = await store.listFrameWindow('ses_1', {
     limit: 10,
     filters: onlyFilters('user', 'deleted'),
   });
-
-  assert.deepEqual(window.frames.map((frame) => frame.content.text), [ 'visible' ]);
+  assert.deepEqual(hiddenOn.frames.map((frame) => frame.content.text), [ 'visible', 'hidden', 'hidden and deleted' ]);
 });
 
 // --- type pushdown -------------------------------------------------------
