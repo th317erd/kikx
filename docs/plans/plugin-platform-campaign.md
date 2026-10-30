@@ -831,6 +831,16 @@ Still open:
   `3 !== 2` on exactly the reload test while the other five still pass. `subscribe()`
   also carried a dead branch (both arms returned `true`) and two comments promising a
   flush of queued events that does not exist; the comments now say what the code does;
+- the `ui:playwright` lane has **one** failure that is not this repo's:
+  `inbox-frame-visual-parity-playwright.mjs` 404s on
+  `vendor/aeor-web-components/components/aeor-scrollview.js`. That file exists on the
+  vendored framework's own `origin/main`; the checkout at
+  `/home/wyatt/Projects/aeor-web-components` is 7 commits behind it and has never
+  contained the file. So the lane is red on a stale vendor checkout, not on Kikx
+  code. Fixing it means updating that checkout (a different repo) or vendoring the
+  file; deliberately not done here. Worth noting that the lane is now honest enough
+  to show this at all: before the resolver fix it executed 2 tests and skipped 14,
+  and now it executes 17 with 0 skipped;
 - demonstrating install/reload/unload on a live boot from P7 (needs the host-side
   `deploy.sh`; there is no unload HTTP route today — `/api/v1/plugins` exposes GET
   inventory plus POST `/install` and POST `/reload` only).
