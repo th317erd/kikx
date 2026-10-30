@@ -20,6 +20,7 @@ import {
   getQuestionsState,
   getScopeNoun,
   getSelectedFrames,
+  getScopeSessionID,
   getSelectedSession,
   getSessionPreviews,
   getSessions,
@@ -38,7 +39,7 @@ import {
   syncSessionNameEdit,
 } from './kikx-navigation.mjs';
 // Owner point 2: User / Account / Agents / Teams / Sign out as sidebar session objects.
-import { buildSidebarSessionObjects } from './kikx-sidebar-session-objects.mjs';
+import { buildSidebarSessionObjects, sidebarScopePredicateFor } from './kikx-sidebar-session-objects.mjs';
 import { buildInboxSidebarEntry, buildInboxView } from './kikx-inbox-view.mjs';
 import { buildAgentsView, buildTeamsView } from './kikx-agent-team-views.mjs';
 import { STATUSBAR_STAT_LABELS, buildStatusBarStats } from '../state/statusbar-stats.mjs';
@@ -238,6 +239,26 @@ export function buildEditableTitle(app, title, sessionID) {
 
 export function buildRunnerShell(app) {
   let entry = getCurrentEntry(app._state);
+
+  // The sidebar scope seam is WIRED HERE -- this is its only production call
+  // site. `filterSessionObjectItems` grants everything when handed no filter, so
+  // before this line existed the entire session-scoping layer
+  // (createSessionScope / filterItemsInScope / filterSessionsInScope) had zero
+  // production callers and nothing noticed: the sidebar rendered identically
+  // either way.
+  //
+  // `scopeFilter` is built from the VIEWED session (getScopeSessionID), which is
+  // the session the sidebar is showing and the one its descriptors are stamped
+  // with. That is what makes the seam answerable: an item owned by a session
+  // outside `visible = {viewed} + ancestors(viewed)` is denied.
+  //
+  // What this wiring must NOT be trusted to do: change the sidebar's appearance
+  // today. Every non-chip descriptor carries the viewed session's own id, so a
+  // correct predicate grants all of them and the cluster looks the same. The
+  // reachability and the decisions are pinned in
+  // spec/client/sidebar-shell-scope-spec.mjs; a visible difference needs a row
+  // owned by a DIFFERENT session, which no builder emits yet.
+  let scopeFilter = sidebarScopePredicateFor(getScopeSessionID(app._state), getSessions(app._state));
   // A view entry displaces the work area; the stack decides which one is on top
   // (plan §6: Inbox). Activities was removed at the owner's request
   // (2026-10-28): its counts now live in the status bar.
@@ -258,12 +279,12 @@ export function buildRunnerShell(app) {
         // Owner item 2 (2026-10-27): "Agents and Teams should go up into the
         // 'Session View' items. They are views into the session tree, so
         // they render here with Inbox and Activities, above the tree.
-        buildSidebarSessionObjects(app, { group: 'view' }),
+        buildSidebarSessionObjects(app, { group: 'view', scopeFilter }),
         // Owner points 2, 5, 6: the identity controls stay at the FOOT of the
         // session-tree pane (CSS pushes them down with `margin-top: auto`). All
         // five are session objects, so they live in this pane and nowhere else --
         // the top bar renders none of them.
-        buildSidebarSessionObjects(app, { group: 'footer' }),
+        buildSidebarSessionObjects(app, { group: 'footer', scopeFilter }),
       ),
       // A view replaces the work area while it is the top stack entry; Back pops
       // to whatever window was underneath.
