@@ -202,6 +202,62 @@ function createStoreClient() {
   };
 }
 
+// --- rung 4: tree-aware coordinator resolution -----------------------------
+//
+// The residue this closes: rung 4 used to read `session.coordinatorAgentID`
+// only, so a coordinator INHERITED from an ancestor session was invisible to
+// selection even when it was a participant of the compacting session and named
+// as owner by `resolveSessionCoordinator`. These three tests pin the boundary:
+// inherited counts as a designation, forced promotion does NOT, and without a
+// session lookup the rung degrades to the local field as before.
+
+test('rung 4 accepts a coordinator INHERITED from an ancestor session', () => {
+  // 'root' coordinates the parent and is a participant of the child. The child
+  // stores no coordinator of its own -- resolution derives it.
+  let sessions = new Map([
+    [ 'P', { id: 'P', parentSessionID: null, participantAgentIDs: [ 'root' ], coordinatorAgentID: 'root' } ],
+    [ 'C', { id: 'C', parentSessionID: 'P', participantAgentIDs: [ 'root', 'big' ], coordinatorAgentID: null } ],
+  ]);
+
+  let result = selectCompactor({
+    session: sessions.get('C'),
+    participantAgentsWithMeta: [ { id: 'root', window: 32768 }, { id: 'big', window: 200000 } ],
+    getSession: (id) => sessions.get(id) || null,
+  });
+
+  // Before this change: reason LARGEST, agentID 'big'.
+  assert.deepEqual(result, { agentID: 'root', reason: COMPACTOR_REASON.COORDINATOR });
+});
+
+test('rung 4 does NOT treat a forced promotion as a designation', () => {
+  // No session in the chain names a coordinator, so resolution force-promotes
+  // the highest participant-holding session's first bot. That fallback is not
+  // an assignment (same rule the old comment encoded), so rung 5 must still win.
+  let sessions = new Map([
+    [ 'C', { id: 'C', parentSessionID: null, participantAgentIDs: [ 'a', 'b' ], coordinatorAgentID: null } ],
+  ]);
+
+  let result = selectCompactor({
+    session: sessions.get('C'),
+    participantAgentsWithMeta: [ { id: 'a', window: 50000 }, { id: 'b', window: 200000 } ],
+    getSession: (id) => sessions.get(id) || null,
+  });
+
+  assert.deepEqual(result, { agentID: 'b', reason: COMPACTOR_REASON.LARGEST });
+});
+
+test('rung 4 without a session lookup still honours only the local field', () => {
+  // Documents the degradation: no tree in scope means an inherited coordinator
+  // is simply not visible, and selection stays on the largest window. This is
+  // the pre-existing behaviour, kept deliberately rather than inferred.
+  let result = selectCompactor({
+    session: { id: 'C', parentSessionID: 'P', participantAgentIDs: [ 'root', 'big' ], coordinatorAgentID: null },
+    participantAgentsWithMeta: [ { id: 'root', window: 32768 }, { id: 'big', window: 200000 } ],
+  });
+
+  assert.deepEqual(result, { agentID: 'big', reason: COMPACTOR_REASON.LARGEST });
+});
+
 function participants(...windows) {
   return windows.map((window, index) => ({
     id: String.fromCharCode(97 + index),
