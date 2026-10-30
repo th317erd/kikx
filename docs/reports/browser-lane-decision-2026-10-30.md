@@ -18,7 +18,7 @@ applies_to: development-v3
 | Lane | Specs | Tests | Deps | Runs here? | Latest result |
 |---|---|---|---|---|---|
 | `ui:playwright` | 13 | 18 | `playwright` only | **Yes** | **18/18 pass, EXIT=0** (5 of 6 full-lane runs on disk); 17/18 once, pre-merge |
-| `ui:puppeteer` | 17 | 20 | `puppeteer-core` only | **Yes** | **20/20 serial / 19/20 concurrent, EXIT=1** — `frame-window` races the eager page preload (§7) |
+| `ui:puppeteer` | 17 | 20 | `puppeteer-core` only | **Yes** | **Flaky: 4/6 concurrent runs green, 2 red (19/20)** — `frame-window` races the eager page preload (§7). Not a deterministic red |
 | `ui:stagehand` | 26 | 28 | `@browserbasehq/stagehand` | **No** | **28/28 fail, EXIT=1** (fresh run at `9e9ec60d`; AereoDB `:6830` refused) |
 
 Import counts are exclusive — `grep -ho "from '...'"` yields exactly one browser
@@ -211,32 +211,55 @@ it. Either way it is upstream of this repo.
 **Proven**
 - Playwright 18/18 EXIT=0 and Puppeteer 20/20 EXIT=0 at HEAD `8722b4e1`,
   sequentially, no Chrome contention.
-- **Puppeteer is green only when the lane is serialised.** Measured at HEAD
-  `410e1dc2`, same tree, same `src/` (`git diff 6c923a3f..410e1dc2 -- src/` is
-  empty, so this is not a merge regression):
-  - concurrent (default), `node --test --test-timeout=60000 'spec/ui/puppeteer/*-puppeteer.mjs'`
-    -> `V8_PP_EXIT=1`, `tests 20 / pass 19 / fail 1`; `.gate/v10/pp.log` reproduces it.
-  - serialised, `--test-concurrency=1` -> `V11_SERIAL_EXIT=0`, `20 / 20 / 0 / 0`.
-  - `frame-window` alone -> 3/3 green (`.gate/v9/fw-{1,2,3}.log`).
+- **`frame-window` is INTERMITTENTLY red under the lane's default concurrency —
+  2 red in 6 runs, not "red".** All six runs at HEAD `d2598f42`, clean tree, no
+  other lane running; `git diff 6c923a3f..d2598f42 -- src/` is empty, so this is
+  not a merge regression:
+
+  | run | mode | result |
+  | --- | --- | --- |
+  | `.gate/v8/pp.log` (16:51) | concurrent (default) | `EXIT=1`, 19/20 |
+  | `.gate/v10/pp.log` (16:54) | concurrent (default) | `EXIT=1`, 19/20 |
+  | `.gate/v15/pp.log` | concurrent (default) | `EXIT=0`, 20/20 |
+  | `.gate/v15/pp-{2,3,4}.log` | concurrent (default) | `EXIT=0`, 20/20 each |
+  | `.gate/v11/pp-serial.exit` | `--test-concurrency=1` | `EXIT=0`, 20/20 |
+
+  **An earlier revision of this section claimed "Puppeteer is green only when the
+  lane is serialised". That was wrong** and is retracted: four consecutive
+  concurrent runs are green. The failure is a race, not a serialisation
+  requirement, and it must not be quoted as a deterministic red.
 
   The failing assertion is `rendered window is bounded by the page cap (140 <= 120)`
-  at `frame-window-puppeteer.mjs:109:12`. Mechanism, sampled in a real browser
-  (`.gate/v12/probe.log`, 9 samples): <=300 ms after `window_msg_139` appears the DOM
-  holds **20** items with `windowStart 120` and page 0 unloaded; from ~550 ms on it
-  stably holds **140** with `windowStart 0` and page 0 loaded (120 + 20 items). The
-  spec samples at a fixed `delay(300)`, which straddles that transition. Under lane
-  load the mount takes longer, so the preload has already completed by the time the
-  timer starts.
+  at `frame-window-puppeteer.mjs:109:12`. The tell is duration: the red at
+  `.gate/v8` failed in 7915 ms while the green at `.gate/v15` passed in 8195 ms —
+  near-identical elapsed, opposite verdict. Mechanism, sampled in a real browser
+  (`.gate/v12/probe.log`, 9 samples): <=300 ms after `window_msg_139` appears the
+  DOM holds **20** items with `windowStart 120` and page 0 unloaded; from ~550 ms
+  on it stably holds **140** with `windowStart 0` and page 0 loaded (120 + 20
+  items). The spec samples at a fixed `delay(300)`, which straddles that transition.
 
-  So the earlier "four consecutive post-merge greens" were four runs of a spec that
-  happens to win the race on this host when run serially, not evidence of a bounded
-  window. `898a33b0` set out to "render 120 initial frames instead of 200"; the
-  settled DOM at this fixture size is 140, because `PAGE_SIZE` (120) equals
-  `MAX_RENDERED_FRAMES` (120) and 140 frames is two pages. Whether that overshoot is
-  intended page granularity or a missed trim is an **open product decision**, not a
-  spec defect: waiting for settle without changing the product makes the spec
-  deterministically red. Tracked as todo "frame-window Puppeteer spec is
-  concurrency-dependent".
+- **The assertion is semantically wrong, which is why it both races and cannot
+  catch a cap regression.** `MAX_RENDERED_FRAMES` does double duty and the spec
+  conflates the two roles:
+  - `kikx-chat-view.mjs:474` — `pageSize: MAX_RENDERED_FRAMES` handed to
+    `KikxChatScrollView`. On the shared path the constant **is the page size**.
+  - `kikx-chat-view.mjs:359-360` — `_resolveWindow`'s default `maxRendered`,
+    reached only on the **legacy** path that `_canUseShared()` (`:63-64`) bypasses.
+    The header comment at `:12-15` ("only a recent window is kept in the DOM")
+    describes that legacy path.
+
+  Arithmetic: `FRAME_COUNT` 140 with `PAGE_SIZE` 120 is **two** pages, so a fully
+  loaded thread is 140 items and `count <= 120` is false *by construction*. The
+  assertion therefore measures "has page 0 finished loading yet" — exactly what the
+  fixed `delay(300)` is racing. It is also why the `120 -> 800` mutation survives
+  (§ "A surviving mutation"): with pageSize 800 the 140-frame fixture is one page,
+  `140 <= 800` passes, and the DOM size is unchanged.
+
+  Whether the 140-item settled DOM is intended page granularity or a missed trim is
+  an **open product decision**, not a spec defect. Waiting for settle without a
+  product change makes the spec deterministically red; weakening the assertion to
+  get a green is how the `120 -> 800` mutation survived in the first place.
+  Tracked as todo 15848cf2, which subsumes 55fe281e.
 
   **The settled DOM is bounded by page count, not by the frame constant.** Same
   probe, three fixture sizes, sampled to ~2 s, no user scroll at any point:
@@ -260,7 +283,9 @@ it. Either way it is upstream of this repo.
   constant, or (b) the preload should be trimmed to honour the documented render
   cap. This report does not decide it. What it does establish is that **the
   existing spec cannot distinguish them**: its assertion samples at 300 ms, before
-  the preload lands.
+  the preload lands, and the assertion arithmetic (`140 <= 120`) is unsatisfiable
+  once both pages are loaded — which is also why the `120 -> 800` mutation
+  survives rather than being caught.
 - **Three consecutive Playwright full-lane greens post-merge**: `.gate/final-pl.log`
   16:21:40, `.gate/post-cre-pl.log` 16:25:01, `.gate/v2-pl.log` 16:28:16, each
   18/18 `EXIT=0`.
