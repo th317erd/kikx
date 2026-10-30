@@ -6,6 +6,18 @@
 // border a fraction below the viewport. The stream has 1px of bottom padding so
 // the border survives that clamp; the pinned thinking rack changes the list
 // height and must not reintroduce the clipping.
+//
+// Scroll position is driven by `_scrollFramesToBottomImmediate`, not
+// `_scrollFramesToBottom`. The latter only sets the follow anchor and schedules
+// an rAF easing loop (`followFrameListToBottom` in kikx-frame-scroll.mjs), so it
+// returns before `scrollTop` is written. Measuring in the same evaluate would
+// read pre-scroll geometry, making this guard pass or fail on whether the list
+// happened to already be at the bottom after load. Awaiting that loop also
+// works, but only after a fixed sleep; measured both ways, the assertions below
+// are unchanged and only the scroll mechanism differs. The immediate variant
+// writes `scrollTop` with the same `scrollHeight - clientHeight` clamp this
+// guard is about, and production uses it on the same path
+// (kikx-frame-scroll.mjs:186, :197, :460 and kikx-frame-scroll-lock.mjs:335).
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -66,7 +78,10 @@ test('Puppeteer keeps the last card border inside the scrolled thread', async (t
 
     let measure = () => page.evaluate(() => {
       let app = document.querySelector('kikx-app');
-      app._scrollFramesToBottom();
+      if (typeof app._scrollFramesToBottomImmediate !== 'function')
+        throw new Error('kikx-app no longer exposes _scrollFramesToBottomImmediate');
+
+      app._scrollFramesToBottomImmediate();
       let list = app.querySelector('.kikx-frame-list');
       let last = app.querySelector('kikx-frame-item[data-frame-id="scroll_msg_23"]');
       let listRect = list.getBoundingClientRect();
