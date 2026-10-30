@@ -10,7 +10,18 @@ export {
   loadJsonEnvFile,
 } from './config-providers.mjs';
 export { ConfigStore, createConfigStore } from './config-store.mjs';
-export { loadEnvFile, loadJsonEnv, loadEnvSources, snapshotEnvironment } from './env-loader.mjs';
+export {
+  loadEnvFile,
+  loadJsonEnv,
+  loadEnvSources,
+  snapshotEnvironment,
+  loadEnvFileWithProvenance,
+  parseEnvFileText,
+  readOwnedKeys,
+  ENV_FILE_PATH_ENV_KEY,
+  ENV_FILE_OWNED_KEYS_ENV_KEY,
+} from './env-loader.mjs';
+export { refreshEnvFromFile, resolveEnvFileForRefresh } from './env-refresh.mjs';
 export {
   KIKX_HOST_PATH,
   KIKX_PORT_PATH,

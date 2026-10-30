@@ -2,7 +2,7 @@
 
 import { spawn } from 'node:child_process';
 
-import { loadEnvFile } from '../src/core/config/env-loader.mjs';
+import { loadEnvFileWithProvenance } from '../src/core/config/env-loader.mjs';
 import { createConfigStore } from '../src/core/config/index.mjs';
 import {
   isAeorDBDriver,
@@ -10,7 +10,7 @@ import {
 } from '../src/core/database/database-driver-selection.mjs';
 import { createParentExitMonitor } from './parent-exit-monitor.mjs';
 
-await loadEnvFile('.env.dev');
+await loadEnvFileWithProvenance(process.env.KIKX_ENV_FILE || '.env.dev');
 
 let config = await createConfigStore();
 let driverID = await resolveConfiguredDriverID(config, 'aeordb');

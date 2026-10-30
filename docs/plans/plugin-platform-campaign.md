@@ -1255,3 +1255,60 @@ Not measured: a real edit arriving over a live gateway socket. The unit proof dr
 `handle()` directly and the code path from `onDispatch` to `handle()` is the same one
 `MESSAGE_CREATE` already travels, but that identity is argued from the source, not
 observed on a socket.
+
+## Plugin reload now re-reads configuration, measured
+
+The owner's hard requirement is that plugins stay installable, reloadable and removable
+without a service restart. One defect defeated that requirement while looking like an
+environment problem, and it was ours.
+
+**The measurement.** `POST /api/v1/plugins/reload` on the 3003 dev instance returned
+`200 {"added":[],"total":8,"failures":[]}`, and the plugin's own `startedAt` in
+`GET /api/plugins/discord/status` moved to the reload timestamp - so `setup()` and
+`onInit()` genuinely re-ran and the new plugin code was live. The same response reported
+`tokenPresent:false`. The token had been written to `kikx/.env.dev` seventeen hours after
+the process booted. Reload was working; the *configuration* it reloaded against was a
+boot-time snapshot, so the only remaining way to apply a newly added key was to restart
+the process. A reload that cannot see the configuration it was performed for is not a
+working reload.
+
+**Why.** `scripts/start-dev.mjs` and `scripts/start-kikx-dev.mjs` call `loadEnvFile`
+once, before spawning the server. `ConfigStore`'s process-env provider reads
+`process.env` live on every `get()` (`src/core/config/config-providers.mjs`), so anything
+present in the environment is visible immediately - but a key written to the file after
+the spawn never enters the environment at all. The store was never stale; the environment
+was never updated.
+
+**The fix.** `src/core/config/env-refresh.mjs` re-reads the env file at reload time and
+the `/plugins/reload` route calls it before `loadPlugins`. The rule is deliberately
+conservative, because refreshing an environment from a file is a good way to break a
+deliberate override:
+
+1. A key absent from the environment is added - the file is the only source that could
+   supply it.
+2. A key the file owns is updated. `loadEnvFileWithProvenance` records, at boot, which
+   keys the file was actually allowed to set, and carries that list in the environment
+   (`KIKX_ENV_FILE_OWNED_KEYS`) so it survives the launcher-to-server process boundary.
+3. Any other key is pinned and left alone. This is what keeps `KIKX_PORT=3025 npm run dev`
+   on 3025 across a reload instead of being dragged back to the file's value.
+
+The reload response reports what happened - `added`, `updated`, `pinned` - rather than
+logging it, because an operator reloading a plugin to pick up configuration needs to see
+whether the configuration was re-read.
+
+**Proof.** `spec/core/config/env-refresh-spec.mjs` is 11 tests, driving real temp files
+through the real loaders. The decisive one builds a `ConfigStore` *before* the key exists,
+appends the key to the file, refreshes, then asserts the same store instance resolves the
+new value with no restart. Reverting `refreshEnvFromFile` to additive-only behaviour fails
+**7 of 11**; the 4 that still pass are the loader-provenance tests, which bind to the
+other half of the change and are labelled as such rather than counted as coverage of the
+refresh.
+
+**Scope, stated plainly.** The route change reaches the running 3003 process only through
+one restart, because a route in core is not hot-swapped. That is a *core* upgrade and is
+labelled as one; it is not a plugin-lifecycle restart, and after this change a plugin
+install, reload or removal needs no restart at all.
+
+Not measured: a live 3003 reload picking up a post-boot token through this path. The
+proof is at the store and route boundary; the live confirmation is pending a core upgrade
+of that instance.

@@ -220,6 +220,27 @@ export async function handlePluginRoutes({ request, response, url, context, json
   if (url.pathname === '/api/v1/plugins/reload' && request.method === 'POST') {
     await requireOperator(context, request, PLUGIN_ADMIN_ACTIONS.RELOAD);
 
+    // Re-read the env file before anything loads. The launchers load it once, before
+    // spawning this process, so a key added afterwards - a bot token, a channel
+    // binding - is invisible to a config store that only ever sees `process.env`.
+    // Without this a reload cannot apply the configuration it was performed for, and
+    // the only remaining way to apply it is a restart - which is the guarantee this
+    // platform rejects. Only keys the file owns are updated, so a deliberate shell
+    // override such as KIKX_PORT stays pinned.
+    let envRefresh = null;
+    try {
+      const { refreshEnvFromFile } = await import('../../core/config/env-refresh.mjs');
+      envRefresh = await refreshEnvFromFile();
+    } catch (error) {
+      // A broken env file must not break the lifecycle: report it and continue with
+      // whatever the process already holds.
+      envRefresh = {
+        skipped: 'error',
+        error: String(error?.message || error),
+        added: [], updated: [], pinned: [],
+      };
+    }
+
     let registry = context.has?.('pluginRegistry') ? context.require('pluginRegistry') : null;
     // Re-read the configured paths rather than using the boot snapshot: installing a
     // plugin means adding a directory to the configuration, and a reload that scans the
@@ -250,6 +271,9 @@ export async function handlePluginRoutes({ request, response, url, context, json
           added: [...after].filter((k) => !before.has(k)),
           total: after.size,
           failures: registry._pluginLoadErrors || [],
+          // Reported rather than only logged: an operator reloading a plugin to pick
+          // up new configuration needs to see whether that configuration was re-read.
+          env: envRefresh,
         },
       }));
     } catch (error) {
