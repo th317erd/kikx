@@ -11,15 +11,28 @@
 // tree, except the user account. Point 6 says ownership trickles down. Those two
 // points are why this module is DATA FIRST: `buildSessionObjectItems` returns a
 // plain array of descriptors, each carrying the session it is scoped to, and the
-// renderer is a dumb projection of that array. Prong B can therefore filter the
-// array (via its `filterSessionsInScope`, src/client/state/session-scope.mjs)
-// without this file being rewritten, and without a second answer to "what is in
-// scope" appearing here.
+// renderer is a dumb projection of that array. It accepts an optional
+// `scopeFilter` seam whose default is "show everything".
 //
-// This module deliberately does NOT import a scope predicate and does NOT
-// re-derive one. It accepts an optional `scopeFilter` seam whose default is
-// "show everything": with no filter supplied every item renders, exactly as
-// today. Wiring a real filter is Prong B's change, made by passing one in.
+// CORRECTION (2026-10-30, HEAD ddfbc733). An earlier version of this comment
+// said Prong B would filter the array "via its filterSessionsInScope". That is
+// not what shipped and it was not achievable: all five descriptors here are
+// either the global account chip (scopeSessionID null) or carry the VIEWED
+// session's id, so owner === viewer for every one of them and no scope predicate
+// can discriminate. The seam is scaffolding with nothing to scope yet — measured,
+// not assumed. The live scope enforcement today is the AGENTS/TEAMS VIEW
+// (kikx-agent-team-views.mjs:30-43, via getEffectiveSessionAgentIDs), which does
+// not route through this module.
+//
+// Do not describe this seam as wired, and do not "fix" it by wiring a filter in
+// the hope of a visible change: with the descriptors as they are, that is a
+// provable no-op. It becomes meaningful only when an item owned by a DIFFERENT
+// session is rendered here.
+//
+// The descriptor field is `scopeSessionID`, and `sessionIDOf` in
+// src/client/state/session-scope.mjs must keep reading it —
+// spec/ownership/sidebar-scope-field-spec.mjs pins that boundary and fails if
+// either side renames.
 
 import { elements } from '../lib/aeor-ui.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
