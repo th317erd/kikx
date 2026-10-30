@@ -64,6 +64,84 @@ See the audit for details. The relevant gaps are:
    common property-store or keyed reconciliation layer.
 5. Tests do not generally assert node identity or a render budget.
 
+## AGIS critical review (post-draft)
+
+The first version of this plan was written before an explicit AGIS pass. That
+was a process mistake: the plan described the right direction but did not yet
+prove the territory, alternatives, failure behavior, or test adequacy. This
+section records the pass that was run afterward and the changes it forced.
+
+### Territory map
+
+Producers and consumers checked in source:
+
+- **Framework producers:** `elements.js` creates bindings; `reactive-state.js`
+  batches state; `query.js` moves live nodes; `components/aeor-scrollview.js`
+  owns page/item update primitives.
+- **Framework consumers:** the framework behavior harness, component sources,
+  and every consumer that imports `elements`/`ReactiveState`. A new helper must
+  not change existing binding semantics.
+- **Kikx producers:** `kikxState`, data loaders, runtime-event queues, navigation
+  helpers, and controllers.
+- **Kikx consumers:** `renderAppShell`, `KikxChatView`, `KikxFrameItem`,
+  `KikxChatScrollView`, `kikx-frame-scroll`, topbar/status builders, editors,
+  agent/team views, Inbox, and session grid.
+- **Tests:** Kikx mini-DOM specs, framework behavior tests, Puppeteer/Playwright
+  browser lanes, and render counters.
+
+The 78 `_render()`/`_requestRender()` call sites are not one class. They include
+legitimate structural transitions, data completion, editor panels, and
+high-frequency live paths. The plan must migrate by ownership, not by mechanically
+rewriting every call.
+
+### Findings that changed the plan
+
+1. **A new store must not duplicate `ReactiveState`.** The initial draft did not
+   say whether `PropertyStore` wraps, replaces, or sits beside the existing
+   batching primitive. The revised design requires one batching primitive, a
+   compatibility facade for existing `bindState` consumers, and no second
+   notification system.
+2. **Item identity alone is insufficient for a keyed list.** A mutable frame
+   object can change in place without changing identity. The revised design
+   carries a revision/change hint from the owning store and only skips updates
+   when the key and revision are both unchanged.
+3. **The shell section boundaries were underspecified.** `renderAppShell` owns
+   topbar, runner/auth, status, editors, error surface, and z-order. The plan now
+   requires an explicit section registry, a detached-build/swap transaction,
+   and a failure path that keeps the old section.
+4. **Property writes can clobber user input.** The revised binding contract
+   includes a focus/caret/revision guard: an external property update must not
+   overwrite a newer focused edit.
+5. **Tests were not strong enough.** The plan now defines framework unit tests,
+   Kikx identity tests, mutation-ledger tests, browser stress tests, performance
+   budgets, and bounded watchdogs before migration starts.
+6. **The plan must distinguish a state notification from a render request.**
+   Store mutation is the only production notification path. Calling a broad
+   render is an explicit structural/recovery action with a recorded reason.
+
+### Alternatives considered and rejected
+
+- **Virtual DOM/deep diff:** rejected by the owner's rule and by cost. It spends
+  cycles discovering changes the store already knows.
+- **Periodic reconciliation:** rejected; it hides missed events and burns idle
+  CPU.
+- **One store per DOM node:** rejected; too many listeners and ownership leaks.
+  Scoped records owned by a session/collection are the unit.
+- **Rebuild the shell but improve snapshots:** rejected as the primary path. It
+  still detaches listeners and cannot preserve node identity.
+- **Make every component a custom element with its own setter protocol:** too
+  broad and would not solve keyed list ownership. The layer must work for plain
+  DOM and custom elements.
+
+### Remaining review conditions
+
+- Phase 2 cannot start until the framework-layer tests pass and one pilot proves
+  DOM identity across a real browser update.
+- Any migration step that changes a user-facing scroll, focus, or draft behavior
+  needs a browser regression, not only a mini-DOM test.
+- The render-reason ledger must be in place before any broad call site is
+  converted, so a regression can identify the new path.
+
 ## Architecture
 
 ```text
@@ -116,7 +194,57 @@ Compatibility: keep `ReactiveState` working. `PropertyStore` can be a thin
 specialization or a new API layered over the same batching primitive. Do not
 break existing `bindState` consumers.
 
-### 2. Property binding
+### 1a. Mutation ownership and cardinality
+
+To keep the layer small:
+
+- `AppStore` is the root owner for shell/view preferences and navigation.
+- One `SessionStore` exists per loaded session. It owns session metadata, paging,
+  a `FrameCollection`, and its view/draft records.
+- A `FrameRecord` is owned by exactly one `FrameCollection`; it is not a global
+  store and has no app-level wildcard subscription.
+- `ViewStore` records are scoped to a session/view and may be disposed with their
+  surface.
+- Controllers in `src/client/state/` remain the authority for composer,
+  question, and expansion user state. The new stores may host their values, but
+  must not create a second draft authority.
+
+Only domain methods mutate stores. Direct writes to `_state` from components are
+a migration defect. The existing mutation-ledger diagnostics should classify any
+remaining direct write during the transition.
+
+### 1b. Change records and revision rules
+
+A store change record contains:
+
+```js
+{ key, previous, next, revision, source }
+```
+
+- `source` is a short domain label (`frame.content`, `session.status`,
+  `runtime.events`), for diagnostics.
+- One microtask flush contains at most one entry per key.
+- A keyed record's revision increases only when its value or a declared child
+  revision changes.
+- A keyed list update receives `changed(item, previous, revision)`; it does not
+  serialize the item or compare every field.
+- A stale async load carries the session/frame epoch it started with and is
+  rejected if the owning record has advanced past it.
+
+### 1c. Failure semantics
+
+A targeted update is not allowed to leave a half-written node:
+
+- Build replacement structural sections detached and swap only after the build
+  succeeds. On failure, keep the old section and report through the existing
+  client error boundary.
+- Keyed item updates run inside the existing `guardClientOperation` boundary.
+  If an update throws, keep the previous node, report the frame key, and do not
+  remove sibling nodes.
+- Store transaction listeners must not swallow errors or continue with corrupt
+  state; the first failure is rethrown after the remaining cleanup where
+  required by the existing teardown contract.
+
 
 Add a builder/runtime helper for **properties**, not only attributes:
 
@@ -301,6 +429,9 @@ status/data updates do not rebuild the app.
 
 - Make `KikxChatView` update frames with the keyed list; remove `_render()` from
   ordinary frame updates.
+- Replace `KikxFrameItem`'s `appState`-identity rebuild trigger with narrow
+  subscriptions to its frame record and view record. A different app-state
+  object must not be treated as a reason to rebuild a frame.
 - Keep `KikxFrameItem` identity and narrow content descriptors.
 - Make filter/search update the mounted page source in place where possible, or
   replace only the source/page list while preserving the surrounding view and
@@ -341,7 +472,64 @@ Exit: typing in any editor or inline control does not detach the focused node.
 Exit: all acceptance criteria below pass, and a forced-streaming browser test
 shows no full shell rebuild and no focus/scroll loss.
 
-## Acceptance criteria
+## Test protocol (TDD)
+
+Tests are written before implementation and are part of the plan, not a
+post-hoc checklist.
+
+### Framework layer tests
+
+1. Equal assignment emits zero notifications.
+2. One assignment emits exactly one record for the correct key.
+3. A transaction coalesces related keys and preserves revision order.
+4. Nested stores do not notify unrelated branches.
+5. `createKeyedList` creates only new keys and reuses unchanged nodes.
+6. Removing a key disposes its node exactly once.
+7. Reordering moves nodes without recreating or re-updating unchanged contents.
+8. A changed revision updates only the affected item, not the complete list.
+9. Property binding updates native/custom-element properties, not attributes,
+   and preserves focus/selection when the controller says local input wins.
+10. Binding/list disposal removes listeners and does not call callbacks for
+    detached owners.
+
+### Kikx identity tests
+
+1. A shell status update keeps the same thread, composer, and topbar nodes.
+2. A frame stream update keeps the same DOM node for every untouched frame.
+3. A changed frame updates only its content region and preserves sibling items,
+   listeners, and disclosures.
+4. Raw mode performs zero shell/thread/chat-view rebuilds and preserves
+   `scrollTop` and node identity.
+5. A filter/search change does not discard the mounted thread or lose the scroll
+   anchor while the source is re-scoped.
+6. Composer and question-answer focus, value, and caret survive runtime events
+   and unrelated frame updates.
+7. An agent-only runtime replay produces zero shell/thread rebuilds.
+8. A structural auth/navigation change is the only path allowed to replace the
+   named shell section.
+
+### Performance and hang discipline
+
+- Unit tests use a 10-second watchdog by default.
+- Browser identity tests use a bounded 90-second lane timeout, with per-test
+  timeouts and cleanup in `finally`.
+- No test may wait on an unmocked network, an unresolved promise, or an
+  unbounded event stream.
+- Reconciliation of a 1,000-item keyed list must be linear in changed items and
+  must not serialize items or scan the full state tree.
+- Performance assertions are separate from correctness assertions; a slow
+  machine must fail with diagnostics, not hang silently.
+
+### False-confidence risks to guard against
+
+- Mini-DOM identity is not proof of browser focus/scroll/lifecycle behavior.
+- A test that only checks values can pass while the DOM was detached.
+- A keyed-list test that creates all nodes on every update can hide a missing
+  update callback; assert node identity and update counts.
+- A store test with a fake listener can miss batching order; assert one flush.
+- A passing visual screenshot cannot prove listeners or custom-element state
+  survived; use browser node identity and focus checks.
+
 
 1. **Unchanged content:** an unchanged frame, markdown block, status leaf, and
    grid card keep the same DOM node object across unrelated updates.
@@ -377,6 +565,24 @@ shows no full shell rebuild and no focus/scroll loss.
 | DOM reuse leaves stale attributes | `patchProperties` uses previous/next and explicit removal semantics |
 | Performance regression from extra store layers | O(1) keyed maps, equality guards, batched flushes; benchmark update paths |
 | Migration changes behavior | Phased migration with old tests and new identity tests at each phase |
+
+## Plan readiness check
+
+- **Scope:** bounded to a framework layer plus phased Kikx migration; no
+  virtual DOM and no server changes. Pass.
+- **Dependencies:** framework layer and pilot precede shell/thread migration.
+  Pass.
+- **Ownership:** app/session/frame/view store owners and section keys are named.
+  Pass.
+- **Failure behavior:** detached structural builds, guarded keyed updates, stale
+  async rejection, and teardown are specified. Pass.
+- **Tests:** framework, identity, streaming, focus/scroll, and performance tests
+  are specified before implementation. Pass.
+- **Remaining gate:** Phase 2 requires owner approval and a passing framework
+  pilot. Open by design.
+- **Known uncertainty:** exact section boundaries and page-source re-scope
+  mechanics will be confirmed by the Phase 2/3 implementation tests; they are
+  not hidden assumptions in Phase 1.
 
 ## Stop rules and approval
 
