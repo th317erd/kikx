@@ -312,3 +312,50 @@ test('resolveCaller separates "no store wired" from "bad credential"', async () 
   assert.equal(ok.unauthenticated, false);
   assert.equal(ok.identity.id, 'u');
 });
+
+// Campaign 4.3 says a public mount "must be declared and reviewed". Reviewing it
+// requires the declaration to reach the operator's inventory, not just the plugin's
+// source. This is the reachability half of the per-mount limit contract in
+// spec/plugins/plugin-mount-limits-spec.mjs: the router must report it, and the
+// inventory route must carry it.
+test('the inventory reports each mount auth declaration and enforced limits', async () => {
+  let registry = {
+    _pluginRegistrations: new Map([
+      ['miri', { pluginName: 'miri', pluginLocation: 'miri' }],
+      ['private', { pluginName: 'private', pluginLocation: 'private' }],
+      ['unmounted', { pluginName: 'unmounted', pluginLocation: 'unmounted' }],
+    ]),
+    _pluginLoadErrors: [],
+  };
+  let router = new PluginRouter({ logger: { error() {} }, maxBodyBytes: 2048, handlerTimeoutMS: 5000 });
+  router.mount('miri', async () => {}, { auth: 'public', maxBodyBytes: 64 });
+  router.mount('private', async () => {});
+
+  let response = fakeResponse();
+  let handled = await handlePluginRoutes({
+    request: fakeRequest({ method: 'GET', url: '/api/v1/plugins' }),
+    response,
+    url: new URL('/api/v1/plugins', 'http://localhost'),
+    context: fakeContext({
+      pluginRouter: router,
+      pluginRegistry: registry,
+      accountStore: identityStore({ id: 'user-1' }),
+    }),
+  });
+
+  assert.equal(handled, true);
+  assert.equal(response.statusCode, 200);
+  let byName = new Map(JSON.parse(response.body).data.plugins.map((p) => [ p.name, p ]));
+
+  assert.equal(byName.get('miri').mounted, true);
+  assert.equal(byName.get('miri').mount.auth, 'public', 'the declaration must be auditable');
+  assert.equal(byName.get('miri').mount.maxBodyBytes, 64, 'the enforced cap, not the requested one');
+  assert.equal(byName.get('miri').mount.handlerTimeoutMS, 5000, 'a mount that declares no deadline falls back to the deployment value');
+
+  assert.equal(byName.get('private').mount.auth, 'required');
+  assert.equal(byName.get('private').mount.maxBodyBytes, 2048);
+
+  // A registered plugin with no mount reports no mount rather than a misleading object.
+  assert.equal(byName.get('unmounted').mounted, false);
+  assert.equal(byName.get('unmounted').mount, null);
+});

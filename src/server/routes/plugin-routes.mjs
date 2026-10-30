@@ -26,6 +26,11 @@ export async function handlePluginRoutes({ request, response, url, context, json
     let records = map instanceof Map ? [...map.values()] : [];
     let bus = context.has?.('pluginEventBus') ? context.require('pluginEventBus') : null;
     let routerForList = context.has?.('pluginRouter') ? context.require('pluginRouter') : null;
+    // Mount descriptors keyed once, so each plugin row can report the auth declaration
+    // and the limits actually enforced on it. Campaign 4.3 says a public mount "must be
+    // declared and reviewed"; that is only reviewable if the declaration is visible to
+    // an operator without reading the plugin's source.
+    let mountsById = new Map((routerForList?.listMounts?.() || []).map((m) => [ m.pluginId, m ]));
 
     response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     response.end(JSON.stringify({
@@ -35,7 +40,14 @@ export async function handlePluginRoutes({ request, response, url, context, json
           // Directories only, never absolute paths: an authenticated caller still does not
           // need the operator's filesystem layout.
           location: r.pluginLocation || null,
-          mounted: routerForList?.listMounts?.().some((m) => m.pluginId === r.pluginName) || false,
+          mounted: mountsById.has(r.pluginName),
+          mount: mountsById.has(r.pluginName)
+            ? {
+              auth: mountsById.get(r.pluginName).auth ?? null,
+              maxBodyBytes: mountsById.get(r.pluginName).maxBodyBytes ?? null,
+              handlerTimeoutMS: mountsById.get(r.pluginName).handlerTimeoutMS ?? null,
+            }
+            : null,
           subscriptions: bus?.list?.().find((s) => s.pluginId === r.pluginName) || null,
           manifest: r.manifest || null,
         })),

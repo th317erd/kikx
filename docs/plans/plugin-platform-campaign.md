@@ -622,32 +622,61 @@ Landed and verified:
 - **P2:** plugin-owned services with dependency ordering, replacement/restoration,
   shutdown hooks, and unload release.
 - **P3:** authenticated-by-default plugin mounts, explicit public opt-in, identity
-  propagation, and authenticated plugin-admin routes.
+  propagation, and authenticated plugin-admin routes. Per-mount request limits,
+  mount dispose, and deterministic mount error mapping are implemented and proven:
+  a mount may tighten (never raise) the deployment body cap and deadline, malformed
+  JSON is a 400 rather than a handler failure, and the inventory reports each
+  mount's auth declaration and enforced limits so a public mount is reviewable.
 - **P4:** client composition descriptors and a bootstrap that chooses a plugin
   `main-app` before defining the built-in `kikx-app` fallback.
 - **P5:** ordered plugin prompt sections; the remaining built-in catalogue
   migration is intentionally deferred under decision D3/D8.
-- **P6:** driver-qualified frame indexes and migration driver declarations.
+- **P6:** driver-qualified frame indexes and migration driver declarations, plus a
+  checksum/advisory-lock/rollback integrity contract for plugin migrations.
 - **P7 (docs):** consolidated the legacy documentation tree into `docs/`, indexed every document,
   added authority banners, and refreshed plugin reference/authoring and
   architecture/source-map documentation.
 
 Still open:
 
-- the full direct-construction audit from P1 (the generation half is done:
-  `listRestartRequired()` plus the inventory field; auditing every remaining
-  `new CoreClass()` site is separate work);
+- ~~the full direct-construction audit from P1~~ **closed**. Every class
+  `core-classes.mjs` registers under `pluginName: 'core'` is now accounted for,
+  with the resolution mode named rather than assumed:
+  - **resolved at construction, override needs a restart** — `FrameRouter`,
+    `FrameRuntime`, `CompactionService`, `CommandRegistry`. Each is built once,
+    before plugins load, so a later override cannot reach the live instance; all
+    four are now built through `resolveCoreClass` and reported by
+    `listRestartRequired()`/`data.restartRequired`. `CommandRegistry` was the
+    audit's real find: registered as overridable but constructed directly, so an
+    override was ignored *and* unreported.
+  - **resolved per use, override takes effect live** — the `FrameType<Type>` keys.
+    `frameTypeClass()` in `src/core/frames/frame-types/create-typed-frame.mjs`
+    (not `core/frames/create-typed-frame.mjs`) looks the class up on every frame
+    creation, so a plugin frame-type override applies to the next frame. This path
+    must *not* report `restart-required`; doing so would be wrong.
+  - **no construction site to audit** — `PluginInterface`, `AgentInterface`,
+    `DatabaseConnectionBase`. They are plugin-facing base classes and subclass
+    guards (`isSubclassOf` in `plugin-registry.mjs`), never instantiated by core,
+    so there is nothing to route through the registry.
+  - **the registry itself** — `PluginRegistry` is constructed at
+    `create-server.mjs` bootstrap, which is the registry an override would have to
+    be registered on. The bootstrap does not register core classes at that point,
+    so the direct `new PluginRegistry()` is the only coherent construction; it is
+    documented here rather than changed. (Unproven by test: this is read from call
+    order at `create-server.mjs` 160-203, not executed as a contract.);
 - migrating Questions or Todo into the first plugin-owned service from P2;
-- per-mount request limits and moving one integration route out of core from P3;
+- moving one integration route out of core from P3 (per-mount request limits
+  landed: `spec/plugins/plugin-mount-limits-spec.mjs`);
 - moving built-in Agents/Teams views behind client descriptors and testing
   focus/selection preservation from P4;
 - moving built-in tool/frame/command catalogue families and bounded loop controls
   from P5;
-- dual-driver index execution and checksum/advisory-lock migration tests from P6;
+- dual-driver index execution from P6 (checksum/advisory-lock/rollback migration
+  tests landed: `spec/core/plugins/plugin-migrations-integrity-spec.mjs`);
 - removing remaining transitional shims and demonstrating install/reload/unload
   on a live boot from P7.
 
-The full suite is green at 2,915 tests (2,886 pass, 29 skipped), including the
+The full suite is green at 2,988 tests (2,959 pass, 29 skipped), including the
 documentation consolidation gate.
 
 ## 7. Verification spine
@@ -727,7 +756,45 @@ These findings are part of the plan, not objections to it:
    revision is green on the non-doc suite after the ownership ledger; still run the new
    platform contract tests and live install/reload/unload exercise. Preserve our
    scrollview, session scope, filter and todo-focus work.
-7. **Existing plugin packages need a compatibility ingress.** Preserve old manifests, `/api/plugins/` mounts, plugin asset URLs and class registrations for one transition window; version-gate legacy rows in an adapter rather than teaching every consumer both shapes.
+7. **Mount limits were deployment-wide, so a plugin could not declare its own.**
+   The router carried one body cap and one deadline from its constructor; `mount()`
+   accepted nothing but `auth`. That made the campaign's §4.3 descriptor shape
+   aspirational: no per-mount `capabilities` review surface, no per-mount deadline,
+   and a replaced mount's handler was dropped without anything calling it back, so a
+   reload leaked whatever the old handler held. Now `mount()` accepts
+   `maxBodyBytes`/`handlerTimeoutMS` clamped to the deployment ceiling, plus
+   `dispose` run on unmount and on reload, and `unmount()` deletes the route before
+   dispose so an unload is immediately route-not-found even when cleanup throws.
+   Malformed JSON now maps to 400 with its own message instead of a 500 attributed
+   to the plugin; a plugin's own error keeps the generic body regardless of the
+   status it chose, because that text is network-visible.
+8. **A rolled-back migration was still reported as applied.**
+   `#runPlugin` pushed onto `this.applied` *before* opening its transaction, so a
+   migration that threw and ROLLBACKed still appeared in `run()`'s result and the
+   startup log. Nothing downstream could tell it apart from a real apply. The push
+   now happens after COMMIT. Proven failing-first: with the source at HEAD the
+   integrity spec is 8/9 and this is the one that fails. The same spec pins the
+   ledger lock ordering (CREATE TABLE inside the ledger advisory lock), per-plugin
+   lock release on failure, checksum immutability for applied migrations, a missing
+   migration file for a recorded version, and the table-prefix guard firing before
+   any transaction opens.
+9. **"Registered as overridable" did not mean "actually resolved".**
+   `core-classes.mjs` registers eight classes under `pluginName: 'core'`, which
+   tells a plugin it may override them. Only three were built through
+   `resolveCoreClass`. `CommandRegistry` was constructed directly in
+   `create-server.mjs`, so a plugin override changed the registry row and nothing
+   else - and because nothing resolved it, `listRestartRequired()` could not
+   report the discrepancy either. It now resolves through the registry, joined by
+   `FrameRouter`/`FrameRuntime`/`CompactionService`. Because it is built before
+   plugins load, an override still cannot affect that instance - the same
+   `restart-required` answer as `FrameRouter`, but now a reported one.
+   The audit is now closed: three registered classes have no core construction site
+   at all (plugin-facing base classes and subclass guards), and the
+   `FrameType<Type>` keys are a third category - resolved on every use, so those
+   overrides take effect live and must not be filed as restart-required. The
+   lesson generalises: "overridable" needs a resolution mode (construction-time vs
+   per-use vs none), because only the first can be stale.
+10. **Existing plugin packages need a compatibility ingress.** Preserve old manifests, `/api/plugins/` mounts, plugin asset URLs and class registrations for one transition window; version-gate legacy rows in an adapter rather than teaching every consumer both shapes.
 
 ## 9. Artifacts
 
