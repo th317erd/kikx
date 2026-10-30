@@ -1,0 +1,228 @@
+/*
+ * Phone layout overrides. Loaded after the desktop stylesheets so the
+ * min-content dimensions of the toolbar/frame rail cannot force a >viewport
+ * shell. Keep phone-specific rules here instead of growing app.css.
+ */
+
+/* Phone-width topbar: the desktop bar's lead/search/actions cluster has a
+ * min-content width larger than a phone. Stack the brand over the rest and let
+ * the search row wrap instead of pushing the whole shell to ~740px wide. */
+@media (max-width: 640px) {
+  .kikx-topbar.kikx-window__header {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 8px;
+    padding: 8px 10px;
+    grid-template-columns: none;
+  }
+
+  .kikx-topbar.kikx-window__header .kikx-brand {
+    grid-column: auto;
+    width: 100%;
+  }
+
+  .kikx-topbar.kikx-window__header .kikx-topbar__rest {
+    grid-column: auto;
+    width: 100%;
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-right: 0;
+  }
+
+  .kikx-topbar.kikx-window__header .kikx-window__lead {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .kikx-topbar.kikx-window__header .kikx-topbar__search-group {
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+  }
+
+  .kikx-topbar.kikx-window__header .kikx-session-search {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .kikx-topbar.kikx-window__header .kikx-window__actions {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 640px) {
+  .kikx-main {
+    grid-template-rows: minmax(88px, 16dvh) minmax(0, 1fr);
+  }
+
+  /* The empty thinking dock reserves 54px even when the rack is hidden. On a
+     phone that space belongs to the conversation. */
+  .kikx-thinking-dock:has(> kikx-thinking-rack[hidden]) {
+    display: none;
+  }
+
+  .kikx-topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  /* The phone bar already carries the session breadcrumb. Drop the duplicate
+     product lockup so the thread keeps a usable viewport. */
+  @media (max-width: 480px) {
+    .kikx-brand {
+      display: none;
+    }
+  }
+
+  /* Grid items default to min-width:auto, and the topbar/thread min-content
+     width is wider than a phone. Keep the shell inside the visual viewport. */
+  .kikx-shell {
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+  }
+
+  .kikx-main,
+  .kikx-thread,
+  .kikx-thread__body,
+  .kikx-composer,
+  .kikx-sessions,
+  .kikx-statusbar {
+    min-width: 0;
+  }
+
+  .kikx-thread__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .kikx-thread-scrollview,
+  .kikx-frame-list {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  /* The desktop quick-action rail lives in a 72px right gutter. Touch devices
+     have no hover, so the gutter only makes every message narrower; the actions
+     remain available through the frame's existing keyboard/quick-action path. */
+  .kikx-frame-stream {
+    padding-right: 0;
+  }
+
+  .kikx-frame__quick-actions,
+  .kikx-frame__hover-target {
+    display: none;
+  }
+
+  .kikx-frame,
+  .kikx-frame--compact.kikx-frame--AgentMessage,
+  .kikx-frame--minimized {
+    max-width: 100%;
+  }
+
+  .kikx-frame__meta,
+  .kikx-frame__content,
+  .kikx-frame__meta-main,
+  .kikx-user-message,
+  .kikx-user-message__text {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .kikx-frame__meta {
+    flex-wrap: wrap;
+  }
+
+  .kikx-frame__timestamp {
+    display: none;
+  }
+
+  .kikx-main {
+    width: 100%;
+  }
+
+  .kikx-thread {
+    width: 100%;
+  }
+}
+
+
+/* Short landscape (or a phone landscape after the address bar consumes
+ * height): the stacked sidebar and full bar leave no thread. Prioritize the
+ * conversation; the portrait layout retains full navigation. */
+@media (max-height: 520px) {
+  .kikx-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .kikx-main {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .kikx-sessions {
+    display: none;
+  }
+
+  .kikx-topbar.kikx-window__header {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    min-width: 0;
+  }
+
+  .kikx-topbar.kikx-window__header .kikx-brand {
+    display: none;
+  }
+
+  .kikx-topbar.kikx-window__header .kikx-topbar__rest {
+    flex: 1 1 auto;
+    width: auto;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-right: 0;
+  }
+
+  .kikx-topbar.kikx-window__header .kikx-window__lead {
+    flex: 0 1 auto;
+  }
+
+  .kikx-topbar.kikx-window__header .kikx-topbar__search-group {
+    flex: 1 1 220px;
+    width: auto;
+    max-width: none;
+    margin: 0;
+  }
+
+  .kikx-topbar.kikx-window__header .kikx-session-search {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .kikx-topbar.kikx-window__header .kikx-window__actions {
+    flex: 0 0 auto;
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+  }
+
+  .kikx-thread {
+    padding: 8px;
+  }
+
+  .kikx-composer textarea {
+    min-height: 48px;
+  }
+
+  .kikx-thinking-dock:has(> kikx-thinking-rack[hidden]) {
+    display: none;
+  }
+}
