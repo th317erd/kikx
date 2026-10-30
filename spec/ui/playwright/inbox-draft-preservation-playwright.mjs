@@ -162,8 +162,12 @@ test('answering one question keeps the unsent answer typed into another', async 
     await cardA.locator('.kikx-question-card__input').fill('Answer for A.');
     await cardA.locator('.kikx-question-card__submit').click();
 
+    // Answered rows no longer vanish: they stay on screen as a settled receipt
+    // for a 60-second window. Waiting for the row to disappear could therefore
+    // never pass. What must be true is that A is no longer an open question.
     await page.waitForFunction(
-      () => document.querySelectorAll('article.kikx-question-card[data-question-id="q-draft-a"]').length === 0,
+      () => document.querySelector('article.kikx-question-card[data-question-id="q-draft-a"]')
+        ?.getAttribute('data-question-status') !== 'open',
       null,
       { timeout: 10000 },
     );
@@ -180,10 +184,16 @@ test('answering one question keeps the unsent answer typed into another', async 
       'answering question A must not clear the draft typed into question B',
     );
 
-    // B is still answerable — the same text can actually be submitted.
+    // B is still answerable — the same text can actually be submitted. A stays
+    // on screen as a receipt, so the wait is on no row remaining OPEN, not on
+    // the list emptying.
     await cardBAfter.locator('.kikx-question-card__submit').click();
     await page.waitForFunction(
-      () => document.querySelectorAll('article.kikx-question-card').length === 0,
+      () => {
+        let rows = [ ...document.querySelectorAll('article.kikx-question-card') ];
+        return rows.length > 0
+          && rows.every((row) => row.getAttribute('data-question-status') !== 'open');
+      },
       null,
       { timeout: 10000 },
     );
