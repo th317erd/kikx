@@ -19,6 +19,22 @@ import crypto from 'node:crypto';
 const MIGRATIONS_TABLE = 'plugin_migrations';
 const FILE_PATTERN = /^(\d{3,})[-_].*\.sql$/i;
 
+// This module speaks PostgreSQL SQL: pg_advisory_lock for the startup lock,
+// TIMESTAMPTZ in the ledger, and the driver's own `Pool` for DDL. That is a real
+// constraint, not an implementation detail, so it is declared rather than implied.
+// A plugin may name the drivers it targets; anything else is reported as unsupported
+// instead of being fed SQL its database cannot parse.
+const SUPPORTED_DRIVERS = Object.freeze([ 'postgresql' ]);
+
+// Mirrors the capability vocabulary on DatabaseConnectionBase so a plugin reads one
+// shape whether it is asking about the document store or about migrations.
+const MIGRATION_CAPABILITIES = Object.freeze({
+  migrations: true,
+  sql: true,
+  transactions: true,
+  advisoryLocks: true,
+});
+
 function checksum(sql) {
   return crypto.createHash('sha256').update(sql.replace(/\r\n/g, '\n'), 'utf8').digest('hex');
 }
@@ -41,6 +57,9 @@ function tablesCreatedBy(sql) {
 // therefore impossible through it, so migrations own a plain pg pool built from the
 // same connection URL.
 export class PluginMigrations {
+  static driverID = 'postgresql';
+  static capabilities = MIGRATION_CAPABILITIES;
+
   constructor(options = {}) {
     this.plugins = new Map();
     this.logger = options.logger || console;
@@ -48,6 +67,32 @@ export class PluginMigrations {
     // The URL is supplied by the caller. Reading process.env here would bypass the
     // config module, which the architecture spec forbids outside src/core/config.
     this.url = options.url || null;  // required; supplied by the caller
+    // Defaults to postgresql because that is what the code below actually executes.
+    // A caller that names any other driver gets a refusal, not silently misapplied SQL.
+    this.driver = options.driver || PluginMigrations.driverID;
+    if (!SUPPORTED_DRIVERS.includes(this.driver)) {
+      throw new Error(
+        `plugin migrations do not support driver "${this.driver}"; `
+        + `supported drivers: ${SUPPORTED_DRIVERS.join(', ')}`,
+      );
+    }
+  }
+
+  supports(capability) {
+    return this.constructor.capabilities?.[capability] === true;
+  }
+
+  requireCapability(capability) {
+    if (!this.supports(capability))
+      throw new Error(`plugin migrations do not support capability: ${capability}`);
+  }
+
+  describe() {
+    return {
+      driverID: this.driver,
+      capabilities: { ...this.constructor.capabilities },
+      plugins: [ ...this.plugins.keys() ],
+    };
   }
 
   async getPool() {
@@ -63,7 +108,7 @@ export class PluginMigrations {
     if (this.pool) { await this.pool.end(); this.pool = null; }
   }
 
-  register(pluginId, { directory, allowUnprefixed = false } = {}) {
+  register(pluginId, { directory, allowUnprefixed = false, drivers = null } = {}) {
     if (typeof pluginId !== 'string' || !pluginId.trim())
       throw new TypeError('registerMigrations requires a plugin id');
     if (typeof directory !== 'string' || !directory)
@@ -78,7 +123,15 @@ export class PluginMigrations {
         + `cannot re-register from ${directory}`,
       );
     }
-    this.plugins.set(pluginId, { directory, allowUnprefixed });
+    // A plugin that names drivers is declaring where its SQL may run. One that names
+    // none is assumed portable, which keeps every existing plugin working unchanged.
+    let targets = null;
+    if (drivers != null) {
+      if (!Array.isArray(drivers) || !drivers.length || drivers.some((d) => typeof d !== 'string' || !d.trim()))
+        throw new TypeError(`registerMigrations drivers for "${pluginId}" must be a non-empty array of driver ids`);
+      targets = drivers.map((d) => d.trim().toLowerCase());
+    }
+    this.plugins.set(pluginId, { directory, allowUnprefixed, drivers: targets });
     return true;
   }
 
@@ -139,6 +192,24 @@ export class PluginMigrations {
     }
   }
 
+  // Whether this plugin's declared driver targets include the driver in use. A plugin
+  // with no declaration is assumed portable.
+  supportsPlugin(pluginId) {
+    let entry = this.plugins.get(pluginId);
+    if (!entry) return false;
+    if (!entry.drivers) return true;
+    return entry.drivers.includes(this.driver);
+  }
+
+  getUnsupportedPlugins() {
+    let unsupported = [];
+    for (let id of this.plugins.keys()) {
+      if (!this.supportsPlugin(id))
+        unsupported.push({ pluginId: id, drivers: this.plugins.get(id).drivers });
+    }
+    return unsupported;
+  }
+
   async run(options = {}) {
     let logger = options.logger || this.logger;
     this.applied = [];
@@ -148,12 +219,36 @@ export class PluginMigrations {
     if (!this.plugins.size)
       return { skipped: true, reason: 'no plugins registered migrations' };
 
+    // Resolve the driver before touching a connection. A plugin whose SQL targets a
+    // different database is skipped *by name*, never executed on a guess: running
+    // PostgreSQL DDL against another driver fails obscurely, half-applied.
+    let runnable = [ ...this.plugins.keys() ].filter((pluginId) => this.supportsPlugin(pluginId));
+    let unsupported = this.getUnsupportedPlugins();
+    for (let entry of unsupported) {
+      logger?.warn?.(
+        `[plugin-migrations] ${entry.pluginId} declares drivers ${entry.drivers.join(', ')}, `
+        + `but this instance runs "${this.driver}"; skipping its migrations`,
+      );
+    }
+
     // No url means the caller has no database to migrate. Skipping with a warning is
     // correct here: refusing would make every plugin-less or database-less boot fail,
-    // and an actual migration error is still fatal.
+    // and an actual migration error is still fatal. This is checked before the
+    // driver-target branch because "there is no database" is the more fundamental
+    // missing precondition: reporting a driver mismatch when no database exists at all
+    // would point an operator at the wrong setting.
     if (!this.url) {
       logger?.warn?.('[plugin-migrations] no database url supplied; skipping migrations');
-      return { skipped: true, reason: 'no database url' };
+      return { skipped: true, reason: 'no database url', driver: this.driver, unsupported };
+    }
+
+    if (!runnable.length) {
+      return {
+        skipped: true,
+        reason: `no registered plugin targets driver "${this.driver}"`,
+        driver: this.driver,
+        unsupported,
+      };
     }
 
     let connection = await this.getPool();
@@ -177,7 +272,7 @@ export class PluginMigrations {
       await connection.query('SELECT pg_advisory_unlock(hashtext($1))', ['plugin_migrations:ledger']);
     }
 
-    for (let pluginId of this.plugins.keys()) {
+    for (let pluginId of runnable) {
       // Serialise concurrent startups against the same database.
       await connection.query('SELECT pg_advisory_lock(hashtext($1))', [`plugin_migrations:${pluginId}`]);
       try {
@@ -186,6 +281,8 @@ export class PluginMigrations {
         await connection.query('SELECT pg_advisory_unlock(hashtext($1))', [`plugin_migrations:${pluginId}`]);
       }
     }
+
+    return { skipped: false, driver: this.driver, applied: this.applied.slice(), unsupported };
   }
 
   async #runPlugin(connection, pluginId, logger) {
