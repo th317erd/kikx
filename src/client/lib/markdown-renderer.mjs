@@ -399,7 +399,10 @@ function applyInlineEmphasis(text) {
     .replace(/\*\*([^\n]+?)\*\*/g, '<strong>$1</strong>')
     .replace(/__([^\n]+?)__/g, '<strong>$1</strong>')
     .replace(/~~([^~\n]+)~~/g, '<del>$1</del>')
-    .replace(/(^|[^\*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+    .replace(/(^|[^\*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+    // CommonMark-style underscore emphasis. Do not treat intraword
+    // underscores (snake_case) as markup.
+    .replace(/(^|[^\w])_([^_\n]+)_(?=$|[^\w])/g, '$1<em>$2</em>');
 }
 
 function createToken(tokens, html) {

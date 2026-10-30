@@ -97,3 +97,18 @@ test('renderMarkdownToElement keeps html-looking text inside inline code as code
   assert.equal(element.textContent.includes('`'), false);
   assert.equal(element.querySelector('strong'), null);
 });
+
+test('user-message markdown renders underscore italics and ordered lists', () => {
+  let html = markdownToHTML([
+    'FYI: the message is _from me_...',
+    '',
+    '1. The message is _hidden_...',
+    '2. It should _appear_ seamless.',
+  ].join('\n'));
+
+  assert.match(html, /<em>from me<\/em>/);
+  assert.match(html, /<em>hidden<\/em>/);
+  assert.match(html, /<em>appear<\/em>/);
+  assert.match(html, /<ol><li>/);
+  assert.doesNotMatch(html, /snake_case/);
+});
