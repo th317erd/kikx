@@ -376,20 +376,22 @@ export class FrameStorePreviewBase extends FrameStoreScheduledBase {
   // frame paths in ascending basename (zero-padded order) order, so a binary search
   // finds the boundary with O(log total) one-entry probes instead of a full scan.
   async findFrameOffsetAtOrAfter(interactionsPath, before, total) {
+    // PostgreSQL's directory pagination is applied after the query, so a
+    // binary search over offsets would refetch the whole session on every
+    // probe. Read the ordered path list once and search locally instead.
+    let all = await this.aeordb.listDirectory(interactionsPath, {
+      depth: -1,
+      glob: '**/frames/*.json',
+      limit: total,
+      offset: 0,
+    });
+    let paths = pathsFromItems(all?.items);
     let low = 0;
-    let high = total;
+    let high = paths.length;
 
     while (low < high) {
       let mid = Math.floor((low + high) / 2);
-      let page = await this.aeordb.listDirectory(interactionsPath, {
-        depth: -1,
-        glob: '**/frames/*.json',
-        limit: 1,
-        offset: mid,
-      });
-      let [ path ] = pathsFromItems(page?.items);
-      let order = path ? frameOrderFromPath(path) : Number.MAX_SAFE_INTEGER;
-
+      let order = frameOrderFromPath(paths[mid]);
       if (order >= before)
         high = mid;
       else
