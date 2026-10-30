@@ -1094,3 +1094,50 @@ READY with the real Miri token and the fatal-close latch is proven against Disco
 4004, but no `MESSAGE_CREATE` has ever been delivered by Discord into a Kikx session.
 That needs a token in the 3003 container plus the Message Content intent, and it is the
 remaining live gap.
+
+### Discord interaction callback — 202 is not an answer (2026-10-30)
+
+The endpoint answered a slash command with `202 {"ok":true}`. Discord parses the
+response body as an interaction callback and ignores the status code, so what the
+user saw was **"The application did not respond"** while the suite stayed green.
+The old `a slash command option is framed as the message text` test asserted that
+202 — the defect written down as an expectation.
+
+Fixed in `kikx-plugin-discord` `2980203`:
+
+- The callback is now a real deferral, **type 5** for a command and **type 6** for
+  a component, sent *before* the database work so dedupe, authorization and the
+  session write cannot overrun Discord's three-second window.
+- The outcome is delivered by `PATCH /webhooks/{application_id}/{token}/messages/@original`,
+  so it edits the deferred placeholder instead of posting a second message.
+- With no application credential it answers **type 4** (ephemeral) instead of
+  deferring: a deferral with no webhook behind it would strand the user on
+  "thinking…" until the token expired.
+- Authorization is unchanged. The ack is a transport obligation; the frame and the
+  reply text still depend on the gate, and a denied sender gets an ephemeral
+  "Not authorized" with no write.
+
+Measured on a live process (port 3022, `wt-parity`, throwaway Ed25519 key, real Miri
+bot token, disposable database `kikx_ack_probe` — created and dropped for this run):
+
+| request | result |
+| --- | --- |
+| unsigned `type:2` | `401 invalid request signature / missing signature headers` |
+| signed `type:1` | `200 {"type":1}` |
+| signed `type:2` command | `200 {"type":5,"data":{"flags":64}}` |
+| signed `type:3` component | `200 {"type":6,"data":{"flags":64}}` |
+| follow-up PATCH | `HTTP 404 {"message":"Unknown Webhook","code":10015}` ×2 |
+
+The 404 is the proof, not a failure: `10015` is Discord saying the *interaction
+token* is unknown, which it is — a fake token was used deliberately so nothing
+could be written to a real guild. A bad bot credential would have returned `401`,
+so the request is authenticated and well-formed. The router also logged
+`denied inbound … no grant for discord.inbound`, so the ack did not bypass policy.
+
+Reverting `index.mjs` to `00af1d6` fails **9 of the 20** endpoint specs; with it,
+`71/71` plugin specs pass.
+
+Still **not** proven: a real human message reaching a session through the gateway
+(that needs the Message Content privileged intent), and the live image is still
+`f201985` — `deploy.sh` stages `origin/master`, so a fresh deploy would pick up
+`2980203`, but no deploy has been run.
