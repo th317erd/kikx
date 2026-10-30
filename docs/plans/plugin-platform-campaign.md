@@ -513,6 +513,13 @@ Work:
 - Implement `registerService`.
 - Introduce ordered startup phases and recovery hooks.
 - Migrate one feature service (Questions or Todo) as the first plugin-owned service.
+  **Landed:** `plugins/todo-focus-index` registers `todoFocusIndex` as that service
+  (`spec/plugins/todo-focus-index-service-spec.mjs`). Writing the contract exposed two
+  real defects in the previous shape: the index promise lived in module scope, so a
+  reload silently reused the first load’s result, and its `.catch(() => {})` cached one
+  transient startup failure for the process lifetime. It deliberately declares no
+  `dependsOn: [ 'aeordb' ]`, because a missing database was always tolerated and a hard
+  dependency would turn that tolerance into a boot-aborting init error.
 - Register health checks and shutdown teardown.
 - Ensure a failed required service fails readiness; optional failures are visible.
 
@@ -522,6 +529,8 @@ Exit proof:
 - Init failure test.
 - Shutdown failure isolation test.
 - Plugin unload removes service and subscriptions.
+  **Proven:** the same spec unloads and asserts the service registration, the context
+  entry and the frame-index registration are all gone.
 
 ### P3 — HTTP route ownership
 
@@ -664,7 +673,8 @@ Still open:
     so the direct `new PluginRegistry()` is the only coherent construction; it is
     documented here rather than changed. (Unproven by test: this is read from call
     order at `create-server.mjs` 160-203, not executed as a contract.);
-- migrating Questions or Todo into the first plugin-owned service from P2;
+- ~~migrating Questions or Todo into the first plugin-owned service from P2~~ —
+  **landed** (`plugins/todo-focus-index`, `spec/plugins/todo-focus-index-service-spec.mjs`);
 - moving one integration route out of core from P3 (per-mount request limits
   landed: `spec/plugins/plugin-mount-limits-spec.mjs`);
 - moving built-in Agents/Teams views behind client descriptors and testing
