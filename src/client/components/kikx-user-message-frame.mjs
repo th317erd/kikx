@@ -12,6 +12,7 @@ export class KikxUserMessageFrame extends HTMLElement {
     this._frame = null;
     this._appState = null;
     this._text = null;
+    this._textRaw = null;
     this._prompt = null;
     this._promptSignature = null;
     this._textElement = null;
@@ -59,22 +60,26 @@ export class KikxUserMessageFrame extends HTMLElement {
 
   _renderText() {
     let text = typeof this._frame?.content?.text === 'string' ? this._frame.content.text : '';
-    if (this._text === text)
+    let raw = this._appState?.rawMarkdown === true;
+    if (this._text === text && this._textRaw === raw)
       return;
 
     this._text = text;
+    this._textRaw = raw;
+    this._textElement.classList.toggle('kikx-markdown--raw', raw);
     let wake = splitQuestionWake(text);
     if (wake) {
       this._textElement.replaceChildren(
-        renderWakeSection('kikx-user-message__context', wake.intro),
-        renderWakeSection('kikx-user-message__answer', wake.answer),
-        wake.suffix ? renderWakeSection('kikx-user-message__after', wake.suffix) : null,
+        renderWakeSection('kikx-user-message__context', wake.intro, raw),
+        renderWakeSection('kikx-user-message__answer', wake.answer, raw),
+        wake.suffix ? renderWakeSection('kikx-user-message__after', wake.suffix, raw) : null,
       );
       return;
     }
 
     let rendered = renderMarkdownToElement(document, text, {
       className: 'kikx-user-message__text kikx-markdown',
+      rawMarkdown: raw,
     });
     this._textElement.replaceChildren(...rendered.childNodes);
   }
@@ -124,7 +129,7 @@ export class KikxUserMessageFrame extends HTMLElement {
       label.textContent = roleLabel(role, index === lastUserIndex);
       section.appendChild(label);
 
-      let content = renderPromptContent(this._prompt, message, index === lastUserIndex);
+      let content = renderPromptContent(this._prompt, message, index === lastUserIndex, this._appState?.rawMarkdown === true);
       section.appendChild(content);
       this._promptBody.appendChild(section);
     }
@@ -154,11 +159,12 @@ function splitQuestionWake(text) {
   return { intro, answer, suffix };
 }
 
-function renderWakeSection(className, text) {
+function renderWakeSection(className, text, rawMarkdown = false) {
   let section = document.createElement('div');
-  section.className = className;
+  section.className = rawMarkdown ? `${className} kikx-markdown--raw` : className;
   let rendered = renderMarkdownToElement(document, text, {
     className: `${className} kikx-markdown`,
+    rawMarkdown,
   });
   section.replaceChildren(...rendered.childNodes);
   return section;
@@ -178,10 +184,11 @@ function readModelPrompt(frame) {
   };
 }
 
-function renderPromptContent(prompt, message, isLastUser) {
+function renderPromptContent(prompt, message, isLastUser, rawMarkdown = false) {
   let text = messageContent(message);
   let element = renderMarkdownToElement(document, text, {
     className: 'kikx-user-message__prompt-content kikx-markdown',
+    rawMarkdown,
   });
 
   if (isLastUser && prompt.userText.trim() !== '') {

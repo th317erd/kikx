@@ -14,6 +14,7 @@ import { cleanupBindings } from '../lib/aeor-ui.mjs';
 import { installScrollDebugLogger } from '../lib/scroll-debug-logger.mjs';
 import { hasSessionDeepLink } from './kikx-app-helpers.mjs';
 import { toggleDebugMode } from '../lib/debug-mode.mjs';
+import { toggleRawMarkdown } from '../lib/raw-markdown.mjs';
 import { flushComposerDraft, flushLocalComposerDraft } from './composer-drafts.mjs';
 import {
   buildAuthShell,
@@ -210,6 +211,7 @@ export class KikxApp extends HTMLElement {
 
     this._state = kikxState;
     this.classList.toggle('kikx-debug-mode', this._state.debugMode === true);
+    this.classList.toggle('kikx-raw-mode', this._state.rawMarkdown === true);
     // The initial shell must not flash the project grid while a deep-linked
     // session is still fetching its frame window.
     this._deepLinkReady = !hasSessionDeepLink();
@@ -256,6 +258,9 @@ export class KikxApp extends HTMLElement {
     this._toggleDebugMode = () => {
       toggleDebugMode(this);
       this._render();
+    };
+    this._toggleRawMarkdown = () => {
+      toggleRawMarkdown(this);
     };
     this._buildWorkspaceGrid = () => buildWorkspaceGrid(this);
     this._buildSessionGrid = (parentSessionID) => buildSessionGrid(this, parentSessionID);

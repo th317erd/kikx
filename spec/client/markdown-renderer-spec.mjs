@@ -5,7 +5,7 @@ import test from 'node:test';
 
 import { installDom } from './support/mini-dom.mjs';
 
-import { markdownToHTML, renderMarkdownToElement } from '../../src/client/lib/markdown-renderer.mjs';
+import { markdownToHTML, markdownToRawHTML, renderMarkdownToElement } from '../../src/client/lib/markdown-renderer.mjs';
 
 const { document } = installDom();
 
@@ -111,4 +111,32 @@ test('user-message markdown renders underscore italics and ordered lists', () =>
   assert.match(html, /<em>appear<\/em>/);
   assert.match(html, /<ol><li>/);
   assert.doesNotMatch(html, /snake_case/);
+});
+
+test('raw Markdown keeps delimiters while rendering their inline contents', () => {
+  let html = markdownToRawHTML('**bold** and _italics_ are ~~cool~~ AWESOME!!!\n# Heading');
+
+  assert.match(html, /\*\*<strong>bold<\/strong>\*\*/);
+  assert.match(html, /_<em>italics<\/em>_/);
+  assert.match(html, /~~<del>cool<\/del>~~/);
+  assert.match(html, /# Heading/);
+  assert.equal(html.includes('<h1>'), false, 'block syntax stays literal in raw mode');
+});
+
+test('raw Markdown escapes source HTML and protects inline code from emphasis', () => {
+  let html = markdownToRawHTML('<script>alert("x")</script> `**not bold**`');
+
+  assert.doesNotMatch(html, /<script>/);
+  assert.match(html, /&lt;script&gt;alert\("x"\)&lt;\/script&gt;/);
+  assert.match(html, /`<code>\*\*not bold\*\*<\/code>`/);
+  assert.equal(html.includes('<strong>'), false, 'asterisks inside code stay literal');
+});
+
+test('renderMarkdownToElement applies raw mode as a class and text view', () => {
+  let element = renderMarkdownToElement(document, '**bold** and _italics_', { rawMarkdown: true });
+
+  assert.match(element.className, /kikx-markdown--raw/);
+  assert.equal(element.textContent, '**bold** and _italics_');
+  assert.equal(element.querySelector('strong')?.textContent, 'bold');
+  assert.equal(element.querySelector('em')?.textContent, 'italics');
 });

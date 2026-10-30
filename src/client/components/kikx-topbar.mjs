@@ -326,9 +326,16 @@ export function buildTopbarActions(app, sessionID = null) {
 
   let participants = document.createElement('kikx-participants-popup');
   participants.configure({ app, appState: app._state, sessionID });
+  let raw = app._state.rawMarkdown === true;
 
   return div.class('kikx-window__actions')(
     previewSpan,
+    button
+      .type('button')
+      .class(`kikx-raw-toggle${raw ? ' is-on' : ''}`)
+      .title('Show Markdown source with inline formatting (Raw mode)')
+      .ariaPressed(raw ? 'true' : 'false')
+      .onClick(app._toggleRawMarkdown)('Raw'),
     sessionID ? participants : null,
     // Label from the same scope noun the inline Add card uses, so the two can
     // never disagree about what this level creates.

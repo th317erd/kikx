@@ -405,3 +405,29 @@
 .kikx-thread {
   grid-template-rows: minmax(0, 1fr) auto auto;
 }
+
+/* Raw Markdown is a view toggle, not a document action. It gets the same
+ * compact, low-key chrome as the debug toggle so it cannot be mistaken for a
+ * destructive control; the active state is the only thing that gets colour. */
+.kikx-raw-toggle {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid #39444e;
+  border-radius: 6px;
+  background: transparent;
+  color: #8b97a3;
+  cursor: pointer;
+  font: inherit;
+  font-size: calc(10px * 1.25);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.kikx-raw-toggle:hover,
+.kikx-raw-toggle:focus-visible,
+.kikx-raw-toggle.is-on {
+  border-color: #8fc7e8;
+  color: #c9e8fb;
+  outline: none;
+}

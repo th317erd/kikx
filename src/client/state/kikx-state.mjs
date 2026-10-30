@@ -52,6 +52,7 @@ import {
 } from './navigation-stack.mjs';
 import { createQuestionsState } from './questions-state.mjs';
 import { readDebugMode } from '../lib/debug-mode.mjs';
+import { readRawMarkdown } from '../lib/raw-markdown.mjs';
 import {
   normalizePreferences,
   normalizePreferenceKey,
@@ -127,6 +128,7 @@ export const kikxState = new ReactiveState({
   // in one window cannot caption another.
   frameLoadErrorsBySessionID: {},
   magicCode: params.get('code') || '',
+  rawMarkdown: readRawMarkdown(),
   managingAgents: false,
   agentFilter: 'all',
   managingTeams: false,
