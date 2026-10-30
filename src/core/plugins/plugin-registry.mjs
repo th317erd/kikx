@@ -130,11 +130,19 @@ export class PluginRegistry extends ClassRegistry {
       } catch (error) {
         this.logger?.warn?.(`releasePluginServices("${pluginName}"): shutdown for "${name}" failed: ${error?.message || error}`);
       }
-      if (context?.has?.(name) && context.require(name) === entry.instance) {
+      // Only restore when the instance in the context is still ours. A later load may
+      // have replaced it, and stomping that would break the plugin that now owns it.
+      //
+      // The lookup must go through a reader that tolerates a partial context: this line
+      // previously guarded `has` with optional chaining but called `require` unguarded,
+      // so any context without `require` threw out of releasePluginServices - aborting
+      // unloadPlugin() after its subscriptions were already dropped, and breaking the
+      // "never throws" contract releasePlugin() promises.
+      if (context?.has?.(name) && readContextEntry(context, name) === entry.instance) {
         if (entry.previous === undefined)
           context.delete?.(name);
         else
-          context.set(name, entry.previous);
+          context.set?.(name, entry.previous);
       }
     }
     return entries.length;
@@ -751,6 +759,18 @@ function optionArgs(args, index, options) {
   while (next.length < index) next.push(undefined);
   next[index] = options;
   return next;
+}
+
+// Read a service from a context that may implement any of require/get/has or be a plain
+// Map. Used by the release path, where throwing would abort an unload.
+function readContextEntry(context, name) {
+  if (!context)
+    return undefined;
+  if (typeof context.require === 'function')
+    return context.require(name);
+  if (typeof context.get === 'function')
+    return context.get(name);
+  return undefined;
 }
 
 function isSubclassOf(candidate, BaseClass) {

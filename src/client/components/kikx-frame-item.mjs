@@ -240,7 +240,10 @@ export class KikxFrameItem extends HTMLElement {
     if (!details)
       return;
 
-    if (event.target?.closest?.('a, button, input, textarea, select, summary'))
+    // Clicking inside expanded content is selection/scroll interaction, not a
+    // request to collapse the row. In particular, the horizontal scrollbar on
+    // a <pre> must not close the disclosure under the pointer.
+    if (event.target?.closest?.('a, button, input, textarea, select, summary, pre, code, .kikx-frame__compact-body'))
       return;
 
     let selection = globalThis.getSelection?.();

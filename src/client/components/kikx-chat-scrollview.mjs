@@ -47,7 +47,7 @@ export class KikxChatScrollView {
     this.windowEnd = 0;
     this._pendingAnchor = null;
     this._pendingPage = null;
-    this._appendOffset = 0;
+    this._pendingLiveFrames = new Map();
   }
 
   get frameList() {
@@ -73,7 +73,7 @@ export class KikxChatScrollView {
     this.frames = Array.isArray(frames) ? frames : [];
     this.pageContext = pageContext || null;
     this.pageSource = null;
-    this._appendOffset = 0;
+    this._pendingLiveFrames.clear();
     if (this.pageContext?.loadPage)
       this._mountPagedSource();
     else
@@ -83,6 +83,7 @@ export class KikxChatScrollView {
   }
 
   _mountPagedSource() {
+    this._pendingLiveFrames.clear();
     this.pageSource = new KikxThreadPageSource({
       pageSize: this.pageContext.pageSize || this.pageSize,
       totalRawFrames: this.pageContext.totalRawFrames,
@@ -115,6 +116,7 @@ export class KikxChatScrollView {
         this._pendingAnchor = null;
         this._restoreAnchor(anchor);
       }
+      this._flushPendingLiveFrames();
     });
   }
 
@@ -238,20 +240,41 @@ export class KikxChatScrollView {
     }
     let insertedNew = false;
     if (next.length > previous.length) {
-      let lastPage = Math.max(0, this.pageSource.totalPages - 1);
       for (let index = previous.length; index < next.length; index++) {
         let frame = next[index];
-        if (!frame?.id)
-          continue;
-        let itemIndex = lastPage * this.pageSize + (this._appendOffset++ % this.pageSize);
-        this.element.appendItem({ key: frame.id, index: itemIndex, frame });
-        insertedNew = true;
+        if (frame?.id)
+          this._pendingLiveFrames.set(frame.id, frame);
       }
+      insertedNew = this._flushPendingLiveFrames();
     }
     this._updateMountedItems(next, appState, options);
     this.windowEnd = next.length;
     restoreFrameListAnchor(this.frameList, anchor);
     return { insertedNew };
+  }
+
+  _flushPendingLiveFrames() {
+    if (!this.element || !this.pageSource || this._pendingLiveFrames.size === 0)
+      return false;
+
+    let lastPage = Math.max(0, this.pageSource.totalPages - 1);
+    let page = this.element.pages?.[lastPage];
+    // Appending into an unloaded page would mark it loaded with only the live
+    // item and prevent its real page request. Wait for the page load instead.
+    if (!page?.loaded)
+      return false;
+
+    let inserted = false;
+    let index = lastPage * this.pageSize + page.items.length;
+    for (let [ key, frame ] of this._pendingLiveFrames) {
+      // appendItem is idempotent for a key already present in any page; this
+      // covers the live-append/page-load race that previously produced
+      // duplicate rows.
+      if (this.element.appendItem({ key, index: index++, frame }))
+        inserted = true;
+      this._pendingLiveFrames.delete(key);
+    }
+    return inserted;
   }
 
   _updateMountedItems(frames, appState, options) {

@@ -331,3 +331,34 @@ test('compaction wraps its existing component instead of reimplementing it', () 
   assert.ok(compaction, 'the dedicated compaction component must still render');
   assert.equal(compaction.frames.length, 1);
 });
+
+test('clicking expanded compact content or a pre scroll area does not collapse it', () => {
+  let item = frameItem();
+  let frame = {
+    id: 'compact-click-1',
+    type: 'CompactionFrame',
+    content: { status: 'complete', frameCount: 2, summary: 'A long compacted memory summary.' },
+  };
+
+  item.updateFrame(frame, {});
+  let details = expandCompact(item);
+  assert.equal(details.open, true);
+
+  item._onCompactClick({
+    target: {
+      closest(selector) {
+        return selector.includes('.kikx-frame__compact-body') ? {} : null;
+      },
+    },
+  });
+  assert.equal(details.open, true, 'content interaction must not toggle the disclosure');
+
+  item._onCompactClick({
+    target: {
+      closest(selector) {
+        return selector.includes('pre') ? {} : null;
+      },
+    },
+  });
+  assert.equal(details.open, true, 'pre scroll interaction must not toggle the disclosure');
+});

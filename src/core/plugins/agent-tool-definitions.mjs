@@ -8,9 +8,9 @@ import { MAX_CHARACTER_COMPRESSED_LENGTH } from '../agents/character-limits.mjs'
 export const AGENT_TOOL_DEFINITIONS = [
   {
     name: 'end-turn',
-    description: 'End this turn with a REQUIRED short summary of the goals completed, followed by a short bulleted list of the steps taken. Put longer evidence, tables, logs, and detail in details; the summary is the visible collapsed line. When you end with a summary, the nearest coordinator responsible for you is notified so it can validate your work, unless you are already the highest coordinator.',
+    description: 'End this turn with a REQUIRED short summary of the goals completed, followed by a short bulleted list of the steps taken. Put longer evidence, tables, logs, and detail in details; the summary is the visible collapsed line. This is terminal: no later tool call in the same model round executes. When you end with a summary, the nearest coordinator responsible for you is notified so it can validate your work, unless you are already the highest coordinator.',
     help: [
-      'Use end-turn when the request is satisfied, or when you are pausing/waiting after work.',
+      'Use end-turn only when the request is satisfied, or when you are pausing/waiting after work. It is terminal: no later tool call in the same model round executes.',
       'Ending with a summary posts a completion notice to the nearest coordinator responsible for you, who is asked to validate your work. If you are the highest coordinator, no notice is posted. A silent end-turn with no summary or details notifies nobody.',
       'summary is REQUIRED: start with one or two sentences summarizing the goals completed, then add 2-5 Markdown bullets describing the steps taken, outcome first. Do not paste tables, logs, or a full report into summary.',
       'details is optional for evidence, proof, failures/risks, and remaining work. The user can expand the collapsed end-turn frame to read it.',

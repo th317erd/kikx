@@ -23,6 +23,11 @@ export class ClassRegistry {
     // object is stale, which is reported by listRestartRequired() rather than
     // silently implied to have changed.
     this._resolvedClasses = new Map();
+    // Keys that at least one construction site actually resolves. A key outside
+    // this set is registered and looks overridable, but nothing in the running
+    // system asks the registry for it - every consumer imports the class and
+    // extends it instead. See listInertOverrides().
+    this._consumedKeys = null;
   }
 
   // registerClass patterns:
@@ -164,6 +169,57 @@ export class ClassRegistry {
     for (let [ key, builtFrom ] of this._resolvedClasses) {
       let current = this.getClass(key);
       if (current !== (builtFrom || null))
+        keys.push(key);
+    }
+
+    return keys.sort();
+  }
+
+  // Declare which keys the running system actually asks the registry for: the keys
+  // that have a real resolveCoreClass()/resolveRegistered() construction site.
+  // Anything registered but not declared here is inert - a plugin can push an
+  // override onto it and nothing will ever construct it, so the registry must not
+  // present that override as a live behaviour change.
+  //
+  // null/undefined marks consumption as unknown, which disables inert reporting
+  // rather than guessing. An unconfigured registry must never claim a key works.
+  setConsumedKeys(keys) {
+    if (keys == null) {
+      this._consumedKeys = null;
+      return this;
+    }
+
+    this._consumedKeys = keys instanceof Set ? keys : new Set(Array.isArray(keys) ? keys : [ ...keys ]);
+    return this;
+  }
+
+  hasConsumedKeys() {
+    return this._consumedKeys instanceof Set;
+  }
+
+  isKeyConsumed(key) {
+    if (!(this._consumedKeys instanceof Set))
+      return null;
+
+    return this._consumedKeys.has(key);
+  }
+
+  // Keys carrying a non-core override where nothing resolves through the registry.
+  // Deliberately distinct from listRestartRequired(): a restart would not help,
+  // because there is no construction site to pick the override up at any point.
+  // Reporting these as restart-required would promise a fix a restart cannot make.
+  listInertOverrides() {
+    if (!(this._consumedKeys instanceof Set))
+      return [];
+
+    let keys = [];
+    for (let [ key, stack ] of this._stacks) {
+      if (stack.length === 0 || this._consumedKeys.has(key))
+        continue;
+
+      // Only a non-core override is worth reporting: the base registration is
+      // core's own, and nobody asked it to do anything.
+      if (stack.some((entry) => entry.pluginName && entry.pluginName !== 'core'))
         keys.push(key);
     }
 

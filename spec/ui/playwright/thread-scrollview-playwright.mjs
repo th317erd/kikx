@@ -46,6 +46,7 @@ async function metrics(page) {
       totalPages: document.querySelector('aeor-scrollview')?.metrics?.().totalPages || 0,
       gaps: document.querySelectorAll('.aeor-scrollview__gap').length,
       items: items.length,
+      uniqueIDs: new Set(items.map((item) => item.dataset.frameId)).size,
       first: items[0]?.dataset.frameId || '',
       last: items.at(-1)?.dataset.frameId || '',
       scrollTop: list?.scrollTop || 0,
@@ -145,6 +146,7 @@ test('the thread mounts the shared scrollview and follows live tail appends', as
     fixture.frameRuntime.emitEvent('frame.added', { sessionID: 'session_scrollview', frame: liveFrame });
     let appended = await waitFor(page, (value) => value.last === 'frame_301' && value.distanceFromBottom <= 5);
     assert.equal(appended.scrollview, true);
+    assert.equal(appended.uniqueIDs, appended.items, 'a live append must not mount a duplicate frame row');
 
     assert.deepEqual(pageErrors, []);
   } finally {
