@@ -466,7 +466,9 @@ Work:
 - Preserve both plugin-index and Miri platform work; do not re-apply the old branch.
 - Extend the existing authority/attribution/unload tests to cover route auth, scoped-DB
   driver behavior, event delivery, migrations and install/reload failure paths. Do not
-  rely on the router and ownership tests alone.
+  rely on the router and ownership tests alone. (**Event delivery is now covered**:
+  `spec/plugins/plugin-event-delivery-spec.mjs` drives delivery, scoping, isolation and
+  reload through the loader. See the still-open list for the reload defect it found.)
 - Add ordinary Kikx authentication gates to plugin inventory, reload, install and
   mutating plugin routes.
 - Do not generalize `PluginAuthority` or add a plugin capability boundary; the owner
@@ -777,6 +779,23 @@ Still open:
   from disk through `loadPlugins`; revert-measured at 4 of 7 failing. Neither policy
   deletes durable data — that is asserted against a counted `delete`, because
   removal of data is a separate explicit purge, not an unload side effect;
+- ~~event delivery~~ **closed**, and it was a real defect rather than a coverage gap.
+  `PluginEventBus` was correctly attached (`create-server.mjs:499`) and scoping correctly
+  filtered, which is why the earlier "unmet contract" note was misleading - the bus
+  worked. The hole was **reload**. `POST /api/v1/plugins/reload` re-scans the configured
+  paths and calls `loadPlugins` again, and `registerPluginRecord` only refuses a name
+  when a *different directory* claims it, so reloading the same directory was accepted:
+  `setup()` ran a second time and the record was replaced. Two leaks followed. The
+  previous registration's subscriptions stayed on the bus while the new load added
+  another, so one runtime event invoked the handler twice per reload and N times after N
+  reloads - invisible, because the handler does run. And the replaced record held the only
+  reference to that registration's teardown, so a reload silently dropped it along with
+  the resources it would have released. Measured at **3 deliveries where 2 are correct**.
+  Fixed by unloading an already-loaded path before reloading it (16 lines in
+  `plugin-loader.mjs`). The spec is 6 tests, and reverting only that fix reproduces
+  `3 !== 2` on exactly the reload test while the other five still pass. `subscribe()`
+  also carried a dead branch (both arms returned `true`) and two comments promising a
+  flush of queued events that does not exist; the comments now say what the code does;
 - demonstrating install/reload/unload on a live boot from P7 (needs the host-side
   `deploy.sh`; there is no unload HTTP route today — `/api/v1/plugins` exposes GET
   inventory plus POST `/install` and POST `/reload` only).

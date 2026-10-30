@@ -13,7 +13,9 @@
 export class PluginEventBus {
   // frameRuntime may be null at construction time. Plugins subscribe during their
   // load, which happens BEFORE the runtime is created, so the bus has to exist first
-  // and be attached afterwards: attach() flushes whatever was queued.
+  // and be attached afterwards. Subscriptions registered before the attach are kept
+  // and become live when it happens; events are not buffered, so nothing that fired
+  // before an attach is delivered afterwards.
   constructor({ frameRuntime = null, logger = console } = {}) {
     this.frameRuntime = null;
     this.logger = logger;
@@ -45,10 +47,9 @@ export class PluginEventBus {
     let list = this.subscriptions.get(pluginId) || [];
     list.push({ handler, allowed });
     this.subscriptions.set(pluginId, list);
-    // Subscription is recorded whether or not the runtime exists yet; attach() starts
-    // delivery. Nothing is delivered before an attach, so a queued subscription sees
-    // no events rather than seeing them late.
-    if (this._listening) return true;
+    // Recorded whether or not the runtime exists yet; attach() starts delivery. Nothing
+    // is delivered before an attach, so a subscription registered early sees no events
+    // rather than seeing them late.
     return true;
   }
 
