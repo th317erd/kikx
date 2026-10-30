@@ -1,3 +1,13 @@
+---
+title: Owner UI review 2 fixes
+status: current
+doc_type: report
+audience: [maintainers, developers]
+applies_to: development-v3
+last_verified: 2026-10-27
+summary: Verification evidence for the second owner UI review.
+---
+
 # Owner UI review #2 — the four annotations, and what actually fixed them
 
 Source screenshot: `session-2026-10-27-16-17-29.525.png`, mtime **2026-10-27 09:21:28 -0700**.

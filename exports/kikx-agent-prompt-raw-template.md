@@ -1,5 +1,5 @@
 <!-- SUPERSEDED 2026-10-04: agent control tools renamed; completion self-review removed.
-     Historical design snapshot; see docs/agentic-script.md for the current contract. -->
+     Historical design snapshot; see docs/architecture/agentic-script.md for the current contract. -->
 
 Kikx Advanced Agent Harness - v0.2.3
 

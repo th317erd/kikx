@@ -365,20 +365,22 @@ inheritance of a small config document; it says nothing about conversation histo
 
 ## 13. Compaction: how it works, and why the child becomes self-sufficient
 
-Today, per `docs/context-compaction.md:26-44` and
+Today, per `docs/architecture/context-compaction.md` and
 `src/core/compaction/compaction-service.mjs`:
 
 - Triggers in the background when context usage crosses the configured ratio; routing
-  continues on the current context meanwhile (`docs/context-compaction.md:26`).
+  continues on the current context meanwhile (`docs/architecture/context-compaction.md`).
 - Reads the session's frames from its own engine (`compaction-service.mjs:76-77`,
   `input.frameEngine.toArray()`, falling back to `input.frames`) and lets
   `FrameContextBuilder` decide what the agent sees and which window to compact
   (`frame-context-builder.mjs:29-51`).
-- Writes a `CompactionFrame` into the **same** session (`compaction-service.mjs`,
-  frame written with `content.status` moving `running` -> `complete`,
-  `docs/context-compaction.md:44`).
-- Agent memory then starts at the most recent completed `CompactionFrame`
-  (`docs/context-compaction.md:30`, implemented at `frame-context-builder.mjs:165-183`).
+- Writes a `CompactionFrame` into the **same** session (`compaction-service.mjs`),
+  with `content.status` progressing from an active state to a terminal state
+  (`docs/architecture/context-compaction.md`).
+- Agent memory starts at the most recent terminal `CompactionFrame`: `complete`,
+  `failed`, or `trimmed`. Failed and trimmed frames remain degraded boundaries;
+  only `started` and `running` are excluded (`docs/architecture/context-compaction.md`,
+  implemented in `frame-context-builder.mjs`).
 
 **Does a forked child inherit the parent's compaction frame correctly, or re-derive?**
 **It inherits it.** The child's builder finds the copied `CompactionFrame` in the
@@ -415,20 +417,20 @@ These are the design context the ruling sits in. Verified present at HEAD `e7b17
   regular session"* (`:10`). `initialMessage` is the approved priming mechanism
   (`:104-106`). This is the origin of the current child-session shape: delegation is
   ordinary session creation, not a special orchestration mode.
-- **`bot-docs/plans/session-work-area.md` §14** (`:237-245`) — sub-sessions are a
+- **`docs/roadmap/session-work-area.md` §14** — sub-sessions are a
   **normal message type** in the chat stream; the parent renders a card where it
   spawned the child and clicking enters it. One view, one filter; hiding sub-sessions
   collapses the parent to a grid. There is **no junction marker** — no in-stream
   "context starts here" divider to design around.
-- **`bot-docs/plans/session-history-lazy-loading.md`** — status IMPLEMENTED. The
+- **`docs/history/plans/completed/session-history-lazy-loading.md`** — status IMPLEMENTED. The
   client pages newest-first via `GET /api/v1/sessions/:id/frames?limit=N&before=<order>`
   (`:35-37`) and *"never load[s] the whole session"* (`:17`). Crucially, the window
   path *"deliberately bypasses engine hydration"* (`:11`) — so a large session is
   cheap to **view**. Consequence for this feature: infinite scrollback inside a child
   is unnecessary, and the fork's copy cost is a *prompt* cost, not a *rendering* cost.
   The history pane will not get slower because the child inherited 2MB of frames.
-- **`docs/context-compaction.md`** — agent memory already starts at the most recent
-  completed `CompactionFrame` (`:30`), and `/compact` already exists to force a
+- **`docs/architecture/context-compaction.md`** — agent memory already starts at the most recent
+  terminal `CompactionFrame`, and `/compact` already exists to force a
   checkpoint deliberately (`:42-44`). So the machinery for the owner's
   "initialization frame" alternative (§10) is already built; it needs a caller, not
   new compaction logic.

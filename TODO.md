@@ -1,5 +1,11 @@
 # TODO
 
+> **Historical implementation ledger.** This checklist records work completed
+> during earlier Kikx development and includes backend names and operational
+> assumptions that are no longer current. It is retained as evidence, not as
+> the active roadmap. Use [`docs/README.md`](./docs/README.md) to find current
+> architecture, maintainer issues, and active roadmap documents.
+
 - [x] Fix `dev:watch` restart reliability.
   - [x] Treat signal-exited child processes as exited.
   - [x] Keep restart wait timeouts referenced so top-level await does not get stranded.
@@ -217,11 +223,11 @@
   - [x] Merge `content.thinking` into the response frame state instead of rendering a second thinking row.
   - [x] Preserve accumulated thinking when the final AgentMessage event arrives.
 
-- [ ] Clear current test sessions and frames from AeorDB while preserving agents.
+- [ ] Historical AeorDB cleanup investigation (not applicable to the current PostgreSQL primary).
   - [x] Preserved pre-delete and post-delete AeorDB evidence copies.
   - [x] Removed normal session manifests from the test DB while preserving agents.
   - [x] Created AeorDB bug report for recursive listing/delete inconsistency.
-  - [ ] Fully remove orphaned session-subtree entries after AeorDB storage bug is diagnosed.
+  - [ ] If AeorDB becomes primary again, reassess orphaned session-subtree entries after its storage bug is diagnosed.
 
 - [x] Add high-resolution hybrid-logical frame clocks for deterministic message ordering.
   - [x] Add focused clock tests.

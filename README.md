@@ -1,39 +1,63 @@
 # Kikx
 
-Kikx is AEOR Development's modular agent runner: a server-first chat harness where humans, agents, tools, and internal commands communicate through persisted frames. The database remains a searchable collection of raw frames, while the shared `FrameManager` stitches those frames into the coherent message view consumed by the server, browser client, and agent context builders.
+Kikx is AEOR Development's frame-based, plugin-driven agent harness for durable
+work by humans and multiple AI agents. It supports multi-bot conversation
+channels, coordinator routing, background context compaction, asynchronous
+tools, cross-session work, bot/session hierarchies, characters, teams, and a
+broad runtime plugin system.
 
-The old Mythix/Mythix ORM/Solr application is archived in `old-app/` for reference only. The active implementation is plain Node.js, native browser modules, a pluggable database driver layer (PostgreSQL in dev), explicit service boundaries, and plugin-defined agent/tool behavior.
+> **Development status:** this is Kikx's third internal development revision.
+> Kikx has never been publicly released; “revision 3” is project lineage, not a
+> public major version or the package's semantic version. The first two
+> revisions were scrapped and replaced after major structural problems.
 
-## Current Capabilities
+The browser is the only first-party UI currently shipped, but the harness core
+is UI-independent: persisted frames, shared projection, JSON APIs, runtime SSE,
+and plugin descriptors sit below the browser client.
 
-- Durable sessions, frame history, agents, teams, token usage, tool outputs, user profiles, feedback reports, and context compaction frames, stored through a pluggable driver (PostgreSQL by default).
-- Git-like frame flow with `FrameEngine`, `FrameRouter`, and shared `FrameManager` projection.
-- Agent plugins for provider-specific configuration and execution, with OpenAI/Codex-style development support.
-- Internal slash commands such as `/invite`, `/compact`, and `/pref`, routed before agent providers.
-- Teams of actors: teams may include agents and real users, and `/invite` can invite a whole team.
-- Agentic loop primitives for responding, null responses, forwarding, progress updates, continuation scheduling, todo lists, per-session cwd, and completion self-review.
-- Tool system with persisted tool results, typed tool frames, range/grep/search access for large outputs, web search/fetch, database search/fetch, file read/write, async shell and temporary-script execution, OCR routing, indexed tags on any entity, process inspection, session/team management, todo management, and feedback reporting.
-- Browser client with magic-link auth, sessions, agents, teams, account profile editing, markdown rendering, custom tool-frame components, token/status display, SSE updates, and no shadow DOM.
-- Asynchronous context compaction using `CompactionFrame` records and a manual `/compact` command.
+## Start with the documentation index
+
+The canonical entry point is [`docs/README.md`](./docs/README.md). It routes bots
+and developers by task, role, subsystem, status, and authority level.
+
+Useful first reads:
+
+- [`docs/overview.md`](./docs/overview.md) — mission, differentiators, and the
+  implemented/partial/planned feature map.
+- [`docs/architecture/README.md`](./docs/architecture/README.md) — current
+  development-v3 architecture.
+- [`docs/history/revisions/README.md`](./docs/history/revisions/README.md) — the
+  three-revision lineage and archive rules.
+- [`docs/reference/source-map.md`](./docs/reference/source-map.md) — where each
+  subsystem lives in source.
+
+Historical plans, incidents, reviews, and migrations are retained under
+`docs/history/`. They preserve evidence from their date; they are not current
+runbooks or architecture authority.
+
+## Current architecture in one paragraph
+
+`FrameRuntime` owns sessions and their in-memory `FrameEngine` instances. Frames
+are committed through the store before `FrameRouter` dispatches them to commands,
+tools, agents, schedulers, or other plugins. The shared `FrameManager` projects
+raw frames into the coherent message view used by model context, APIs, and the
+client. Domain stores use one configured database driver rather than binding
+runtime contracts to a particular database product.
+
+Current development and deployment configurations use PostgreSQL as the
+operational primary. SQLite and AeorDB drivers remain built in; AeorDB is a
+compatibility and possible future-return path while that database continues to
+mature. If no driver is configured, source currently retains an `aeordb`
+compatibility fallback, so deployments must select their intended driver
+explicitly.
 
 ## Requirements
 
 - Node.js 22 or newer.
-- PostgreSQL 16 or newer. This is the primary document store.
-- AEOR shared browser components at `~/Projects/aeor-web-components`.
-- A local `.env.dev` for development defaults when needed.
-
-Kikx defaults to:
-
-- Kikx server: `http://127.0.0.1:3000`
-- PostgreSQL (dev cluster): `postgres://127.0.0.1:5434/kikx-dev`
-- Database driver: `postgresql`
-
-> **AeorDB is legacy.** PostgreSQL is the primary driver; AeorDB's data is
-> preserved as a read-only fallback. The `aeordb` driver still exists so a
-> switch back is a config change, but a new deployment does not need the AeorDB
-> binary. See `bot-docs/database-drivers.md` for the driver layer, capabilities,
-> and per-driver configuration keys.
+- A configured, compatible database driver. Current development uses
+  PostgreSQL 16 or newer.
+- The AEOR web-components checkout for browser-client development.
+- Local development configuration such as `.env.dev`; never commit credentials.
 
 ## Development
 
@@ -43,191 +67,68 @@ Install dependencies:
 npm install
 ```
 
-Start the full local dev stack:
+Start the configured development stack:
 
 ```bash
 npm run dev
 ```
 
-This starts the backing store if needed, waits for `/system/health`, starts Kikx if needed, and prints the local URL. With `ORG_AEOR_KIKX_DATABASE_DRIVER=postgresql` (the default in `.env.dev`) it does not start or wait for AeorDB at all.
-
-Start only the legacy AeorDB daemon (not needed for PostgreSQL):
-
-```bash
-npm run start:aeordb
-```
-
-Start only Kikx:
+Start only the Kikx server:
 
 ```bash
 npm run start:kikx
 ```
 
-Restart Kikx automatically when source files change:
+Restart it automatically when source changes:
 
 ```bash
 npm run dev:watch
 ```
 
-`dev:watch` expects the configured backing store to already be running (PostgreSQL in the dev `.env.dev`; AeorDB only when the driver is `aeordb`). It watches `src`, `scripts`, `package.json`, and `.env.dev`, and intentionally ignores runtime/generated directories such as `.aeordb`, `.git`, `node_modules`, `old-app`, and `.stagehand`.
-
-Generate a development magic login link:
+Generate a development magic-login link from the running server:
 
 ```bash
 npm run magic-link
 ```
 
-The login-link script defaults to `wegreenway@taraani.org`. To target another account:
+See [`docs/guides/development.md`](./docs/guides/development.md) for configuration,
+startup behavior, database selection, login-link options, and troubleshooting.
 
-```bash
-npm run magic-link -- user@example.com
-```
+## Verification
 
-Print the bearer token instead of the browser link by exchanging the code:
-
-```bash
-npm run magic-link -- --token
-```
-
-The script talks to the running Kikx server. Override with `KIKX_URL` when needed.
-
-## Useful Environment Variables
-
-- `KIKX_HOST`, `KIKX_PORT`: Kikx bind host/port.
-- `KIKX_CWD`: absolute working directory for agents, the shell tool and the
-  file tools. Defaults to the HOME directory of the user running the
-  service, never the directory Kikx was launched from.
-- `ORG_AEOR_KIKX_DATABASE_DRIVER`: active driver (`postgresql`, `sqlite`, `aeordb`).
-- `ORG_AEOR_KIKX_DATABASE_URL`: PostgreSQL connection URL for the store.
-- `KIKX_DATABASE_URL`: alias for the above.
-- **Legacy, only read when the driver is `aeordb`:** the `AEORDB_*` keys below.
-- `AEORDB_URL`: AeorDB base URL used by Kikx.
-- `AEORDB_BIN`: AeorDB executable path.
-- `AEORDB_DATABASE`: local `.aeordb` database path.
-- `AEORDB_HOST`, `AEORDB_PORT`: AeorDB bind host/port.
-- `AEORDB_LOG_PATH`: log path used by the magic-link helper.
-- `AEORDB_LOG_MAGIC_LINKS=1`: enables dev magic-link logging.
-- `KIKX_WATCH_PATHS`: comma-separated dev-watch paths.
-
-Do not commit local secrets or root keys.
-
-## Architecture
-
-The active runtime boundaries are:
-
-- `src/core/database/`: driver layer selecting PostgreSQL (primary), SQLite, or
-  the legacy `aeordb` driver. Store code is driver-agnostic.
-- `src/core/aeordb/`: legacy HTTP client and AeorDB-backed stores.
-- `src/core/frames/`: `FrameEngine`, merge behavior, clocks, and shared frame exports.
-- `src/shared/frame-manager/`: browser-safe `FrameManager` that projects raw frames into coherent messages.
-- `src/core/routing/`: frame router and selector compiler.
-- `src/core/commands/`: slash command registration and command router plugin.
-- `src/core/agents/`: agent manager, todo/cwd stores, and agent route plugin.
-- `src/core/plugins/`: plugin interfaces, registry, loader, agent interface, and agentic script templates.
-- `src/core/tools/`: built-in tools, process manager, tool output storage, and client component metadata.
-- `src/core/compaction/`: compaction prompt, context builder, and background compaction service.
-- `src/core/teams/`: actor team management.
-- `src/server/`: plain Node HTTP server, API routes, static module serving, SSE, and shutdown.
-- `src/client/`: native browser client built with AEOR frontend primitives.
-
-The server exposes browser modules from:
-
-- `/client/` for Kikx client modules.
-- `/shared/` for browser-safe shared Kikx modules.
-- `/vendor/aeor-web-components/` for the actively developed shared AEOR component repo.
-
-## Frames And Storage
-
-The database is intentionally treated as durable frame storage, not as the message renderer. Session load is driver-agnostic:
-
-1. Load raw frame JSON records from the configured driver (PostgreSQL by default).
-2. Hydrate the process-local `FrameEngine`.
-3. Feed raw frames through `FrameManager`.
-4. Use the projected message list for UI, agent context, counts, and API views.
-
-Raw frames remain valuable for history, debugging, indexing, and search. Phantom frames are transitory SSE data and are not persisted. Durable lifecycle frames, tool call/result frames, compaction frames, and message frames are persisted.
-
-The default document root path is `/kikx`, and is the same under both drivers.
-
-## Plugins And Tools
-
-Agent-specific behavior belongs in plugins. Plugins can define:
-
-- Agent provider classes and provider-specific config fields.
-- Tool classes and OpenAI-safe tool names.
-- Slash commands.
-- Client frame/tool components for custom rendering.
-
-The built-in tool execution service stores every tool result in the configured database. Small outputs are returned inline to the agent; large outputs return a pointer with instructions for `output-read`, `output-grep`, `output-search`, `database-fetch`, or range reads.
-
-Long-running shell work is managed by the async process system. `exec` starts managed processes, waits briefly for very short commands, stores output, exposes process inspection/kill/read/grep tools, and wakes the agent when long work completes.
-
-`exec-script` uses that same managed process pipeline for temporary one-shot programs. It writes arbitrary `files[]` to a fresh directory under the system temp root, then runs the supplied `start` shell command in that directory, so the agent can use Python, Bash, Node, or any other local interpreter. A legacy Node shorthand (`script`, `entry`, `args`) is also supported. An optional `package.json` triggers npm dependency installation when declared; the result has the usual exit code/stdout/stderr. This replaces long chains of `exec` calls when a task needs real control flow or several files; set `keepTempDir` when you need to inspect the generated workspace after failure.
-
-Tags are indexed `{ target_type, target_id, name, value }` records for any entity. The core registers typed role tags (`leadership_score`, `compaction_score`, `ocr_score`) and plugins can register more with `registerTagDefinition`. `tag-create`, `tag-list`, `tag-get`/`tag-read`, `tag-update`, and `tag-delete` expose them as tools; the agent create/edit dialog renders registered agent-tag definitions as typed controls. Agent-row role icons are also generated from each definition's `agentAction` metadata: crown for leadership, clamp for compaction, and eyeball for OCR. Repeated clicks on OCR icons establish a visible newest-first priority order using click timestamps. Higher positive role scores are selected first, with the legacy crown/compaction lists kept as fallbacks.
-
-OCR runs through tag-selected agents. `ocr` sends local image/PDF paths to the highest-scoring `ocr_score` agent and falls back to the next one on failure. Regular provider agents run a restricted OCR-only tool loop (exec/exec-script/read-file/output tools) under a strict OCR system prompt; the bundled `plugins/ocr` provider (`host-ocr-command`) runs a configured command such as `bot-ocr` directly. If no tagged OCR agent is capable, the built-in host OCR command is used as a final fallback. Add `plugins/ocr` to `KIKX_PLUGIN_PATHS` to load it.
-
-The OCR tool emits an `OcrFrame`; its expanded view shows the asking bot's question, the image(s), and the OCR response. Images load through the authenticated `/api/v1/image-proxy` route, which verifies file magic bytes and refuses non-image data. A session can disable image proxying with `/pref set ocr.image_proxy false`; the setting cascades to child sessions and the proxy returns a safe placeholder instead of the image.
-
-Session preferences are generic per-session key/value settings edited with `/pref`:
-
-```text
-/pref set ocr.image_proxy false
-/pref unset ocr.image_proxy
-/pref get ocr.image_proxy
-/pref list
-```
-
-Values are booleans, finite numbers, or strings. A session inherits preferences from its ancestor chain; the nearest session with the key wins, and the session's own value wins over all ancestors. Setting a key on a parent therefore applies to every descendant unless a child explicitly overrides or unsets it. The manifest stores only the session's own values. `ocr.image_proxy` defaults to `true`; set it to `false` on a parent to disable OCR image proxying for that subtree. Read effective values from `FrameRuntime.getEffectivePreferences(sessionID)` / `getEffectivePreference(sessionID, key)`, `GET /api/v1/sessions/:id/preferences[?key=...]`, or the client helpers `getSessionEffectivePreferences` / `getSessionPreference`.
-
-## Agentic Script
-
-Kikx uses an executable agentic script rather than a hand-copied prompt document. The source of truth is:
-
-- `src/core/plugins/agent-script-template.mjs`
-- `src/core/plugins/agent-interface.mjs`
-- `docs/agentic-script.md`
-- `docs/proper-agent-behavior.md`
-
-The script tells agents how to decide whether to respond, stay silent, use tools, coordinate, delegate to child sessions, update todos, minimize token cost, report progress, and complete self-review before finalizing.
-
-## Frontend
-
-Kikx client code uses AEOR's shared frontend primitives:
-
-- Element Builder for DOM creation.
-- `ReactiveState` for dynamic state.
-- Query Engine for DOM selection and event helpers.
-- Shared components from `~/Projects/aeor-web-components` when a component is reusable across AEOR products.
-
-Product-specific components stay in `src/client/`. Web components must not use shadow DOM.
-
-## Tests
-
-Run all unit tests:
+The primary test commands are:
 
 ```bash
 npm test
-```
-
-Run UI test groups:
-
-```bash
 npm run test:ui:playwright
 npm run test:ui:stagehand
 npm run test:ui:puppeteer
 ```
 
-UI changes should include Stagehand coverage when practical.
+Some test paths create and delete documents in their configured test database.
+Confirm that the URL points to disposable test infrastructure before running a
+broad suite. UI changes require Stagehand coverage under the project rules.
 
-## More Documentation
+See [`docs/guides/testing.md`](./docs/guides/testing.md) for suite boundaries,
+credentials, legacy test-harness coupling, and safe direct commands.
 
-- `docs/architecture.md`: high-level runtime boundaries.
-- `docs/frontend.md`: frontend conventions.
-- `docs/agentic-script.md`: current agentic script contract.
-- `docs/proper-agent-behavior.md`: desired agent behavior.
-- `docs/context-compaction.md`: compaction behavior and frame contract.
-- `docs/mythix-translation.md`: notes for translating old Mythix-era concepts.
-- `bot-docs/`: working notes and bug reports for bots.
+## Repository boundaries
 
+- `src/core/` — UI-independent runtime, agents, plugins, tools, stores, auth,
+  compaction, teams, questions, tags, and database abstractions.
+- `src/shared/` — browser-safe frame/session projection contracts.
+- `src/server/` — Node HTTP/SSE adapters and application composition.
+- `src/client/` — the current AEOR-based browser UI.
+- `plugins/` — bundled plugins; external plugin sites are additive.
+- `spec/` — unit, architecture, server, client, ownership, and browser coverage.
+- `docs/` — all current, roadmap, maintainer, operational, and historical
+  documentation.
+- `old-app/` — archived legacy implementation; reference only.
+
+Deployment/container implementation lives in the sibling distribution
+repository, not this application repository. See
+[`docs/operations/deployment.md`](./docs/operations/deployment.md).
+
+## License
+
+GPL-3.0-or-later.

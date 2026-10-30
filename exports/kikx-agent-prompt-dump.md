@@ -2,7 +2,7 @@
      -> end-turn, agent-respond-and-continue -> continue-turn, loop-break -> stop,
      agent-progress -> progress, agent-character-set -> set-character;
      agent-null-response removed) and the completion self-review was removed.
-     Historical design snapshot; see docs/agentic-script.md for the current contract. -->
+     Historical design snapshot; see docs/architecture/agentic-script.md for the current contract. -->
 
 <!--
   KIKX PROMPT DUMP

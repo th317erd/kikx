@@ -1,3 +1,13 @@
+---
+title: Instruction recovery attempt
+status: current
+doc_type: report
+audience: [maintainers, developers]
+applies_to: development-v3
+last_verified: 2026-10-27
+summary: Evidence about instruction delivery and session storage.
+---
+
 # Instruction recovery attempt — session `1b8c6c92` — 2026-10-27
 
 ## Question

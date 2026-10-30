@@ -1,3 +1,13 @@
+---
+title: Sidebar scope seam
+status: current
+doc_type: report
+audience: [maintainers, developers]
+applies_to: development-v3
+last_verified: 2026-10-30
+summary: Evidence for the sidebar session-scope correction.
+---
+
 # Sidebar scope seam: a latent field mismatch, and what the seam actually is
 
 Date: 2026-10-30

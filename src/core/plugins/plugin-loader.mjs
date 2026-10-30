@@ -419,6 +419,10 @@ function createPluginSetupContext({ registry, commandRegistry, context, pluginPa
       registry.registerComponent(kind, key, descriptor, withPluginName(options, pluginName)),
     registerFrameComponent: (frameType, descriptor = {}, options = {}) =>
       registry.registerFrameComponent(frameType, descriptor, withPluginName(options, pluginName)),
+    registerClientSurface: (kind, key, descriptor = {}, options = {}) =>
+      registry.registerClientSurface(kind, key, descriptor, withPluginName(options, pluginName)),
+    registerMainApp: (key, descriptor = {}, options = {}) =>
+      registry.registerMainApp(key, descriptor, withPluginName(options, pluginName)),
     registerToolComponent: (toolName, descriptor = {}, options = {}) =>
       registry.registerToolComponent(toolName, descriptor, withPluginName(options, pluginName)),
     registerAgentConfigForm: (pluginID, descriptor = {}, options = {}) =>

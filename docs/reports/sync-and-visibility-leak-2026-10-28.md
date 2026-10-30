@@ -1,3 +1,13 @@
+---
+title: Sync and visibility leak
+status: current
+doc_type: report
+audience: [maintainers, developers]
+applies_to: development-v3
+last_verified: 2026-10-28
+summary: Evidence for the visibility-fix regression and sync.
+---
+
 # Sync + verification, and a leak found in the just-shipped visibility fix
 
 Date: 2026-10-28T05:44Z

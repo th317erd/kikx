@@ -1,3 +1,13 @@
+---
+title: Coordinator residue rung 4
+status: current
+doc_type: report
+audience: [maintainers, developers]
+applies_to: development-v3
+last_verified: 2026-10-30
+summary: Evidence for session-tree coordinator resolution.
+---
+
 # Coordinator residue: rung 4 now resolves through the session tree
 
 Session: `edebed2f-3867-4c8f-9f1e-58024a5709c7` (child of `cb551b14`), coordinator Zav (`99129d53`).

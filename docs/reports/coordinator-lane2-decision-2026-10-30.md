@@ -1,3 +1,13 @@
+---
+title: Lane 2 coordinator decision
+status: current
+doc_type: report
+audience: [maintainers, developers]
+applies_to: development-v3
+last_verified: 2026-10-30
+summary: Decision record for the join-path coordinator override.
+---
+
 # Lane 2 decision: `applyJoinCoordinatorOverride` deleted, spec repurposed as a boundary guard
 
 Session: `edebed2f` (child of `cb551b14`). Coordinator: Zav (`99129d53`).

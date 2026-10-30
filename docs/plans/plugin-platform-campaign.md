@@ -613,6 +613,42 @@ Exit proof:
 - Docs index/authority gates green where the docs migration allows.
 - Plugin install/reload/unload demonstrated live.
 
+### Implementation status — 2026-10-30
+
+Landed and verified:
+
+- **P0:** merged Miri platform foundation, ownership ledger, admin authentication,
+  driver-qualified migrations, and plugin failure inventory.
+- **P2:** plugin-owned services with dependency ordering, replacement/restoration,
+  shutdown hooks, and unload release.
+- **P3:** authenticated-by-default plugin mounts, explicit public opt-in, identity
+  propagation, and authenticated plugin-admin routes.
+- **P4:** client composition descriptors and a bootstrap that chooses a plugin
+  `main-app` before defining the built-in `kikx-app` fallback.
+- **P5:** ordered plugin prompt sections; the remaining built-in catalogue
+  migration is intentionally deferred under decision D3/D8.
+- **P6:** driver-qualified frame indexes and migration driver declarations.
+- **P7 (docs):** consolidated the legacy documentation tree into `docs/`, indexed every document,
+  added authority banners, and refreshed plugin reference/authoring and
+  architecture/source-map documentation.
+
+Still open:
+
+- the full direct-construction audit and live-instance generation/reload policy
+  from P1;
+- migrating Questions or Todo into the first plugin-owned service from P2;
+- per-mount request limits and moving one integration route out of core from P3;
+- moving built-in Agents/Teams views behind client descriptors and testing
+  focus/selection preservation from P4;
+- moving built-in tool/frame/command catalogue families and bounded loop controls
+  from P5;
+- dual-driver index execution and checksum/advisory-lock migration tests from P6;
+- removing remaining transitional shims and demonstrating install/reload/unload
+  on a live boot from P7.
+
+The non-doc suite was green at 2,900 tests (2,871 pass, 29 skipped) before the
+documentation consolidation; the documentation gate also passes after it.
+
 ## 7. Verification spine
 
 ### Baseline commands
