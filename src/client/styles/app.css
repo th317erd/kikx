@@ -4128,13 +4128,3 @@ kikx-frame-filter-popup:not(.is-all-on) .kikx-frame-filter__button {
   border-color: #3c444d;
   background: #1c222a;
 }
-
-/* Raw mode keeps Markdown's source characters visible, including newlines,
- * while the inline delimiters still style their contents. pre-wrap is the
- * layout contract; without it the browser would collapse the source lines and
- * the "raw" view would be a single wall of text. */
-.kikx-markdown.kikx-markdown--raw {
-  display: block;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}

@@ -10,8 +10,8 @@ import { renderMarkdownToElement } from '../lib/markdown-renderer.mjs';
 
 const { code, details, div, pre, span, summary } = elements;
 
-export function buildCompactFrameDisclosure(frame, bodyNodes, ownerDocument, options = {}) {
-  let view = buildCompactSummary(frame, ownerDocument, options);
+export function buildCompactFrameDisclosure(frame, bodyNodes, ownerDocument) {
+  let view = buildCompactSummary(frame, ownerDocument);
   let body = div.class('kikx-frame__compact-body')(...(bodyNodes || [])).build(ownerDocument);
   let element = details.class('kikx-frame__compact')(view.element, body).build(ownerDocument);
 
@@ -28,7 +28,7 @@ export function buildCompactFrameDisclosure(frame, bodyNodes, ownerDocument, opt
   };
 }
 
-export function updateCompactSummary(view, frame, options = {}) {
+export function updateCompactSummary(view, frame) {
   if (!view)
     return;
 
@@ -38,7 +38,7 @@ export function updateCompactSummary(view, frame, options = {}) {
 
   if (view.descriptionText !== descriptionText || view.codeText !== codeText) {
     let ownerDocument = view.element.ownerDocument || document;
-    renderDescription(view.description, descriptionText, codeText, ownerDocument, isMarkdownCompactSummary(frame), options);
+    renderDescription(view.description, descriptionText, codeText, ownerDocument, isMarkdownCompactSummary(frame));
     view.descriptionText = descriptionText;
     view.codeText = codeText;
   }
@@ -59,13 +59,13 @@ export function updateCompactSummary(view, frame, options = {}) {
 
 }
 
-function buildCompactSummary(frame, ownerDocument, options = {}) {
+function buildCompactSummary(frame, ownerDocument) {
   let data = compactFrameSummary(frame);
   let element = summary.class('kikx-frame__compact-summary').build(ownerDocument);
   let description = span.class('kikx-frame__compact-description').build(ownerDocument);
   let descriptionText = compactFrameBodyDescription(frame);
 
-  renderDescription(description, descriptionText, data.code || '', ownerDocument, isMarkdownCompactSummary(frame), options);
+  renderDescription(description, descriptionText, data.code || '', ownerDocument, isMarkdownCompactSummary(frame));
   element.appendChild(description);
 
   let command = null;
@@ -101,7 +101,7 @@ function buildCommandBlock(commandText, ownerDocument) {
   return { pre: preNode, code: codeNode };
 }
 
-function renderDescription(element, description, codeText, ownerDocument, markdown = false, options = {}) {
+function renderDescription(element, description, codeText, ownerDocument, markdown = false) {
   while (element.firstChild)
     element.removeChild(element.firstChild);
 
@@ -109,7 +109,6 @@ function renderDescription(element, description, codeText, ownerDocument, markdo
     if (markdown) {
       element.appendChild(renderMarkdownToElement(ownerDocument, description, {
         className: 'kikx-frame__compact-markdown kikx-markdown',
-        rawMarkdown: options.rawMarkdown === true,
       }));
       return;
     }

@@ -1,0 +1,87 @@
+/* Raw mode is a paint-only view. The rendered tree never changes: CSS adds the
+ * Markdown delimiters around the elements the renderer already produced, so
+ * switching is one class toggle on <kikx-app>. No frame is detached, no scroll
+ * anchor is lost, and no network work is repeated. */
+.kikx-raw-mode .kikx-markdown strong::before,
+.kikx-raw-mode .kikx-markdown strong::after {
+  content: "**";
+}
+
+.kikx-raw-mode .kikx-markdown em::before,
+.kikx-raw-mode .kikx-markdown em::after {
+  content: "_";
+}
+
+.kikx-raw-mode .kikx-markdown del::before,
+.kikx-raw-mode .kikx-markdown del::after {
+  content: "~~";
+}
+
+.kikx-raw-mode .kikx-markdown code::before,
+.kikx-raw-mode .kikx-markdown code::after {
+  content: "`";
+}
+
+.kikx-raw-mode .kikx-markdown strong::before,
+.kikx-raw-mode .kikx-markdown strong::after,
+.kikx-raw-mode .kikx-markdown em::before,
+.kikx-raw-mode .kikx-markdown em::after,
+.kikx-raw-mode .kikx-markdown del::before,
+.kikx-raw-mode .kikx-markdown del::after,
+.kikx-raw-mode .kikx-markdown code::before,
+.kikx-raw-mode .kikx-markdown code::after {
+  color: #8fa6b8;
+  font-style: normal;
+  font-weight: 400;
+  text-decoration: none;
+}
+
+/* A fenced block is one <pre>, so its markers belong on the block, not on the
+ * inner code element. */
+.kikx-raw-mode .kikx-markdown pre::before,
+.kikx-raw-mode .kikx-markdown pre::after {
+  display: block;
+  color: #8fa6b8;
+  content: "```";
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85em;
+  font-weight: 400;
+}
+
+.kikx-raw-mode .kikx-markdown pre code::before,
+.kikx-raw-mode .kikx-markdown pre code::after {
+  content: none;
+}
+
+.kikx-raw-mode .kikx-markdown h1::before { content: "# "; }
+.kikx-raw-mode .kikx-markdown h2::before { content: "## "; }
+.kikx-raw-mode .kikx-markdown h3::before { content: "### "; }
+.kikx-raw-mode .kikx-markdown h4::before { content: "#### "; }
+.kikx-raw-mode .kikx-markdown h5::before { content: "##### "; }
+.kikx-raw-mode .kikx-markdown h6::before { content: "###### "; }
+
+.kikx-raw-mode .kikx-markdown h1::before,
+.kikx-raw-mode .kikx-markdown h2::before,
+.kikx-raw-mode .kikx-markdown h3::before,
+.kikx-raw-mode .kikx-markdown h4::before,
+.kikx-raw-mode .kikx-markdown h5::before,
+.kikx-raw-mode .kikx-markdown h6::before {
+  color: #8fa6b8;
+  font-weight: 400;
+}
+
+.kikx-raw-mode .kikx-markdown blockquote::before {
+  color: #8fa6b8;
+  content: "> ";
+  font-weight: 400;
+}
+
+.kikx-raw-mode .kikx-markdown ul > li::marker {
+  color: #8fa6b8;
+  content: "- ";
+}
+
+.kikx-raw-mode .kikx-markdown ol > li::marker {
+  color: #8fa6b8;
+  content: counter(list-item) ". ";
+}

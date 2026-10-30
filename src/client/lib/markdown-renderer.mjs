@@ -91,53 +91,9 @@ export function markdownToHTML(input) {
 
 export function renderMarkdownToElement(ownerDocument, input, options = {}) {
   let element = ownerDocument.createElement('div');
-  let raw = options.rawMarkdown === true;
-  element.className = raw
-    ? `${options.className || 'kikx-frame__content kikx-markdown'} kikx-markdown--raw`
-    : (options.className || 'kikx-frame__content kikx-markdown');
-  element.appendChild(raw
-    ? parseHTMLFragment(ownerDocument, markdownToRawHTML(String(input ?? '')))
-    : renderBotContentFragment(ownerDocument, input));
+  element.className = options.className || 'kikx-frame__content kikx-markdown';
+  element.appendChild(renderBotContentFragment(ownerDocument, input));
   return element;
-}
-
-// The "raw" view keeps every Markdown source character visible, but still
-// applies the inline formatting those characters describe:
-//
-//   **bold**  ->  **<strong>bold</strong>**
-//   _italics_ ->  _<em>italics</em>_
-//   ~~cool~~  ->  ~~<del>cool</del>~~
-//
-// Block syntax stays literal too (headings keep their #, lists keep their
-// markers). That is the point: this view explains what the rendered view did,
-// rather than being a second renderer with its own opinions. The source is
-// escaped first, so raw mode can never execute HTML that ordinary rendering
-// would have sanitized away.
-export function markdownToRawHTML(input) {
-  if (typeof input !== 'string' || input.length === 0)
-    return '';
-
-  let text = input.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  let tokens = [];
-  let escaped = escapeHTML(text);
-
-  // Inline code is literal content. Protect it before emphasis so asterisks
-  // inside a code span are not turned into formatting, but show its backticks.
-  escaped = escaped.replace(/`([^`\n]+)`/g, (_match, code) => (
-    createToken(tokens, `\`<code>${code}</code>\``)
-  ));
-
-  escaped = applyRawInlineEmphasis(escaped);
-  return restoreTokens(escaped, tokens);
-}
-
-function applyRawInlineEmphasis(text) {
-  return text
-    .replace(/\*\*([^\n]+?)\*\*/g, '**<strong>$1</strong>**')
-    .replace(/__([^\n]+?)__/g, '__<strong>$1</strong>__')
-    .replace(/~~([^~\n]+)~~/g, '~~<del>$1</del>~~')
-    .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1*<em>$2</em>*')
-    .replace(/(^|[^\w])_([^_\n]+)_(?=$|[^\w])/g, '$1_<em>$2</em>_');
 }
 
 function renderBotContentFragment(ownerDocument, input) {

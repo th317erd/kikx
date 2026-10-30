@@ -30,8 +30,14 @@ export function setRawMarkdown(app, enabled) {
   writeRawMarkdown(next);
   if (app?._state)
     app._state.rawMarkdown = next;
+  // This is deliberately a class toggle, not a shell repaint. Repainting
+  // detaches the thread, loses the scroll position and makes a view-only
+  // preference look like a page navigation. CSS supplies the syntax marks.
   app?.classList?.toggle?.('kikx-raw-mode', next);
-  app?._render?.();
+  for (let button of app?.querySelectorAll?.('.kikx-raw-toggle') || []) {
+    button.classList.toggle('is-on', next);
+    button.setAttribute('aria-pressed', next ? 'true' : 'false');
+  }
   return next;
 }
 

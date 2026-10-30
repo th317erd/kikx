@@ -33,9 +33,20 @@ test('raw Markdown mode persists locally and defaults off', () => {
   assert.equal(readRawMarkdown(), false);
 });
 
-test('raw Markdown toggles app state and repaints once', () => {
+test('raw Markdown toggles only the app class and the button state', () => {
   globalThis.localStorage = storage();
   let renders = 0;
+  let pressed = null;
+  let button = {
+    classList: {
+      value: '',
+      toggle(name, force) { this.value = force ? name : ''; },
+    },
+    setAttribute(name, value) {
+      if (name === 'aria-pressed')
+        pressed = value;
+    },
+  };
   let app = {
     _state: { rawMarkdown: false },
     classList: {
@@ -44,19 +55,24 @@ test('raw Markdown toggles app state and repaints once', () => {
         this.value = force ? name : '';
       },
     },
+    querySelectorAll() { return [ button ]; },
     _render() { renders++; },
   };
 
   assert.equal(toggleRawMarkdown(app), true);
   assert.equal(app._state.rawMarkdown, true);
   assert.equal(app.classList.value, 'kikx-raw-mode');
-  assert.equal(renders, 1);
+  assert.equal(button.classList.value, 'is-on');
+  assert.equal(pressed, 'true');
+  assert.equal(renders, 0, 'a view-only toggle must not rebuild the shell');
 
   assert.equal(setRawMarkdown(app, true), true);
-  assert.equal(renders, 1, 'setting the same value must not rebuild the shell');
+  assert.equal(renders, 0);
 
   assert.equal(toggleRawMarkdown(app), false);
   assert.equal(app._state.rawMarkdown, false);
   assert.equal(app.classList.value, '');
-  assert.equal(renders, 2);
+  assert.equal(button.classList.value, '');
+  assert.equal(pressed, 'false');
+  assert.equal(renders, 0);
 });

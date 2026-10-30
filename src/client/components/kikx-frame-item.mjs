@@ -184,7 +184,6 @@ export class KikxFrameItem extends HTMLElement {
     this._contentKind = null;
     this._contentTag = null;
     this._lastMarkdownText = null;
-    this._lastMarkdownRaw = null;
     this._compact = false;
     this._minimized = false;
     this._compactView = null;
@@ -314,7 +313,6 @@ export class KikxFrameItem extends HTMLElement {
       contentKind: this._contentKind,
       contentTag: this._contentTag,
       lastMarkdownText: this._lastMarkdownText,
-      lastMarkdownRaw: this._lastMarkdownRaw,
     };
 
     // Build the new subtree against a detached tree first, then swap it in. A
@@ -328,7 +326,6 @@ export class KikxFrameItem extends HTMLElement {
         this._contentKind = null;
         this._contentTag = null;
         this._lastMarkdownText = null;
-        this._lastMarkdownRaw = null;
       } else {
         meta = this._buildFrameMeta(frame, compact);
         // Compact frames keep only their summary and command preview in the DOM.
@@ -353,9 +350,7 @@ export class KikxFrameItem extends HTMLElement {
       this._applyFrameState(frame, compact);
 
       if (compact) {
-        this._compactView = buildCompactFrameDisclosure(frame, [], document, {
-          rawMarkdown: this._appState?.rawMarkdown === true,
-        });
+        this._compactView = buildCompactFrameDisclosure(frame, [], document);
         this._contentParent = this._compactView.body;
         // Rebuilding this item must not collapse a frame the user opened.
         // Expansion lives in a module-level store keyed by frame id, not in
@@ -393,7 +388,6 @@ export class KikxFrameItem extends HTMLElement {
       this._contentKind = previous.contentKind;
       this._contentTag = previous.contentTag;
       this._lastMarkdownText = previous.lastMarkdownText;
-      this._lastMarkdownRaw = previous.lastMarkdownRaw;
     }
   }
 
@@ -477,9 +471,7 @@ export class KikxFrameItem extends HTMLElement {
       }
 
       if (compact) {
-        updateCompactSummary(this._compactView, frame, {
-          rawMarkdown: this._appState?.rawMarkdown === true,
-        });
+        updateCompactSummary(this._compactView, frame);
         this._reconcileFrameMeta(frame);
         if (this._compactView.element.open) {
           this._ensureCompactContent();
@@ -674,13 +666,11 @@ export class KikxFrameItem extends HTMLElement {
 
   _reconcileMarkdown(frame) {
     let text = markdownText(frame);
-    let raw = this._appState?.rawMarkdown === true;
-    if (this._lastMarkdownText === text && this._lastMarkdownRaw === raw)
+    if (this._lastMarkdownText === text)
       return;
 
     let rendered = renderMarkdownToElement(document, text, {
       className: this._contentElement.className,
-      rawMarkdown: raw,
     });
 
     cleanupBindings(this._contentElement);
@@ -691,7 +681,6 @@ export class KikxFrameItem extends HTMLElement {
       this._contentElement.appendChild(child);
 
     this._lastMarkdownText = text;
-    this._lastMarkdownRaw = raw;
   }
 
   _replaceContentElement(frame) {
@@ -710,7 +699,6 @@ export class KikxFrameItem extends HTMLElement {
     this._contentKind = null;
     this._contentTag = null;
     this._lastMarkdownText = null;
-    this._lastMarkdownRaw = null;
   }
 
   _buildTypingIndicator(frame) {
@@ -770,10 +758,8 @@ export class KikxFrameItem extends HTMLElement {
 
     if (descriptor.kind === 'markdown') {
       this._lastMarkdownText = markdownText(frame);
-      this._lastMarkdownRaw = this._appState?.rawMarkdown === true;
       return renderMarkdownToElement(document, markdownText(frame), {
         className: 'kikx-frame__content kikx-markdown',
-        rawMarkdown: this._lastMarkdownRaw,
       });
     }
 
