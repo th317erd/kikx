@@ -111,3 +111,38 @@ test('PluginRegistry inherits the universal class registry', () => {
   registry.unregisterPlugin('plugin-x');
   assert.equal(registry.getClass('FrameRouter'), Base);
 });
+
+// P1 direct-construction audit: a class registered as overridable must be RESOLVED
+// through the registry wherever core builds it, or the override is silently ignored.
+//
+// This test pins the specific instance found by that audit. core-classes.mjs registers
+// CommandRegistry under pluginName 'core', so a plugin is told it may override it, but
+// create-server.mjs constructed it with a direct `new CommandRegistry()`. A plugin
+// override therefore changed the registry row and nothing else - and because nothing
+// ever called resolveCoreClass for it, listRestartRequired() had no record either, so
+// the inventory could not report the discrepancy.
+test('a registered-overridable class is resolved, not constructed directly', async () => {
+  let { resolveCoreClass } = await import('../../../src/core/plugins/core-classes.mjs');
+  let { CommandRegistry } = await import('../../../src/core/commands/index.mjs');
+  let { PluginRegistry } = await import('../../../src/core/plugins/plugin-registry.mjs');
+
+  let registry = new PluginRegistry({ logger: { warn() {} } });
+  registry.registerClass('CommandRegistry', CommandRegistry, { pluginName: 'core' });
+
+  // Resolving records what the instance was built from, which is what makes the
+  // override reportable rather than invisible.
+  let ResolvedClass = resolveCoreClass(registry, 'CommandRegistry', CommandRegistry);
+  assert.equal(ResolvedClass, CommandRegistry);
+
+  class PluginCommandRegistry extends CommandRegistry {}
+  registry.registerClass('CommandRegistry', PluginCommandRegistry, { pluginName: 'plugin-x' });
+
+  // The live instance predates the override, so it stays on core - and says so.
+  assert.deepEqual(registry.listRestartRequired(), [ 'CommandRegistry' ],
+    'an override of an already-resolved class must be reported, not silently ignored');
+
+  // A fresh resolution picks the override up.
+  assert.equal(resolveCoreClass(registry, 'CommandRegistry', CommandRegistry), PluginCommandRegistry);
+  assert.deepEqual(registry.listRestartRequired(), [],
+    'once the instance is rebuilt from the override, nothing is stale');
+});

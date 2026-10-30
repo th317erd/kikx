@@ -639,9 +639,31 @@ Landed and verified:
 
 Still open:
 
-- the full direct-construction audit from P1 (the generation half is done:
-  `listRestartRequired()` plus the inventory field; auditing every remaining
-  `new CoreClass()` site is separate work);
+- ~~the full direct-construction audit from P1~~ **closed**. Every class
+  `core-classes.mjs` registers under `pluginName: 'core'` is now accounted for,
+  with the resolution mode named rather than assumed:
+  - **resolved at construction, override needs a restart** — `FrameRouter`,
+    `FrameRuntime`, `CompactionService`, `CommandRegistry`. Each is built once,
+    before plugins load, so a later override cannot reach the live instance; all
+    four are now built through `resolveCoreClass` and reported by
+    `listRestartRequired()`/`data.restartRequired`. `CommandRegistry` was the
+    audit's real find: registered as overridable but constructed directly, so an
+    override was ignored *and* unreported.
+  - **resolved per use, override takes effect live** — the `FrameType<Type>` keys.
+    `frameTypeClass()` in `src/core/frames/frame-types/create-typed-frame.mjs`
+    (not `core/frames/create-typed-frame.mjs`) looks the class up on every frame
+    creation, so a plugin frame-type override applies to the next frame. This path
+    must *not* report `restart-required`; doing so would be wrong.
+  - **no construction site to audit** — `PluginInterface`, `AgentInterface`,
+    `DatabaseConnectionBase`. They are plugin-facing base classes and subclass
+    guards (`isSubclassOf` in `plugin-registry.mjs`), never instantiated by core,
+    so there is nothing to route through the registry.
+  - **the registry itself** — `PluginRegistry` is constructed at
+    `create-server.mjs` bootstrap, which is the registry an override would have to
+    be registered on. The bootstrap does not register core classes at that point,
+    so the direct `new PluginRegistry()` is the only coherent construction; it is
+    documented here rather than changed. (Unproven by test: this is read from call
+    order at `create-server.mjs` 160-203, not executed as a contract.);
 - migrating Questions or Todo into the first plugin-owned service from P2;
 - moving one integration route out of core from P3 (per-mount request limits
   landed: `spec/plugins/plugin-mount-limits-spec.mjs`);
@@ -654,7 +676,7 @@ Still open:
 - removing remaining transitional shims and demonstrating install/reload/unload
   on a live boot from P7.
 
-The full suite is green at 2,915 tests (2,886 pass, 29 skipped), including the
+The full suite is green at 2,988 tests (2,959 pass, 29 skipped), including the
 documentation consolidation gate.
 
 ## 7. Verification spine
@@ -756,7 +778,23 @@ These findings are part of the plan, not objections to it:
    lock release on failure, checksum immutability for applied migrations, a missing
    migration file for a recorded version, and the table-prefix guard firing before
    any transaction opens.
-9. **Existing plugin packages need a compatibility ingress.** Preserve old manifests, `/api/plugins/` mounts, plugin asset URLs and class registrations for one transition window; version-gate legacy rows in an adapter rather than teaching every consumer both shapes.
+9. **"Registered as overridable" did not mean "actually resolved".**
+   `core-classes.mjs` registers eight classes under `pluginName: 'core'`, which
+   tells a plugin it may override them. Only three were built through
+   `resolveCoreClass`. `CommandRegistry` was constructed directly in
+   `create-server.mjs`, so a plugin override changed the registry row and nothing
+   else - and because nothing resolved it, `listRestartRequired()` could not
+   report the discrepancy either. It now resolves through the registry, joined by
+   `FrameRouter`/`FrameRuntime`/`CompactionService`. Because it is built before
+   plugins load, an override still cannot affect that instance - the same
+   `restart-required` answer as `FrameRouter`, but now a reported one.
+   The audit is now closed: three registered classes have no core construction site
+   at all (plugin-facing base classes and subclass guards), and the
+   `FrameType<Type>` keys are a third category - resolved on every use, so those
+   overrides take effect live and must not be filed as restart-required. The
+   lesson generalises: "overridable" needs a resolution mode (construction-time vs
+   per-use vs none), because only the first can be stale.
+10. **Existing plugin packages need a compatibility ingress.** Preserve old manifests, `/api/plugins/` mounts, plugin asset URLs and class registrations for one transition window; version-gate legacy rows in an adapter rather than teaching every consumer both shapes.
 
 ## 9. Artifacts
 

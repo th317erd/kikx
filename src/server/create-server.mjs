@@ -226,8 +226,21 @@ export async function createServer(options = {}) {
   if (!context.has('commandExecutor'))
     context.set('commandExecutor', new LocalCommandExecutionService({ cwd: baseCWD }));
 
-  if (!context.has('commandRegistry'))
-    context.set('commandRegistry', new CommandRegistry());
+  if (!context.has('commandRegistry')) {
+    // Resolve via the registry like FrameRouter and FrameRuntime. CommandRegistry is
+    // registered as overridable in core-classes.mjs, but it was constructed directly
+    // here, so a plugin override was silently ignored AND unreported: the registry row
+    // said "overridden" while this instance kept running core, and listRestartRequired()
+    // had no record to report because nothing ever resolved it.
+    //
+    // This construction happens before plugins load (the load promise is awaited
+    // further down), so an override still cannot affect THIS instance - exactly like
+    // FrameRouter. The difference is that it is now reported as restart-required
+    // instead of being invisible.
+    let CommandRegistryClass = resolveCoreClass(
+      context.require('pluginRegistry'), 'CommandRegistry', CommandRegistry);
+    context.set('commandRegistry', new CommandRegistryClass());
+  }
 
   if (!context.has('internalCommandsRegistered')) {
     registerInternalCommands({
