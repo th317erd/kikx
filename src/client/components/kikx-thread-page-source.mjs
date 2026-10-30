@@ -25,7 +25,7 @@ function frameOrder(frame) {
 }
 
 export class KikxThreadPageSource {
-  constructor({ pageSize, totalRawFrames, loadPage, getFilters, getQuery }) {
+  constructor({ pageSize, totalRawFrames, loadPage, getFilters, getQuery, updateItem = null }) {
     this.pageSize = Math.max(1, Number(pageSize) || 120);
     this.totalRawFrames = Math.max(0, Number(totalRawFrames) || 0);
     this.totalItems = this.totalRawFrames;
@@ -33,6 +33,7 @@ export class KikxThreadPageSource {
     this.loadRawPage = loadPage;
     this.getFilters = getFilters;
     this.getQuery = getQuery;
+    this.updateItem = updateItem;
     this.rawPages = new Map();
     this.pageHeights = new Map();
     this.averagePageHeight = DEFAULT_PAGE_HEIGHT;

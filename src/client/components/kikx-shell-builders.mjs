@@ -53,7 +53,11 @@ const aeorInput = elements['aeor-input'];
 // app, so the whole build runs inside the error boundary; on failure the
 // previous children are put back so the UI is not left blank.
 export function renderAppShell(app) {
-  countRebuild('shell');
+  countRebuild('shell', {
+    reason: app._renderReason || 'unspecified',
+    scope: app._state.selectedSessionID || null,
+    structural: true,
+  });
 
   // Owner item 2b (2026-10-27): an inline rename must not survive a context
   // change. This runs FIRST, before any builder, so the paint about to happen is

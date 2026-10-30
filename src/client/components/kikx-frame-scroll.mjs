@@ -327,15 +327,18 @@ export function syncThinkingRack(app) {
   });
 }
 
-export function requestRender(app) {
+export function requestRender(app, reason = 'unspecified') {
   if (app._renderScheduled)
     return;
 
   app._renderScheduled = true;
+  app._pendingRenderReason = reason;
   scheduleAnimationFrame(() => {
     app._renderScheduled = false;
+    let pendingReason = app._pendingRenderReason || reason;
+    app._pendingRenderReason = null;
     if (app.isConnected)
-      app._render();
+      app._render(pendingReason);
   });
 }
 

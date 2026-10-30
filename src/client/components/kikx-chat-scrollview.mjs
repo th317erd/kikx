@@ -96,6 +96,9 @@ export class KikxChatScrollView {
       loadPage: this.pageContext.loadPage,
       getFilters: this.pageContext.getFilters,
       getQuery: this.pageContext.getQuery,
+      updateItem: (item, node) => {
+        node.updateFrame?.(item.frame, this.getAppState(), { force: false });
+      },
     });
     this.pageSource.renderItem = (item) => this.createFrameItem(item.frame);
     this.source = this.pageSource;
@@ -110,6 +113,42 @@ export class KikxChatScrollView {
     this._pendingPage = target;
     this._pendingAnchor = null;
     this.element.scrollToPage(target, { align: target === last ? 'end' : 'start', animate: false });
+  }
+
+  // Re-scope the mounted page source after a filter/query change. The source
+  // already has the raw pages; reloading projection for only the mounted pages
+  // preserves the scrollview, page wrappers, and scroll anchor. A different
+  // session (or a missing source) must return false so the caller can mount.
+  updatePageContext(pageContext) {
+    if (!this.pageSource || !this.element || !pageContext)
+      return false;
+    if (this.pageContext?.sessionID && pageContext.sessionID && this.pageContext.sessionID !== pageContext.sessionID)
+      return false;
+
+    let key = pageContext.key || '';
+    if (key === this._pageSourceKey) {
+      this.pageContext = pageContext;
+      return true;
+    }
+
+    this.pageContext = pageContext;
+    this._pageSourceKey = key;
+    this.pageSource.getFilters = pageContext.getFilters;
+    this.pageSource.getQuery = pageContext.getQuery;
+    this.pageSource.loadRawPage = pageContext.loadPage;
+    let epoch = (this._pageContextEpoch || 0) + 1;
+    this._pageContextEpoch = epoch;
+
+    let indexes = [ ...this.pageSource.rawPages.keys() ]
+      .filter((index) => this.element.pages?.[index]?.loaded === true);
+    for (let index of indexes) {
+      this.pageSource.loadPage({ pageIndex: index }).then((page) => {
+        if (epoch !== this._pageContextEpoch || this._pageSourceKey !== key)
+          return;
+        this.element.updatePage(index, page.items);
+      }).catch(() => null);
+    }
+    return true;
   }
 
   _installEvents() {

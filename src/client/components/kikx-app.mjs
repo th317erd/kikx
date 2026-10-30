@@ -203,7 +203,7 @@ import {
   toggleAgentTagAction,
 } from './kikx-agent-controller.mjs';
 import { onMagicLinkSubmit, verifyMagicLink } from './kikx-auth.mjs';
-import { renderStats } from './render-stats.mjs';
+import { renderOutcomes, renderStats } from './render-stats.mjs';
 
 export class KikxApp extends HTMLElement {
   constructor() {
@@ -219,6 +219,8 @@ export class KikxApp extends HTMLElement {
     // `document.querySelector('kikx-app')._renderStats` to confirm a streaming
     // burst did not cause a rebuild storm.
     this._renderStats = renderStats;
+    this._renderOutcomes = renderOutcomes;
+    this._renderReason = 'unspecified';
     this._eventSource = null;
     this._frameListResizeObserver = null;
     this._observedFrameList = null;
@@ -409,7 +411,7 @@ export class KikxApp extends HTMLElement {
     this._flushPreviewRefresh = async () => flushPreviewRefresh(this);
     this._captureRenderSnapshot = () => captureRenderSnapshot(this);
     this._afterRender = (snapshot = {}) => afterRender(this, snapshot);
-    this._requestRender = () => requestRender(this);
+    this._requestRender = (reason = 'unspecified') => requestRender(this, reason);
     this._clearComposerDraft = () => clearComposerDraft(this);
     this._restoreComposerDraftOnFailure = (submittedDraft) => restoreComposerDraftOnFailure(this, submittedDraft);
     this._syncSessionShell = () => syncSessionShell(this);
@@ -644,8 +646,13 @@ export class KikxApp extends HTMLElement {
     uninstallFrameRuntimeVisibilityDrain(this);
   }
 
-  _render() {
-    renderAppShell(this);
+  _render(reason = 'unspecified') {
+    this._renderReason = reason;
+    try {
+      renderAppShell(this);
+    } finally {
+      this._renderReason = 'unspecified';
+    }
   }
 
   disconnectedCallback() {

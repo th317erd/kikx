@@ -72,10 +72,19 @@ export class KikxChatView extends HTMLElement {
     let key = context?.key || '';
     if (key === this._pageContextKey)
       return;
+    let previousContext = this._pageContext;
     this._pageContextKey = key;
     this._pageContext = context || null;
-    if (this._mode === 'full' && this.isConnected && this._frames.length > 0)
-      this._renderFullShared();
+    if (this._mode !== 'full' || !this.isConnected || this._frames.length === 0)
+      return;
+
+    // Filter/query changes are an in-place projection change. Only a different
+    // session or a missing page source needs the mount path.
+    if (previousContext?.sessionID === context?.sessionID
+      && this._scrollview?.updatePageContext?.(context) === true)
+      return;
+
+    this._renderFullShared();
   }
 
   connectedCallback() {
