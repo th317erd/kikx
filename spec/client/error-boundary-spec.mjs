@@ -26,6 +26,7 @@ const {
   clearRecentErrors,
   guardClientOperation,
   installGlobalErrorCapture,
+  isBenignResizeObserverLoop,
   listRecentErrors,
   reportClientError,
   subscribeToRecentErrors,
@@ -209,6 +210,32 @@ test('installGlobalErrorCapture installs and tears down both global handlers', (
   uninstallGlobalErrorCapture(app);
   assert.equal(host.onerror, previous);
   assert.equal(host._listeners.get('unhandledrejection')?.length ?? 0, 0);
+});
+
+test('ResizeObserver loop notifications are browser diagnostics, not user-facing errors', () => {
+  clearRecentErrors();
+  assert.equal(isBenignResizeObserverLoop('ResizeObserver loop completed with undelivered notifications.'), true);
+  assert.equal(isBenignResizeObserverLoop('ResizeObserver loop limit exceeded'), true);
+  assert.equal(isBenignResizeObserverLoop(new Error('ResizeObserver loop completed with undelivered notifications.')), true);
+  assert.equal(isBenignResizeObserverLoop('ordinary application failure'), false);
+
+  let host = createHost();
+  let app = {};
+  installGlobalErrorCapture(app, host);
+  let reports = 0;
+  let unsubscribe = subscribeToRecentErrors(() => { reports += 1; });
+  try {
+    quietConsole(() => {
+      assert.equal(host.onerror('ResizeObserver loop completed with undelivered notifications.', '', 1, 2, null), true);
+      assert.equal(host.onerror('ordinary failure', '', 1, 2, null), true);
+    });
+  } finally {
+    unsubscribe();
+    uninstallGlobalErrorCapture(app);
+  }
+  assert.equal(reports, 1, 'only the ordinary failure reaches the error surface');
+  assert.equal(listRecentErrors().length, 1);
+  assert.equal(listRecentErrors()[0].message, 'ordinary failure');
 });
 
 test('installGlobalErrorCapture is idempotent for one app', () => {

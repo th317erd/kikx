@@ -152,6 +152,16 @@ export function clearRecentErrors() {
   recentErrors.length = 0;
 }
 
+// ResizeObserver loop notifications are browser diagnostics, not application
+// failures. Chromium reports them through window.onerror even though the
+// observer callback did not throw; surfacing them in the user error chip makes
+// ordinary layout work look like a broken client. Firefox uses a slightly
+// different wording for the same condition.
+export function isBenignResizeObserverLoop(value) {
+  let message = value instanceof Error ? value.message : String(value ?? '');
+  return /ResizeObserver loop (?:completed with undelivered notifications|limit exceeded)/i.test(message);
+}
+
 // Install global capture on `host`, storing teardown state on `app` so
 // disconnect removes exactly these handlers and restores the previous
 // `onerror`. Idempotent per app.
@@ -163,12 +173,18 @@ export function installGlobalErrorCapture(app, host = defaultHost()) {
     host,
     previousOnError: host.onerror ?? null,
     onError: (message, source, lineno, colno, error) => {
-      reportClientError('window.onerror', error ?? message, { source, lineno, colno });
+      let failure = error ?? message;
+      if (isBenignResizeObserverLoop(failure)) {
+        console.debug?.('[kikx] ignored benign ResizeObserver loop notification');
+        return true;
+      }
+      reportClientError('window.onerror', failure, { source, lineno, colno });
       // The boundary already logged it; suppress the browser's duplicate.
       return true;
     },
     onRejection: (event) => {
-      reportClientError('unhandledrejection', event?.reason, {});
+      if (!isBenignResizeObserverLoop(event?.reason))
+        reportClientError('unhandledrejection', event?.reason, {});
       // The boundary already logged it; suppress the browser's duplicate.
       event?.preventDefault?.();
     },
