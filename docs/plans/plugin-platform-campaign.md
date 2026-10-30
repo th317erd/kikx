@@ -737,24 +737,59 @@ Still open:
   host paths behind a `BLOCKED_ROOTS` denylist plus a per-session user preference,
   so relocating it to a plugin mount changes the trust boundary. Awaiting an owner
   decision, not additional analysis;
-- focus/selection preservation for plugin views from P4 (the view/descriptor
-  plumbing landed: `client-view-surfaces.mjs`, `view-name-registry.mjs`,
-  `spec/client/view-surface-descriptors-spec.mjs`; `viewName ===` branches are
-  gone). The enabling mechanism has since landed twice over: `resolveViewSurface`
-  now reuses one element per surfaceID across paints (`spec/client/view-surface-identity-spec.mjs`,
-  6 tests, 3 failing before), and the element cache is pruned at the exact point
-  `syncViewNames()` shrinks the addressable set (`spec/client/view-surface-prune-spec.mjs`,
-  which drives the real `setClientComponents` path so the pruner is not dead code).
-  What remains is proving focus and selection actually survive — and that half is
-  **blocked in this environment, not unbuilt**. Reuse is necessary but not
-  sufficient: detaching a node blurs it, so `document.activeElement` and the caret
-  need explicit restoration around the rebuild, and `spec/client/support/mini-dom.mjs`
-  (704 lines) models **no** focus at all — no `activeElement`, no selection, no
-  `focus()`. Asserting focus in that harness would prove the mock. The honest
-  instrument is the real-browser harness (`spec/ui/playwright/`), which skips here
-  because `findChromeExecutable()` returns empty in this container — no Chrome is
-  installed. So this needs a lane with a browser, or a deliberate decision to add
-  focus semantics to mini-dom first;
+- ~~focus/selection preservation for plugin views from P4~~ **closed**, and the
+  note that stood here was wrong twice over. It claimed the remainder was "blocked
+  in this environment" because "no Chrome is installed". Chrome *is* installed — as
+  a Playwright/Puppeteer cache under `~/.cache` that `findChromeExecutable()` never
+  looked at, so the resolver answered "no browser" on a machine with two. The
+  real-browser lane was red for that reason, not because the proof was unavailable.
+
+  What the browser actually showed, once it could run: a plugin view rendered
+  **nothing at all**. Three defects, none of them the missing restore logic the old
+  note pointed at:
+
+  1. `stackFromSearchParams` validated `?view=` against `VIEW_NAMES`, the frozen core
+     literal. A plugin surface can never be in that array, so no plugin view was
+     reachable by URL — a reload or a shared link dropped it, which is literally
+     "P4's view does not survive a reload". Every other reader of the vocabulary
+     (`normalizeNavigationStack`, `pushView`, `isViewEntry`) already asked the live
+     registry; the parse site was the last holdout.
+  2. `stackFromCurrentURL` skipped any entry whose `sessionID` was unknown and
+     `break`ed out of the loop, discarding the rest of the tail. A view entry has
+     `sessionID: null` by construction, so this rejected every view entry —
+     `?view=inbox` included, meaning the pinned Inbox deep link had been dead in
+     production too, not only for plugins.
+  3. `applyAuth` carries a second, hand-maintained copy of the startup load list and
+     fired `_loadSessions()` in parallel with `_loadClientComponents()`. The deep
+     link therefore resolved before the descriptor registered the view name, and
+     `_deepLinkApplied` latches, so it was never retried. Fixed by making the
+     descriptor load a prerequisite in both lists (`kikx-app.mjs`, `kikx-editors.mjs`).
+
+  With those closed, the restore half was built as the old note described: capture
+  focus and the caret inside a view surface in `captureRenderSnapshot`, restore it
+  in `afterRender` (`kikx-frame-scroll.mjs`), reusing the snapshot pair the composer
+  already used. Two details are deliberately not the obvious ones: lookups compare
+  the `data-kikx-focus-key` attribute instead of interpolating a plugin-authored key
+  into a selector (a plugin must not choose what the shell queries), and the
+  `data-kikx-view-surface` marker is set by the shell in
+  `buildDescriptorSurface`, not by the plugin, so the contract holds for a plugin
+  that never heard of it.
+
+  Proof: `spec/ui/playwright/plugin-view-focus-playwright.mjs` drives the real path
+  (server descriptor → `/api/v1/client-components` → `setClientComponents` → `?view=notes`
+  → type → `app._render()`), and asserts element reuse plus post-rebuild attachment
+  so "focus survived" cannot pass on an app that never repainted.
+  Revert-measured: stashing only the restore half fails
+  `assert.equal(after.activeKey, 'note-body')`. The three navigation defects are
+  pinned by `spec/client/view-deep-link-spec.mjs` (6 tests, no browser needed);
+  reverting only the parser fix fails 4 of them and leaves the two that must stay
+  green (unregistered refusal, core/removed views) green;
+
+  The harness defect is fixed too, because a red lane nobody can act on is how the
+  above stayed hidden: `findChromeExecutable()` now probes the download caches with
+  a **numeric** version comparison (a string sort picked `...7680.76` over
+  `...7680.153`, which is how this was caught), and the two specs that launched with
+  no `executablePath` now skip explicitly instead of hard-failing;
 - moving built-in tool/frame/command catalogue families from P5 (bounded loop
   controls landed: `registerLoopControl`, `spec/plugins/plugin-loop-control-spec.mjs`,
   exit proof "reject unbounded or unknown terminal paths" met);
@@ -796,9 +831,50 @@ Still open:
   `3 !== 2` on exactly the reload test while the other five still pass. `subscribe()`
   also carried a dead branch (both arms returned `true`) and two comments promising a
   flush of queued events that does not exist; the comments now say what the code does;
-- demonstrating install/reload/unload on a live boot from P7 (needs the host-side
-  `deploy.sh`; there is no unload HTTP route today — `/api/v1/plugins` exposes GET
-  inventory plus POST `/install` and POST `/reload` only).
+- the `ui:playwright` lane has **one** failure that is not this repo's:
+  `inbox-frame-visual-parity-playwright.mjs` 404s on
+  `vendor/aeor-web-components/components/aeor-scrollview.js`. That file exists on the
+  vendored framework's own `origin/main`; the checkout at
+  `/home/wyatt/Projects/aeor-web-components` is 7 commits behind it and has never
+  contained the file. So the lane is red on a stale vendor checkout, not on Kikx
+  code. Fixing it means updating that checkout (a different repo) or vendoring the
+  file; deliberately not done here. Worth noting that the lane is now honest enough
+  to show this at all: before the resolver fix it executed 2 tests and skipped 14,
+  and now it executes 17 with 0 skipped. **Confirmed, not assumed:** pointing
+  `KIKX_AEOR_WEB_COMPONENTS_ROOT` at a throwaway worktree of the vendor's own
+  `origin/main` turns the spec green (1 pass / 0 fail, identical computed styles at
+  420/300/240px), while the checked-out `cc8c2e0` 404s on that one asset. So the
+  failure is the stale checkout and nothing in `src/`;
+- demonstrating install/reload/unload on a live boot from P7 — **the route half is
+  closed, the deploy half is not.** `/api/v1/plugins` exposed GET inventory plus POST
+  `/install` and POST `/reload`, so unload had no HTTP surface at all: the only way to
+  stop a plugin was to restart the process, and this exit criterion was unreachable by
+  construction. It now has one — POST `/api/v1/plugins/unload`, gated by the same
+  operator check as the other admin actions (a new `plugins:unload` action, not a bare
+  boolean). The machinery was never missing: `unloadPlugin()` already had a complete
+  contract pinned by `spec/plugins/plugin-unload-spec.mjs` (mount, subscriptions,
+  migrations, scoped database handle, authority, class overrides). The surface was.
+
+  Three properties are load-bearing and are tested as such, in
+  `spec/server/plugin-unload-route-spec.mjs` (10 tests): **order** — every rejection
+  test also asserts the plugin is still loaded and still mounted, because a gate that
+  runs after the work is worthless; an **unknown name is 404, never 200 with
+  `unloaded:false`** — a caller trying to stop a stopped plugin must not be answered in
+  a way that reads as success; and **unload is not a one-way door** — the loader
+  re-imports with a cache-busting query, so an install → unload → reinstall cycle on one
+  process re-runs `setup()` and re-establishes its subscription exactly once rather
+  than zero times. Revert-measured: with only the two source files reverted, 9 of the 10
+  fail, and the single pass is the pre-existing fall-through pinned on purpose.
+
+  Proven against a real boot too, not only fakes: `spec/plugins/live-boot-exit-proof.mjs`
+  now drives unload over a real socket against `createServer()` with the real Postgres
+  driver, and reports 11 passed / 0 failed — including anonymous refusal, unknown-name
+  404, the mount going dark, and the host still serving afterwards. That proof previously
+  called `unloadPlugin()` in-process *because* there was no route, and its comment said
+  so; that comment is now corrected rather than left standing.
+
+  What remains is only the deploy: showing install/reload/unload on the live image needs
+  the host-side `deploy.sh main`.
 - ~~removing remaining transitional shims~~ — **measured, and the item was
   mis-worded.** A grep for transitional/compat-shim markers across `src/` returns
   nothing; the five `legacy`/`backwards-compat` hits are data-format fallbacks
@@ -811,7 +887,7 @@ Still open:
   an unbuilt decision — building it is scope the owner has not authorized, and
   deleting the item would hide that.
 
-The full suite is green at 3,063 tests (3,033 pass, 30 skipped) at this commit,
+The full suite is green at 3,095 tests (3,065 pass, 30 skipped) at this commit,
 `npm test` = `node --test "spec/**/*-spec.mjs"`. The P6 retention contract above
 adds its own seven (`spec/core/plugins/plugin-index-retention-spec.mjs`) and no
 pre-existing assertion broke. Correcting an inherited claim: earlier revisions of

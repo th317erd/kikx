@@ -8,6 +8,10 @@
 //                             disk, and which ones FAILED to load.
 //   /api/v1/plugins/install   install: loads code from an arbitrary path into this
 //   /api/v1/plugins/reload    process. Reload picks up newly added directories too.
+//   /api/v1/plugins/unload    unload: removes a live plugin from the running process.
+//                             Same gate as reload, and for the same reason - removing a
+//                             plugin tears down a serving surface, which is at least as
+//                             consequential as adding one.
 //
 // Install already refused to run unless the operator set KIKX_PLUGIN_INSTALL_ENABLED.
 // That is a config gate, not an authorization check: it answers "is this deployment
@@ -34,6 +38,8 @@ export const PLUGIN_ADMIN_ACTIONS = Object.freeze({
   // Load plugin code from a path, or re-scan the configured plugin paths.
   INSTALL: 'plugins:install',
   RELOAD: 'plugins:reload',
+  // Remove a loaded plugin from the running process.
+  UNLOAD: 'plugins:unload',
 });
 
 // ONE message for every unauthenticated rejection. The account store distinguishes

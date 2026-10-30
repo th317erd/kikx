@@ -15,19 +15,20 @@
 // is missing. Not part of `npm test`: it needs a live database and several
 // seconds of boot, neither of which the suite may assume.
 //
-// Why unload is called in-process
-// ------------------------------
-// /api/v1/plugins exposes GET inventory, POST /install and POST /reload. There
-// is no unload endpoint, so unload cannot be reached over HTTP at all. That is a
-// finding, not a workaround, and it is reported in the output. Calling
-// unloadPlugin() directly is the only way to exercise it against a live server.
+// Unload is driven over HTTP
+// --------------------------
+// This proof used to call unloadPlugin() in-process, because /api/v1/plugins only
+// exposed GET inventory plus POST /install and POST /reload - unload could not be
+// reached over HTTP at all. That was a finding, and it is now fixed: POST
+// /api/v1/plugins/unload runs the same unloadPlugin() behind the same operator gate
+// as the other admin actions, and this proof drives it over a real socket. The
+// in-process assertions below remain, but only to describe what the HTTP call did.
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createServer } from '../../src/server/create-server.mjs';
-import { unloadPlugin } from '../../src/core/plugins/plugin-loader.mjs';
 
 const PLUGIN_ID = 'parity_probe';
 const silent = { info() {}, warn() {}, error() {}, debug() {} };
@@ -114,6 +115,21 @@ async function getJSON(pathname, { withAuth = false } = {}) {
   return { status: response.status, body };
 }
 
+async function postJSON(pathname, payload, { withAuth = false } = {}) {
+  let response = await fetch(`${base}${pathname}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(withAuth ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+  let text = await response.text();
+  let body;
+  try { body = JSON.parse(text); } catch { body = text; }
+  return { status: response.status, body };
+}
+
 // --- before unload -------------------------------------------------------
 
 await checkAsync('inventory refuses an anonymous caller', async () => {
@@ -153,11 +169,25 @@ await checkAsync('tool, class override, ledger, subscription and migration claim
 // --- unload --------------------------------------------------------------
 
 let ownedBefore = registry.listOwnedRegistrations(PLUGIN_ID).length;
-await checkAsync('unloadPlugin runs against a live server', async () => {
-  await unloadPlugin(registry, PLUGIN_ID, { logger: silent });
+
+await checkAsync('the unload route refuses an anonymous caller', async () => {
+  let { status } = await postJSON('/api/v1/plugins/unload', { name: PLUGIN_ID });
+  assert.equal(status, 401, `expected 401, got ${status}`);
+  assert.ok(registry._pluginRegistrations?.has(PLUGIN_ID), 'an anonymous unload stopped the plugin');
 });
 
-await checkAsync('the mount stops serving after unload', async () => {
+await checkAsync('the unload route refuses an unknown plugin name as 404', async () => {
+  let { status } = await postJSON('/api/v1/plugins/unload', { name: 'not-a-loaded-plugin' }, { withAuth: true });
+  assert.equal(status, 404, `expected 404, got ${status}`);
+});
+
+await checkAsync('the unload route stops the plugin over real HTTP', async () => {
+  let { status, body } = await postJSON('/api/v1/plugins/unload', { name: PLUGIN_ID }, { withAuth: true });
+  assert.equal(status, 200, `expected 200, got ${status}: ${JSON.stringify(body).slice(0, 300)}`);
+  assert.equal(body?.data?.unloaded, true, 'the response did not report the unload');
+});
+
+await checkAsync('the mount stops serving after the unload route ran', async () => {
   let response = await fetch(`${base}/api/plugins/${PLUGIN_ID}/any-path`);
   assert.notEqual(response.status, 200, 'the unloaded plugin still serves requests');
 });

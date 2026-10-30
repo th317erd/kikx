@@ -89,7 +89,12 @@ function startFrameworkServer(root) {
 // cheap.
 const FLUSH = `await new Promise((r) => setTimeout(r, 0)); await Promise.resolve(); await Promise.resolve();`;
 
-test('aeor-web-components: component regressions execute and pass in a real browser', async () => {
+test('aeor-web-components: component regressions execute and pass in a real browser', async (t) => {
+  if (!findChromeExecutable()) {
+    t.skip('real-browser coverage requires Chrome; findChromeExecutable() found none');
+    return;
+  }
+
   assert.ok(fs.existsSync(FRAMEWORK_DIR), `framework checkout not found at ${FRAMEWORK_DIR}`);
   assert.ok(fs.existsSync(path.join(FRAMEWORK_DIR, 'test/harness.html')), 'framework test harness page missing');
 
@@ -98,7 +103,10 @@ test('aeor-web-components: component regressions execute and pass in a real brow
 
   try {
     browser = await chromium.launch({
-      executablePath: findChromeExecutable() || undefined,
+      // The guard above guarantees this is a real path. `|| undefined` used to
+      // let a missing browser through to Playwright, which then threw instead
+      // of the test skipping.
+      executablePath: findChromeExecutable(),
       headless: true,
     });
 
@@ -128,7 +136,12 @@ test('aeor-web-components: component regressions execute and pass in a real brow
   }
 });
 
-test('cleanupBindings unsubscribes, so a disposed element stops reacting to state', async () => {
+test('cleanupBindings unsubscribes, so a disposed element stops reacting to state', async (t) => {
+  if (!findChromeExecutable()) {
+    t.skip('real-browser coverage requires Chrome; findChromeExecutable() found none');
+    return;
+  }
+
   let server = await startFrameworkServer(FRAMEWORK_DIR);
   let browser;
 

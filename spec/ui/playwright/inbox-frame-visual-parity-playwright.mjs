@@ -32,6 +32,8 @@ import { dirname, join, extname, normalize, resolve } from 'node:path';
 
 import { chromium } from 'playwright';
 
+import { findChromeExecutable } from '../stagehand/stagehand-test-utils.mjs';
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..', '..');
 const VENDOR = process.env.KIKX_AEOR_WEB_COMPONENTS_ROOT
@@ -270,6 +272,15 @@ function startStaticServer(harnessHTML) {
 }
 
 test('the Inbox row and the in-thread Question frame compute to the same visual style', async (t) => {
+  // A computed-style comparison needs a real cascade. Without a browser this test
+  // cannot measure anything, so it must skip -- not fail -- or the lane goes red
+  // for a reason that has nothing to do with the styling it exists to guard.
+  let chromePath = findChromeExecutable();
+  if (!chromePath) {
+    t.skip('real-browser coverage requires Chrome; findChromeExecutable() found none');
+    return;
+  }
+
   let { page: harnessHTML, missingVendor } = harnessPage();
 
   assert.deepEqual(missingVendor, [],
@@ -279,7 +290,7 @@ test('the Inbox row and the in-thread Question frame compute to the same visual 
   let { server, port } = await startStaticServer(harnessHTML);
   t.after(() => new Promise((done) => server.close(done)));
 
-  let browser = await chromium.launch();
+  let browser = await chromium.launch({ executablePath: chromePath, args: [ '--no-sandbox' ] });
   t.after(() => browser.close());
 
   let page = await browser.newPage({ viewport: { width: 900, height: 1400 } });

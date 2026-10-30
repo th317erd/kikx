@@ -5,6 +5,22 @@
 
 import { PLUGIN_ADMIN_ACTIONS, requireOperator } from './plugin-admin-policy.mjs';
 
+// The admin branches below run before router.invoke(), which is what normally supplies a
+// body reader, so they read the request themselves. Bounded because these payloads are a
+// path or a name; a malformed or oversized body returns null rather than a partial parse,
+// and the caller decides what a missing body means for its route.
+async function readBoundedJsonBody(request, limit = 4096) {
+  try {
+    const chunks = []; let size = 0;
+    for await (const chunk of request) {
+      size += chunk.length;
+      if (size > limit) throw new Error('payload too large');
+      chunks.push(chunk);
+    }
+    return chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : null;
+  } catch (_e) { return null; }
+}
+
 export async function handlePluginRoutes({ request, response, url, context, json, rawBody }) {
   let router = null;
   try {
@@ -112,18 +128,8 @@ export async function handlePluginRoutes({ request, response, url, context, json
       return true;
     }
 
-    // This branch runs before router.invoke, which is what normally supplies a body
-    // reader, so the request body is read here. Bounded: an install payload is a path.
-    let body = null;
-    try {
-      const chunks = []; let size = 0;
-      for await (const chunk of request) {
-        size += chunk.length;
-        if (size > 4096) throw new Error('install payload too large');
-        chunks.push(chunk);
-      }
-      body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : null;
-    } catch (_e) { body = null; }
+    // Bounded: an install payload is a path.
+    let body = await readBoundedJsonBody(request);
     let target = typeof body?.path === 'string' ? body.path.trim() : '';
     if (!target) {
       response.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -244,6 +250,84 @@ export async function handlePluginRoutes({ request, response, url, context, json
           added: [...after].filter((k) => !before.has(k)),
           total: after.size,
           failures: registry._pluginLoadErrors || [],
+        },
+      }));
+    } catch (error) {
+      response.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ error: { message: String(error?.message || error) } }));
+    }
+    return true;
+  }
+
+  // Remove a loaded plugin without restarting the process.
+  //
+  // unloadPlugin() has long had a complete contract - mount, event subscriptions,
+  // migrations, scoped database handle, plugin authority, class overrides - and
+  // spec/plugins/plugin-unload-spec.mjs pins each of those. But nothing in the HTTP
+  // surface reached it, so the only way to stop a plugin was to restart the server, and
+  // the P7 exit criterion (install/reload/unload demonstrated against a live server) was
+  // not reachable at all. This route is the missing surface, not new machinery.
+  //
+  // It does not remove the plugin's DIRECTORY. Unloading is a runtime action; whether the
+  // code is still on disk is a configuration question, and deleting files from an admin
+  // endpoint would be a destructive act nobody asked this route to perform. So an unload
+  // followed by a reload of the configured paths will find the directory again and bring
+  // the plugin back - deliberately, and it is reported in the response for that reason.
+  if (url.pathname === '/api/v1/plugins/unload' && request.method === 'POST') {
+    await requireOperator(context, request, PLUGIN_ADMIN_ACTIONS.UNLOAD);
+
+    let registry = context.has?.('pluginRegistry') ? context.require('pluginRegistry') : null;
+    if (!registry) {
+      response.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ error: { message: 'plugin registry unavailable' } }));
+      return true;
+    }
+
+    let body = await readBoundedJsonBody(request);
+    let name = typeof body?.name === 'string' ? body.name.trim() : '';
+    if (!name) {
+      response.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ error: { message: 'unload requires a plugin name' } }));
+      return true;
+    }
+
+    let map = registry._pluginRegistrations;
+    // An unknown name is a 404, never a 200 with unloaded:false. This request is the one
+    // that would have stopped a plugin, so a caller who named the wrong plugin must not
+    // be answered in a way that reads as "it is stopped now".
+    if (!(map instanceof Map) || !map.has(name)) {
+      response.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({
+        error: { message: 'plugin "' + name + '" is not loaded' },
+        data: { name, loaded: map instanceof Map ? [ ...map.keys() ] : [] },
+      }));
+      return true;
+    }
+
+    let location = map.get(name)?.pluginLocation || null;
+    try {
+      const { unloadPlugin } = await import('../../core/plugins/plugin-loader.mjs');
+      let removed = await unloadPlugin(registry, name, { logger: console });
+      // unloadPlugin() answers false when the record vanished between the check above and
+      // the call. Reporting success there would claim a teardown that never happened.
+      if (removed === false) {
+        response.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+        response.end(JSON.stringify({
+          error: { message: 'plugin "' + name + '" could not be unloaded' },
+        }));
+        return true;
+      }
+      let remaining = registry._pluginRegistrations instanceof Map
+        ? [ ...registry._pluginRegistrations.keys() ]
+        : [];
+      response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({
+        data: {
+          name,
+          unloaded: true,
+          location,
+          total: remaining.length,
+          loaded: remaining,
         },
       }));
     } catch (error) {

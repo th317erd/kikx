@@ -297,7 +297,23 @@ export class KikxApp extends HTMLElement {
     this._loadSessions = async () => loadSessions(this);
     this._loadAgents = async () => loadAgents(this);
     this._loadTeams = async () => loadTeams(this);
-    this._loadClientComponents = async () => loadClientComponents(this);
+    // The in-flight descriptor load, so a consumer that DEPENDS on the view
+    // vocabulary can wait for it instead of racing it. `applySessionDeepLink`
+    // does exactly that: `?view=<plugin view>` is validated against the live
+    // registry, and the descriptor is what puts the name there, so resolving the
+    // deep link first silently dropped the view AND latched `_deepLinkApplied`,
+    // so it was never retried. Null until the first load starts.
+    this._clientComponentsPromise = null;
+    this._loadClientComponents = async () => {
+      let pending = loadClientComponents(this);
+      this._clientComponentsPromise = pending;
+      try {
+        return await pending;
+      } finally {
+        if (this._clientComponentsPromise === pending)
+          this._clientComponentsPromise = null;
+      }
+    };
     this._cancelAgents = (target = null) => cancelAgents(this, target);
     this._loadFrames = async (sessionID, options = {}) => loadFrames(this, sessionID, options);
     this._loadFramePage = async (sessionID, pageIndex, pageSize) => loadFramePage(this, sessionID, pageIndex, pageSize);
