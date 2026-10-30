@@ -5,7 +5,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 
-import { loadEnvFile } from '../src/core/config/env-loader.mjs';
+import { loadEnvFile, loadEnvFileWithProvenance } from '../src/core/config/env-loader.mjs';
 
 export { loadEnvFile };
 
@@ -91,7 +91,7 @@ export function buildHealthURL(host, port) {
 }
 
 async function main() {
-  await loadEnvFile('.env.dev');
+  await loadEnvFileWithProvenance(process.env.KIKX_ENV_FILE || '.env.dev');
 
   let host = process.env.KIKX_HOST || '127.0.0.1';
   let port = Number.parseInt(process.env.KIKX_PORT || '3000', 10);

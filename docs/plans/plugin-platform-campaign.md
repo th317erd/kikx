@@ -1155,3 +1155,160 @@ Still **not** proven: a real human message reaching a session through the gatewa
 (that needs the Message Content privileged intent), and the live image is still
 `f201985` — `deploy.sh` stages `origin/master`, so a fresh deploy would pick up
 `2980203`, but no deploy has been run.
+
+### Discord gateway observability and liveness, measured (2026-10-30)
+
+Appended to close a specific blindness rather than a checklist line. The gateway reported
+only through `console.warn`, so "is the bot connected?" and "why did my message not
+arrive?" were answerable exclusively from a shell on the host running the process. On the
+3003 dev instance that shell was unreachable from the agent doing the work, which made two
+different failures look identical: a gateway that never dialled, and a gateway that dialled
+and denied the sender.
+
+Fixed in `kikx-plugin-discord` by exposing `GET /api/plugins/discord/status`. The mount is
+`auth: 'public'` because Discord cannot hold a Kikx session, and that must not make
+internal state readable anonymously, so the route resolves identity itself through the
+`accountStore` that core places in `context`. The token is deliberately absent from the
+body: a token in a status body is a token in a log.
+
+Three facts are reported separately because they fail separately:
+
+- `tokenPresent` — was a bot token found at `/kikx/discord/bot/token`. A false here is a
+  configuration problem, not a connection problem.
+- `connected` plus the gateway's own `status()` — `ready`, `sessionID`, `sequence`,
+  `attempt`, `fatal`, `heartbeatIntervalMS`, `userId`.
+- `recentOutcomes` — every dispatch decision, **including denials**, with `reason`,
+  `channelID` and `actorID`. A denial that exists only as a log line is indistinguishable
+  from nobody having sent anything.
+
+Proof on a running process (port 3026, `wt-parity`, real Miri token, disposable database
+`kikx_status_probe` — created and dropped for the run):
+
+| request | result |
+| --- | --- |
+| `GET /api/plugins/discord/status` anonymous | `401 Sign in required to read Discord plugin status` |
+| same, `Authorization: Bearer <admin token>` | `200` |
+| body | `tokenPresent:true`, `connected:true`, `userId:1471348366305923102`, `heartbeatIntervalMS:41250`, `inboundChannelID`/`inboundSessionID` resolved |
+| `recentOutcomes[0]` | `GUILD_CREATE`, `handled:false`, `reason:"not_a_message"` — a real dispatch from Discord |
+| token substring search in body | absent |
+
+`spec/status-route-spec.mjs` is 6 tests; reverting only `index.mjs` to `2980203` fails
+**4 of 6**. The two that still pass are vacuous and are not counted: with no route
+registered there is nothing to leak and the mount is still public.
+
+Two corrections to earlier text in this document:
+
+1. The previous "not proven" line said a real human message needs the Message Content
+   privileged intent. The intent is **already approved** — the application's flags read
+   `532480`, which carries bit `524288`. Measured directly: a real human `MESSAGE_CREATE`
+   from another guild arrived over the gateway with non-empty `content` and was denied at
+   `not_authorized`. Had the intent been missing, the router would have reported
+   `empty_content_missing_intent` instead, since it checks for that case explicitly.
+2. "A real human message reaching a session through the gateway" is now narrower than it
+   was. What remains unproven is a human who **holds a grant**, typing in the bound
+   channel, producing a framed message. The transport, the intent, the content, and the
+   gate are all proven; only the positive authorization branch is not.
+
+The 3003 dev instance itself needed no restart for any of this. It was reported as dead
+for two days because of an SSH tunnel that forwarded 3098 and not 3003; it answered
+`/health` `200` and served `/client/*` byte-identical to this tree throughout, with
+`Cache-Control: no-cache`, so the stale-looking status bar was a browser cache. Its client
+modules are current; only *server* modules freeze at boot.
+
+### Discord edits: one path, behind the gate (2026-10-30)
+
+`kikx-plugin-discord` `4554b85`. An earlier revision of this document recorded edit
+handling as present because the HTTP branch and its three tables existed. It was present
+twice, and both copies were wrong:
+
+- **Over HTTP** there was an inline copy of the edit logic in `index.mjs`. It re-derived
+  the diff, wrote `discord_message_frame`, and appended to the frame — and never called
+  `authorizeInbound`. The mapping row proves that *the original message* passed the gate;
+  it does not prove the actor editing it now is the same one. So an edit was a write with
+  no capability check, which is the strict-security ruling inverted.
+- **Over the gateway** there was no edit path at all. `handle()` opened with
+  `if (eventType !== 'MESSAGE_CREATE') return not_a_message`, so `MESSAGE_UPDATE` was
+  dropped before the router looked at it. A user editing a message saw nothing happen.
+
+One path replaced them: `MESSAGE_UPDATE` dispatches to `handleEdit()` in
+`inbound-router.mjs`, which calls the same `authorizeInbound` the message path uses,
+resolves the frame through `findFrame()`, keeps `original_text` intact, and appends to the
+audit tail via `updateFrameAudit()`. The inline copy is deleted rather than left as a
+second definition — the two copies had already diverged once.
+
+Two policy decisions inside it, both deny-by-default:
+
+- **No author, no write.** An edit with no attributable author is refused
+  (`no_author`) rather than inheriting the original message's grant on faith.
+- **No content is not an error.** Discord sends `MESSAGE_UPDATE` with no `content` field
+  when it unfurls a link preview. That is reported as `edit_without_content`, not treated
+  as a malformed request, because otherwise every pasted URL logs a failure.
+
+`spec/inbound-edit-spec.mjs` is 9 tests; reverting both files to `26d815d` fails **8 of
+9**, the single pass being the control that unrelated events are still not messages. The
+pre-existing router test asserted `MESSAGE_UPDATE → not_a_message`, which is the old
+behaviour written down as an expectation — the second time in this campaign that an
+assertion was protecting a defect rather than catching one. It now expects
+`unframed_message`. Plugin suite: **86/86**.
+
+Not measured: a real edit arriving over a live gateway socket. The unit proof drives
+`handle()` directly and the code path from `onDispatch` to `handle()` is the same one
+`MESSAGE_CREATE` already travels, but that identity is argued from the source, not
+observed on a socket.
+
+## Plugin reload now re-reads configuration, measured
+
+The owner's hard requirement is that plugins stay installable, reloadable and removable
+without a service restart. One defect defeated that requirement while looking like an
+environment problem, and it was ours.
+
+**The measurement.** `POST /api/v1/plugins/reload` on the 3003 dev instance returned
+`200 {"added":[],"total":8,"failures":[]}`, and the plugin's own `startedAt` in
+`GET /api/plugins/discord/status` moved to the reload timestamp - so `setup()` and
+`onInit()` genuinely re-ran and the new plugin code was live. The same response reported
+`tokenPresent:false`. The token had been written to `kikx/.env.dev` seventeen hours after
+the process booted. Reload was working; the *configuration* it reloaded against was a
+boot-time snapshot, so the only remaining way to apply a newly added key was to restart
+the process. A reload that cannot see the configuration it was performed for is not a
+working reload.
+
+**Why.** `scripts/start-dev.mjs` and `scripts/start-kikx-dev.mjs` call `loadEnvFile`
+once, before spawning the server. `ConfigStore`'s process-env provider reads
+`process.env` live on every `get()` (`src/core/config/config-providers.mjs`), so anything
+present in the environment is visible immediately - but a key written to the file after
+the spawn never enters the environment at all. The store was never stale; the environment
+was never updated.
+
+**The fix.** `src/core/config/env-refresh.mjs` re-reads the env file at reload time and
+the `/plugins/reload` route calls it before `loadPlugins`. The rule is deliberately
+conservative, because refreshing an environment from a file is a good way to break a
+deliberate override:
+
+1. A key absent from the environment is added - the file is the only source that could
+   supply it.
+2. A key the file owns is updated. `loadEnvFileWithProvenance` records, at boot, which
+   keys the file was actually allowed to set, and carries that list in the environment
+   (`KIKX_ENV_FILE_OWNED_KEYS`) so it survives the launcher-to-server process boundary.
+3. Any other key is pinned and left alone. This is what keeps `KIKX_PORT=3025 npm run dev`
+   on 3025 across a reload instead of being dragged back to the file's value.
+
+The reload response reports what happened - `added`, `updated`, `pinned` - rather than
+logging it, because an operator reloading a plugin to pick up configuration needs to see
+whether the configuration was re-read.
+
+**Proof.** `spec/core/config/env-refresh-spec.mjs` is 11 tests, driving real temp files
+through the real loaders. The decisive one builds a `ConfigStore` *before* the key exists,
+appends the key to the file, refreshes, then asserts the same store instance resolves the
+new value with no restart. Reverting `refreshEnvFromFile` to additive-only behaviour fails
+**7 of 11**; the 4 that still pass are the loader-provenance tests, which bind to the
+other half of the change and are labelled as such rather than counted as coverage of the
+refresh.
+
+**Scope, stated plainly.** The route change reaches the running 3003 process only through
+one restart, because a route in core is not hot-swapped. That is a *core* upgrade and is
+labelled as one; it is not a plugin-lifecycle restart, and after this change a plugin
+install, reload or removal needs no restart at all.
+
+Not measured: a live 3003 reload picking up a post-boot token through this path. The
+proof is at the store and route boundary; the live confirmation is pending a core upgrade
+of that instance.
