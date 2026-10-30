@@ -186,12 +186,30 @@ contract is real, or it will be an index built for a predicate that shifts.
    reflects "no scoped route yet", not "useless".
 2. **`session-ownership.mjs` (112 L) stays.** `ownership-query.mjs:30` imports
    `normalizeSessionID` from it; deleting the "thin naming table" breaks the query layer.
-3. **`applyJoinCoordinatorOverride` gets wired, not deferred.** The read path covers JOIN-A only;
-   JOIN-B and JOIN-C contradict the owner's sentence. C specifies the invite-path call site. This
-   is a reversal of my earlier recommendation, driven by C's spec.
-4. **`coordinator-scope.mjs` at 513 L is accepted debt for this pass only.** It is 13 lines over
-   the soft cap. It must not grow. If the join-override wiring adds lines, they go in a new
-   module (`src/core/agents/coordinator-join.mjs`) and `coordinator-scope.mjs` re-exports.
+3. **`applyJoinCoordinatorOverride` is DELETED, not wired.** (Superseded: this
+   ruling previously read "gets wired, not deferred", on the grounds that JOIN-B and JOIN-C
+   contradict the owner's sentence. That version is withdrawn.)
+
+   Wiring the helper grants an unrelated joiner coordinator authority -- lateral takeover -- and
+   writes `coordinatorAgentID` on the join path, while the resolver's own rule is that authority
+   flows **DOWN** the ancestry chain and is **derived, not stored**. `isCoordinatorOfSomeSession`
+   had no implementation anywhere in `src`, so "wiring" meant inventing a tree-wide oracle *and*
+   turning a derived property into a persisted one.
+
+   Landed in `b7504ed6`: the helper is removed (`coordinator-scope.mjs` 514 -> 469 L) and
+   `coordinator-join-override-spec.mjs` is repurposed as `coordinator-join-boundary-spec.mjs` --
+   6 tests against the live resolver, the first asserting the export stays gone (mutation-proven:
+   re-adding a trivial export gives 5 pass / 1 fail on exactly that assertion).
+
+   **Live conflict, recorded rather than resolved unilaterally:** the owner's literal P3 sentence
+   ("If a coordinator is added to a child frame, then that coordinator takes over responsibility
+   for itself, and all child bots") does support the wired behaviour for JOIN-B and JOIN-C. Those
+   two shapes are therefore now knowingly **unsupported**, pinned by executable assertions. If the
+   owner wants P3 to hold literally, the fix is a rule change in the read path's ancestor ordering
+   plus a tree-wide coordinator index -- **not** a revival of the deleted helper, which was the
+   wrong mechanism for it. See `docs/reports/coordinator-lane2-decision-2026-10-30.md`.
+4. **`coordinator-scope.mjs` is now 469 L, under the soft cap.** The previous "513 L accepted
+   debt" note is closed by the deletion in ruling 3.
 5. **No participant-removal primitive exists.** There is no way to kick an agent from a session
    at `d402558`; suspend is a freeze. This is a reported product gap, not a track task.
 

@@ -37,9 +37,19 @@ export class PluginDatabase {
     this.prefix = `${pluginId}_`.toLowerCase();
     this.pool = pool;
     this.logger = logger;
+    // A plugin that kept a reference past unload must not be able to keep querying.
+    // The pool itself is shared and is NOT ended here; only this handle is closed.
+    this.closed = false;
+  }
+
+  assertOpen() {
+    if (this.closed)
+      throw new Error(`plugin database: the handle for plugin "${this.pluginId}" is closed`);
+    return true;
   }
 
   assertStatement(sql) {
+    this.assertOpen();
     if (typeof sql !== 'string' || !sql.trim())
       throw new Error('plugin database: a SQL statement is required');
 
@@ -87,8 +97,15 @@ export class PluginDatabase {
     return result.rows ?? [];
   }
 
+  // Idempotent. Closing twice is not an error: unload may race a teardown that also
+  // closes, and failing there would obscure the real reason.
+  async close() {
+    this.closed = true;
+    return true;
+  }
+
   describe() {
-    return { pluginId: this.pluginId, prefix: this.prefix, ddl: false, multiStatement: false };
+    return { pluginId: this.pluginId, prefix: this.prefix, ddl: false, multiStatement: false, closed: this.closed };
   }
 }
 
