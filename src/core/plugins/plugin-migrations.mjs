@@ -314,7 +314,6 @@ export class PluginMigrations {
     for (let file of files) {
       if (byVersion.has(file.version)) continue;
       this.validatePrefix(pluginId, file);
-      this.applied.push(`${pluginId}:${file.name}`);
 
       await connection.query('BEGIN');
       try {
@@ -324,6 +323,10 @@ export class PluginMigrations {
           [pluginId, file.version, file.name, file.checksum],
         );
         await connection.query('COMMIT');
+        // Recorded only AFTER the commit. Pushing before BEGIN meant a migration that
+        // threw and rolled back was still listed in run()'s `applied`, so the startup
+        // log and any retry saw a schema change that does not exist.
+        this.applied.push(`${pluginId}:${file.name}`);
         logger?.info?.(`[plugin-migrations] ${pluginId} applied ${file.name}`);
       } catch (error) {
         await connection.query('ROLLBACK');

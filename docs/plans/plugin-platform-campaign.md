@@ -622,12 +622,17 @@ Landed and verified:
 - **P2:** plugin-owned services with dependency ordering, replacement/restoration,
   shutdown hooks, and unload release.
 - **P3:** authenticated-by-default plugin mounts, explicit public opt-in, identity
-  propagation, and authenticated plugin-admin routes.
+  propagation, and authenticated plugin-admin routes. Per-mount request limits,
+  mount dispose, and deterministic mount error mapping are implemented and proven:
+  a mount may tighten (never raise) the deployment body cap and deadline, malformed
+  JSON is a 400 rather than a handler failure, and the inventory reports each
+  mount's auth declaration and enforced limits so a public mount is reviewable.
 - **P4:** client composition descriptors and a bootstrap that chooses a plugin
   `main-app` before defining the built-in `kikx-app` fallback.
 - **P5:** ordered plugin prompt sections; the remaining built-in catalogue
   migration is intentionally deferred under decision D3/D8.
-- **P6:** driver-qualified frame indexes and migration driver declarations.
+- **P6:** driver-qualified frame indexes and migration driver declarations, plus a
+  checksum/advisory-lock/rollback integrity contract for plugin migrations.
 - **P7 (docs):** consolidated the legacy documentation tree into `docs/`, indexed every document,
   added authority banners, and refreshed plugin reference/authoring and
   architecture/source-map documentation.
@@ -638,12 +643,14 @@ Still open:
   `listRestartRequired()` plus the inventory field; auditing every remaining
   `new CoreClass()` site is separate work);
 - migrating Questions or Todo into the first plugin-owned service from P2;
-- per-mount request limits and moving one integration route out of core from P3;
+- moving one integration route out of core from P3 (per-mount request limits
+  landed: `spec/plugins/plugin-mount-limits-spec.mjs`);
 - moving built-in Agents/Teams views behind client descriptors and testing
   focus/selection preservation from P4;
 - moving built-in tool/frame/command catalogue families and bounded loop controls
   from P5;
-- dual-driver index execution and checksum/advisory-lock migration tests from P6;
+- dual-driver index execution from P6 (checksum/advisory-lock/rollback migration
+  tests landed: `spec/core/plugins/plugin-migrations-integrity-spec.mjs`);
 - removing remaining transitional shims and demonstrating install/reload/unload
   on a live boot from P7.
 
@@ -727,7 +734,29 @@ These findings are part of the plan, not objections to it:
    revision is green on the non-doc suite after the ownership ledger; still run the new
    platform contract tests and live install/reload/unload exercise. Preserve our
    scrollview, session scope, filter and todo-focus work.
-7. **Existing plugin packages need a compatibility ingress.** Preserve old manifests, `/api/plugins/` mounts, plugin asset URLs and class registrations for one transition window; version-gate legacy rows in an adapter rather than teaching every consumer both shapes.
+7. **Mount limits were deployment-wide, so a plugin could not declare its own.**
+   The router carried one body cap and one deadline from its constructor; `mount()`
+   accepted nothing but `auth`. That made the campaign's §4.3 descriptor shape
+   aspirational: no per-mount `capabilities` review surface, no per-mount deadline,
+   and a replaced mount's handler was dropped without anything calling it back, so a
+   reload leaked whatever the old handler held. Now `mount()` accepts
+   `maxBodyBytes`/`handlerTimeoutMS` clamped to the deployment ceiling, plus
+   `dispose` run on unmount and on reload, and `unmount()` deletes the route before
+   dispose so an unload is immediately route-not-found even when cleanup throws.
+   Malformed JSON now maps to 400 with its own message instead of a 500 attributed
+   to the plugin; a plugin's own error keeps the generic body regardless of the
+   status it chose, because that text is network-visible.
+8. **A rolled-back migration was still reported as applied.**
+   `#runPlugin` pushed onto `this.applied` *before* opening its transaction, so a
+   migration that threw and ROLLBACKed still appeared in `run()`'s result and the
+   startup log. Nothing downstream could tell it apart from a real apply. The push
+   now happens after COMMIT. Proven failing-first: with the source at HEAD the
+   integrity spec is 8/9 and this is the one that fails. The same spec pins the
+   ledger lock ordering (CREATE TABLE inside the ledger advisory lock), per-plugin
+   lock release on failure, checksum immutability for applied migrations, a missing
+   migration file for a recorded version, and the table-prefix guard firing before
+   any transaction opens.
+9. **Existing plugin packages need a compatibility ingress.** Preserve old manifests, `/api/plugins/` mounts, plugin asset URLs and class registrations for one transition window; version-gate legacy rows in an adapter rather than teaching every consumer both shapes.
 
 ## 9. Artifacts
 
