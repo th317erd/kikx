@@ -8,7 +8,8 @@ history.
 ## 1. Current position
 
 - Checkout: `/home/wyatt/Projects/kikx-workspace/kikx`
-- Branch: `main`; **clean and pushed** at `6c923a3f`.
+- Branch: `main`; **clean and pushed** at `818b90f1` (includes the remote
+  browser-lane/report merge after the targeted-update work).
 - Dev server: `kikx-dev2-run.service` on `127.0.0.1:3002`, PostgreSQL
   `kikx-dev2` on `127.0.0.1:5434`; service active and `/health` ready.
 - **Do not touch `kikx2` or `:3001`.** It is the production-bot clone and is
