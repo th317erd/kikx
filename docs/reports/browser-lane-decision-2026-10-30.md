@@ -206,7 +206,23 @@ it. Either way it is upstream of this repo.
 
 **Not proven / open**
 - **Long-run determinism for either lane.** Both have now shown a membership flip
-  at least once. Single green runs are not a stability claim.
+  at least once. Single green runs are not a stability claim. Two previously flaky
+  specs are now stable *in isolation*: `frame-window` and `tool-output-overflow`
+  each ran 3/3 green at `399c1e4c` (`.gate/det6/{fw,to}-{1,2,3}.log`, each
+  `tests 1 / pass 1 / fail 0 / skipped 0`, EXIT=0). Isolated stability is not
+  full-lane stability.
+- **A surviving mutation in one of the specs behind the 20/20 number.** Setting
+  `MAX_RENDERED_FRAMES = 120` to `800` in `src/client/components/kikx-chat-view.mjs`
+  leaves `frame-window-puppeteer.mjs` GREEN. Measured cause (probe, cap read from
+  source each run): at 140 frames the DOM holds 20 items for *either* cap, with
+  identical `window_msg_120..139`; only `windowStart`/`pageSize` change. So
+  `assert.ok(count <= MAX_RENDERED_FRAMES)` is satisfiable by any cap >= 20 and
+  cannot discriminate. The consequence is precise and must be carried with the
+  lane numbers: **20/20 is an honest pass count, but it must not be quoted as
+  "the frame window is regression-guarded".** Tracked as todo `55fe281e`. The
+  mutation was reverted; cap is 120 and the tree is clean.
+- The `tool-output-overflow` mutation (force a visible scrollbar) was designed but
+  never run, so that spec's discriminating power is unmeasured, not proven.
 - `aeor-framework`'s intermittent (§6), which lives upstream.
 - The 16 Puppeteer-only specs have not been ported. Until they are, Puppeteer is
   load-bearing and must stay.
