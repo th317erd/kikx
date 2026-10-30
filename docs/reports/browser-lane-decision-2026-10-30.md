@@ -237,6 +237,30 @@ it. Either way it is upstream of this repo.
   spec defect: waiting for settle without changing the product makes the spec
   deterministically red. Tracked as todo "frame-window Puppeteer spec is
   concurrency-dependent".
+
+  **The settled DOM is bounded by page count, not by the frame constant.** Same
+  probe, three fixture sizes, sampled to ~2 s, no user scroll at any point:
+
+  | frames | pages | settled items in DOM | pages loaded | `windowStart` |
+  |---|---|---|---|---|
+  | 140 | 2 | **140** | 2 of 2 (0,1) | 0 |
+  | 600 | 5 | **480** | 4 of 5 (1-4) | 120 |
+  | 2000 | 17 | **440** | 4 of 17 (13-16) | 1560 |
+
+  So the idle preload materialises the newest **4 pages** (`4 x PAGE_SIZE = 480`
+  items, less when the tail page is partial). That is where the 140 comes from at
+  the spec's fixture size, and it means `MAX_RENDERED_FRAMES = 120` bounds the
+  *frame-state* window, **not** the rendered DOM on the shared scrollview path.
+  The DOM is still bounded — it does not grow with session length, 440 at 2000
+  frames vs 480 at 600 — but the bound is 4x the constant `898a33b0` set when it
+  chose "render 120 initial frames instead of 200".
+
+  Which of these is intended is a product decision: (a) 4 pages of eager preload is
+  deliberate read-ahead and `MAX_RENDERED_FRAMES` is simply a state-window
+  constant, or (b) the preload should be trimmed to honour the documented render
+  cap. This report does not decide it. What it does establish is that **the
+  existing spec cannot distinguish them**: its assertion samples at 300 ms, before
+  the preload lands.
 - **Three consecutive Playwright full-lane greens post-merge**: `.gate/final-pl.log`
   16:21:40, `.gate/post-cre-pl.log` 16:25:01, `.gate/v2-pl.log` 16:28:16, each
   18/18 `EXIT=0`.
