@@ -5,153 +5,150 @@ doc_type: report
 audience: [maintainers, owner]
 applies_to: development-v3
 last_verified: 2026-10-30
-summary: The Discord plugin lives in its own kikx-plugin-discord repo, not in kikx2, and is not on this host. Its inbound path is system-proven; no real Discord message has ever reached it, and no live server loads it.
+summary: The Discord plugin lives in its own kikx-plugin-discord repo. It is reachable from this host only through an sshfs mount of the owner's laptop, with its own suite green (63/63); no live server here loads it, and no real Discord message has ever reached it.
 ---
 
 # Discord plugin status — measurement, 2026-10-30
 
 Owner question: "Where are we at with the Discord plugin?"
 
-Short answer: **it exists, and it is not here.** The Discord plugin is a separate
-repository (`kikx-plugin-discord`), not code inside kikx2. It is not checked out
-on this host, and neither live server loads it. Its inbound chain is proven at
-the system boundary against a locally-booted process; the one thing that has
-never happened is a real Discord message arriving.
+Short answer: **it exists, it is reachable from here, and nothing here runs it.**
+`kikx-plugin-discord` is a separate repository. Its files are visible on this
+host only because `/home/public/wyatt-laptop` is an **sshfs mount of the owner's
+laptop**, not local disk. Its own suite is green. Neither live server on this
+host loads it, and no real Discord message has ever reached it.
 
-This report exists because a first draft of it was **wrong**, and the correction
-is the useful part.
+This report exists in corrected form because its first two versions were each
+wrong in a different way, and the corrections are the useful part.
 
-## 1. Correction: "there is no Discord plugin" was false
+## 1. Correction one: "there is no Discord plugin" was false
 
-The first version of this report claimed no Discord plugin existed anywhere,
-based on `git ls-files | grep -i discord` returning 0 in kikx2 and no directory
-named `*discord*` under `~/Projects`. That reasoning was sound for kikx2 and
-wrong as a conclusion, for two reasons worth recording:
+The first version claimed no Discord plugin existed anywhere, based on
+`git ls-files | grep -i discord` returning 0 in kikx2 and no `*discord*`
+directory under `~/Projects`. That reasoning was sound for kikx2 and wrong as a
+conclusion:
 
 1. **kikx2 is not the whole product.** The plugin architecture exists precisely
    so that features ship in separate repositories. `kikx-plugin-codex`,
    `kikx-plugin-ollama`, `kikx-plugin-claude` all live beside kikx2. Discord
    follows the same pattern, so a repo-local grep could never have found it.
-2. **The evidence was already in the tree, and I had not read far enough.**
-   `docs/plans/plugin-platform-campaign.md:1051` carries a section titled "P7
-   live proof — Discord inbound, measured on a running process (2026-10-30)".
-   My first grep reported "the campaign mentions Discord once (line 83)". That
-   count came from a grep run **before** the rebase, when line 1051 did not yet
-   exist locally; the section arrived in `4b37ebb5`, one of eleven commits that
-   landed upstream while I was measuring. The stale-tree number was reported as
-   a current fact. It should have been re-measured after the rebase, and it was
-   not until the line count visibly disagreed (34 → 87).
+2. **The evidence was already in the tree.** `docs/plans/plugin-platform-campaign.md`
+   carries a section titled "P7 live proof — Discord inbound, measured on a
+   running process (2026-10-30)". A grep count from *before* a rebase was
+   reported as a fact about the tree *after* it. The line total moving from 34
+   to 87 is what caught it.
 
-The lesson is narrow and mechanical: a grep count from before a rebase is not a
-measurement of the tree after it. The total moving from 34 to 87 lines is what
-caught it.
+## 2. Correction two: "not on this host" was false
 
-## 2. What is true in kikx2
+The second version replaced that error with a narrower one. It stated:
 
-Measured at `90129ea9` (rebased onto `4b37ebb5`), clean tree, excluding this
-report and the `old-app/` archive:
+> `find /home -maxdepth 7 -type d -name '*plugin-discord*'` → nothing.
+
+That is **wrong**. The directory exists at depth 5 under `/home`:
+
+```
+/home/public/wyatt-laptop/Projects/kikx-workspace/kikx-plugin-discord
+```
+
+The same command re-run takes **507 s** and finds it. The path is slow because
+`/home/public/wyatt-laptop` is `wyatt-laptop: fuse.sshfs rw,nosuid,nodev`
+(`findmnt -T`), a network mount over ssh — so a scan of it is not a scan of the
+local disk, and a short-timeout scan of `/home` can return nothing while the
+directory is right there.
+
+**The precise claim that survives is narrower than "not on this host":** the
+plugin is on the *laptop's* disk, exposed here through sshfs. It is not checked
+out into this host's local workspace (`/home/wyatt/Projects/kikx-workspace/` has
+no `kikx-plugin-discord`, and that path and the mount are on different devices —
+`stat -c %d` gives 66316 vs 85).
+
+## 3. What the plugin actually is
+
+Measured at `00af1d6` (2026-10-30 15:57:41 +0000, author `Kikx Agent
+<agent@kikx.local>`), tree clean, `master...origin/master` in sync, 13 commits:
 
 | Check | Result |
 | --- | --- |
-| Files named `*discord*` in kikx2 | **1** — this report |
-| Files mentioning Discord | **10** |
-| Lines mentioning Discord | **40** |
-| `KIKX_DISCORD_*` consumers outside `config/` | **0** |
-| Plugins in `kikx2/plugins/` | `ocr`, `todo-focus-index` — no Discord |
+| Local HEAD vs `origin/master` (`git@github.com:th317erd/kikx-plugin-discord.git`) | **identical** — `00af1d6` both |
+| Commit count | 13 |
+| Entry point | `index.mjs` (24,008 B) |
+| Gateway | `gateway.mjs` (15,993 B) |
+| Inbound router | `inbound-router.mjs` (8,057 B) |
+| SQL migrations | 4 — channel-session, message-frame, edit-audit, inbound-capability |
+| Spec files | 6 |
+| Declared dependencies | **none** |
+| Manifest | `kikx-plugin.json` v0.1.0, `kikxVersion: ">=0.1.0"` |
+| README / docs in repo | **none** |
 
-The references are: reserved credential paths
-(`src/core/config/config-paths.mjs:62-66`, `KIKX_DISCORD_PUBLIC_KEY_PATH` and
-`KIKX_DISCORD_BOT_TOKEN_PATH`, introduced by `bdf6ec79`), re-exported at
-`src/core/config/index.mjs:49-50`; a shutdown-ordering comment at
-`src/server/index.mjs:91`; `'discord.send'` as an arbitrary action name in the
-generic `PluginAuthority` specs; and prose in the campaign plan and the emoji
-report. **Zero documents** are stored at either credential path in either
-database (`select count(*) ... where path ilike '%discord%'` → 0 on `kikx-dev`
-and `kikx-dev2`).
+## 4. Its own suite, run by me
 
-So kikx2 provides the config seam the plugin consumes, and nothing else.
+Not delegated, not quoted from a plan — executed in the plugin checkout:
 
-## 3. What is true about the plugin itself
+```
+node --test --test-timeout=60000 'spec/**/*-spec.mjs'
+→ 63 tests / 63 pass / 0 fail / 0 skipped / 0 todo, DISCORD_SUITE_EXIT=0
+```
 
-`kikx-plugin-discord` is not present on this host:
+`grep -c '^not ok'` → **0**; no file in the checkout was modified during the run
+(`find . -newermt @START` → empty). Duration 178 ms, so this is a unit-level
+suite: it does not open a real connection to Discord.
 
-- `find /home -maxdepth 7 -type d -name '*plugin-discord*'` → nothing.
-- `~/Projects/kikx-workspace/` contains only `claude`, `codex`, `google`,
-  `miri`, `ollama`, `puppeteer` plugin checkouts (plus `kikx`, `kikx2`,
-  `kikx-docker`, `test-bed`).
-- Its only mention in kikx2 is the campaign plan, at `00af1d6` and §P7.
+The specs cover: unauthorized `MESSAGE_CREATE` not framed, the bot not framing
+its own messages, revoke-tool registration, scoped revoke removing the grant and
+the gate then refusing, scoped revoke leaving a broader grant alone and saying
+so, `allScopes` revoking the broader grant and reporting verified, a
+no-match revoke reported as a no-op rather than success, refusal of actors
+outside the Discord namespace, refusal of actions the plugin does not manage,
+and unscoped-revoke targeting the null scope exactly.
 
-Per §P7 of the campaign plan, the following was **measured on a process booted
-from this tree on `:3019`**, with a self-generated Ed25519 keypair and no bot
-token:
+The suite output logs `[discord] gateway ready as miri`, i.e. the tests drive the
+gateway lifecycle with a **stubbed** transport.
 
-- unsigned POST → `401 invalid request signature / missing signature headers`
-- signed PING → `200 {"type":1}`
-- signed interaction from an actor with no grant → `202 not framed:
-  not_authorized`, **and zero rows written** to `discord_message_frame`
-  (deny-by-default denies before any write)
-- grant via the plugin's own `discord:policy_grant` tool → `granted:true`,
-  `verified:true`
-- same signed interaction again → `202 {sessionID, frameID}`
-- the `discord_channel_session` row created by the **production auto-bind path**,
-  not by the test
-- the session API on that process returns
-  `UserMessage "[discord:e2e-prober] e2e inbound proof e2e-after-grant"`
-- replaying the message id → `202 not framed: duplicate` (dedupe holds)
-- deleting the grant → `202 not framed: not_authorized` again
+## 5. What kikx2 itself provides
 
-`00af1d6` closed a real gap found during that work: there was a
-`discord:policy_grant` tool and no revoke tool, so a capability could only be
-withdrawn by hand-written SQL. `discord:policy_revoke` now reports the effect
-rather than the intent — a scoped revoke that leaves a broader grant in place
-returns `revoked:false` with `stillAllowed:true` and says to repeat with
-`allScopes:true`.
+At the current HEAD, excluding this report and `old-app/`: 10 files mention
+Discord, none implement it. They are reserved credential paths
+(`KIKX_DISCORD_PUBLIC_KEY_PATH`, `KIKX_DISCORD_BOT_TOKEN_PATH`), a
+shutdown-ordering comment, `'discord.send'` as an arbitrary action name in the
+generic `PluginAuthority` specs, and prose. **Zero documents** are stored at
+either credential path in either database.
 
-## 4. What is NOT proven, and it is the important part
+`src/core/plugins/plugin-loader.mjs:60` parses `kikxVersion` from
+`kikx-plugin.json`, so the plugin's manifest shape is genuinely accepted by the
+loader. The platform contract is green independently: `spec/plugins` **77/77**.
+
+## 6. What is NOT proven — the important part
 
 - **No real Discord message has ever reached this code.** The gateway reached
-  READY with the real Miri token, and the fatal-close latch is proven against
+  READY with the real Miri token and the fatal-close latch is proven against
   Discord's own `4004`, but no `MESSAGE_CREATE` has been delivered into a Kikx
-  session. §P7 states this needs a token in the `3003` container plus the
-  Message Content intent.
-- **No live server here loads the plugin.** Measured from `/proc/<pid>/environ`
-  on the listening processes: `:3001` (pid 2922968, cwd `kikx2`) and `:3002`
+  session. That needs a token plus the Message Content intent.
+- **No live server on this host loads it.** From `/proc/<pid>/environ` on the
+  listening processes: `:3001` (pid 2922968, cwd `kikx2`) and `:3002`
   (pid 3978592, cwd `kikx`) both set `KIKX_PLUGIN_PATHS` to
   `…/plugins/ocr : kikx-plugin-codex : kikx-plugin-claude : kikx-plugin-ollama`.
-  Discord is in neither list. So on this host the plugin is present in no
-  running process at all.
-- **The §P7 proof is not mine and I did not reproduce it.** It is a recorded
-  measurement by whoever landed `4b37ebb5`; I verified it exists, matches the
-  plugin's described behaviour, and names its own limits. I have not re-run it,
-  and cannot until the plugin repo is on this host.
+  Discord is in neither list. The containerised processes (`:3099`, and three
+  `/app` workers) use `/opt/plugins/…` with the same four and no Discord.
+- **The §P7 live-inbound proof is not mine and I have not reproduced it.** It is
+  a recorded measurement by whoever landed it. I verified it exists and matches
+  the plugin's described behaviour; I did not re-run it.
 
-## 5. The one thing I verified independently
-
-Running the platform the plugin depends on, at the current HEAD, with unpiped
-exit codes:
-
-- `node --test 'spec/plugins/*-spec.mjs'` → **77 tests / 77 pass / 0 fail /
-  0 skipped**, `PLUGIN_EXIT=0` (`/tmp/plugin-lane2.out`).
-- `src/core/plugins/` — 25 modules, 6,270 lines.
-- Documentation invariants: 6/6, `DOC_EXIT=0`.
-
-The substrate is real and green. That says nothing about the Discord plugin's
-own suite, which is in a repository I cannot see from here.
-
-## 6. Reference implementation, not reusable
+## 7. Reference implementation, not reusable
 
 `/home/wyatt/Projects/miri` has its own working Discord integration
-(`src/ingest/discord.js`, `src/integrations/discord/`,
-`docs/discord-gateway.md`, four test files) using an outbound bot Gateway with
-per-identity bindings and `GUILD_MESSAGES` + `MESSAGE_CONTENT` intents. It is
-Miri's feature, shares no code with the Kikx plugin, and is not a drop-in. It is
-useful only as prior art — notably, the campaign record says the Kikx gateway
-was driven with the real Miri token.
+(`src/ingest/discord.js`, `src/integrations/discord/`, four test files) using an
+outbound Gateway with per-identity bindings and `GUILD_MESSAGES` +
+`MESSAGE_CONTENT`. It is Miri's feature, shares no code with the Kikx plugin,
+and is not a drop-in — useful only as prior art.
 
-## 7. Open question for the owner
+## 8. Open question for the owner
 
-To see this plugin run on this host, `kikx-plugin-discord` has to be cloned into
-`~/Projects/kikx-workspace/` and added to `KIKX_PLUGIN_PATHS`. That is a decision
-for the owner, not something to do speculatively — and the live-inbound path
-additionally needs a bot token and the Message Content intent, which does not
-exist here yet.
+Two separate decisions, and neither is mine to take:
+
+1. **Should the plugin run here at all?** It is reachable at the sshfs path
+   today, so pointing `KIKX_PLUGIN_PATHS` at it is possible without a clone. A
+   local clone would be faster and independent of the laptop being awake.
+   Either way it needs a server restart to take effect, and `:3002` is the
+   owner's live checkout.
+2. **Live inbound needs credentials**: a bot token and the Message Content
+   intent, which do not exist on this host yet.
