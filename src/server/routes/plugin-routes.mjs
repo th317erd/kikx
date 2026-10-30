@@ -3,6 +3,8 @@
 // Routes /api/plugins/<id>/... to the plugin that owns that mount.
 // Returns false when the path is not under a plugin mount, so the built-in chain continues.
 
+import { PLUGIN_ADMIN_ACTIONS, requireOperator } from './plugin-admin-policy.mjs';
+
 export async function handlePluginRoutes({ request, response, url, context, json, rawBody }) {
   let router = null;
   try {
@@ -14,9 +16,11 @@ export async function handlePluginRoutes({ request, response, url, context, json
   if (!router || typeof router.match !== 'function')
     return false;
 
-  // Plugin inventory. Read-only, and deliberately not under /plugin/ so it cannot
-  // collide with a plugin mount.
+  // Plugin inventory. Read-only, but NOT public: it discloses which plugins are loaded,
+  // their directory names, and which ones failed to load. Gated before the body is read.
   if (url.pathname === '/api/v1/plugins' && request.method === 'GET') {
+    await requireOperator(context, request, PLUGIN_ADMIN_ACTIONS.INVENTORY);
+
     let registry = context.has?.('pluginRegistry') ? context.require('pluginRegistry') : null;
     let map = registry?._pluginRegistrations;
     let records = map instanceof Map ? [...map.values()] : [];
@@ -28,8 +32,8 @@ export async function handlePluginRoutes({ request, response, url, context, json
       data: {
         plugins: records.map((r) => ({
           name: r.pluginName,
-          // Directories only, never absolute paths: this endpoint is reachable
-          // unauthenticated and the operator's filesystem layout is not public.
+          // Directories only, never absolute paths: an authenticated caller still does not
+          // need the operator's filesystem layout.
           location: r.pluginLocation || null,
           mounted: routerForList?.listMounts?.().some((m) => m.pluginId === r.pluginName) || false,
           subscriptions: bus?.list?.().find((s) => s.pluginId === r.pluginName) || null,
@@ -45,6 +49,11 @@ export async function handlePluginRoutes({ request, response, url, context, json
   // than re-reading configuration: KIKX_PLUGIN_PATHS is an environment variable a running
   // process cannot re-read, which is why reload alone could never find a new plugin.
   if (url.pathname === '/api/v1/plugins/install' && request.method === 'POST') {
+    // Identity first, config gate second. The config flag answers "is this deployment
+    // willing to install at runtime"; it never answered "is this caller allowed to", and
+    // anyone who can reach the port inherits it.
+    await requireOperator(context, request, PLUGIN_ADMIN_ACTIONS.INSTALL);
+
     let registry = context.has?.('pluginRegistry') ? context.require('pluginRegistry') : null;
     if (!registry) {
       response.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -140,8 +149,11 @@ export async function handlePluginRoutes({ request, response, url, context, json
   }
 
   // Re-scan plugin paths without restarting. Installs a plugin by putting a directory
-  // where the boot would find it, then asking for a reload.
+  // where the boot would find it, then asking for a reload. This previously had no gate
+  // at all, unlike install, even though it also executes newly discovered plugin code.
   if (url.pathname === '/api/v1/plugins/reload' && request.method === 'POST') {
+    await requireOperator(context, request, PLUGIN_ADMIN_ACTIONS.RELOAD);
+
     let registry = context.has?.('pluginRegistry') ? context.require('pluginRegistry') : null;
     // Re-read the configured paths rather than using the boot snapshot: installing a
     // plugin means adding a directory to the configuration, and a reload that scans the

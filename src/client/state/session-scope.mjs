@@ -36,13 +36,32 @@
 //   visibleOwnersFor(viewer)                 { V } + ancestors
 //   resolveScopeSessionIDs(viewer)           { V } + descendants (downward view)
 //
-// This surface is what the shell is wired against (kikx-sidebar-session-objects
-// imports it), so every name that existed before the consolidation still
-// exists here with the same signature. Renaming was not on the table.
-//
 // Pure on purpose: no I/O, no DOM, no framework. It re-exports from src/shared,
 // which the server serves to the browser (src/server/static-files.mjs:75-77),
 // so this remains loadable client-side and never reaches into src/core.
+//
+// WHERE THE RULE IS ACTUALLY ENFORCED TODAY (measured at HEAD ddfbc733, so this
+// file does not repeat a claim it cannot back):
+//
+//   kikx-agent-team-views.mjs:30-43  scopedAgents / scopedTeams filter the
+//                                    global catalogue through
+//                                    getEffectiveSessionAgentIDs. This is the
+//                                    live path, and it does NOT come through
+//                                    this module.
+//   kikx-sidebar-session-objects.mjs the five sidebar controls (Account,
+//                                    Agents, Teams, Sign out, account chip).
+//                                    Four carry the VIEWED session's id and one
+//                                    carries null, so owner === viewer for all
+//                                    five by construction. A scope predicate
+//                                    can only ever pass them; the `scopeFilter`
+//                                    argument there is scaffolding with no
+//                                    owner to discriminate.
+//
+// So this module is a CONTRACT plus reusable primitives, not the code path the
+// UI currently renders through. An earlier comment in
+// kikx-sidebar-session-objects.mjs claimed Prong B would filter the sidebar
+// "via its filterSessionsInScope"; that is not what shipped and the comment has
+// been corrected. Do not describe this module as wired.
 
 import {
   SESSION_SCOPE_POLICY,
@@ -100,12 +119,29 @@ export function resolveScopeSessionIDs(viewerSessionID, sessions = []) {
  * travels with the row; this reads the field names in use and nothing more.
  * An item with no owner field is unscoped, and unscoped items are only shown
  * when they carry the viewer's own id — never granted by default.
+ *
+ * `scopeSessionID` is FIRST and it is load-bearing. `buildSessionObjectItems`
+ * stamps every sidebar descriptor with that name, and this function used to
+ * read only the four below it — so every real descriptor resolved to '' and
+ * `createSessionScope(viewer).filter(items)` kept 0 of 5, for every viewer
+ * including root. That is a blank sidebar, not a scoped one.
+ *
+ * Two green specs hid it because neither crossed the boundary: the seam spec
+ * supplies its own filter and reads the second argument directly, never
+ * calling this function, and the filter spec asserted exactly the four names
+ * that already worked. `spec/ownership/sidebar-scope-field-spec.mjs` now pins
+ * the descriptor-to-predicate boundary for real.
+ *
+ * The other four names stay because other row shapes carry them (assignment
+ * rows, question rows, activity rows); dropping one silently widens what is
+ * visible. Order matters only in that the sidebar's own field wins.
  */
 export function sessionIDOf(item) {
   if (item == null || typeof item !== 'object')
     return '';
 
-  return normalizeSessionID(item.sessionID)
+  return normalizeSessionID(item.scopeSessionID)
+    || normalizeSessionID(item.sessionID)
     || normalizeSessionID(item.sessionId)
     || normalizeSessionID(item.ownerSessionID)
     || normalizeSessionID(item.ownerSessionId);
