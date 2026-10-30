@@ -2,10 +2,12 @@
 
 import { ReactiveState } from '../lib/aeor-ui.mjs';
 import {
+  getRegisteredViewNames,
   isReservedViewSurfaceID,
   syncViewNames,
   viewNamesFromComponents,
 } from './view-name-registry.mjs';
+import { pruneViewSurfaceElements } from './view-surface-elements.mjs';
 import {
   defaultConfigForProvider,
   defaultTagValues,
@@ -531,6 +533,16 @@ export function setClientComponents(components, state = kikxState) {
   // descriptors just filed, so uninstalling a plugin shrinks the set again instead
   // of leaving the stack able to hold a view nothing can render.
   syncViewNames(viewNamesFromComponents(list));
+
+  // A view surface's element is cached so it survives the shell's rebuild. When
+  // the inventory changes, an uninstalled surface must not keep its element -- and
+  // whatever state it was holding -- alive behind a name nothing resolves. This is
+  // the same moment the addressable vocabulary shrinks, so the two cannot disagree.
+  //
+  // The live set must be passed explicitly: this is the leaf function, whose only
+  // input is the ids it should keep. Calling it with nothing prunes every surface,
+  // including the ones still installed.
+  pruneViewSurfaceElements(getRegisteredViewNames());
 
   state.clientComponentStatus = 'ready';
 }

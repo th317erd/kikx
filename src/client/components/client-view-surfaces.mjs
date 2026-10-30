@@ -23,11 +23,16 @@
 //   4. Anything unresolved returns null, so the caller falls back to the window.
 //      A view entry that renders nothing is a blank work area; null is the signal
 //      to render the session surface instead.
+//   5. A plugin view keeps the SAME element across paints. One element per
+//      surface is what lets a view hold onto its scroll position, open row and
+//      caret while the shell does its empty-and-rebuild cycle.
 //
 // See `state/view-name-registry.mjs` for the name vocabulary itself. It is a leaf
 // module so that `navigation-stack.mjs` can share one definition without
 // importing the view builders (which would be a cycle: builders -> state ->
-// navigation-stack -> builders).
+// navigation-stack -> builders). `state/view-surface-elements.mjs` is a leaf for
+// the same reason -- the state layer prunes the cache, so it cannot reach this
+// module without dragging the shell in.
 
 import { buildInboxView } from './kikx-inbox-view.mjs';
 import { buildAgentsView, buildTeamsView } from './kikx-agent-team-views.mjs';
@@ -39,6 +44,12 @@ import {
   listAddressableViewNames,
   registerViewNames,
 } from '../state/view-name-registry.mjs';
+import {
+  forgetViewSurfaceElement,
+  getViewSurfaceElement,
+  pruneViewSurfaceElements as pruneCachedViewSurfaceElements,
+  setViewSurfaceElement,
+} from '../state/view-surface-elements.mjs';
 
 export {
   CORE_VIEW_SURFACE_IDS,
@@ -56,6 +67,19 @@ const CORE_VIEW_BUILDERS = new Map([
   [ 'agents', (app) => buildAgentsView(app) ],
   [ 'teams', (app) => buildTeamsView(app) ],
 ]);
+
+// Forget one surface's element, for an explicit teardown or a plugin upgrade that
+// changes its tag.
+export function forgetViewSurface(surfaceID) {
+  return forgetViewSurfaceElement(surfaceID);
+}
+
+// Drop elements for surfaces that are no longer registered. The live set is the
+// addressable name vocabulary, so pruning agrees with what the shell can dispatch.
+// Called by `setClientComponents` when the descriptor inventory changes.
+export function pruneViewSurfaceElements() {
+  return pruneCachedViewSurfaceElements(getRegisteredViewNames());
+}
 
 // Resolve the work-area surface for the view currently on top of the stack.
 //
@@ -101,19 +125,39 @@ function buildDescriptorSurface(descriptor, state, app) {
   if (typeof document === 'undefined' || typeof document.createElement !== 'function')
     return null;
 
-  let element;
-  try {
-    element = document.createElement(tagName);
-  } catch (_error) {
-    return null;
+  // Reuse the element this surface already has. The shell empties and rebuilds the
+  // whole tree on every paint, so building a fresh element per resolve would reset
+  // the view -- and there would be no surviving node for focus to be restored into.
+  //
+  // A cached element whose tag no longer matches (the plugin changed its tag on
+  // reload) is replaced rather than mutated: a custom element cannot change its
+  // tag in place.
+  let surfaceID = descriptor.surfaceID;
+  let element = getViewSurfaceElement(surfaceID);
+  if (element && element.localName !== tagName) {
+    forgetViewSurfaceElement(surfaceID);
+    element = null;
   }
-  if (!element)
-    return null;
+
+  if (!element) {
+    try {
+      element = document.createElement(tagName);
+    } catch (_error) {
+      return null;
+    }
+    if (!element)
+      return null;
+
+    setViewSurfaceElement(surfaceID, element);
+  }
 
   // Both names are provided on purpose: existing plugin elements read `appState`
   // (the frame-component contract), while a view needs the element's own handlers,
   // which live on the app. Providing one and not the other is how a view renders
   // once and then cannot re-render.
+  //
+  // These are re-assigned on every resolve even when the element is reused, so a
+  // cached element never keeps a stale state object.
   element.appState = state;
   if (app) {
     if (typeof element.mountApp === 'function')
@@ -123,7 +167,7 @@ function buildDescriptorSurface(descriptor, state, app) {
   }
 
   if (typeof element.updateView === 'function')
-    element.updateView(descriptor.surfaceID || null, state, app);
+    element.updateView(surfaceID || null, state, app);
 
   return element;
 }
