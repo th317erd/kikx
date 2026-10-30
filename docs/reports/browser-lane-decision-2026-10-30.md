@@ -18,7 +18,7 @@ applies_to: development-v3
 | Lane | Specs | Tests | Deps | Runs here? | Latest result |
 |---|---|---|---|---|---|
 | `ui:playwright` | 13 | 18 | `playwright` only | **Yes** | **18/18 pass, EXIT=0** (5 of 6 full-lane runs on disk); 17/18 once, pre-merge |
-| `ui:puppeteer` | 17 | 20 | `puppeteer-core` only | **Yes** | **20/20 pass, EXIT=0** (4 consecutive post-merge full-lane runs) |
+| `ui:puppeteer` | 17 | 20 | `puppeteer-core` only | **Yes** | **20/20 serial / 19/20 concurrent, EXIT=1** — `frame-window` races the eager page preload (§7) |
 | `ui:stagehand` | 26 | 28 | `@browserbasehq/stagehand` | **No** | **28/28 fail, EXIT=1** (fresh run at `9e9ec60d`; AereoDB `:6830` refused) |
 
 Import counts are exclusive — `grep -ho "from '...'"` yields exactly one browser
@@ -211,13 +211,32 @@ it. Either way it is upstream of this repo.
 **Proven**
 - Playwright 18/18 EXIT=0 and Puppeteer 20/20 EXIT=0 at HEAD `8722b4e1`,
   sequentially, no Chrome contention.
-- **Four consecutive Puppeteer full-lane greens, all post-merge,** by log mtime:
-  `.gate/final-pp.log` 16:21:28, `.gate/v2-pp.log` 16:28:04, `.gate/zav-pp-det3.log`
-  16:30:07, `.gate/zav-pp-det4.log` 16:30:18 — each `tests 20 / pass 20 / fail 0 /
-  skipped 0` and `EXIT=0`. The merge was committed at 16:21:13 and `6c923a3f` is an
-  ancestor of every fix commit (`9b911866`'s parent *is* `6c923a3f`), so these runs
-  describe the merged tree, not the local one. The last two ran after `9675efb3`,
-  which touches this report only.
+- **Puppeteer is green only when the lane is serialised.** Measured at HEAD
+  `410e1dc2`, same tree, same `src/` (`git diff 6c923a3f..410e1dc2 -- src/` is
+  empty, so this is not a merge regression):
+  - concurrent (default), `node --test --test-timeout=60000 'spec/ui/puppeteer/*-puppeteer.mjs'`
+    -> `V8_PP_EXIT=1`, `tests 20 / pass 19 / fail 1`; `.gate/v10/pp.log` reproduces it.
+  - serialised, `--test-concurrency=1` -> `V11_SERIAL_EXIT=0`, `20 / 20 / 0 / 0`.
+  - `frame-window` alone -> 3/3 green (`.gate/v9/fw-{1,2,3}.log`).
+
+  The failing assertion is `rendered window is bounded by the page cap (140 <= 120)`
+  at `frame-window-puppeteer.mjs:109:12`. Mechanism, sampled in a real browser
+  (`.gate/v12/probe.log`, 9 samples): <=300 ms after `window_msg_139` appears the DOM
+  holds **20** items with `windowStart 120` and page 0 unloaded; from ~550 ms on it
+  stably holds **140** with `windowStart 0` and page 0 loaded (120 + 20 items). The
+  spec samples at a fixed `delay(300)`, which straddles that transition. Under lane
+  load the mount takes longer, so the preload has already completed by the time the
+  timer starts.
+
+  So the earlier "four consecutive post-merge greens" were four runs of a spec that
+  happens to win the race on this host when run serially, not evidence of a bounded
+  window. `898a33b0` set out to "render 120 initial frames instead of 200"; the
+  settled DOM at this fixture size is 140, because `PAGE_SIZE` (120) equals
+  `MAX_RENDERED_FRAMES` (120) and 140 frames is two pages. Whether that overshoot is
+  intended page granularity or a missed trim is an **open product decision**, not a
+  spec defect: waiting for settle without changing the product makes the spec
+  deterministically red. Tracked as todo "frame-window Puppeteer spec is
+  concurrency-dependent".
 - **Three consecutive Playwright full-lane greens post-merge**: `.gate/final-pl.log`
   16:21:40, `.gate/post-cre-pl.log` 16:25:01, `.gate/v2-pl.log` 16:28:16, each
   18/18 `EXIT=0`.
@@ -231,11 +250,11 @@ it. Either way it is upstream of this repo.
 
 **Not proven / open**
 - **Long-run determinism for either lane.** Both have now shown a membership flip
-  at least once. Single green runs are not a stability claim. Two previously flaky
-  specs are now stable *in isolation*: `frame-window` and `tool-output-overflow`
-  each ran 3/3 green at `399c1e4c` (`.gate/det6/{fw,to}-{1,2,3}.log`, each
-  `tests 1 / pass 1 / fail 0 / skipped 0`, EXIT=0). Isolated stability is not
-  full-lane stability.
+  at least once. Single green runs are not a stability claim, and "green in
+  isolation" is not "green in the lane": `frame-window` ran 3/3 green alone at
+  `399c1e4c` and again 3/3 at `410e1dc2`, while the same spec at the same HEAD is
+  the one red in the concurrent lane. `tool-output-overflow` ran 3/3 green in
+  isolation (`.gate/det6/to-{1,2,3}.log`); its lane behaviour is untested.
 - **A surviving mutation in one of the specs behind the 20/20 number.** Setting
   `MAX_RENDERED_FRAMES = 120` to `800` in `src/client/components/kikx-chat-view.mjs`
   leaves `frame-window-puppeteer.mjs` GREEN. Measured cause (probe, cap read from
