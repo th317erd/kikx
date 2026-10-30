@@ -1155,3 +1155,62 @@ Still **not** proven: a real human message reaching a session through the gatewa
 (that needs the Message Content privileged intent), and the live image is still
 `f201985` — `deploy.sh` stages `origin/master`, so a fresh deploy would pick up
 `2980203`, but no deploy has been run.
+
+### Discord gateway observability and liveness, measured (2026-10-30)
+
+Appended to close a specific blindness rather than a checklist line. The gateway reported
+only through `console.warn`, so "is the bot connected?" and "why did my message not
+arrive?" were answerable exclusively from a shell on the host running the process. On the
+3003 dev instance that shell was unreachable from the agent doing the work, which made two
+different failures look identical: a gateway that never dialled, and a gateway that dialled
+and denied the sender.
+
+Fixed in `kikx-plugin-discord` by exposing `GET /api/plugins/discord/status`. The mount is
+`auth: 'public'` because Discord cannot hold a Kikx session, and that must not make
+internal state readable anonymously, so the route resolves identity itself through the
+`accountStore` that core places in `context`. The token is deliberately absent from the
+body: a token in a status body is a token in a log.
+
+Three facts are reported separately because they fail separately:
+
+- `tokenPresent` — was a bot token found at `/kikx/discord/bot/token`. A false here is a
+  configuration problem, not a connection problem.
+- `connected` plus the gateway's own `status()` — `ready`, `sessionID`, `sequence`,
+  `attempt`, `fatal`, `heartbeatIntervalMS`, `userId`.
+- `recentOutcomes` — every dispatch decision, **including denials**, with `reason`,
+  `channelID` and `actorID`. A denial that exists only as a log line is indistinguishable
+  from nobody having sent anything.
+
+Proof on a running process (port 3026, `wt-parity`, real Miri token, disposable database
+`kikx_status_probe` — created and dropped for the run):
+
+| request | result |
+| --- | --- |
+| `GET /api/plugins/discord/status` anonymous | `401 Sign in required to read Discord plugin status` |
+| same, `Authorization: Bearer <admin token>` | `200` |
+| body | `tokenPresent:true`, `connected:true`, `userId:1471348366305923102`, `heartbeatIntervalMS:41250`, `inboundChannelID`/`inboundSessionID` resolved |
+| `recentOutcomes[0]` | `GUILD_CREATE`, `handled:false`, `reason:"not_a_message"` — a real dispatch from Discord |
+| token substring search in body | absent |
+
+`spec/status-route-spec.mjs` is 6 tests; reverting only `index.mjs` to `2980203` fails
+**4 of 6**. The two that still pass are vacuous and are not counted: with no route
+registered there is nothing to leak and the mount is still public.
+
+Two corrections to earlier text in this document:
+
+1. The previous "not proven" line said a real human message needs the Message Content
+   privileged intent. The intent is **already approved** — the application's flags read
+   `532480`, which carries bit `524288`. Measured directly: a real human `MESSAGE_CREATE`
+   from another guild arrived over the gateway with non-empty `content` and was denied at
+   `not_authorized`. Had the intent been missing, the router would have reported
+   `empty_content_missing_intent` instead, since it checks for that case explicitly.
+2. "A real human message reaching a session through the gateway" is now narrower than it
+   was. What remains unproven is a human who **holds a grant**, typing in the bound
+   channel, producing a framed message. The transport, the intent, the content, and the
+   gate are all proven; only the positive authorization branch is not.
+
+The 3003 dev instance itself needed no restart for any of this. It was reported as dead
+for two days because of an SSH tunnel that forwarded 3098 and not 3003; it answered
+`/health` `200` and served `/client/*` byte-identical to this tree throughout, with
+`Cache-Control: no-cache`, so the stale-looking status bar was a browser cache. Its client
+modules are current; only *server* modules freeze at boot.
