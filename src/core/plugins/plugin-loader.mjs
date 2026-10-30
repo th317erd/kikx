@@ -84,6 +84,11 @@ export async function loadPlugins(options = {}) {
   let loaded = [];
   for (let configuredPath of normalizePluginPaths(pluginPaths)) {
     for (let pluginPath of await expandPluginPathSites(configuredPath)) {
+      // Declared outside the try so a failure part-way through can roll back what
+      // this iteration already registered.
+      let pluginName = null;
+      let record = null;
+      let ownedBefore = 0;
       try {
         // HARD BOUNDARY: nothing a plugin does may escape this iteration.
         // Not a throw, not a rejection, not a timer that never fires.
@@ -93,7 +98,7 @@ export async function loadPlugins(options = {}) {
         if (typeof pluginModule.setup !== 'function')
           continue;
 
-        let pluginName = pluginModule.pluginName || pluginNameFromPath(pluginPath);
+        pluginName = pluginModule.pluginName || pluginNameFromPath(pluginPath);
 
         // A successful load clears any stale failure for this location, so a
         // fixed plugin stops being reported as broken.
@@ -101,10 +106,16 @@ export async function loadPlugins(options = {}) {
           let loc = pluginLocation(pluginPath);
           registry._pluginLoadErrors = registry._pluginLoadErrors.filter((e) => e.location !== loc);
         }
-        let record = { pluginPath, pluginName, modulePath, pluginLocation: pluginLocation(pluginPath), callbacks: [], teardown: null };
+        record = { pluginPath, pluginName, modulePath, pluginLocation: pluginLocation(pluginPath), callbacks: [], teardown: null };
         record.manifest = await readPluginManifest(pluginPath);
         let providerIDsBefore = agentProviderIDs(registry);
         // Everything the plugin registers during setup belongs to it.
+        //
+        // Snapshot the ledger depth first: two paths may declare the same plugin name,
+        // and a rollback must only undo what this iteration added, never an earlier
+        // load's registrations.
+        if (typeof registry.listOwnedRegistrations === 'function')
+          ownedBefore = registry.listOwnedRegistrations(pluginName).length;
         if (typeof registry.beginPluginLoad === 'function')
           registry.beginPluginLoad(pluginName);
         let teardown = await withTimeout(
@@ -165,11 +176,35 @@ export async function loadPlugins(options = {}) {
           registry.registerPluginPath(pluginName, pluginPath, registeredProviderIDs);
         }
 
-        registerPluginRecord(registry, record);
+        // A refused duplicate must not be reported as loaded. registerPluginRecord
+        // returns the refusal message when another directory already owns this name, and
+        // pushing the entry anyway made the inventory list a plugin that the registry had
+        // just declined to record - while its registrations stayed in the ownership
+        // ledger, attributed to the plugin that legitimately loaded. Throwing here routes
+        // the refusal through the same rollback as any other failure, and the rollback is
+        // scoped by the ledger depth so the already-loaded plugin keeps its own work.
+        // Rethrowing the recorded message rather than a fresh one preserves its
+        // locations-only wording, which the catch block would otherwise overwrite.
+        let refusal = registerPluginRecord(registry, record);
+        if (refusal)
+          throw new Error(refusal);
+
         loaded.push({ path: pluginPath, modulePath, pluginName });
       } catch (error) {
         if (typeof registry.endPluginLoad === 'function')
           registry.endPluginLoad();
+
+        // Unwinding the load scope alone is not a rollback. A plugin that throws
+        // part-way through setup has usually registered something already - a tool the
+        // model can still call, a mount that still serves, a migration that still claims
+        // its directory - and those registrations stay live, owned by nobody, with no
+        // record left to unload later because this plugin never reached
+        // _pluginRegistrations. The campaign plan requires a failed setup to roll back
+        // its partial registrations, so undo them through the same path unloadPlugin()
+        // uses.
+        if (pluginName)
+          await rollbackPartialLoad(registry, pluginName, { record, since: ownedBefore, logger });
+
         logger.warn?.(`Failed to load plugin at ${pluginPath}: ${error.message}`);
         // Keep the failure so the inventory can report it. Omission would make
         // "not installed" and "installed and broken" look identical.
@@ -316,10 +351,44 @@ function registerPluginRecord(registry, record) {
         .filter((e) => e.location !== record.pluginLocation)
         .concat([{ location: record.pluginLocation, message, at: new Date().toISOString() }])
         .slice(-50);
-      return false;
+      return message;
     }
 
   registry._pluginRegistrations.set(record.pluginName, record);
+  return null;
+}
+
+// Undo a load that did not complete. Deliberately mirrors unloadPlugin(): teardown
+// first, then subscriptions, then the ownership ledger, then class overrides. Every
+// step is guarded, because a rollback that throws would mask the original failure and
+// leave the caller with no idea why the plugin did not load.
+async function rollbackPartialLoad(registry, pluginName, { record = null, since = 0, logger = console } = {}) {
+  if (record && typeof record.teardown === 'function') {
+    try {
+      await record.teardown();
+    } catch (error) {
+      logger.warn?.(`Plugin "${pluginName}" teardown failed during rollback: ${error.message}`);
+    }
+  }
+
+  dropPluginSubscriptions(registry, pluginName);
+
+  try {
+    if (typeof registry.releasePlugin === 'function')
+      await registry.releasePlugin(pluginName, { logger, since });
+  } catch (error) {
+    logger.warn?.(`Plugin "${pluginName}" ownership release failed during rollback: ${error.message}`);
+  }
+
+  // Class overrides live on the ClassRegistry stack, which attributes by plugin name
+  // only, so popping is only safe when this failed load is the first use of the name.
+  if (!since && typeof registry.unregisterPlugin === 'function') {
+    try {
+      registry.unregisterPlugin(pluginName);
+    } catch (error) {
+      logger.warn?.(`Plugin "${pluginName}" class override release failed during rollback: ${error.message}`);
+    }
+  }
 }
 
 function dropPluginSubscriptions(registry, pluginName) {

@@ -637,6 +637,28 @@ export class PluginRegistry extends ClassRegistry {
     this._loadingPlugin = null;
   }
 
+  // Class overrides go on the ClassRegistry stack, which attributes by an explicit
+  // pluginName option and has no idea an ambient load is in progress. A plugin that
+  // calls registry.registerClass() directly - rather than the attributed ctx.registerClass
+  // the loader injects - was therefore recorded with pluginName: null and could never be
+  // popped by unloadPlugin() or by a failed-load rollback. Fill the ambient owner in here
+  // so both scopes behave the same way. An explicit pluginName still wins, and core code
+  // (no scope) is unaffected.
+  registerClass(...args) {
+    let owner = this._loadingPlugin;
+    if (owner) {
+      if (typeof args[0] === 'string') {
+        let options = (args[2] && typeof args[2] === 'object') ? args[2] : {};
+        args = optionArgs(args, 2, { pluginName: owner, ...options });
+      } else {
+        let options = (args[1] && typeof args[1] === 'object') ? args[1] : {};
+        args = optionArgs(args, 1, { pluginName: owner, ...options });
+      }
+    }
+
+    return super.registerClass(...args);
+  }
+
   _recordOwnership(pluginName, kind, key, restore) {
     let owner = pluginName || this._loadingPlugin;
     if (!owner)
@@ -659,20 +681,45 @@ export class PluginRegistry extends ClassRegistry {
   // Reverse order, because the ledger is chronological: the newest registration is
   // the one on top of the stack and must come off first. Never throws - a resource
   // that fails to close must not prevent the rest from being released.
-  async releasePlugin(pluginName, { logger = this.logger } = {}) {
+  //
+  // `since` replays only the ledger entries at or after that index. A failed load
+  // passes the depth it snapshotted before it touched anything, so it undoes its own
+  // partial registrations without taking down the ones an earlier load made under the
+  // same name. A partial release also leaves the lazily created authority and scoped
+  // database alone: those belong to the plugin as a whole, and the surviving load's
+  // owner still needs them.
+  async releasePlugin(pluginName, { logger = this.logger, since = 0 } = {}) {
     if (!pluginName)
       return false;
 
     let owned = this._pluginOwnership.get(pluginName) || [];
-    this._pluginOwnership.delete(pluginName);
+    // A non-zero snapshot means an earlier load already owns part of this ledger, so
+    // only the entries added since that snapshot are this load's to undo.
+    let partial = Number.isInteger(since) && since > 0;
+    let replay = partial ? owned.slice(since) : owned;
 
-    for (let entry of [ ...owned ].reverse()) {
+    if (partial) {
+      if (owned.length > since)
+        this._pluginOwnership.set(pluginName, owned.slice(0, since));
+    } else {
+      this._pluginOwnership.delete(pluginName);
+    }
+
+    for (let entry of [ ...replay ].reverse()) {
       try {
         entry.restore();
       } catch (error) {
         logger?.warn?.(`releasePlugin("${pluginName}"): could not undo ${entry.kind} "${String(entry.key)}": ${error?.message || error}`);
       }
     }
+
+    // A partial release leaves the lazily created resources and the service instances
+    // alone: they are not registrations, and a surviving load under the same name still
+    // needs them. Nothing a failed load registered can own an instance anyway -
+    // initializePluginServices() runs after loadPlugins() - so its service entries are
+    // fully undone by the ledger replay above.
+    if (partial)
+      return true;
 
     await this.releasePluginServices(pluginName);
 
@@ -693,6 +740,17 @@ export class PluginRegistry extends ClassRegistry {
 
     return true;
   }
+}
+
+// Replace (or append) the options argument at a fixed position without disturbing the
+// positional arguments before it. registerClass takes either (Class, options) or
+// (key, Class, options), so the slot differs and passing undefined is not the same as
+// omitting for some callers.
+function optionArgs(args, index, options) {
+  let next = args.slice();
+  while (next.length < index) next.push(undefined);
+  next[index] = options;
+  return next;
 }
 
 function isSubclassOf(candidate, BaseClass) {
