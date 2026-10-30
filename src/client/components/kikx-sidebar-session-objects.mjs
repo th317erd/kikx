@@ -15,19 +15,26 @@
 // `scopeFilter` seam whose default is "show everything".
 //
 // CORRECTION (2026-10-30, HEAD ddfbc733). An earlier version of this comment
-// said Prong B would filter the array "via its filterSessionsInScope". That is
-// not what shipped and it was not achievable: all five descriptors here are
-// either the global account chip (scopeSessionID null) or carry the VIEWED
-// session's id, so owner === viewer for every one of them and no scope predicate
-// can discriminate. The seam is scaffolding with nothing to scope yet — measured,
-// not assumed. The live scope enforcement today is the AGENTS/TEAMS VIEW
-// (kikx-agent-team-views.mjs:30-43, via getEffectiveSessionAgentIDs), which does
-// not route through this module.
+// said Prong B would filter the array "via its filterSessionsInScope". That was
+// not what shipped. Correcting it is why the seam sat dead: `filterSessionObjectItems`
+// short-circuits to grant-all when no filter is passed, so the whole scoping
+// layer had zero production callers and nothing said so.
 //
-// Do not describe this seam as wired, and do not "fix" it by wiring a filter in
-// the hope of a visible change: with the descriptors as they are, that is a
-// provable no-op. It becomes meaningful only when an item owned by a DIFFERENT
-// session is rendered here.
+// WIRED NOW (2026-10-30). `buildRunnerShell` passes a REAL predicate
+// (`sidebarScopePredicateFor`, below) for both clusters, so
+// `createSessionScope` / `filterItemsInScope` / `filterSessionsInScope` are all
+// reached from a production entry point. See `spec/client/sidebar-shell-scope-spec.mjs`,
+// which drives `buildRunnerShell` itself -- not this module in isolation, which
+// is the mistake that hid the dead seam.
+//
+// WHAT THE WIRING CAN AND CANNOT DO. With the descriptors as they are, every
+// non-chip row carries the VIEWED session's own id (or none at the project
+// root), so a correct predicate grants them and the sidebar looks identical to
+// the unfiltered one. That is the EXPECTED result, not a failed filter: the spec
+// therefore asserts the predicate's decisions and its reachability, and
+// deliberately does not claim a visible change. The wiring becomes visible the
+// moment a row owned by a DIFFERENT session is rendered here, which the spec
+// pins directly by feeding a foreign row through the same seam.
 //
 // The descriptor field is `scopeSessionID`, and `sessionIDOf` in
 // src/client/state/session-scope.mjs must keep reading it —
@@ -37,6 +44,7 @@
 import { elements } from '../lib/aeor-ui.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { getScopeSessionID, isViewOpen } from '../state/kikx-state.mjs';
+import { createSessionScope, sessionIDOf } from '../state/session-scope.mjs';
 
 const { div, span, button } = elements;
 
@@ -118,7 +126,73 @@ export function filterSessionObjectItems(items, scopeFilter = null, appState = n
   if (typeof scopeFilter !== 'function')
     return [...items];
 
-  return items.filter((item) => scopeFilter(item, item.scopeSessionID, appState));
+  return items.filter((item) => {
+    let verdict = scopeFilter(item, item.scopeSessionID, appState);
+
+    // The predicate must ANSWER. Two plausible-looking wrong pairings used to
+    // pass silently in opposite directions, and both were measured against the
+    // real sidebar descriptors:
+    //
+    //   (items, scope.filter)  -> [] is truthy, so ALL FIVE were kept  (leak)
+    //   (items, scope.owns)    -> owns(item) reads the item as a session id,
+    //                             so NONE were kept                    (blank)
+    //
+    // A non-boolean is never a deliberate answer here, so it is a programming
+    // error and it is raised rather than guessed at. Use
+    // `createSessionScope(v).predicate`, which is shaped for this seam.
+    if (typeof verdict !== 'boolean') {
+      throw new TypeError(
+        `filterSessionObjectItems: the scope predicate returned ` +
+        `${typeof verdict} for item "${item?.id}". ` +
+        `Expected a boolean. Pass createSessionScope(viewer).predicate, not ` +
+        `scope.filter (a collection filter) or scope.owns (takes a session id).`,
+      );
+    }
+
+    return verdict;
+  });
+}
+
+// The scope predicate the shell actually passes, in ONE place so the shell and
+// its spec cannot disagree about it. A spec that re-implemented this filter
+// would pass while the shell stayed broken -- precisely how the dead seam
+// survived.
+//
+// Two traps, both measured, both of which a plausible-looking wiring gets wrong:
+//
+//   1. GRANT BY ITEM IDENTITY, NOT BY NULL. `scopeSessionID === null` means two
+//      unrelated things: the global account chip (owner point 5's carve-out) and
+//      "project root, no session selected". Granting on null would hide that the
+//      chip is a deliberate global exception; denying on null would hide the chip
+//      altogether. Neither is right, so the one genuinely global row is named.
+//   2. ROOT MUST GRANT. At the project root there is no viewer session id, so
+//      `createSessionScope(null)` returns an EMPTY owner set (measured: owners=[],
+//      owns(undefined)=false) and every row would be dropped -- a blank sidebar.
+//      Root is not outside the tree; it owns everything below it, so it grants.
+//
+// A viewer that DOES have an id is filtered for real: a row owned by a session
+// the viewer cannot see is denied. That is the behaviour this wiring exists to
+// provide, and it is what makes the seam more than a no-op.
+export const GLOBAL_SESSION_OBJECT_IDS = Object.freeze([ 'account-chip' ]);
+
+export function sidebarScopePredicateFor(viewerSessionID, sessions = []) {
+  let scope = createSessionScope(viewerSessionID, sessions);
+
+  return (item, scopeSessionID) => {
+    // Trap 1: the global carve-out, by identity. The chip has no owner to scope.
+    if (item && GLOBAL_SESSION_OBJECT_IDS.includes(item.id))
+      return true;
+
+    // Trap 2: root genuinely owns everything below it.
+    if (!scope.viewerSessionID)
+      return true;
+
+    // A row with no owner id at all is unscoped. At root it was granted above;
+    // anywhere else an ownerless row is not demonstrably this viewer's, so it
+    // fails closed rather than leaking.
+    let owner = scopeSessionID === undefined ? sessionIDOf(item) : scopeSessionID;
+    return owner ? scope.owns(owner) : false;
+  };
 }
 
 function itemsForGroup(items, group) {

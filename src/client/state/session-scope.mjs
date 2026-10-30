@@ -165,6 +165,21 @@ export function createSessionScope(viewerSessionID, sessions = []) {
 
   let ownerSessionIDs = new Set(visibleOwnerIDsFor(viewer, list));
   let owns = (sessionID) => {
+    // `owns` answers about ONE SESSION ID. Handed a descriptor row it used to
+    // normalize to '' and answer `false` for every item -- a blank sidebar with
+    // no error anywhere. Callers legitimately pass a string, null, or undefined
+    // (all of src/ and spec/ do), so only a row-shaped argument is rejected:
+    // that is a shape mistake, never an answerable id.
+    if (typeof sessionID === 'object' && sessionID !== null) {
+      let shape = Array.isArray(sessionID)
+        ? 'an array'
+        : `the object with id "${sessionID.id}"`;
+      throw new TypeError(
+        `session-scope: owns() takes a session ID string, received ${shape}. ` +
+        `To test one sidebar item use predicate(item, scopeSessionID).`,
+      );
+    }
+
     let id = normalizeSessionID(sessionID);
     return id ? ownerSessionIDs.has(id) : false;
   };
@@ -174,11 +189,45 @@ export function createSessionScope(viewerSessionID, sessions = []) {
     ownerSessionIDs,
     sessionIDs: new Set(resolveScopeSessionIDs(viewer, list)),
     owns,
+    // The predicate the sidebar seam actually wants: '(item, scopeSessionID) => boolean'.
+    // Passed to `filterSessionObjectItems` as-is.
+    predicate(item, scopeSessionID) {
+      return owns(scopeSessionID === undefined ? sessionIDOf(item) : scopeSessionID);
+    },
     filter(items) {
       // A filter, never a re-sort: the caller's order survives.
-      return (Array.isArray(items) ? items : []).filter((item) => owns(sessionIDOf(item)));
+      return normalizeItemCollection(items).filter((item) => owns(sessionIDOf(item)));
     },
   };
+}
+
+// A COLLECTION filter takes a collection. Given a single row it used to answer
+// `[]`, and `Boolean([]) === true` -- so handing `scope.filter` to a seam that
+// calls its argument per item kept EVERY item and looked like it worked. Two
+// wrong pairings, both silent, in opposite directions:
+//
+//   filterSessionObjectItems(items, scope.filter)  -> all kept   (leak)
+//   filterSessionObjectItems(items, scope.owns)    -> none kept   (blank)
+//
+// Neither throws on its own. `assertItemCollection` makes the first loud at the
+// misuse site, and the seam's own boolean check makes the second loud too.
+function normalizeItemCollection(items) {
+  // `filter(null)` meaning "nothing to filter" is public, pinned behaviour:
+  // spec/ownership/session-scope-filter-spec.mjs asserts it. Only a
+  // non-array, non-nullish argument is a shape mistake -- that is a single
+  // row where a collection was expected, and it is never answerable.
+  if (items == null)
+    return [];
+
+  if (!Array.isArray(items)) {
+    throw new TypeError(
+      `session-scope: filter() takes an ARRAY of items, received ` +
+      `${typeof items} of ${JSON.stringify(items)}. ` +
+      `To test one item use predicate(item, scopeSessionID).`,
+    );
+  }
+
+  return items;
 }
 
 function emptyScope() {
@@ -188,7 +237,11 @@ function emptyScope() {
     ownerSessionIDs: owners,
     sessionIDs: new Set(),
     owns: () => false,
-    filter: () => [],
+    predicate: () => false,
+    filter(items) {
+      normalizeItemCollection(items);
+      return [];
+    },
   };
 }
 

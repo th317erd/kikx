@@ -250,7 +250,7 @@ test('a delivered default renders green, labelled as a default, and NOT as the u
   // The label must not claim the user said it.
   let label = textOf(byClass(receipt, 'kikx-question-frame__answer-label')[0]);
   assert.match(label, /Default answer/i);
-  assert.doesNotMatch(label, /^Your answer$/i, 'a default must never be labelled as the user\'s own words');
+  assert.doesNotMatch(label, /^You replied$/i, 'a default must never be labelled as the user\'s own words');
 
   // The note explains why the answer exists at all.
   let note = textOf(byClass(receipt, 'kikx-question-frame__answer-note')[0]);
@@ -298,7 +298,7 @@ test('a human answer stays read-only: no box, no submit, labelled as the user\'s
 
   let receipt = bySource(el, USER_ANSWER_SOURCE)[0];
   assert.ok(receipt, 'a human answer must be marked with its provenance');
-  assert.match(textOf(byClass(receipt, 'kikx-question-frame__answer-label')[0]), /^Your answer$/);
+  assert.match(textOf(byClass(receipt, 'kikx-question-frame__answer-label')[0]), /^You replied$/);
 });
 
 test('an answer with no recorded provenance is treated as read-only, not up for editing', () => {

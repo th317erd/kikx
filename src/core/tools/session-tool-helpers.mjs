@@ -79,6 +79,45 @@ export async function postAgentSessionMessage({
   };
 }
 
+// Who a `session-message` should actually START, given its own text.
+//
+// Deliberately the SAME resolver that stamps `frame.mentions` in
+// `postAgentSessionMessage` above. If the wake target were computed separately,
+// a message could render as "addressed to A" while waking B — and the whole
+// point of surfacing these frames is that what a person sees is what happened.
+//
+// The sender is filtered out: an agent that mentions itself is making a note,
+// not handing off work, and waking it would re-enter its own run.
+//
+// Returns `{ id, name }` pairs. `name` is best-effort because mention actors and
+// full agent records are different shapes; an empty name is safe —
+// `wakeAgentInSession` then omits `content.agentName` and the client falls back
+// to the agent ID rather than inventing a name.
+export async function resolveSessionMessageWakeTargets({ text, context = {}, agentManager = null } = {}) {
+  let references = parseMentionReferences(text);
+  if (references.length === 0)
+    return [];
+
+  let mentions = await resolveMentionActors(references, {
+    ...(context.services || {}),
+    ...(agentManager ? { agentManager } : {}),
+  });
+
+  let senderID = context.agent?.id || null;
+  let targets = [];
+  for (let mention of Object.values(mentions || {})) {
+    let id = normalizeOptionalString(mention?.id);
+    if (!id || id === senderID || targets.some((target) => target.id === id))
+      continue;
+    targets.push({
+      id,
+      name: normalizeOptionalString(mention?.name) || normalizeOptionalString(mention?.displayName) || '',
+    });
+  }
+
+  return targets;
+}
+
 export function sanitizeSession(session = {}) {
   return {
     id: session.id || null,
@@ -123,6 +162,12 @@ export function sanitizeFrame(frame = {}) {
     authorType: frame.authorType || null,
     authorID: frame.authorID || null,
     authorDisplayName: frame.authorDisplayName || null,
+    // Who a directed frame was addressed to. Dropped here until now, which is
+    // why a tool could write a targeted message and then be unable to report who
+    // it targeted. Additive: absence stays absent rather than becoming null.
+    ...(normalizeOptionalString(frame.targetAgentID)
+      ? { targetAgentID: normalizeOptionalString(frame.targetAgentID) }
+      : {}),
     createdAt: frame.createdAt || null,
     updatedAt: frame.updatedAt || null,
     createdClock: frame.createdClock || null,

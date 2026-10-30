@@ -35,10 +35,15 @@ import {
   USER_ANSWER_SOURCE,
 } from '../state/questions-state.mjs';
 
-// Labels. `USER_ANSWER_LABEL` is a field label above the text, so "Your answer"
-// is literally accurate on both surfaces; the Inbox row's own status line is a
-// separate sentence and is left to the caller.
-export const USER_ANSWER_LABEL = 'Your answer';
+// Labels. `USER_ANSWER_LABEL` is the line above the words a person typed. The
+// owner's wording for it is exactly "You replied" (2026-10-24 review: the Inbox
+// and the session must feel the same), replacing the earlier "Your answer".
+//
+// It is a RECEIPT marker, not a form label: the answer box still says "Your
+// answer..." as its placeholder, because there it is a question being asked.
+// One constant drives both surfaces, so the Inbox row and the thread cannot
+// drift into disagreeing about who spoke.
+export const USER_ANSWER_LABEL = 'You replied';
 export const AGENT_ANSWER_LABEL = 'Answer provided by a coordinator agent';
 export const AGENT_ANSWER_NOTE = 'A coordinator agent answered this on the user\'s behalf.';
 export const DEFAULT_ANSWER_LABEL = 'Default answer \u2014 applied automatically';
