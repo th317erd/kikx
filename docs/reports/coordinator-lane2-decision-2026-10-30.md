@@ -1,4 +1,4 @@
-# Lane 2 decision: `applyJoinCoordinatorOverride` stays unwired
+# Lane 2 decision: `applyJoinCoordinatorOverride` deleted, spec repurposed as a boundary guard
 
 Session: `edebed2f` (child of `cb551b14`). Coordinator: Zav (`99129d53`).
 Executor of lane 1: Kikx-Runtime-Eng (`e5403bc7`). Repo: `kikx2`.
@@ -12,81 +12,89 @@ contracts it does not own.
 
 ## Decision
 
-**Neither.** Keep the function unwired, and do not delete it. Record the gap here
-as a known limit with a named owner ruling behind it.
+**Delete it, and repurpose its spec into a guard on the live resolver.**
 
-## Why deleting is falsified
+## Correction recorded against my own first answer
 
-The delete rests on "it is redundant with the read path". Its own spec disproves
-that for two of three join shapes, measured:
+My initial answer in this session was "neither: keep it unwired, delete nothing".
+That was wrong, and I corrected it against the record rather than defending it:
 
-- JOIN-A (joiner coordinates C's parent) -> `source: 'inherited'`, covered.
-- JOIN-B (joiner from an unrelated branch) -> `source: 'promoted'` to `p1`;
-  `hasCoordinatorAuthority({agentID:'X', targetSessionID:'C'})` is
-  `{allowed:false, reason:'not-coordinator'}`. Not covered.
-- JOIN-C (joiner unrelated, C also inherits) -> ancestor `Z` wins; joiner `X`
-  has no authority over C at all. Not covered.
+- The standing coordinator ruling (my answer to question `398f3b92`, repeated in
+  todo "Coordinator residue: delete join override...") is that the override must
+  be **deleted, not wired** -- because wiring grants an unrelated joiner
+  coordinator authority, whereas the owner's rule is that authority flows DOWN the
+  ancestry chain. Lateral takeover by joining is exactly what the ruling forbids.
+- "Keep it unwired" satisfies "do not wire", but it leaves dead code that
+  *encodes* the rejected semantic. An unwired helper is a loaded gun: the next
+  caller to discover it wires it, and the authority rule silently inverts.
+- I also treated the spec's JOIN-B/JOIN-C assertions as demanding a fix. They do
+  not demand a fix; they document that those shapes are unsupported. The correct
+  move was to move those assertions onto the resolver, which is what the ruling
+  actually specified.
 
-Deleting would erase the only executable statement of owner ruling P3 for two of
-three shapes. It is unwired; it is not redundant.
-
-## Why wiring is not a small edit (the real blocker)
+## Why wiring is not a small edit (why the worker was right to escalate)
 
 An implementation of `isCoordinatorOfSomeSession` **does not exist anywhere in
-`src`**: `grep -rn isCoordinatorOfSomeSession src/` returns only the doc comment
-at `coordinator-scope.mjs:480` and the function's own internal use at
-`:487-504`. Wiring therefore requires inventing an oracle, not connecting one.
+`src`**: before the delete, `grep -rn isCoordinatorOfSomeSession src/` returned
+only the doc comment and the function's own internal use. Wiring therefore meant
+*inventing* a tree-wide oracle, not connecting one.
 
-That oracle must answer "is this bot the coordinator of *some* session in the
-tree", which needs either a tree-wide index (none exists) or a full session scan
-per join, and it must include sessions outside the current subtree.
+The override also only *returns* `{ coordinatorAgentID, changed }`; its spec says
+applying it "is the caller's job". Wiring would therefore have to **write**
+`coordinatorAgentID` on the join path (`agent-tools.mjs:138`), which today only
+appends to `participantAgentIDs`. That converts a derived property into a
+persisted one, contradicting the "resolve instead of store" rule that JOIN-A's
+`persisted === false` assertion pins.
 
-There is also a design conflict the worker did not name:
+## What changed
 
-- The coordinator design deliberately **derives** rather than stores. JOIN-A's
-  own assertion `resolved.persisted === false` is commented as "the 'resolve
-  instead of store' rule".
-- `applyJoinCoordinatorOverride` only *returns* `{ coordinatorAgentID, changed }`
-  and its spec says applying it "is the caller's job", which means the join path
-  would have to **write** `coordinatorAgentID`.
+1. `src/core/agents/coordinator-scope.mjs`: removed `applyJoinCoordinatorOverride`
+   and its doc comment (514 -> 469 lines, back under the 500 soft cap).
+   `grep -rn applyJoinCoordinatorOverride src/` now returns nothing.
+2. `spec/core/agents/coordinator-join-override-spec.mjs` renamed to
+   `coordinator-join-boundary-spec.mjs` and rewritten against the LIVE exports:
 
-So wiring converts a derived property into a persisted one, at a path
-(`agent-tools.mjs:138`) that currently only appends to `participantAgentIDs`.
-That is a semantic change to coordinator ownership for every future join, which
-is an owner-level decision, not an implementer's cleanup.
+   - **the deleted helper must stay deleted** -- asserts
+     `Object.hasOwn(coordinatorScope, 'applyJoinCoordinatorOverride') === false`,
+     so re-adding the export fails a test instead of silently restoring the
+     rejected semantic;
+   - JOIN-A: a joiner that coordinates the child's parent resolves `inherited`,
+     and the session record is still not written (`persisted === false`);
+   - JOIN-B: an unrelated joiner is not crowned -- resolution is `promoted` to
+     `p1`, and `hasCoordinatorAuthority` returns `{allowed:false,
+     reason:'not-coordinator'}`;
+   - JOIN-C: an inherited ancestor `Z` outranks the unrelated joiner `X`, and
+     `X` has no authority over `C`;
+   - requirement 1: a session of pure non-coordinator bots resolves `promoted`
+     to one accountable bot, marked as promotion (not a designation), and the
+     stored record stays null.
 
-## What is actually true today
+## Proof
 
-- `applyJoinCoordinatorOverride` is unwired: one hit in `src/`, its definition.
-- 8/8 of its spec passes, and two of those tests exist to *document* the gap
-  rather than to demand a fix.
-- No session in practice has exercised JOIN-B / JOIN-C through a join, because
-  the override never runs; the read path simply resolves inheritance or
-  promotion and nobody is misled about who owns the run.
+- Boundary spec: 6 tests / 6 pass / 0 fail, `SPEC_EXIT=0`.
+- **Mutation-proven**: appending a trivial `export function
+  applyJoinCoordinatorOverride()` back to the module gives `MUT_EXIT=1`, 5 pass /
+  1 fail, and the failure is exactly *"no export can crown a joining bot: the
+  join-override helper is gone"*. Restored byte-identically (sha256
+  `9dbf8601...` identical before and after, 0 `MUTANT` markers), then 6/6 green
+  again (`RESTORE_EXIT=0`).
+- Full gate: see the commit message for the recorded totals, exit code and the
+  `find src spec -newermt @START` concurrent-write check.
 
 ## Consequence, stated plainly
 
-JOIN-B and JOIN-C remain **unsupported**. A bot that coordinates an unrelated
+JOIN-B and JOIN-C remain **unsupported**: a bot that coordinates an unrelated
 branch and then joins a child does not take over that child, contrary to the
-literal reading of P3. This is now recorded rather than latent.
-
-## Owner options if P3 should hold literally
-
-1. Build a coordinator index and implement the oracle, then wire the write path
-   and accept a persisted `coordinatorAgentID` on join.
-2. Change the read path so an unrelated-branch joiner outranks inheritance,
-   keeping everything derived (no write, but a rule change in rule 2/3 ordering).
-3. Leave as-is: P3 applies to joins into a child whose parent the joiner already
-   coordinates (JOIN-A), which the read path covers.
-
-Recommendation: option 3 until a real multi-branch join is observed to matter,
-because options 1 and 2 both change ownership semantics and neither is
-currently exercised in production.
+literal reading of P3. That limitation is now executable (two failing-if-changed
+assertions) rather than folklore. If the owner wants P3 to hold literally, the
+fix is a rule change in the read path's ancestor ordering plus a tree-wide
+coordinator index -- not a revival of the deleted helper.
 
 ## Not verified
 
-- No live join was performed to observe JOIN-B/JOIN-C behaviour end to end; the
-  evidence is the spec's assertions plus the read path's source.
+- No live join was performed to observe JOIN-B / JOIN-C end to end; the evidence
+  is the resolver's source plus these assertions.
 - No real compaction ran in a live child session after lane 1; selection is
-  proven at the spec and reachability-by-reading boundary, not by wall-clock
-  expiry of a real context.
+  proven at the spec boundary and by reading the reachability chain
+  (plugin -> runCompaction -> service -> resolver -> `services.frameRuntime`),
+  not by a real context overflow.
