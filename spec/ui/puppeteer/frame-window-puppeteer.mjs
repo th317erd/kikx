@@ -4,9 +4,20 @@
 // every historical frame in the DOM. The newest N frames are materialized; the
 // top of the window reveals older state frames; returning to the bottom restores
 // the newest window.
+//
+// The caps are read from the product module rather than duplicated as literals.
+// This spec used to hard-code `<= 80`, from 24b0065e when MAX_RENDERED_FRAMES
+// was 80. 94a18a7d raised it to 200 (and added MAX_TOTAL_RENDERED_FRAMES = 800),
+// and 898a33b0 lowered it to 120; the literal never moved, so the assertion
+// described a cap the product had stopped honouring. Importing the module is not
+// an option here: kikx-chat-view.mjs pulls in the browser-only
+// /vendor/aeor-web-components bundle, which Node cannot resolve. Read the
+// declarations from source instead, so this guard tracks the shipped cap.
 
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import puppeteer from 'puppeteer-core';
 
@@ -15,6 +26,22 @@ import {
   startStagehandUIServer,
 } from '../stagehand/stagehand-test-utils.mjs';
 
+const CHAT_VIEW_SOURCE = fs.readFileSync(
+  fileURLToPath(new URL('../../../src/client/components/kikx-chat-view.mjs', import.meta.url)),
+  'utf8');
+
+function sourceConstant(name) {
+  let match = CHAT_VIEW_SOURCE.match(new RegExp(`export const ${name} = (\\d+);`));
+  assert.ok(match, `${name} is declared in kikx-chat-view.mjs`);
+  return Number(match[1]);
+}
+
+const MAX_RENDERED_FRAMES = sourceConstant('MAX_RENDERED_FRAMES');
+const MAX_TOTAL_RENDERED_FRAMES = sourceConstant('MAX_TOTAL_RENDERED_FRAMES');
+
+// A fixture smaller than the hard cap exercises the reveal path itself; a
+// larger one would be needed to exercise eviction, which is covered by
+// spec/client/chat-view-window-spec.mjs without a browser.
 const FRAME_COUNT = 140;
 
 function messageFrame(index, timestamp) {
@@ -79,7 +106,8 @@ test('Puppeteer keeps only a bounded frame window and reveals older frames on sc
     });
 
     let initial = await snapshot();
-    assert.ok(initial.count > 0 && initial.count <= 80, `rendered window is bounded (${initial.count})`);
+    assert.ok(initial.count > 0 && initial.count <= MAX_RENDERED_FRAMES,
+      `rendered window is bounded by the page cap (${initial.count} <= ${MAX_RENDERED_FRAMES})`);
     assert.equal(initial.ids.at(-1), 'window_msg_139');
     assert.equal(initial.ids.includes('window_msg_0'), false, 'the oldest frame is not in the initial DOM');
 
@@ -90,9 +118,22 @@ test('Puppeteer keeps only a bounded frame window and reveals older frames on sc
     });
     await delay(400);
     let older = await snapshot();
-    assert.ok(older.count <= 80, `older reveal remains bounded (${older.count})`);
+    assert.ok(older.count <= MAX_TOTAL_RENDERED_FRAMES,
+      `older reveal stays within the hard cap (${older.count} <= ${MAX_TOTAL_RENDERED_FRAMES})`);
     assert.notEqual(older.ids[0], initial.ids[0], 'the window moved to older frames');
-    assert.equal(older.ids.includes('window_msg_139'), false, 'the window moved back from the newest tail');
+
+    if (FRAME_COUNT <= MAX_TOTAL_RENDERED_FRAMES) {
+      // The whole thread fits under the hard cap, so revealing the top of the
+      // list materialises every frame. Asserting equality is what makes this
+      // discriminating: a bounded-by-accident initial render fails it, while the
+      // stale `<= 80` literal passed it without ever being close.
+      assert.equal(older.count, FRAME_COUNT,
+        `a session under the cap reveals every frame (${older.count} === ${FRAME_COUNT})`);
+      assert.equal(older.ids.includes('window_msg_0'), true, 'the oldest frame is revealed by scrolling up');
+      assert.equal(older.ids.at(-1), 'window_msg_139', 'the newest frame is retained while the thread fits under the cap');
+    } else {
+      assert.equal(older.ids.includes('window_msg_139'), false, 'the window moved back from the newest tail');
+    }
 
     await page.evaluate(() => {
       let list = document.querySelector('.kikx-frame-list');
@@ -101,7 +142,7 @@ test('Puppeteer keeps only a bounded frame window and reveals older frames on sc
     });
     await delay(400);
     let latest = await snapshot();
-    assert.ok(latest.count <= 80, 'returning to the bottom keeps the DOM bounded');
+    assert.ok(latest.count <= MAX_TOTAL_RENDERED_FRAMES, 'returning to the bottom keeps the DOM bounded');
     assert.equal(latest.ids.at(-1), 'window_msg_139');
   } finally {
     await browser.close().catch(() => {});
