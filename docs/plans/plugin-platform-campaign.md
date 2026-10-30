@@ -1214,3 +1214,44 @@ for two days because of an SSH tunnel that forwarded 3098 and not 3003; it answe
 `/health` `200` and served `/client/*` byte-identical to this tree throughout, with
 `Cache-Control: no-cache`, so the stale-looking status bar was a browser cache. Its client
 modules are current; only *server* modules freeze at boot.
+
+### Discord edits: one path, behind the gate (2026-10-30)
+
+`kikx-plugin-discord` `4554b85`. An earlier revision of this document recorded edit
+handling as present because the HTTP branch and its three tables existed. It was present
+twice, and both copies were wrong:
+
+- **Over HTTP** there was an inline copy of the edit logic in `index.mjs`. It re-derived
+  the diff, wrote `discord_message_frame`, and appended to the frame — and never called
+  `authorizeInbound`. The mapping row proves that *the original message* passed the gate;
+  it does not prove the actor editing it now is the same one. So an edit was a write with
+  no capability check, which is the strict-security ruling inverted.
+- **Over the gateway** there was no edit path at all. `handle()` opened with
+  `if (eventType !== 'MESSAGE_CREATE') return not_a_message`, so `MESSAGE_UPDATE` was
+  dropped before the router looked at it. A user editing a message saw nothing happen.
+
+One path replaced them: `MESSAGE_UPDATE` dispatches to `handleEdit()` in
+`inbound-router.mjs`, which calls the same `authorizeInbound` the message path uses,
+resolves the frame through `findFrame()`, keeps `original_text` intact, and appends to the
+audit tail via `updateFrameAudit()`. The inline copy is deleted rather than left as a
+second definition — the two copies had already diverged once.
+
+Two policy decisions inside it, both deny-by-default:
+
+- **No author, no write.** An edit with no attributable author is refused
+  (`no_author`) rather than inheriting the original message's grant on faith.
+- **No content is not an error.** Discord sends `MESSAGE_UPDATE` with no `content` field
+  when it unfurls a link preview. That is reported as `edit_without_content`, not treated
+  as a malformed request, because otherwise every pasted URL logs a failure.
+
+`spec/inbound-edit-spec.mjs` is 9 tests; reverting both files to `26d815d` fails **8 of
+9**, the single pass being the control that unrelated events are still not messages. The
+pre-existing router test asserted `MESSAGE_UPDATE → not_a_message`, which is the old
+behaviour written down as an expectation — the second time in this campaign that an
+assertion was protecting a defect rather than catching one. It now expects
+`unframed_message`. Plugin suite: **86/86**.
+
+Not measured: a real edit arriving over a live gateway socket. The unit proof drives
+`handle()` directly and the code path from `onDispatch` to `handle()` is the same one
+`MESSAGE_CREATE` already travels, but that identity is argued from the source, not
+observed on a socket.
