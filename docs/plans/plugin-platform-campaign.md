@@ -1,0 +1,664 @@
+---
+title: Plugin platform campaign
+status: current
+doc_type: plan
+audience: [developers, maintainers, operators]
+applies_to: development-v3
+last_verified: 2026-10-29
+---
+
+# Plugin platform campaign
+
+## 1. Evidence
+
+### Current baseline
+
+- Kikx main at planning start: `0bbfcf2a`.
+- Non-doc suite on this checkout: **2784 tests, 2755 pass, 0 fail, 29 skipped**.
+- Plugin HTTP/runtime work exists on `origin/miri-plugin` at `f201985e`.
+- That branch is **48 commits ahead / 18 behind** the current main; its merge base is `2ab9bf03`.
+- Its non-doc suite, with the shared `node_modules` available, is **2709 tests, 2680 pass, 0 fail, 29 skipped**.
+- Its new plugin-router spec is **12/12 pass**.
+- A `git merge-tree` trial between current main and `origin/miri-plugin` is textually clean, but the merged revision has not been tested.
+- The laptop dirty tree is the documentation migration plus untracked docs/testbed/public files; no plugin source is dirty.
+
+### Registry facts
+
+- `CORE_CLASSES` contains 8 classes: `PluginRegistry`, `PluginInterface`, `AgentInterface`, `CommandRegistry`, `FrameRouter`, `FrameRuntime`, `CompactionService`, `DatabaseConnectionBase`.
+- Only three construction sites resolve a core class through the registry:
+  - `FrameRouter` (`src/server/create-server.mjs:212`)
+  - `FrameRuntime` (`:424`)
+  - `CompactionService` (`:462`)
+- `PluginRegistry` is constructed directly before plugins load. A plugin cannot override the registry it is loading into.
+- `CommandRegistry` is constructed directly.
+- `AgentInterface`, `PluginInterface`, and `DatabaseConnectionBase` are bases used by providers/tools/drivers, not construction points for a running core service.
+- Specialized plugin collections are not class stacks:
+  - tools (`Map`, last registration wins)
+  - agent providers (`Map`)
+  - database drivers (`Map`)
+  - selectors (`Array`, append order)
+  - frame/tool/config-form components (`Map`)
+  - tag definitions (`Map`)
+  - frame indexes (`Map`)
+- `unloadPlugin()` currently removes only entries attributed to the plugin in the `ClassRegistry` stacks. Specialized collections are not removed with it.
+- Some built-in feature families are core-authored but registry-shaped:
+  - 63 built-in tools and 4 built-in frame components in `src/core/tools/register-built-in-tools.mjs`
+  - 8 internal commands in `src/core/commands/internal-commands.mjs`
+  - 3 core tag definitions in `src/core/tags/tag-definitions.mjs`
+  - frame-type classes in `src/core/frames/frame-types/`
+  - routing, question scheduling, prompts, precepts and compaction policy in core modules
+
+### Server and client ownership
+
+- 13 route files and roughly 69 route condition sites under `src/server/routes/`.
+- 50 `context.set(...)` service/store constructions in `src/server/create-server.mjs`.
+- `create-server.mjs` is 680 lines; `kikx-shell-builders.mjs` is 632 lines.
+- The browser has hardcoded view names, sidebar descriptors, shell dispatch and an explicit optional-component list.
+- Client component descriptors support only `frame`, `tool`, and `agent-config-form`.
+
+### Miri's platform work
+
+Miri has added:
+
+- plugin HTTP mounts under `/api/plugins/<plugin-id>/`;
+- a plugin inventory, reload endpoint, and gated install endpoint;
+- scoped plugin database handles with table-prefix and DDL restrictions;
+- deny-by-default capability checks;
+- scoped event subscriptions;
+- ordered, checksummed SQL migrations;
+- setup/onInit/onShutdown lifecycle hooks;
+- plugin manifests, duplicate-name refusal, location hashes, load-failure inventory;
+- quiet session appends and agent audit tails;
+- shutdown bounds and timer fixes.
+
+This is a substantial platform foundation. It is not yet a complete plugin-way implementation.
+
+### Concrete defects in the existing platform work
+
+- `PluginAuthority` hardcodes `miri_capability`, while `PluginDatabase` permits only `<pluginId>_*` tables. A generic plugin cannot use the authority table unless it is named `miri`.
+- `PluginDatabase` and `PluginMigrations` are PostgreSQL/SQL-specific (`pg`, SQL statements, database URL). They are not driver-neutral.
+- Plugin routes/inventory/reload/install run before the normal auth chain and have no shared Kikx authentication/capability contract. Install is config-gated but not authenticated; reload is not gated.
+- `unloadPlugin()` does not remove HTTP mounts, migrations, scoped DB handles, authority instances, or event subscriptions. `dropPluginSubscriptions()` exists but is unused.
+- There is no contract test for authority, scoped DB, events, migrations, install/reload, or unload.
+- The branch has no client view/navigation registration.
+- The branch has no generic service registration or startup/recovery registration.
+- The branch's package/config changes include plugin-specific Discord paths in core config.
+
+## 2. Territory
+
+Trace every path from boot to behavior:
+
+```text
+server entry
+  → createServer
+  → registerCoreClasses
+  → registerBuiltInTools / tag definitions
+  → plugin discovery and setup
+  → plugin route/migration/database/event registration
+  → database driver selection
+  → service/store construction
+  → FrameRouter selectors
+  → FrameRuntime
+  → frame persistence and routing
+  → auth/account/session/question/tag/team/todo routes
+  → client component descriptors
+  → browser shell/navigation
+  → session/thread views and actions
+  → shutdown/recovery
+```
+
+### Files in scope
+
+- Plugin core: `src/core/plugins/`, `src/core/routing/`
+- Server composition: `src/server/create-server.mjs`, `src/server/index.mjs`,
+  `src/server/router.mjs`, `src/server/routes/`, `src/server/shutdown.mjs`
+- Class construction and registry: `src/core/plugins/class-registry.mjs`,
+  `core-classes.mjs`, `plugin-registry.mjs`
+- Frame/routing: `src/core/frames/`, `src/core/agents/agent-route-frame-plugin.mjs`,
+  `src/core/questions/question-schedule-plugin.mjs`
+- Persistence: `src/core/aeordb/`, `src/core/database/`
+- Agent loop/prompt: `src/core/plugins/agent-interface.mjs`,
+  `agent-loop-tools.mjs`, `agent-precepts.mjs`, `agent-brief-template.mjs`
+- Client: `src/client/state/navigation-stack.mjs`,
+  `kikx-shell-builders.mjs`, `kikx-sidebar-session-objects.mjs`,
+  `src/client/lib/aeor-ui.mjs`, `src/client/components/frame-component-registry.mjs`
+- Tests: `spec/core/plugins/`, `spec/plugins/`, `spec/server/`, `spec/client/`,
+  `spec/ui/`
+
+### External/durable surfaces
+
+- Existing plugin manifests and package main entries.
+- Existing plugin routes under `/api/plugins/`.
+- Existing plugin migration directories and migration ledger.
+- Client component descriptors and plugin asset URLs.
+- Existing plugin load paths and `KIKX_PLUGIN_PATHS`.
+- Current Postgres operational database and AeorDB compatibility path.
+- Existing Kikx auth sessions, magic links, API tokens, and human accounts.
+
+## 3. Frame
+
+### Target
+
+A feature can be installed, overridden, observed, reloaded, and unloaded without editing
+`create-server.mjs`, a core route table, or the browser shell. Class overrides are real
+only where construction resolves the registry; every other extension has an explicit
+registration contract rather than an accidental map or direct import.
+
+### Non-goals
+
+- Do not make authentication or cryptography plugin-overridable.
+- Do not let a plugin claim `/api/v1/auth/*` or another reserved prefix.
+- Do not allow arbitrary plugin code into the core agent loop without a bounded control
+  contract.
+- Do not create a second UI framework or a second frame store.
+- Do not migrate every built-in tool in one landing.
+- No production deployment in this campaign.
+
+### Success criteria
+
+1. A test plugin can override a core class and the next constructed instance uses it.
+2. A test plugin can register a service with dependencies and deterministic startup and
+   shutdown; the service is removed on unload.
+3. A test plugin can mount an authenticated, capability-checked HTTP route; unload
+   removes the mount.
+4. A test plugin can register a main-area view and sidebar entry without core edits.
+5. A test plugin can register a frame index that works on each advertised driver and is
+   removed on unload.
+6. Plugin installation/reload cannot leave stale routes, tools, selectors, components,
+   migrations, or event subscriptions.
+7. Existing Kikx features keep their behavior; the full non-doc suite and relevant UI
+   lanes pass.
+8. The plugin docs and contract tests describe every new registration family.
+
+## 4. Contracts
+
+### 4.1 Registry and construction contract
+
+The class registry remains the authoritative stack for class overrides.
+
+Every overrideable class must be obtained through one resolver:
+
+```js
+resolveCoreClass(registry, key, fallback)
+```
+
+Rules:
+
+- A class registration changes future construction only.
+- A reload that claims to apply a class override must recreate affected instances or
+  report that a restart is required.
+- No construction site may use `new CoreClass()` when that class is registered as an
+  override point.
+- `PluginRegistry` itself must be created before plugin loading; its override is
+  explicitly out of scope (chicken-and-egg).
+- Auth/crypto classes stay outside the registry.
+
+Add a registry-owned registration record:
+
+```text
+{ pluginId, kind, key, value, loadOrder, dispose }
+```
+
+`unregisterPlugin()` must remove every owned registration, not just class stacks.
+
+### 4.1a Current class-resolution audit
+
+| Class | Registered | Constructed through registry today | Required treatment |
+|---|---|---|---|
+| `PluginRegistry` | yes | no; created before plugin load | Keep core-owned; document bootstrap exception |
+| `CommandRegistry` | yes | no; direct `new` | Resolve before construction or remove from override list |
+| `FrameRouter` | yes | yes | Keep as the reference overrideable class |
+| `FrameRuntime` | yes | yes | Recreate on reload or report restart-required |
+| `CompactionService` | yes | yes | Recreate on reload or report restart-required |
+| `PluginInterface` | yes | n/a; base class | Do not present as a live service override |
+| `AgentInterface` | yes | n/a; provider base | Do not present as a live service override |
+| `DatabaseConnectionBase` | yes | n/a; driver base | Override through concrete driver, not base row |
+| Frame-type classes | yes | only when `createTypedFrame` receives a registry | Audit every model-context caller; pass registry consistently |
+
+The plan must remove the ambiguity: a class is either a real construction override, a base class, or a deliberately core-only bootstrap exception.
+
+### 4.2 Service contract
+
+```js
+registerService(name, {
+  factory(context) -> instance,
+  dependsOn: [serviceName],
+  init(instance, context),
+  health(instance),
+  shutdown(instance)
+})
+```
+
+- Services are constructed in dependency order after plugin load and database readiness.
+- A failed required service prevents readiness.
+- Optional service failures are reported but do not make an unrelated feature unusable.
+- Service ownership is plugin-scoped; unload runs shutdown before removing.
+- Auth/crypto services are not replaceable through this contract.
+
+### 4.3 HTTP route contract
+
+- Plugins receive a scoped mount: `/api/plugins/<plugin-id>/`.
+- Reserved IDs `api`, `v1`, `plugins` remain refused.
+- Every plugin route has an explicit auth policy:
+  - `required` by default for non-public routes;
+  - `public` must be declared and reviewed;
+  - capability checks are enforced before the plugin handler for actions that mutate or
+    read protected data.
+- Raw body is preserved; size/deadline/error behavior is fixed in core.
+- Install/reload endpoints require Kikx auth and an explicit operator capability, not
+  only a config flag.
+- Unload removes the mount and refuses new requests.
+
+Route descriptor shape:
+
+```js
+{
+  pluginId,
+  mountPath,
+  auth: 'required' | 'public', // public must be an explicit reviewed declaration
+  capabilities: [{ actor, action, scope }],
+  handler,
+  dispose
+}
+```
+
+The core router must evaluate auth and capability policy before calling the handler. A plugin cannot pass an arbitrary `actor` in the request body and have that count as authorization.
+
+### 4.4 Client surface contract
+
+Add descriptors for:
+
+- `view`: label, icon, scope, builder module, optional count source;
+- `sidebar-item`: placement, label, scope, action/view;
+- `toolbar-action`: placement, label, icon, action;
+- `settings-panel`: label, builder module;
+- existing `frame`, `tool`, `agent-config-form`.
+
+The server inventory returns descriptors; the browser imports modules through the
+existing plugin asset route. A missing optional surface degrades; it does not reject the
+entire client module graph. Unload must remove descriptors and the client must be able to
+reconcile without a full shell rebuild where practical.
+
+View descriptor shape:
+
+```js
+{
+  kind: 'view',
+  id: 'plugin-id.view-id',
+  label: 'View title',
+  icon: 'icon-name',
+  scope: 'session' | 'workspace' | 'global',
+  moduleURL: '/api/v1/plugin-assets/plugin-id/client/view.mjs',
+  tagName: 'plugin-view-id',
+  dispose
+}
+```
+
+No plugin may claim a reserved route prefix, inject raw HTML, or bypass the shared frame shell for conversation messages.
+
+### 4.5 Persistence and index contract
+
+- `registerIndex` describes a field, type and optional source path.
+- The driver contract advertises index support.
+- AeorDB receives index config; PostgreSQL creates an expression index; drivers without
+  native index support may scan but must say so.
+- Migration directories are plugin-owned and run once under a checksum ledger.
+- A plugin index and its migrations are removed or tombstoned on unload according to an
+  explicit retention policy; data is not silently deleted.
+- Migration SQL is either driver-neutral or explicitly declares a driver capability.
+
+Index descriptor shape:
+
+```js
+{
+  name: 'focus_todo_id',
+  type: 'string',
+  source: ['content', 'focus_todo_id'], // optional nested source
+  drivers: ['aeordb', 'postgresql'],
+  removeOnUnload: 'definition-only' | 'retain-data'
+}
+```
+
+`removeOnUnload` must never silently delete durable plugin data. The default is definition-only.
+
+### 4.6 Prompt, loop and policy contract
+
+Add named, bounded contributions rather than plugin-defined replacements of the loop:
+
+- prompt sections;
+- precepts;
+- role/tag selectors;
+- compaction strategies;
+- loop-control extensions with a fixed terminal-state vocabulary.
+
+The core loop remains finite and auditable. A plugin cannot create an unbounded hidden
+wake path.
+
+### 4.7 Manifest and lifecycle contract
+
+```json
+{
+  "name": "plugin-id",
+  "version": "1.0.0",
+  "kikxVersion": ">=...",
+  "requires": ["other-plugin"],
+  "provides": ["capability"],
+  "loadOrder": 100
+}
+```
+
+- Duplicate plugin names are refused.
+- Required dependencies must resolve; optional dependencies are reported.
+- Load order is deterministic and conflict diagnostics name both plugins.
+- `onInit` runs after all registrations for that plugin; `onShutdown` runs in reverse
+  order; teardown remains idempotent.
+- A setup timeout marks the plugin failed and rolls back partial registrations; a
+  non-cancellable setup that later mutates state must be quarantined or require restart.
+
+## 5. Decisions
+
+### D1 — Integrate Miri's branch as the platform foundation
+
+Use `origin/miri-plugin` as the starting point, merged with current main. Preserve our
+newer scrollview, session-scope, filter, end-turn and todo-focus-index work. Do not
+cherry-pick selectively without a written conflict map.
+
+Reason: it already supplies routes, DB, events, migrations, lifecycle and inventory.
+Rebuilding those in parallel would duplicate work and create incompatible contracts.
+
+### D2 — Plugin routes are authenticated by default
+
+Public plugin routes must be explicitly declared. The current unauthenticated inventory
+and reload/install surface must be hardened before the route contract is called complete.
+
+This is a security default, not a feature preference.
+
+### D3 — Built-in feature migration is phased
+
+The campaign first builds the seams, then migrates one complete family (Questions or Todo
+UI) as the reference plugin. It does not mechanically move all 63 tools in one phase.
+
+Reason: a reference plugin proves routes, views, services, indexes and unload together.
+
+### D4 — Service override remains allowlisted
+
+Do not make every store or security service replaceable. Register service factories for
+feature services with explicit dependency and teardown contracts. Auth/crypto stay core.
+
+### D5 — Mount paths remain scoped
+
+Keep `/api/plugins/<plugin-id>/`; never allow a plugin to claim `/api/v1/*` directly.
+
+### D6 — Index support is driver-qualified
+
+A plugin index declares its driver capabilities. PostgreSQL expression indexes and AeorDB
+index configs are both first-class; unsupported drivers report a scan fallback rather than
+pretending the index exists.
+
+### D7 — UI surfaces are descriptors, not core branches
+
+No new `viewName === ...` branches in `kikx-shell-builders.mjs`. Views/sidebar/toolbar
+entries come from descriptors and modules.
+
+### D8 — Owner decisions still required
+
+The following need an explicit owner ruling before implementation:
+
+1. Whether all existing built-in tools/frames must become bundled plugins in this
+   campaign or after the platform seams land.
+2. Whether plugin routes may ever be public by default in a development profile.
+3. Whether plugin service registration may replace any core persistence service, or only
+   feature services.
+4. Retention policy for plugin-owned migrations/data on uninstall.
+
+Recommended defaults are stated above.
+
+## 6. Phases
+
+### P0 — Integrate and harden the existing platform
+
+Start gate: current main and `origin/miri-plugin` both green in their own worktrees.
+
+Work:
+
+- Merge `origin/miri-plugin` into main with a conflict map; preserve both plugin-index and
+  Miri platform work.
+- Add tests for `PluginAuthority`, `PluginDatabase`, `PluginEvents`, migrations, install,
+  reload and unload. Do not rely on the 12 router tests alone.
+- Fix `PluginAuthority` to use a generic plugin-owned capability table.
+- Add auth/capability gates to plugin inventory, reload, install and mutating plugin
+  routes.
+- Ensure plugin routes and mounts are removed on unload.
+- Make migration/database contracts explicitly driver-qualified; keep Postgres working
+  while reporting unsupported drivers.
+- Run full suite and plugin contract tests.
+
+Exit proof:
+
+- Existing suite green.
+- New platform tests cover success, malformed input, timeout, oversized body, duplicate
+  name, failed setup, failed migration, unauthorized route, unload cleanup.
+- One live boot with a no-op plugin confirms inventory/mount/auth/unload.
+
+### P1 — Registry construction and ownership
+
+Work:
+
+- Add a single `resolveRegistered` construction path.
+- Audit every `new CoreClass()` for classes in `CORE_CLASSES`.
+- Either resolve it through the registry or document why it is deliberately core-only.
+- Add plugin ownership metadata to tools, selectors, components, tags, drivers and
+  indexes.
+- Make `unregisterPlugin` remove every owned collection entry.
+- Add generation/reload semantics: a class override that requires rebuild reports
+  `restart-required` if a live instance cannot be replaced.
+
+Exit proof:
+
+- A test plugin overrides `FrameRouter`, `FrameRuntime` and `CompactionService`; the next
+  constructed instances use the override.
+- Direct construction tests prove no bypass remains for registered classes.
+- Unload test proves every registry collection returns to its pre-plugin state.
+
+### P2 — Service and startup lifecycle
+
+Work:
+
+- Implement `registerService`.
+- Introduce ordered startup phases and recovery hooks.
+- Migrate one feature service (Questions or Todo) as the first plugin-owned service.
+- Register health checks and shutdown teardown.
+- Ensure a failed required service fails readiness; optional failures are visible.
+
+Exit proof:
+
+- Service dependency order test.
+- Init failure test.
+- Shutdown failure isolation test.
+- Plugin unload removes service and subscriptions.
+
+### P3 — HTTP route ownership
+
+Work:
+
+- Formalize the Miri route mount with auth/capability policy.
+- Add route descriptor inventory and unload.
+- Add request limits, timeout, raw body, error mapping and capability tests.
+- Move one plugin-facing integration route from a core route file to a bundled plugin.
+- Keep auth/account routes core.
+
+Exit proof:
+
+- Authorized route succeeds.
+- Unauthorized route is rejected before handler.
+- Oversized body, malformed JSON, timeout and handler failure are deterministic.
+- Unload returns 404/route-not-found immediately.
+
+### P4 — Client surfaces
+
+Work:
+
+- Add view/sidebar/toolbar/settings descriptors.
+- Extend client component loading to consume them.
+- Move Agents and Teams views behind descriptors as the first reference.
+- Keep Inbox available as core or move it after parity.
+- Add unload/reload reconciliation and focus/selection preservation.
+- Ensure a missing optional descriptor does not abort the client boot.
+
+Exit proof:
+
+- A plugin view renders in the main area with no core shell edit.
+- A plugin sidebar entry navigates and shows active state.
+- Reload/removal returns to the prior view.
+- Existing Agents/Teams/Inbox Playwright tests remain green.
+
+### P5 — Domain catalogues and prompt/loop policy
+
+Work:
+
+- Move built-in tools, commands, frame types and tag definitions into bundled plugin
+  packages or plugin-shaped manifests.
+- Add prompt-section/precept/role-selector registrations.
+- Add bounded loop-control registration with terminal-state validation.
+- Keep the core loop and authority model.
+
+Exit proof:
+
+- At least one built-in tool family is loaded and unloaded as a plugin.
+- Prompt assembly and role priority tests prove plugin contributions and ordering.
+- Loop-control tests reject unbounded or unknown terminal paths.
+
+### P6 — Persistence and index uniformity
+
+Work:
+
+- Add the driver-qualified index contract.
+- Make AeorDB and PostgreSQL paths testable from the same plugin.
+- Add migration driver declarations and unload/retention behavior.
+- Add checksum/immutability/conflict tests and advisory-lock concurrency tests.
+
+Exit proof:
+
+- One plugin index works on both test drivers that advertise support.
+- Unsupported driver reports scan fallback.
+- Migration failure rolls back; duplicate versions and changed applied files fail closed.
+- Unload follows the declared retention policy.
+
+### P7 — Consolidation and completeness
+
+Work:
+
+- Remove transitional shims and grep-gate direct imports/branches.
+- Update plugin docs and the source map.
+- Add contract harness to the standard test command.
+- Run full suite, UI lanes, and live boot.
+- Update the gap report with closed/open items.
+
+Exit proof:
+
+- No new `viewName ===` branch, hardcoded plugin feature route, or direct construction of a
+  registered core class.
+- All P0-P6 contract tests green.
+- Full non-doc suite green.
+- Docs index/authority gates green where the docs migration allows.
+- Plugin install/reload/unload demonstrated live.
+
+## 7. Verification spine
+
+### Baseline commands
+
+```bash
+node --test --test-timeout=30000 'spec/**/*-spec.mjs'
+node --test spec/plugins/plugin-router-spec.mjs
+node --test spec/ui/playwright/...
+```
+
+Use the repo's Node 24 binary. Run the full non-doc suite before each phase push. The
+docs-only migration failures are tracked separately and must not be used to claim a code
+failure or a code success.
+
+### Test families
+
+- Registry: stack order, override, unregister, construction resolution, reload generation.
+- Plugin loader: manifest, duplicate name, setup timeout, onInit/onShutdown, load failure,
+  idempotent reload, install.
+- Routes: mount matching, auth, capability, body size, timeout, error, unload.
+- Services: dependency order, init failure, health, shutdown, unload.
+- UI: descriptor load, view/sidebar render, navigation, missing module fallback,
+  unload/removal.
+- Persistence: index contract per driver, migration checksum/versions/locks, rollback,
+  retention.
+- Agent policy: prompt/precept ordering, bounded loop controls, no hidden wake path.
+
+### Mechanical DoD
+
+A phase is done only when:
+
+1. Its failing-first tests exist and pass.
+2. Its adjacent existing tests pass.
+3. The full non-doc suite passes.
+4. A one-unit revert works.
+5. No new core edit is required for the demonstrated plugin.
+6. The plan and gap report are updated with evidence.
+7. The landing commit is pushed only after the combined revision passes.
+
+## 8. Risks and constraints
+
+- **Branch divergence:** 48 ahead / 18 behind; merge-tree is clean but runtime behavior is
+  not proven until merged. Preserve current main features.
+- **Concurrent docs edit:** docs tree is being rewritten; do not commit docs-bot
+  in-progress files. Add the campaign plan only where the docs migration permits.
+- **Security:** plugin routes and install/reload are code-execution surfaces. Do not ship
+  the current unauthenticated inventory/reload behavior as complete.
+- **Driver divergence:** PostgreSQL is operational; AeorDB/SQLite must report capabilities
+  honestly. SQL migrations cannot be assumed portable.
+- **Class override blast radius:** replacing `FrameRuntime` or `FrameRouter` can change
+  every turn. Phase it, test construction, and require explicit owner approval for any
+  change to core classes outside the allowlist.
+- **Performance:** plugin stamping and migrations must not add per-frame database reads
+  without measurement. Record latency and memory baselines.
+- **Backward compatibility:** existing plugin packages, route URLs, manifests and client
+  assets must keep working through one compatibility ingress.
+
+## 8.1 Adversarial review findings
+
+These findings are part of the plan, not objections to it:
+
+1. **The `PluginAuthority` table is not generic.** `miri_capability` is a plugin-specific name; the scoped DB wrapper rejects it for any other plugin. P0 must define a plugin-owned capability table namespace and test a non-Miri plugin.
+2. **Plugin routes currently bypass core auth.** The route handler table runs before the auth chain. P3 cannot claim route ownership until auth/capability policy is enforced before plugin handlers and inventory/reload/install are protected.
+3. **`PluginDatabase` and migrations are Postgres-shaped.** The plan must not claim driver-neutral persistence until a driver contract test proves AeorDB and SQLite behavior or explicitly reports unsupported capabilities.
+4. **Unload is not reversible for the new surfaces.** Mounts, migrations, scoped DB handles, authority objects and event subscriptions need ownership records and disposal tests. `dropPluginSubscriptions()` being unused is a concrete defect.
+5. **A class override is not a live behavior change.** A reload that does not reconstruct the affected instance must report `restart-required`; otherwise the registry row looks changed while the running service is stale.
+6. **Miri's branch is older.** A clean merge-tree is not runtime proof. Merge current main and the branch, then run the combined suite and UI lanes; preserve our scrollview, session scope, filter and todo-focus work.
+7. **Existing plugin packages need a compatibility ingress.** Preserve old manifests, `/api/plugins/` mounts, plugin asset URLs and class registrations for one transition window; version-gate legacy rows in an adapter rather than teaching every consumer both shapes.
+
+## 9. Artifacts
+
+- This plan: `docs/plans/plugin-platform-campaign.md`.
+- Gap report: `docs/reports/plugin-way-gap-analysis-2026-10-29.md`.
+- New contract tests: `spec/plugins/`.
+- Worker/progress files only if implementation is later split across agents.
+- At completion: `dod-evidence.md` with command output, live evidence and remaining gaps.
+
+## 10. Execution contract
+
+When implementation is authorized:
+
+```text
+integrate origin/miri-plugin
+→ resolve conflicts manually, union semantics
+→ run full non-doc suite
+→ P0 contract tests
+→ P1 registry construction
+→ P2 services/startup
+→ P3 routes
+→ P4 client surfaces
+→ P5 catalogues/prompt/loop
+→ P6 persistence/indexes
+→ P7 cleanup
+```
+
+Each phase is an independently green landing and a one-unit revert. Do not push after a
+failing gate. Do not deploy. Re-run the full suite after merging current main and after
+any upstream sync.
+
