@@ -840,10 +840,41 @@ Still open:
   code. Fixing it means updating that checkout (a different repo) or vendoring the
   file; deliberately not done here. Worth noting that the lane is now honest enough
   to show this at all: before the resolver fix it executed 2 tests and skipped 14,
-  and now it executes 17 with 0 skipped;
-- demonstrating install/reload/unload on a live boot from P7 (needs the host-side
-  `deploy.sh`; there is no unload HTTP route today — `/api/v1/plugins` exposes GET
-  inventory plus POST `/install` and POST `/reload` only).
+  and now it executes 17 with 0 skipped. **Confirmed, not assumed:** pointing
+  `KIKX_AEOR_WEB_COMPONENTS_ROOT` at a throwaway worktree of the vendor's own
+  `origin/main` turns the spec green (1 pass / 0 fail, identical computed styles at
+  420/300/240px), while the checked-out `cc8c2e0` 404s on that one asset. So the
+  failure is the stale checkout and nothing in `src/`;
+- demonstrating install/reload/unload on a live boot from P7 — **the route half is
+  closed, the deploy half is not.** `/api/v1/plugins` exposed GET inventory plus POST
+  `/install` and POST `/reload`, so unload had no HTTP surface at all: the only way to
+  stop a plugin was to restart the process, and this exit criterion was unreachable by
+  construction. It now has one — POST `/api/v1/plugins/unload`, gated by the same
+  operator check as the other admin actions (a new `plugins:unload` action, not a bare
+  boolean). The machinery was never missing: `unloadPlugin()` already had a complete
+  contract pinned by `spec/plugins/plugin-unload-spec.mjs` (mount, subscriptions,
+  migrations, scoped database handle, authority, class overrides). The surface was.
+
+  Three properties are load-bearing and are tested as such, in
+  `spec/server/plugin-unload-route-spec.mjs` (10 tests): **order** — every rejection
+  test also asserts the plugin is still loaded and still mounted, because a gate that
+  runs after the work is worthless; an **unknown name is 404, never 200 with
+  `unloaded:false`** — a caller trying to stop a stopped plugin must not be answered in
+  a way that reads as success; and **unload is not a one-way door** — the loader
+  re-imports with a cache-busting query, so an install → unload → reinstall cycle on one
+  process re-runs `setup()` and re-establishes its subscription exactly once rather
+  than zero times. Revert-measured: with only the two source files reverted, 9 of the 10
+  fail, and the single pass is the pre-existing fall-through pinned on purpose.
+
+  Proven against a real boot too, not only fakes: `spec/plugins/live-boot-exit-proof.mjs`
+  now drives unload over a real socket against `createServer()` with the real Postgres
+  driver, and reports 11 passed / 0 failed — including anonymous refusal, unknown-name
+  404, the mount going dark, and the host still serving afterwards. That proof previously
+  called `unloadPlugin()` in-process *because* there was no route, and its comment said
+  so; that comment is now corrected rather than left standing.
+
+  What remains is only the deploy: showing install/reload/unload on the live image needs
+  the host-side `deploy.sh main`.
 - ~~removing remaining transitional shims~~ — **measured, and the item was
   mis-worded.** A grep for transitional/compat-shim markers across `src/` returns
   nothing; the five `legacy`/`backwards-compat` hits are data-format fallbacks
@@ -856,7 +887,7 @@ Still open:
   an unbuilt decision — building it is scope the owner has not authorized, and
   deleting the item would hide that.
 
-The full suite is green at 3,063 tests (3,033 pass, 30 skipped) at this commit,
+The full suite is green at 3,095 tests (3,065 pass, 30 skipped) at this commit,
 `npm test` = `node --test "spec/**/*-spec.mjs"`. The P6 retention contract above
 adds its own seven (`spec/core/plugins/plugin-index-retention-spec.mjs`) and no
 pre-existing assertion broke. Correcting an inherited claim: earlier revisions of
