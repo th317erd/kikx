@@ -587,6 +587,20 @@ Exit proof:
 - Prompt assembly and role priority tests prove plugin contributions and ordering.
 - Loop-control tests reject unbounded or unknown terminal paths.
 
+**P5 loop-control registration — landed.** The loop's terminal vocabulary is now a
+closed exported set (`LOOP_CONTROL_TERMINALS` in `agent-loop-state.mjs`): finalize,
+respond, break, route, null-response. `PluginRegistry.registerLoopControl()` refuses an
+action that declares a terminal outside it, refuses the core's own action names, and
+requires `allowsContinuation: true` before accepting the `respond` terminal, so a plugin
+cannot acquire a self-wake by accident. Registrations are ledger-owned, so
+`releasePlugin()` reverses them.
+
+Dispatch gained a real fix rather than only a registry: `executeAskStep` now treats any
+`LoopControl` that `handleLoopControl` did not apply as a hard stop. Before this, such an
+output fell through with `state.finalized`/`state.break` untouched and the loop continued,
+which is exactly the unbounded hidden wake path 4.6 forbids. Proven load-bearing: with
+only `agent-interface.mjs` reverted to its parent commit, 2 of the 11 contract tests fail.
+
 ### P6 — Persistence and index uniformity
 
 Work:
@@ -690,8 +704,9 @@ Still open:
   landed: `spec/plugins/plugin-mount-limits-spec.mjs`);
 - moving built-in Agents/Teams views behind client descriptors and testing
   focus/selection preservation from P4;
-- moving built-in tool/frame/command catalogue families and bounded loop controls
-  from P5;
+- moving built-in tool/frame/command catalogue families from P5 (bounded loop
+  controls landed: `registerLoopControl`, `spec/plugins/plugin-loop-control-spec.mjs`,
+  exit proof "reject unbounded or unknown terminal paths" met);
 - dual-driver index execution from P6 (checksum/advisory-lock/rollback migration
   tests landed: `spec/core/plugins/plugin-migrations-integrity-spec.mjs`);
 - removing remaining transitional shims and demonstrating install/reload/unload

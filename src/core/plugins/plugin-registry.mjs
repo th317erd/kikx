@@ -6,6 +6,10 @@ import { ClassRegistry } from './class-registry.mjs';
 import { normalizeConfigFields } from './agent-normalizers.mjs';
 import { DatabaseConnectionBase } from '../database/database-connection-base.mjs';
 import { normalizeTagDefinition } from '../tags/tag-definitions.mjs';
+import {
+  CORE_LOOP_CONTROL_ACTIONS,
+  LOOP_CONTROL_TERMINALS,
+} from './agent-loop-state.mjs';
 
 // PluginRegistry extends the universal ClassRegistry: tools/providers/selectors/
 // components live here, and *any* class can be registered and overridden via the
@@ -23,6 +27,7 @@ export class PluginRegistry extends ClassRegistry {
     this._agentConfigForms = new Map();
     this._clientSurfaces = new Map();
     this._promptSections = new Map();
+    this._loopControls = new Map();
     this._tagDefinitions = new Map();
     this._frameIndexes = new Map();
     this._pluginServices = new Map();
@@ -163,6 +168,58 @@ export class PluginRegistry extends ClassRegistry {
         this._promptSections.set(key, previous);
     });
     return entry;
+  }
+
+  // Loop-control extensions: a plugin may add a named control action, but only by
+  // declaring which of the core's fixed terminal states it ends in. The vocabulary is
+  // closed on purpose: the loop must stay finite and auditable, so a plugin cannot
+  // invent a new way for the loop to continue unseen. See LOOP_CONTROL_TERMINALS.
+  registerLoopControl(name, definition = {}, options = {}) {
+    let action = normalizeRequiredString(name, 'loop control name');
+
+    if (CORE_LOOP_CONTROL_ACTIONS.has(action))
+      throw new TypeError(`Loop control "${action}" collides with a core loop-control action`);
+
+    let terminal = normalizeRequiredString(definition.terminal, `loop control "${action}" terminal`);
+    if (!LOOP_CONTROL_TERMINALS.has(terminal))
+      throw new TypeError(`Loop control "${action}" declares unknown terminal "${terminal}"; expected one of ${[ ...LOOP_CONTROL_TERMINALS ].sort().join(', ')}`);
+
+    // A control that continues the turn wakes the agent again. That is a bounded single
+    // continuation, not an unbounded path, but it must be asked for explicitly so a
+    // plugin cannot acquire a self-wake by picking the wrong terminal by accident.
+    if (terminal === 'respond' && definition.allowsContinuation !== true)
+      throw new TypeError(`Loop control "${action}" uses the "respond" terminal and must set allowsContinuation: true`);
+
+    let pluginName = options.pluginName || definition.pluginName || null;
+    let previous = this._loopControls.get(action);
+    let entry = {
+      action,
+      terminal,
+      pluginName,
+      allowsContinuation: definition.allowsContinuation === true,
+      description: typeof definition.description === 'string' ? definition.description : '',
+    };
+    this._loopControls.set(action, entry);
+    this._recordOwnership(pluginName, 'loop-control', action, () => {
+      if (previous === undefined)
+        this._loopControls.delete(action);
+      else
+        this._loopControls.set(action, previous);
+    });
+    return { ...entry };
+  }
+
+  listLoopControls() {
+    return [ ...this._loopControls.values() ]
+      .sort((left, right) => left.action.localeCompare(right.action))
+      .map((entry) => ({ ...entry }));
+  }
+
+  // Terminal state a plugin-declared action resolves to, or null when the action is not
+  // a registered extension. Null means "not a plugin control", not "allowed".
+  getLoopControlTerminal(action) {
+    let entry = this._loopControls.get(action);
+    return entry ? entry.terminal : null;
   }
 
   listPromptSections() {

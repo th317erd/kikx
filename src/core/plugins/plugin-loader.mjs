@@ -462,6 +462,8 @@ function createPluginSetupContext({ registry, commandRegistry, context, pluginPa
       registry.registerService(name, definition, withPluginName(options, pluginName)),
     registerPromptSection: (name, definition = {}, options = {}) =>
       registry.registerPromptSection(name, definition, withPluginName(options, pluginName)),
+    registerLoopControl: (name, definition = {}, options = {}) =>
+      registry.registerLoopControl(name, definition, withPluginName(options, pluginName)),
     registerMigrations: (options = {}) => {
       // A relative directory is resolved against the plugin, so a plugin never has to
       // know where it is installed.
