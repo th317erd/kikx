@@ -159,6 +159,7 @@ architecture. Their own authority banners govern how they may be used.
 
 - [Plugin-way gap analysis, 2026-10-29](./reports/plugin-way-gap-analysis-2026-10-29.md)
 - [Sidebar scope seam, 2026-10-30](./reports/sidebar-scope-seam-2026-10-30.md)
+- [Thinking rack repaint, 2026-10-30](./reports/thinking-rack-repaint-2026-10-30.md)
 - [Composer emoji typeahead, 2026-10-30](./reports/emoji-typeahead-2026-10-30.md)
 - [Browser-lane control, 2026-10-30](./reports/browser-lane-control-2026-10-30.md)
 - [Coordinator lane 2 decision, 2026-10-30](./reports/coordinator-lane2-decision-2026-10-30.md)

@@ -8,6 +8,7 @@ import { isDeletedSession } from '../state/session-state-utils.mjs';
 import { guardClientOperation, reportClientError } from '../lib/error-boundary.mjs';
 import { scheduleAnimationFrame, parseRuntimeEventResult } from './kikx-app-helpers.mjs';
 import { addFrameToBatch, addTouchedFrameIDs, renderedFrameIDsFor } from './frame-runtime-batch.mjs';
+import { syncThinkingRack } from './kikx-frame-scroll.mjs';
 import { refreshSubSessionCards } from './kikx-sub-session-frame.mjs';
 import { pruneMissingSessionsFromStack } from './kikx-navigation.mjs';
 import { CONNECTED_STATUS, setConnectionStatus } from './runtime-events-connection.mjs';
@@ -379,6 +380,13 @@ function processFrameRuntimeEvents(app) {
 
   let framesBySessionID = new Map();
   let touchedFrameIDsBySessionID = new Map();
+  // Sessions whose thinking buffer changed on a frame that never entered the
+  // visible thread. Thinking frames are deliberately excluded from the thread --
+  // the rack renders them instead -- so the visible-window guard below returns
+  // for exactly the frames the rack exists to show. Tracking them separately is
+  // what keeps the rack in step; without it the buffer advanced while the rack
+  // kept showing the old state.
+  let thinkingSessions = new Set();
   for (let data of events) {
     // Guard each entry: a poison payload (e.g. a throwing frame getter) must not
     // abort the whole spliced batch and leave the queue silently empty. The bad
@@ -396,7 +404,8 @@ function processFrameRuntimeEvents(app) {
       // Thinking is driven by the raw event stream, not by the visible filter
       // set: an agent must still look busy even when its output does not match
       // the current query.
-      applyThinkingFrame(app._thinking, data.frame, data.sessionID);
+      if (applyThinkingFrame(app._thinking, data.frame, data.sessionID) && data.sessionID)
+        thinkingSessions.add(data.sessionID);
 
       // A live frame enters the selected thread only if it matches the same
       // shared predicate the server used for the window. Otherwise a query
@@ -407,6 +416,15 @@ function processFrameRuntimeEvents(app) {
       addFrameToBatch(framesBySessionID, data.sessionID, data.frame);
       addTouchedFrameIDs(touchedFrameIDsBySessionID, data.sessionID, renderedFrameIDsFor(data.frame));
     }, { sessionID: data.sessionID, frameID });
+  }
+
+  // Repaint the rack for every session whose thinking buffer changed, including
+  // batches whose frames never reached the thread. Deliberately independent of the
+  // visible thread sync below: they answer different questions.
+  for (let sessionID of thinkingSessions) {
+    guardClientOperation('kikx-runtime-events.thinkingRack', () => {
+      syncThinkingRack(app);
+    }, { sessionID });
   }
 
   // Each step is its own boundary: a bad session state or a throwing thread sync
