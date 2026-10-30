@@ -646,8 +646,8 @@ Still open:
 - removing remaining transitional shims and demonstrating install/reload/unload
   on a live boot from P7.
 
-The non-doc suite was green at 2,900 tests (2,871 pass, 29 skipped) before the
-documentation consolidation; the documentation gate also passes after it.
+The full suite is green at 2,915 tests (2,886 pass, 29 skipped), including the
+documentation consolidation gate.
 
 ## 7. Verification spine
 
