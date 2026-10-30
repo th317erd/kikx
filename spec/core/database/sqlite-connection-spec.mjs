@@ -41,6 +41,8 @@ test('SQLiteConnection capabilities match the declared document surface', () => 
     events: false,
     auth: false,
     ranges: true,
+    indexDocuments: false,
+    scalarIndex: true,
   });
 });
 

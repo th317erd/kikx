@@ -292,10 +292,19 @@ export function syncInboxList(app, handlers = {}) {
   //
   // This is what makes the receipt appear: the row was rendered while the
   // question was open, and the answer form has to become "You replied." plus a
-  // countdown. Rebuilding the whole card is safe here precisely because the row
-  // is no longer interactive — a card still awaiting an answer keeps its node (and
-  // therefore its caret and its draft), and its state only changes when it stops
-  // being interactive.
+  // countdown.
+  //
+  // The change is NOT one-way. A rejected answer reopens the row through
+  // `revertLocalSettlement`, so a repaint has to run in the settled -> open
+  // direction too. It used to be skipped ("only rebuild when it settles"),
+  // which left the receipt on screen after the server refused the write: the
+  // model said open and the row above the failure notice still said "You
+  // replied", contradicting it. Reopening rebuilds an interactive card, which
+  // is safe because the node is new but the text is not — `bindAnswerForm`
+  // restores the draft, which a failed send never cleared.
+  //
+  // A card still awaiting an answer keeps its node (and therefore its caret):
+  // its status and settled-ness are unchanged, so it never reaches the rebuild.
   let byID = new Map(questions.map((question) => [ question.id, question ]));
   for (let card of [ ...list.querySelectorAll(`.${CARD_CLASS}`) ]) {
     let questionID = card.getAttribute('data-question-id');
@@ -312,8 +321,6 @@ export function syncInboxList(app, handlers = {}) {
     // both terminal but must not be mistaken for each other, and an open row that
     // merely got a new readAt must NOT be rebuilt (that would eat the caret).
     if (renderedStatus === renderingStatus && renderedSettled === renderingSettled)
-      continue;
-    if (!renderingSettled)
       continue;
 
     let fresh = renderInboxQuestionRow(app, question, {

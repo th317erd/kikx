@@ -100,6 +100,22 @@ export async function loadPlugins(options = {}) {
 
         pluginName = pluginModule.pluginName || pluginNameFromPath(pluginPath);
 
+        // A path that is already loaded is a RELOAD, and it must unload first.
+        //
+        // POST /api/v1/plugins/reload re-scans the configured paths and calls loadPlugins
+        // again. registerPluginRecord only refuses a name when a DIFFERENT directory claims
+        // it, so reloading the same directory was accepted - setup() ran a second time and
+        // simply replaced the record. Two things leaked from that:
+        //   - the previous registration kept its subscriptions on the bus while the new
+        //     load added another, so one runtime event invoked the handler twice per
+        //     reload, and N times after N reloads. Nothing looks broken, because the
+        //     handler does run;
+        //   - the replaced record held the only reference to that registration teardown,
+        //     so replacing it dropped the teardown and the resources it would release.
+        // Unloading here also gives a reload the teardown a plugin is entitled to expect.
+        if (registry._pluginRegistrations?.get(pluginName)?.pluginPath === pluginPath)
+          await unloadPlugin(registry, pluginName, { logger });
+
         // A successful load clears any stale failure for this location, so a
         // fixed plugin stops being reported as broken.
         if (registry._pluginLoadErrors?.length) {
@@ -462,6 +478,8 @@ function createPluginSetupContext({ registry, commandRegistry, context, pluginPa
       registry.registerService(name, definition, withPluginName(options, pluginName)),
     registerPromptSection: (name, definition = {}, options = {}) =>
       registry.registerPromptSection(name, definition, withPluginName(options, pluginName)),
+    registerLoopControl: (name, definition = {}, options = {}) =>
+      registry.registerLoopControl(name, definition, withPluginName(options, pluginName)),
     registerMigrations: (options = {}) => {
       // A relative directory is resolved against the plugin, so a plugin never has to
       // know where it is installed.

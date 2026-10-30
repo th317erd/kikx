@@ -6,6 +6,16 @@ import { ClassRegistry } from './class-registry.mjs';
 import { normalizeConfigFields } from './agent-normalizers.mjs';
 import { DatabaseConnectionBase } from '../database/database-connection-base.mjs';
 import { normalizeTagDefinition } from '../tags/tag-definitions.mjs';
+import {
+  CORE_LOOP_CONTROL_ACTIONS,
+  LOOP_CONTROL_TERMINALS,
+} from './agent-loop-state.mjs';
+
+// The retention vocabulary for plugin-owned index declarations. See
+// registerFrameIndex for what each policy promises on unload. Exported so the
+// contract is inspectable instead of being spelled out only in a document.
+export const FRAME_INDEX_RETENTION_POLICIES = new Set([ 'definition-only', 'retain-data' ]);
+export const FRAME_INDEX_RETENTION_DEFAULT = 'definition-only';
 
 // PluginRegistry extends the universal ClassRegistry: tools/providers/selectors/
 // components live here, and *any* class can be registered and overridden via the
@@ -23,6 +33,7 @@ export class PluginRegistry extends ClassRegistry {
     this._agentConfigForms = new Map();
     this._clientSurfaces = new Map();
     this._promptSections = new Map();
+    this._loopControls = new Map();
     this._tagDefinitions = new Map();
     this._frameIndexes = new Map();
     this._pluginServices = new Map();
@@ -130,11 +141,19 @@ export class PluginRegistry extends ClassRegistry {
       } catch (error) {
         this.logger?.warn?.(`releasePluginServices("${pluginName}"): shutdown for "${name}" failed: ${error?.message || error}`);
       }
-      if (context?.has?.(name) && context.require(name) === entry.instance) {
+      // Only restore when the instance in the context is still ours. A later load may
+      // have replaced it, and stomping that would break the plugin that now owns it.
+      //
+      // The lookup must go through a reader that tolerates a partial context: this line
+      // previously guarded `has` with optional chaining but called `require` unguarded,
+      // so any context without `require` threw out of releasePluginServices - aborting
+      // unloadPlugin() after its subscriptions were already dropped, and breaking the
+      // "never throws" contract releasePlugin() promises.
+      if (context?.has?.(name) && readContextEntry(context, name) === entry.instance) {
         if (entry.previous === undefined)
           context.delete?.(name);
         else
-          context.set(name, entry.previous);
+          context.set?.(name, entry.previous);
       }
     }
     return entries.length;
@@ -155,6 +174,58 @@ export class PluginRegistry extends ClassRegistry {
         this._promptSections.set(key, previous);
     });
     return entry;
+  }
+
+  // Loop-control extensions: a plugin may add a named control action, but only by
+  // declaring which of the core's fixed terminal states it ends in. The vocabulary is
+  // closed on purpose: the loop must stay finite and auditable, so a plugin cannot
+  // invent a new way for the loop to continue unseen. See LOOP_CONTROL_TERMINALS.
+  registerLoopControl(name, definition = {}, options = {}) {
+    let action = normalizeRequiredString(name, 'loop control name');
+
+    if (CORE_LOOP_CONTROL_ACTIONS.has(action))
+      throw new TypeError(`Loop control "${action}" collides with a core loop-control action`);
+
+    let terminal = normalizeRequiredString(definition.terminal, `loop control "${action}" terminal`);
+    if (!LOOP_CONTROL_TERMINALS.has(terminal))
+      throw new TypeError(`Loop control "${action}" declares unknown terminal "${terminal}"; expected one of ${[ ...LOOP_CONTROL_TERMINALS ].sort().join(', ')}`);
+
+    // A control that continues the turn wakes the agent again. That is a bounded single
+    // continuation, not an unbounded path, but it must be asked for explicitly so a
+    // plugin cannot acquire a self-wake by picking the wrong terminal by accident.
+    if (terminal === 'respond' && definition.allowsContinuation !== true)
+      throw new TypeError(`Loop control "${action}" uses the "respond" terminal and must set allowsContinuation: true`);
+
+    let pluginName = options.pluginName || definition.pluginName || null;
+    let previous = this._loopControls.get(action);
+    let entry = {
+      action,
+      terminal,
+      pluginName,
+      allowsContinuation: definition.allowsContinuation === true,
+      description: typeof definition.description === 'string' ? definition.description : '',
+    };
+    this._loopControls.set(action, entry);
+    this._recordOwnership(pluginName, 'loop-control', action, () => {
+      if (previous === undefined)
+        this._loopControls.delete(action);
+      else
+        this._loopControls.set(action, previous);
+    });
+    return { ...entry };
+  }
+
+  listLoopControls() {
+    return [ ...this._loopControls.values() ]
+      .sort((left, right) => left.action.localeCompare(right.action))
+      .map((entry) => ({ ...entry }));
+  }
+
+  // Terminal state a plugin-declared action resolves to, or null when the action is not
+  // a registered extension. Null means "not a plugin control", not "allowed".
+  getLoopControlTerminal(action) {
+    let entry = this._loopControls.get(action);
+    return entry ? entry.terminal : null;
   }
 
   listPromptSections() {
@@ -421,13 +492,40 @@ export class PluginRegistry extends ClassRegistry {
   // A plugin may contribute an index for the frame documents it annotates.
   // FrameStore merges these into each session's interaction index config; the
   // plugin never owns or replaces the core index list.
+  //
+  // RETENTION (campaign §4.5, owner ruling D8.4). An index declaration carries an
+  // explicit `removeOnUnload` policy, because "unload removes the definition" and
+  // "the index stays declared across an unload" are different promises and the
+  // platform was silently making the second one: every declaration survived unload.
+  //
+  //   'definition-only' (default) - unload removes the declaration, so the config
+  //       written to the driver stops naming the index. Durable data is untouched.
+  //   'retain-data' - unload leaves the declaration in place, so a reinstall finds
+  //       its index still declared. Durable data is untouched.
+  //
+  // Both policies retain durable plugin data. Nothing here deletes documents or
+  // drops a physical index; removing data is a separate, explicit purge. The two
+  // policies therefore differ ONLY in whether the declaration outlives the unload.
   registerFrameIndex(name, definition = {}, options = {}) {
     if (!name || typeof name !== 'string')
       throw new TypeError('Frame index name must be a non-empty string');
 
+    let removeOnUnload = definition.removeOnUnload === undefined
+      ? FRAME_INDEX_RETENTION_DEFAULT
+      : definition.removeOnUnload;
+    // Fail closed on a typo. A misspelled policy must never be read as the
+    // permissive one, and must never be silently replaced by the default: either
+    // would decide a data-retention question on the plugin's behalf.
+    if (!FRAME_INDEX_RETENTION_POLICIES.has(removeOnUnload))
+      throw new TypeError(
+        `Frame index "${name}" has an unknown removeOnUnload policy "${String(removeOnUnload)}"; `
+        + `expected one of: ${[ ...FRAME_INDEX_RETENTION_POLICIES ].join(', ')}`,
+      );
+
     let normalized = {
       ...definition,
       name,
+      removeOnUnload,
     };
     if (!normalized.type)
       throw new TypeError(`Frame index "${name}" requires a type`);
@@ -435,6 +533,10 @@ export class PluginRegistry extends ClassRegistry {
     let previous = this._frameIndexes.get(name);
     this._frameIndexes.set(name, normalized);
     this._recordOwnership(pluginName, "frame-index", name, () => {
+      // A retained declaration outlives the unload on purpose; undoing it here
+      // would make the two policies indistinguishable.
+      if (removeOnUnload === 'retain-data')
+        return;
       if (previous === undefined)
         this._frameIndexes.delete(name);
       else
@@ -751,6 +853,18 @@ function optionArgs(args, index, options) {
   while (next.length < index) next.push(undefined);
   next[index] = options;
   return next;
+}
+
+// Read a service from a context that may implement any of require/get/has or be a plain
+// Map. Used by the release path, where throwing would abort an unload.
+function readContextEntry(context, name) {
+  if (!context)
+    return undefined;
+  if (typeof context.require === 'function')
+    return context.require(name);
+  if (typeof context.get === 'function')
+    return context.get(name);
+  return undefined;
 }
 
 function isSubclassOf(candidate, BaseClass) {

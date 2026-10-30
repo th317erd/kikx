@@ -144,13 +144,55 @@ test('DatabaseConnectionBase exposes the file-verb adapters for advertised capab
   assert.equal(typeof db.fetchFileRanges, 'function');
 });
 
-test('DatabaseConnectionBase.configureIndexes is a no-op for drivers without an index', async () => {
+test('configureIndexes raises capability_unsupported instead of silently doing nothing', async () => {
+  // The base class previously answered this with a no-op and no result, so a caller
+  // could not tell "index configured" from "driver ignored you". A driver that does
+  // not advertise the capability must fail loudly so the caller can report a scan
+  // fallback.
   let db = new InMemoryDatabaseConnection();
 
+  assert.equal(db.constructor.capabilities.indexDocuments, false);
   assert.equal(typeof db.configureIndexes, 'function');
-  await assert.doesNotReject(() => db.configureIndexes([
-    { path: '/kikx/.aeordb-config/indexes.json', body: { indexes: [] } },
-  ]));
+
+  await assert.rejects(
+    () => db.configureIndexes([ { path: '/kikx/.aeordb-config/indexes.json', body: { indexes: [] } } ]),
+    (error) => error instanceof DatabaseError && error.code === 'capability_unsupported',
+  );
+});
+
+test('configureIndexes validates its argument before reporting success', async () => {
+  class IndexDocumentDriver extends DatabaseConnectionBase {
+    static driverID = 'index-documents';
+    static capabilities = { ...DatabaseConnectionBase.capabilities, indexDocuments: true };
+  }
+
+  let db = new IndexDocumentDriver();
+
+  await assert.rejects(() => db.configureIndexes('not-an-array'), TypeError);
+
+  let result = await db.configureIndexes([ { path: '/kikx/.aeordb-config/indexes.json', body: { indexes: [] } } ]);
+  assert.equal(result.applied, true);
+  assert.equal(result.count, 1);
+});
+
+test('ensureScalarIndex raises capability_unsupported and rejects an unsafe index name', async () => {
+  let noScalar = new InMemoryDatabaseConnection();
+  assert.equal(noScalar.constructor.capabilities.scalarIndex, false);
+  await assert.rejects(
+    () => noScalar.ensureScalarIndex('focus_todo_id'),
+    (error) => error instanceof DatabaseError && error.code === 'capability_unsupported',
+  );
+
+  class ScalarDriver extends DatabaseConnectionBase {
+    static driverID = 'scalar';
+    static capabilities = { ...DatabaseConnectionBase.capabilities, scalarIndex: true };
+  }
+
+  let db = new ScalarDriver();
+  // The name is interpolated into DDL by the concrete drivers, so the base class
+  // validates the identifier shape before any driver can build a statement from it.
+  for (let bad of [ '', "id') --", 'field name', '1field', null ])
+    await assert.rejects(() => db.ensureScalarIndex(bad), TypeError);
 });
 
 test('InMemoryDatabaseConnection stores raw text when options.raw is set', async () => {

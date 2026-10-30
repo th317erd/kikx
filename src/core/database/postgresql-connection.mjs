@@ -78,6 +78,8 @@ export class PostgreSQLConnection extends DatabaseConnectionBase {
     events: false,
     auth: false,
     ranges: true,
+    indexDocuments: false,
+    scalarIndex: true,
   };
   static configFields = [
     {
@@ -161,12 +163,15 @@ export class PostgreSQLConnection extends DatabaseConnectionBase {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(field))
       throw new TypeError(`invalid scalar index name: ${name}`);
     if (!this.pool)
-      return;
+      return { applied: false, driver: PostgreSQLConnection.driverID, name: field, reason: 'not connected' };
 
     let indexName = `documents_${field}_idx`;
+    // `field` is the only interpolated value and is validated to an identifier
+    // shape above, so the DDL cannot be redirected by a caller-supplied name.
     await this.pool.query(
       `CREATE INDEX IF NOT EXISTS ${indexName} ON documents (((body::jsonb) -> '${field}')) WHERE raw = false`,
     );
+    return { applied: true, driver: PostgreSQLConnection.driverID, name: field, indexName };
   }
 
   async close() {

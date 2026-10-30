@@ -41,8 +41,8 @@ import {
 } from './kikx-navigation.mjs';
 // Owner point 2: User / Account / Agents / Teams / Sign out as sidebar session objects.
 import { buildSidebarSessionObjects, sidebarScopePredicateFor } from './kikx-sidebar-session-objects.mjs';
-import { buildInboxSidebarEntry, buildInboxView } from './kikx-inbox-view.mjs';
-import { buildAgentsView, buildTeamsView } from './kikx-agent-team-views.mjs';
+import { buildInboxSidebarEntry } from './kikx-inbox-view.mjs';
+import { resolveViewSurface } from './client-view-surfaces.mjs';
 import { STATUSBAR_STAT_LABELS, buildStatusBarStats } from '../state/statusbar-stats.mjs';
 
 const { div, main, nav, section, header, h2, p, span, button, form, input, label, textarea } = elements;
@@ -289,13 +289,15 @@ export function buildRunnerShell(app) {
       ),
       // A view replaces the work area while it is the top stack entry; Back pops
       // to whatever window was underneath.
-      viewName === 'inbox'
-        ? buildInboxView(app)
-        : viewName === 'agents'
-          ? buildAgentsView(app)
-          : viewName === 'teams'
-            ? buildTeamsView(app)
-            : buildWindow(app, entry),
+      //
+      // Dispatch is a lookup, not a chain of comparisons on the name. Campaign P4
+      // requires a plugin view to render with no core shell edit and P7 makes it a
+      // grep gate ("No new `viewName ===` branch"); a ternary chain can only
+      // re-break that gate, so the name is resolved against the client descriptors
+      // first and the core surfaces second. null means "not a renderable view", and
+      // rendering the window is the safe answer: a view entry that renders nothing
+      // is a blank work area.
+      resolveViewSurface(viewName, app._state, app) || buildWindow(app, entry),
     ),
   ];
 }

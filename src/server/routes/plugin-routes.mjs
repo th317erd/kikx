@@ -60,6 +60,14 @@ export async function handlePluginRoutes({ request, response, url, context, json
         restartRequired: typeof registry.listRestartRequired === 'function'
           ? registry.listRestartRequired()
           : [],
+        // Keys a plugin overrode where nothing in the running system resolves through
+        // the class registry (interface base classes imported and `extends`-ed,
+        // frame-type keys no production caller passes a registry for). Distinct from
+        // restartRequired on purpose: a restart cannot make these take effect, so
+        // reporting them there would promise a fix the platform cannot deliver.
+        inertOverrides: typeof registry.listInertOverrides === 'function'
+          ? registry.listInertOverrides()
+          : [],
       },
     }));
     return true;

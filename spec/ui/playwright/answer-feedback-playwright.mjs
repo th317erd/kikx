@@ -110,7 +110,7 @@ async function openInbox(browser, answerHandler) {
   return { fixture, page, card };
 }
 
-test('the Answer control visibly changes while a send is in flight', async (t) => {
+test('the click is acknowledged at once, before the server replies', async (t) => {
   let browser = await launchBrowser(t);
   if (!browser)
     return;
@@ -119,7 +119,7 @@ test('the Answer control visibly changes while a send is in flight', async (t) =
   let fixture = null;
 
   try {
-    // Hold the POST open so the busy phase is stable long enough to measure.
+    // Hold the POST open so the acknowledgement window is observable.
     let held = new Promise((resolve) => { release = resolve; });
     let opened = await openInbox(browser, async (route) => {
       await held;
@@ -137,82 +137,63 @@ test('the Answer control visibly changes while a send is in flight', async (t) =
 
     // Release the held POST even if an assertion throws. Without this, a failed
     // assertion leaves the intercepted route pending forever and the test dies
-    // as an opaque 90s timeout instead of naming the assertion that failed.
+    // as an opaque timeout instead of naming the assertion that failed.
     t.after(() => { try { release?.(); } catch {} });
 
-    // The idle baseline, so the assertion below is a real comparison rather
-    // than a hard-coded colour.
-    let idleBackground = await submit.evaluate((node) => getComputedStyle(node).backgroundColor);
     let idleLabel = (await submit.textContent())?.trim();
     assert.equal(idleLabel, 'Answer', 'the control reads "Answer" when idle');
 
     await input.fill(TYPED);
     await submit.click();
 
-    // Wait for the busy phase to be observable in the real DOM.
+    // WHAT THIS TEST GUARDS, and where it moved.
+    //
+    // The original defect was a send that looked like a dead button: the control
+    // was disabled with no visual change, so a working click was indistinguishable
+    // from a missed one. That guarantee still holds, but the evidence changed
+    // twice since it was written:
+    //
+    //   1. The spinner/busy phase belongs to the card builder's control
+    //      (data-answer-state="busy" on the CARD element). An Inbox row is a
+    //      <kikx-question-frame> inside an <article>, and the frame sets the
+    //      phase on itself -- so the attribute is not on the row being clicked.
+    //   2. The answer settles optimistically ON THE CLICK, so the row becomes a
+    //      "You replied." receipt immediately and the submit control is gone
+    //      before a busy phase could ever be read from it.
+    //
+    // So the acknowledgement is asserted where it now lives: the row turns into
+    // a receipt on the click, while the POST is still held open. That is a
+    // stronger statement than a spinner, because it proves the click landed
+    // before the server answered.
     await page.waitForFunction(
       () => document.querySelector('article.kikx-question-card[data-question-id="q-feedback"]')
-        ?.getAttribute('data-answer-state') === 'busy',
+        ?.getAttribute('data-question-settled') === 'true',
       null,
       { timeout: 5000 },
     );
 
-    let busyLabel = (await submit.textContent())?.trim();
-    assert.notEqual(busyLabel, idleLabel, 'the label changes while sending, so the click is acknowledged');
-    assert.match(busyLabel, /Sending/, 'the label says what is happening');
-
-    assert.equal(await submit.isDisabled(), true, 'the control cannot be double-submitted');
-
-    // `cursor` is not transitioned, but the background is
-    // (`transition: background 160ms ease` on the base rule), so a computed
-    // style read the instant `busy` lands returns the START of the
-    // interpolation — byte-identical to idle. Wait for it to settle, which
-    // also proves the difference is reached rather than merely scheduled.
-    await page.waitForFunction(
-      ([ selector, idle ]) => {
-        let node = document.querySelector(selector);
-        return node && getComputedStyle(node).backgroundColor !== idle;
-      },
-      [ 'article.kikx-question-card[data-question-id="q-feedback"] .kikx-question-card__submit', idleBackground ],
-      { timeout: 3000 },
-    );
-
-    let busyStyles = await submit.evaluate((node) => {
-      let style = getComputedStyle(node);
-      let spinner = getComputedStyle(node, '::before');
+    // Asserted on the DOM, not the locator: the old submit node is legitimately
+    // detached once the receipt replaces it.
+    let acknowledged = await page.evaluate(() => {
+      let row = document.querySelector('article.kikx-question-card[data-question-id="q-feedback"]');
+      let button = row?.querySelector('.kikx-question-card__submit');
       return {
-        background: style.backgroundColor,
-        cursor: style.cursor,
-        spinnerContent: spinner.content,
-        spinnerWidth: spinner.width,
-        spinnerAnimation: spinner.animationName,
+        status: row?.getAttribute('data-question-status') ?? null,
+        settled: row?.getAttribute('data-question-settled') ?? null,
+        submitStillThere: !!button,
+        receipt: (row?.querySelector('.kikx-question-card__receipt')?.textContent || '').trim(),
       };
     });
 
-    // THE REGRESSION: these were identical to idle, which is why a working send
-    // looked like a dead button.
-    assert.notEqual(busyStyles.background, idleBackground, 'the button is visibly different while busy');
-    assert.equal(busyStyles.cursor, 'progress', 'the cursor signals work in progress');
-    // `content` is the real signal: without it there is no pseudo-element at
-    // all, and `width` merely echoes the button's own, so asserting on width
-    // alone passes vacuously on an idle control.
-    assert.ok(busyStyles.spinnerContent && busyStyles.spinnerContent !== 'none',
-      `a spinner pseudo-element exists (content = ${busyStyles.spinnerContent})`);
-    assert.equal(busyStyles.spinnerAnimation, 'kikx-answer-spin', 'the spinner is animated');
+    assert.equal(acknowledged.status, 'answered', 'the click is acknowledged as an answer');
+    assert.equal(acknowledged.submitStillThere, false, 'the answer control is replaced, so it cannot be submitted twice');
+    assert.match(acknowledged.receipt, /You replied/, 'the receipt says what the row now holds');
 
     release();
 
-    // And it resolves to a visible confirmation.
-    await page.waitForFunction(
-      () => document.querySelector('article.kikx-question-card[data-question-id="q-feedback"]')
-        ?.getAttribute('data-answer-state') === 'sent'
-        || !document.querySelector('article.kikx-question-card[data-question-id="q-feedback"]'),
-      null,
-      { timeout: 10000 },
-    );
-
-    // The answered row leaves the Inbox, so confirmation has to come from the
-    // notice rather than the row.
+    // And the send is confirmed on screen. The settled row is not the
+    // confirmation by itself -- the notice is, and it reads the same whether the
+    // row lingers or not.
     let notice = page.locator('.kikx-answer-notice--visible');
     await notice.waitFor({ state: 'visible', timeout: 10000 });
 
@@ -256,9 +237,12 @@ test('a failed answer reports the error and keeps the typed text', async (t) => 
     await input.fill(TYPED);
     await card.locator('.kikx-question-card__submit').click();
 
+    // The rejected write reopens the row. The phase attribute is the FRAME's,
+    // and the row above it must go back to being an answerable question: the
+    // optimistic receipt was a promise the server broke.
     await page.waitForFunction(
       () => document.querySelector('article.kikx-question-card[data-question-id="q-feedback"]')
-        ?.getAttribute('data-answer-state') === 'error',
+        ?.getAttribute('data-question-status') === 'open',
       null,
       { timeout: 10000 },
     );
@@ -270,9 +254,12 @@ test('a failed answer reports the error and keeps the typed text', async (t) => 
       'a failed send must not discard the answer that was typed',
     );
 
-    let hint = card.locator('.kikx-question-card__hint');
-    await hint.waitFor({ state: 'visible', timeout: 5000 });
-    assert.match((await hint.textContent()) ?? '', /already answered/, 'the reason is shown');
+    // The reason is surfaced by the Inbox notice, not by the re-created row's
+    // hint: reopening rebuilds the card from the model, and the model carries no
+    // per-row error text.
+    let notice = page.locator('.kikx-answer-notice--visible');
+    await notice.waitFor({ state: 'visible', timeout: 5000 });
+    assert.match((await notice.textContent()) ?? '', /already answered/, 'the reason is shown');
 
     // And the control is usable again, so the send can be retried.
     assert.equal(await card.locator('.kikx-question-card__submit').isDisabled(), false);

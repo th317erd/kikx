@@ -32,6 +32,8 @@ export class InMemoryDatabaseConnection extends DatabaseConnectionBase {
     events: false,
     auth: false,
     ranges: false,
+    indexDocuments: false,
+    scalarIndex: false,
   };
   static configFields = [];
   static configKeys = [];

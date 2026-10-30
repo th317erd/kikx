@@ -28,6 +28,11 @@ export class AeorDBConnection extends DatabaseConnectionBase {
     events: true,
     auth: true,
     ranges: true,
+    indexDocuments: true,
+    // AeorDB maintains indexes declared as index *documents*; it exposes no way
+    // to build a scalar index over one JSON field on demand, so a plugin's
+    // scalar index falls back to the normal query scan here.
+    scalarIndex: false,
   };
   static configFields = [
     {
@@ -208,8 +213,13 @@ export class AeorDBConnection extends DatabaseConnectionBase {
   // document through its client, matching the historical per-document putFile
   // writes the stores used to perform directly.
   async configureIndexes(configs = []) {
+    if (!Array.isArray(configs))
+      throw new TypeError('configureIndexes() configs must be an array');
+
     for (let config of configs)
       await this.client.putFile(config.path, config.body);
+
+    return { applied: true, driver: AeorDBConnection.driverID, count: configs.length };
   }
 
   eventsURL(params = {}) {

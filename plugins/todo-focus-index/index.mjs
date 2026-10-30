@@ -2,18 +2,118 @@
 
 const PLUGIN_ID = 'internal:todo-focus-index';
 const INDEX_NAME = 'focus_todo_id';
+const SERVICE_NAME = 'todoFocusIndex';
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
-let focusIndexPromise = null;
+
+// The focus index is created once per load, not once per process.
+//
+// It lives in a plugin-owned service so the registry owns its lifetime: unload releases
+// it, and a reload builds a fresh one. The previous shape kept the promise in module
+// scope, which outlived every reload - a re-registered plugin silently reused the first
+// load's result - and its `.catch(() => {})` cached a transient failure forever, so one
+// bad moment at startup disabled the index for the whole process.
+//
+// The outcome is recorded, not assumed. A driver that cannot build a scalar index now
+// reports a scan fallback, and `status` is the single field a health check reads:
+//
+//   'built'   - the driver created the index
+//   'absent'  - the driver has no scalar-index mechanism; queries fall back to a scan
+//   'failed'  - the attempt raised; retryable, and the reason is on `.error`
+//
+// `built` requires an affirmative result. A driver returning nothing used to look
+// identical to a driver returning success, which is exactly how this index went missing
+// on every driver without a `CREATE INDEX` path.
+const INDEX_STATUS = Object.freeze({
+  built: 'built',
+  absent: 'absent',
+  failed: 'failed',
+});
+
+export class TodoFocusIndexService {
+  constructor({ db = null } = {}) {
+    this.db = db;
+    this.promise = null;
+    this.error = null;
+    this.result = null;
+    this.status = null;
+    this.attempts = 0;
+  }
+
+  get applied() {
+    return this.status === INDEX_STATUS.built;
+  }
+
+  get scanFallback() {
+    return this.status === INDEX_STATUS.absent;
+  }
+
+  // A driver that declares no scalar-index mechanism is a settled answer, not an
+  // attempt: asking it and recording the refusal as an error would report a
+  // permanent, expected condition as a fault on every health check.
+  supportsScalarIndex() {
+    if (typeof this.db?.supports === 'function')
+      return this.db.supports('scalarIndex');
+    return true; // unknown driver shape: attempt it and let the result decide
+  }
+
+  ensure() {
+    if (this.promise)
+      return this.promise;
+
+    if (!this.supportsScalarIndex()) {
+      this.error = null;
+      this.result = null;
+      this.status = INDEX_STATUS.absent;
+      return Promise.resolve(null);
+    }
+
+    this.attempts += 1;
+    this.promise = Promise.resolve()
+      .then(() => this.db?.ensureScalarIndex?.(INDEX_NAME))
+      .then((result) => {
+        this.error = null;
+        this.result = result || null;
+        // Affirmative success only: a driver that resolves with nothing did not
+        // build an index, and must not be reported as if it had.
+        this.status = result?.applied === true ? INDEX_STATUS.built : INDEX_STATUS.absent;
+        return this.result;
+      })
+      .catch((error) => {
+        // Report, never cache: a failed index stays retryable, and frame stamping must
+        // not be blocked by it. The failure is visible on .error for health checks.
+        // A driver that refuses the capability is the scan fallback, not a fault.
+        if (error?.code === 'capability_unsupported') {
+          this.error = null;
+          this.result = null;
+          this.status = INDEX_STATUS.absent;
+          return null;
+        }
+
+        this.error = error?.message || String(error);
+        this.status = INDEX_STATUS.failed;
+        this.promise = null;
+        return undefined;
+      });
+    return this.promise;
+  }
+}
+
+export function createTodoFocusIndexService(context = {}) {
+  return new TodoFocusIndexService({ db: resolveService(context, 'aeordb') });
+}
 
 function ensureFocusIndex(context) {
-  if (focusIndexPromise)
-    return focusIndexPromise;
-  let db = resolveService(context, 'aeordb');
-  if (!db?.ensureScalarIndex)
-    return Promise.resolve();
-  focusIndexPromise = Promise.resolve(db.ensureScalarIndex(INDEX_NAME)).catch(() => {});
-  return focusIndexPromise;
+  let service = resolveService(context, SERVICE_NAME);
+  if (!service?.ensure) {
+    // Hand-built contexts (specs, legacy embedders) may have no service layer at all.
+    // Memoize on that context rather than in module scope, so it still cannot leak
+    // across loads.
+    service = createTodoFocusIndexService(context);
+    if (context && typeof context === 'object')
+      context[SERVICE_NAME] = service;
+  }
+  return service.ensure();
 }
 
 function normalizeID(value) {
@@ -122,7 +222,19 @@ export class FocusTodoFramePlugin {
 }
 
 export function setup(provide) {
-  provide(({ registry }) => {
+  provide(({ registry, registerService }) => {
+    // The focus index is this plugin's first service: the registry owns its lifetime,
+    // so unload tears it down and a reload gets a fresh instance instead of inheriting
+    // the previous load's promise.
+    //
+    // Deliberately no `dependsOn: [ 'aeordb' ]`. A missing database used to be tolerated
+    // (the index is advisory), and declaring it a dependency would turn that tolerance
+    // into a fatal initializePluginServices() error that aborts boot.
+    registerService?.(SERVICE_NAME, {
+      factory: (context) => createTodoFocusIndexService(context),
+      shutdown: (instance) => { if (instance) instance.promise = null; },
+    });
+
     registry.registerFrameIndex?.(INDEX_NAME, { type: 'string' });
     registry.registerSelector('*', FocusTodoFramePlugin, PLUGIN_ID);
 

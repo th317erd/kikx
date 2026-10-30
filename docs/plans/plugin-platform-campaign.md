@@ -466,7 +466,9 @@ Work:
 - Preserve both plugin-index and Miri platform work; do not re-apply the old branch.
 - Extend the existing authority/attribution/unload tests to cover route auth, scoped-DB
   driver behavior, event delivery, migrations and install/reload failure paths. Do not
-  rely on the router and ownership tests alone.
+  rely on the router and ownership tests alone. (**Event delivery is now covered**:
+  `spec/plugins/plugin-event-delivery-spec.mjs` drives delivery, scoping, isolation and
+  reload through the loader. See the still-open list for the reload defect it found.)
 - Add ordinary Kikx authentication gates to plugin inventory, reload, install and
   mutating plugin routes.
 - Do not generalize `PluginAuthority` or add a plugin capability boundary; the owner
@@ -513,6 +515,13 @@ Work:
 - Implement `registerService`.
 - Introduce ordered startup phases and recovery hooks.
 - Migrate one feature service (Questions or Todo) as the first plugin-owned service.
+  **Landed:** `plugins/todo-focus-index` registers `todoFocusIndex` as that service
+  (`spec/plugins/todo-focus-index-service-spec.mjs`). Writing the contract exposed two
+  real defects in the previous shape: the index promise lived in module scope, so a
+  reload silently reused the first load’s result, and its `.catch(() => {})` cached one
+  transient startup failure for the process lifetime. It deliberately declares no
+  `dependsOn: [ 'aeordb' ]`, because a missing database was always tolerated and a hard
+  dependency would turn that tolerance into a boot-aborting init error.
 - Register health checks and shutdown teardown.
 - Ensure a failed required service fails readiness; optional failures are visible.
 
@@ -522,6 +531,8 @@ Exit proof:
 - Init failure test.
 - Shutdown failure isolation test.
 - Plugin unload removes service and subscriptions.
+  **Proven:** the same spec unloads and asserts the service registration, the context
+  entry and the frame-index registration are all gone.
 
 ### P3 — HTTP route ownership
 
@@ -562,6 +573,34 @@ Exit proof:
 - Reload/removal returns to the prior view.
 - Existing Agents/Teams/Inbox Playwright tests remain green.
 
+**P4 view surfaces by descriptor — landed.** The work-area dispatch no longer
+compares the view name against literals. `kikx-shell-builders.mjs` renders
+`resolveViewSurface(viewName, state, app) || buildWindow(app, entry)`, so the P7 grep
+gate (no new `viewName ===` branch) is met rather than re-broken by the next view.
+
+Three defects fell out of writing the contract, none of which was the documented
+task. First, `setClientComponents()` filed only `frame`/`tool`/`agent-config-form`
+descriptors and dropped `view` and `sidebar-item` on the floor, so a plugin view was
+advertised by `GET /api/v1/client-components` and discarded by the client —
+unreachable, not merely unimplemented. Second, the addressable view vocabulary was a
+frozen literal in `navigation-stack.mjs`, so `pushView()` refused a plugin view name
+even after a successful registration; it is now derived from the descriptors served,
+which also means uninstalling a plugin shrinks the set again instead of leaving the
+stack able to hold a view nothing renders. Third, resolving a surface with no app
+produced an empty section — the blank work area the null fallback exists to prevent —
+so the resolver now answers null without one.
+
+Core view ids are **reserved**: a plugin descriptor whose surfaceID collides with
+`inbox`/`agents`/`teams` is refused at `setClientComponents`, so a plugin cannot
+silently take over a built-in surface. Core views are NOT server descriptors — they
+are builder functions, and a descriptor requires a `moduleURL` custom element — so the
+built-ins live in a core fallback table keyed by the same ids. Plugin `sidebar-item`
+descriptors render as rows in the view cluster, after the core rows, reusing the same
+`isViewOpen` active state and the `navigateView` seam. Proven:
+`spec/client/view-surface-descriptors-spec.mjs`, 16 tests, of which reverting only
+`kikx-state.mjs` fails exactly 8 and reverting only `kikx-shell-builders.mjs` fails
+exactly the grep gate.
+
 ### P5 — Domain catalogues and prompt/loop policy
 
 Work:
@@ -577,6 +616,20 @@ Exit proof:
 - At least one built-in tool family is loaded and unloaded as a plugin.
 - Prompt assembly and role priority tests prove plugin contributions and ordering.
 - Loop-control tests reject unbounded or unknown terminal paths.
+
+**P5 loop-control registration — landed.** The loop's terminal vocabulary is now a
+closed exported set (`LOOP_CONTROL_TERMINALS` in `agent-loop-state.mjs`): finalize,
+respond, break, route, null-response. `PluginRegistry.registerLoopControl()` refuses an
+action that declares a terminal outside it, refuses the core's own action names, and
+requires `allowsContinuation: true` before accepting the `respond` terminal, so a plugin
+cannot acquire a self-wake by accident. Registrations are ledger-owned, so
+`releasePlugin()` reverses them.
+
+Dispatch gained a real fix rather than only a registry: `executeAskStep` now treats any
+`LoopControl` that `handleLoopControl` did not apply as a hard stop. Before this, such an
+output fell through with `state.finalized`/`state.break` untouched and the loop continued,
+which is exactly the unbounded hidden wake path 4.6 forbids. Proven load-bearing: with
+only `agent-interface.mjs` reverted to its parent commit, 2 of the 11 contract tests fail.
 
 ### P6 — Persistence and index uniformity
 
@@ -649,11 +702,22 @@ Still open:
     `listRestartRequired()`/`data.restartRequired`. `CommandRegistry` was the
     audit's real find: registered as overridable but constructed directly, so an
     override was ignored *and* unreported.
-  - **resolved per use, override takes effect live** — the `FrameType<Type>` keys.
-    `frameTypeClass()` in `src/core/frames/frame-types/create-typed-frame.mjs`
-    (not `core/frames/create-typed-frame.mjs`) looks the class up on every frame
-    creation, so a plugin frame-type override applies to the next frame. This path
-    must *not* report `restart-required`; doing so would be wrong.
+  - **resolved per use, but never reached in production today** — the
+    `FrameType<Type>` keys. `frameTypeClass()` in
+    `src/core/frames/frame-types/create-typed-frame.mjs` (not
+    `core/frames/create-typed-frame.mjs`) does look the class up on every frame
+    creation, and `buildModelMessages()` does forward `options.registry` down to
+    it, so the mechanism is live-capable. But the lookup only runs when a caller
+    passes a registry, and both production providers call
+    `this.constructor.buildModelMessages(params)` with no options
+    (`kikx-plugin-ollama/index.mjs:191`, `kikx-plugin-codex/index.mjs:226`), so
+    `options.registry` is always undefined and the static `FRAME_TYPE_CLASSES`
+    map always wins. A frame-type override therefore registers, appears in the
+    inventory, and changes no message. This path must *not* report
+    `restart-required` - a restart would not help - which is why it is reported
+    as `data.inertOverrides` instead, a category kept separate precisely so a
+    restart is never promised for something a restart cannot fix. Threading a
+    registry through from the providers is a real follow-up, not a doc fix.
   - **no construction site to audit** — `PluginInterface`, `AgentInterface`,
     `DatabaseConnectionBase`. They are plugin-facing base classes and subclass
     guards (`isSubclassOf` in `plugin-registry.mjs`), never instantiated by core,
@@ -664,20 +728,96 @@ Still open:
     so the direct `new PluginRegistry()` is the only coherent construction; it is
     documented here rather than changed. (Unproven by test: this is read from call
     order at `create-server.mjs` 160-203, not executed as a contract.);
-- migrating Questions or Todo into the first plugin-owned service from P2;
+- ~~migrating Questions or Todo into the first plugin-owned service from P2~~ —
+  **landed** (`plugins/todo-focus-index`, `spec/plugins/todo-focus-index-service-spec.mjs`);
 - moving one integration route out of core from P3 (per-mount request limits
-  landed: `spec/plugins/plugin-mount-limits-spec.mjs`);
-- moving built-in Agents/Teams views behind client descriptors and testing
-  focus/selection preservation from P4;
-- moving built-in tool/frame/command catalogue families and bounded loop controls
-  from P5;
-- dual-driver index execution from P6 (checksum/advisory-lock/rollback migration
-  tests landed: `spec/core/plugins/plugin-migrations-integrity-spec.mjs`);
-- removing remaining transitional shims and demonstrating install/reload/unload
-  on a live boot from P7.
+  landed: `spec/plugins/plugin-mount-limits-spec.mjs`, 18 tests, 14 failing before).
+  The only plausible candidate is `src/server/routes/image-proxy-route.mjs` (152
+  lines), and it is **not a mechanical move**: that route reads arbitrary absolute
+  host paths behind a `BLOCKED_ROOTS` denylist plus a per-session user preference,
+  so relocating it to a plugin mount changes the trust boundary. Awaiting an owner
+  decision, not additional analysis;
+- focus/selection preservation for plugin views from P4 (the view/descriptor
+  plumbing landed: `client-view-surfaces.mjs`, `view-name-registry.mjs`,
+  `spec/client/view-surface-descriptors-spec.mjs`; `viewName ===` branches are
+  gone). The enabling mechanism has since landed twice over: `resolveViewSurface`
+  now reuses one element per surfaceID across paints (`spec/client/view-surface-identity-spec.mjs`,
+  6 tests, 3 failing before), and the element cache is pruned at the exact point
+  `syncViewNames()` shrinks the addressable set (`spec/client/view-surface-prune-spec.mjs`,
+  which drives the real `setClientComponents` path so the pruner is not dead code).
+  What remains is proving focus and selection actually survive — and that half is
+  **blocked in this environment, not unbuilt**. Reuse is necessary but not
+  sufficient: detaching a node blurs it, so `document.activeElement` and the caret
+  need explicit restoration around the rebuild, and `spec/client/support/mini-dom.mjs`
+  (704 lines) models **no** focus at all — no `activeElement`, no selection, no
+  `focus()`. Asserting focus in that harness would prove the mock. The honest
+  instrument is the real-browser harness (`spec/ui/playwright/`), which skips here
+  because `findChromeExecutable()` returns empty in this container — no Chrome is
+  installed. So this needs a lane with a browser, or a deliberate decision to add
+  focus semantics to mini-dom first;
+- moving built-in tool/frame/command catalogue families from P5 (bounded loop
+  controls landed: `registerLoopControl`, `spec/plugins/plugin-loop-control-spec.mjs`,
+  exit proof "reject unbounded or unknown terminal paths" met);
+- ~~dual-driver index execution from P6~~ **closed**. Index support is now two
+  declared capabilities rather than one probe: `indexDocuments` (AeorDB persists
+  `indexes.json` documents) and `scalarIndex` (PostgreSQL expression index, SQLite
+  JSON1), and both hooks raise `capability_unsupported` instead of resolving to a
+  no-op that was indistinguishable from success. `spec/core/database/plugin-index-parity-spec.mjs`
+  drives the shipped `plugins/todo-focus-index` service against real SQLite and real
+  PostgreSQL; revert-measured at 8 of 9 failing, the single pass being the proof of
+  shape (the query returns right rows because it scans). The same audit surfaced the
+  original defect: `writeIndexConfigs` gated on `typeof configureIndexes === 'function'`,
+  true for every driver because the base class supplied the no-op;
+- ~~unload follows the declared retention policy from P6~~ **closed**, and the field
+  had never been implemented. `removeOnUnload: 'definition-only' | 'retain-data'`
+  appeared in §4.5 and nowhere in `src/`: unload removed every frame-index
+  declaration unconditionally, so a plugin asking for `retain-data` silently got the
+  opposite, while the documented default was neither reported nor enforced. An index
+  declaration now carries the resolved policy on its descriptor, a mistyped policy
+  fails closed at registration, and the ledger closure honours the policy.
+  `spec/core/plugins/plugin-index-retention-spec.mjs` (7 tests) loads a real plugin
+  from disk through `loadPlugins`; revert-measured at 4 of 7 failing. Neither policy
+  deletes durable data — that is asserted against a counted `delete`, because
+  removal of data is a separate explicit purge, not an unload side effect;
+- ~~event delivery~~ **closed**, and it was a real defect rather than a coverage gap.
+  `PluginEventBus` was correctly attached (`create-server.mjs:499`) and scoping correctly
+  filtered, which is why the earlier "unmet contract" note was misleading - the bus
+  worked. The hole was **reload**. `POST /api/v1/plugins/reload` re-scans the configured
+  paths and calls `loadPlugins` again, and `registerPluginRecord` only refuses a name
+  when a *different directory* claims it, so reloading the same directory was accepted:
+  `setup()` ran a second time and the record was replaced. Two leaks followed. The
+  previous registration's subscriptions stayed on the bus while the new load added
+  another, so one runtime event invoked the handler twice per reload and N times after N
+  reloads - invisible, because the handler does run. And the replaced record held the only
+  reference to that registration's teardown, so a reload silently dropped it along with
+  the resources it would have released. Measured at **3 deliveries where 2 are correct**.
+  Fixed by unloading an already-loaded path before reloading it (16 lines in
+  `plugin-loader.mjs`). The spec is 6 tests, and reverting only that fix reproduces
+  `3 !== 2` on exactly the reload test while the other five still pass. `subscribe()`
+  also carried a dead branch (both arms returned `true`) and two comments promising a
+  flush of queued events that does not exist; the comments now say what the code does;
+- demonstrating install/reload/unload on a live boot from P7 (needs the host-side
+  `deploy.sh`; there is no unload HTTP route today — `/api/v1/plugins` exposes GET
+  inventory plus POST `/install` and POST `/reload` only).
+- ~~removing remaining transitional shims~~ — **measured, and the item was
+  mis-worded.** A grep for transitional/compat-shim markers across `src/` returns
+  nothing; the five `legacy`/`backwards-compat` hits are data-format fallbacks
+  (`chat-view-model.mjs`, `frame-type-base.mjs`, `config-paths.mjs`) and one rename
+  alias in `session-state-utils.mjs`, none of them plugin-platform code. There is
+  nothing to remove because decision 10's compatibility ingress (old manifests,
+  `/api/plugins/` mounts, plugin asset URLs, class registrations behind one
+  version-gated adapter) was never built: no `manifestVersion`, `apiVersion` or
+  version-gate symbol exists in `src/core/plugins/`. So this is not shim cleanup but
+  an unbuilt decision — building it is scope the owner has not authorized, and
+  deleting the item would hide that.
 
-The full suite is green at 2,988 tests (2,959 pass, 29 skipped), including the
-documentation consolidation gate.
+The full suite is green at 3,063 tests (3,033 pass, 30 skipped) at this commit,
+`npm test` = `node --test "spec/**/*-spec.mjs"`. The P6 retention contract above
+adds its own seven (`spec/core/plugins/plugin-index-retention-spec.mjs`) and no
+pre-existing assertion broke. Correcting an inherited claim: earlier revisions of
+this paragraph said the suite `includes the documentation consolidation gate`. There
+is no such gate — nothing in `spec/` reads `docs/`, so this document is not
+test-enforced and its counts are hand-verified.
 
 ## 7. Verification spine
 
@@ -790,10 +930,14 @@ These findings are part of the plan, not objections to it:
    `restart-required` answer as `FrameRouter`, but now a reported one.
    The audit is now closed: three registered classes have no core construction site
    at all (plugin-facing base classes and subclass guards), and the
-   `FrameType<Type>` keys are a third category - resolved on every use, so those
-   overrides take effect live and must not be filed as restart-required. The
-   lesson generalises: "overridable" needs a resolution mode (construction-time vs
-   per-use vs none), because only the first can be stale.
+   `FrameType<Type>` keys are a third category - resolved per use by
+   `frameTypeClass()`, but only when the caller supplies a registry, which no
+   production provider does today. Those overrides must not be filed as
+   restart-required (a restart would not help); they are reported as
+   `data.inertOverrides` instead. The lesson generalises: "overridable" needs a
+   resolution mode (construction-time vs per-use vs currently unreachable),
+   because only the first can be stale and only the last is beyond a restart's
+   reach.
 10. **Existing plugin packages need a compatibility ingress.** Preserve old manifests, `/api/plugins/` mounts, plugin asset URLs and class registrations for one transition window; version-gate legacy rows in an adapter rather than teaching every consumer both shapes.
 
 ## 9. Artifacts
