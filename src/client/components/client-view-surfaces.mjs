@@ -158,6 +158,15 @@ function buildDescriptorSurface(descriptor, state, app) {
   //
   // These are re-assigned on every resolve even when the element is reused, so a
   // cached element never keeps a stale state object.
+  // The shell marks which surface this element is, rather than asking the plugin
+  // to. Focus restoration (kikx-frame-scroll.mjs) has to find the view host that
+  // was just emptied and rebuilt, and a marker the plugin must remember to emit
+  // is a marker some plugin will not emit -- leaving its view silently unable to
+  // keep focus. Set here, it holds for every descriptor surface including ones
+  // written before this contract existed.
+  try {
+    element.setAttribute('data-kikx-view-surface', surfaceID || '');
+  } catch (_error) {}
   element.appState = state;
   if (app) {
     if (typeof element.mountApp === 'function')

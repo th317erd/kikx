@@ -13,7 +13,7 @@ import {
   setNavigationStack,
   upsertSession,
 } from '../state/kikx-state.mjs';
-import { stackFromSearchParams, stackToURL } from '../state/navigation-stack.mjs';
+import { isViewEntry, stackFromSearchParams, stackToURL } from '../state/navigation-stack.mjs';
 import {
   DELETED_ROW,
   allFilters,
@@ -651,7 +651,13 @@ export function stackFromCurrentURL(app) {
   let known = new Set(getSessions(app._state).map((session) => session.id));
   let stack = [ { sessionID: null, collapsed: true } ];
   for (let entry of parsed.stack.slice(1)) {
-    if (!known.has(entry.sessionID))
+    // A view entry has no session by construction (`null`), so a membership test
+    // against the session list rejects it and `break` truncates the whole tail.
+    // That silently disabled every view deep link -- `?view=inbox` included, not
+    // just plugin views -- because the parsed stack was discarded before it could
+    // reach `setNavigationStack`. Addressability is the stack layer's job
+    // (pushView refuses an unknown name); this loop only validates session links.
+    if (!isViewEntry(entry) && !known.has(entry.sessionID))
       break;
 
     stack.push(entry);
@@ -684,6 +690,21 @@ export async function applySessionDeepLink(app) {
     return;
 
   app._deepLinkApplied = true;
+
+  // Wait for the descriptor load before resolving the stack. `?view=<name>` is
+  // validated against the live view registry, and a plugin view name only exists
+  // there once its descriptor has arrived. Resolving first silently drops the view
+  // and, because `_deepLinkApplied` has just latched, it is never retried -- so a
+  // reload or a magic-link sign-in onto a plugin view URL showed the grid. Both
+  // startup paths launch the descriptor fetch, so this usually costs nothing; when
+  // it is genuinely in flight, waiting is the correct thing to do.
+  try {
+    await app._clientComponentsPromise;
+  } catch (_error) {
+    // A failed descriptor load must not take the whole deep link down with it:
+    // the session part of the URL is still worth honouring.
+  }
+
   let stack = stackFromCurrentURL(app);
   if (stack.length <= 1) {
     app._deepLinkReady = true;

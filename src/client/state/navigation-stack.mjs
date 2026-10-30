@@ -26,8 +26,8 @@ export {
 // entry and its counts are gone, and the counts now live in the status bar
 // (`statusbar-stats.mjs`). Keeping the name here is not a compatibility measure -- it
 // would let `pushView` accept a view no builder can render, which is a blank work
-// area. A legacy `?view=activities` therefore fails this membership test at the parse
-// site (`:204` below) and degrades to a normal window.
+// area. A legacy `?view=activities` therefore fails the `isRegisteredViewName` test at
+// the parse site below and degrades to a normal window.
 // The core default, re-exported from the shared registry so the stack and the
 // view-surface dispatch cannot disagree about it. Kept exported (and kept a real
 // array) because existing specs assert deepEqual on it.
@@ -240,7 +240,13 @@ export function stackFromSearchParams(search) {
     stack.push({ sessionID, collapsed: false });
 
   let viewParam = params.get('view');
-  let view = VIEW_NAMES.includes(viewParam) ? viewParam : null;
+  // Ask the LIVE registry, not the core literal. `VIEW_NAMES` is the core default
+  // (inbox/agents/teams) and cannot contain a plugin-contributed surface, so
+  // gating on it alone makes every plugin view unreachable by URL: the sidebar can
+  // push `notes` onto the stack, but a reload or a shared link could not restore it.
+  // Every other reader of the vocabulary (normalizeNavigationStack, pushView,
+  // isViewEntry) already asks isRegisteredViewName; this site was the last holdout.
+  let view = isRegisteredViewName(viewParam) ? viewParam : null;
   if (view)
     stack = pushView(stack, view);
 

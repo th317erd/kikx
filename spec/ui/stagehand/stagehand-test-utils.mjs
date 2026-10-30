@@ -2,6 +2,7 @@
 
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
+import path from 'node:path';
 import { EventEmitter } from 'node:events';
 
 import { AppContext } from '../../../src/core/app/app-context.mjs';
@@ -94,6 +95,74 @@ async function resolveStagehandOpenAIAPIKey(options = {}) {
   return fallbackAPIKey;
 }
 
+// Where a browser actually lives on this machine, in order: an explicit override,
+// then PATH-installed builds, then the download caches.
+//
+// The caches were missing, and that made this resolver lie. Playwright and
+// Puppeteer both install a working Chrome under `~/.cache`; neither puts it on
+// PATH. So a machine that ran `npx playwright install` HAD a browser while this
+// function reported none, and two specs (`aeor-framework-playwright.mjs`,
+// `inbox-frame-visual-parity-playwright.mjs`) launched with no `executablePath`
+// and hard-failed instead of running or skipping like the other ten. That is
+// worse than a missing check: it turns a coverage gap into a red lane, and a red
+// lane everybody knows is bogus is a red lane nobody reads.
+function listCachedChromes() {
+  let found = [];
+  let seen = new Set();
+
+  let probe = (dir) => {
+    let entries;
+    try {
+      entries = fsSync.readdirSync(dir, { withFileTypes: true });
+    } catch (_error) {
+      return;
+    }
+
+    for (let entry of entries) {
+      if (!entry.isDirectory())
+        continue;
+
+      // Puppeteer: chrome/linux-<version>/chrome-linux64/chrome
+      // Playwright: chromium-<rev>/chrome-linux/chrome
+      for (let relative of [
+        'chrome-linux64/chrome',
+        'chrome-linux/chrome',
+        'chrome-linux/headless_shell',
+      ]) {
+        let candidate = path.join(dir, entry.name, relative);
+        if (!seen.has(candidate) && fsSync.existsSync(candidate)) {
+          seen.add(candidate);
+          found.push({ candidate, version: entry.name });
+        }
+      }
+    }
+  };
+
+  let home = process.env.HOME || "";
+  if (home) {
+    probe(path.join(home, '.cache', 'puppeteer', 'chrome'));
+    probe(path.join(home, '.cache', 'ms-playwright'));
+  }
+
+  // Newest cache directory first, compared NUMERICALLY. A plain string sort is
+  // wrong here and was visibly wrong on this machine: 'linux-146.0.7680.153'
+  // sorts before 'linux-146.0.7680.76' because '1' < '7', so the resolver
+  // returned the older browser while claiming to pick the newest.
+  let versionKey = (name) => (name.match(/\d+/g) || []).map(Number);
+  let compare = (left, right) => {
+    let a = versionKey(left);
+    let b = versionKey(right);
+    for (let index = 0; index < Math.max(a.length, b.length); index++) {
+      let delta = (a[index] ?? -1) - (b[index] ?? -1);
+      if (delta !== 0)
+        return delta;
+    }
+    return 0;
+  };
+  found.sort((left, right) => compare(right.version, left.version));
+  return found.map((item) => item.candidate);
+}
+
 export function findChromeExecutable() {
   for (let candidate of [
     process.env.KIKX_STAGEHAND_CHROME_PATH,
@@ -102,6 +171,7 @@ export function findChromeExecutable() {
     '/usr/bin/google-chrome',
     '/usr/bin/chromium',
     '/usr/bin/chromium-browser',
+    ...listCachedChromes(),
   ]) {
     if (candidate && fsSync.existsSync(candidate))
       return candidate;

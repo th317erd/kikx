@@ -737,24 +737,59 @@ Still open:
   host paths behind a `BLOCKED_ROOTS` denylist plus a per-session user preference,
   so relocating it to a plugin mount changes the trust boundary. Awaiting an owner
   decision, not additional analysis;
-- focus/selection preservation for plugin views from P4 (the view/descriptor
-  plumbing landed: `client-view-surfaces.mjs`, `view-name-registry.mjs`,
-  `spec/client/view-surface-descriptors-spec.mjs`; `viewName ===` branches are
-  gone). The enabling mechanism has since landed twice over: `resolveViewSurface`
-  now reuses one element per surfaceID across paints (`spec/client/view-surface-identity-spec.mjs`,
-  6 tests, 3 failing before), and the element cache is pruned at the exact point
-  `syncViewNames()` shrinks the addressable set (`spec/client/view-surface-prune-spec.mjs`,
-  which drives the real `setClientComponents` path so the pruner is not dead code).
-  What remains is proving focus and selection actually survive — and that half is
-  **blocked in this environment, not unbuilt**. Reuse is necessary but not
-  sufficient: detaching a node blurs it, so `document.activeElement` and the caret
-  need explicit restoration around the rebuild, and `spec/client/support/mini-dom.mjs`
-  (704 lines) models **no** focus at all — no `activeElement`, no selection, no
-  `focus()`. Asserting focus in that harness would prove the mock. The honest
-  instrument is the real-browser harness (`spec/ui/playwright/`), which skips here
-  because `findChromeExecutable()` returns empty in this container — no Chrome is
-  installed. So this needs a lane with a browser, or a deliberate decision to add
-  focus semantics to mini-dom first;
+- ~~focus/selection preservation for plugin views from P4~~ **closed**, and the
+  note that stood here was wrong twice over. It claimed the remainder was "blocked
+  in this environment" because "no Chrome is installed". Chrome *is* installed — as
+  a Playwright/Puppeteer cache under `~/.cache` that `findChromeExecutable()` never
+  looked at, so the resolver answered "no browser" on a machine with two. The
+  real-browser lane was red for that reason, not because the proof was unavailable.
+
+  What the browser actually showed, once it could run: a plugin view rendered
+  **nothing at all**. Three defects, none of them the missing restore logic the old
+  note pointed at:
+
+  1. `stackFromSearchParams` validated `?view=` against `VIEW_NAMES`, the frozen core
+     literal. A plugin surface can never be in that array, so no plugin view was
+     reachable by URL — a reload or a shared link dropped it, which is literally
+     "P4's view does not survive a reload". Every other reader of the vocabulary
+     (`normalizeNavigationStack`, `pushView`, `isViewEntry`) already asked the live
+     registry; the parse site was the last holdout.
+  2. `stackFromCurrentURL` skipped any entry whose `sessionID` was unknown and
+     `break`ed out of the loop, discarding the rest of the tail. A view entry has
+     `sessionID: null` by construction, so this rejected every view entry —
+     `?view=inbox` included, meaning the pinned Inbox deep link had been dead in
+     production too, not only for plugins.
+  3. `applyAuth` carries a second, hand-maintained copy of the startup load list and
+     fired `_loadSessions()` in parallel with `_loadClientComponents()`. The deep
+     link therefore resolved before the descriptor registered the view name, and
+     `_deepLinkApplied` latches, so it was never retried. Fixed by making the
+     descriptor load a prerequisite in both lists (`kikx-app.mjs`, `kikx-editors.mjs`).
+
+  With those closed, the restore half was built as the old note described: capture
+  focus and the caret inside a view surface in `captureRenderSnapshot`, restore it
+  in `afterRender` (`kikx-frame-scroll.mjs`), reusing the snapshot pair the composer
+  already used. Two details are deliberately not the obvious ones: lookups compare
+  the `data-kikx-focus-key` attribute instead of interpolating a plugin-authored key
+  into a selector (a plugin must not choose what the shell queries), and the
+  `data-kikx-view-surface` marker is set by the shell in
+  `buildDescriptorSurface`, not by the plugin, so the contract holds for a plugin
+  that never heard of it.
+
+  Proof: `spec/ui/playwright/plugin-view-focus-playwright.mjs` drives the real path
+  (server descriptor → `/api/v1/client-components` → `setClientComponents` → `?view=notes`
+  → type → `app._render()`), and asserts element reuse plus post-rebuild attachment
+  so "focus survived" cannot pass on an app that never repainted.
+  Revert-measured: stashing only the restore half fails
+  `assert.equal(after.activeKey, 'note-body')`. The three navigation defects are
+  pinned by `spec/client/view-deep-link-spec.mjs` (6 tests, no browser needed);
+  reverting only the parser fix fails 4 of them and leaves the two that must stay
+  green (unregistered refusal, core/removed views) green;
+
+  The harness defect is fixed too, because a red lane nobody can act on is how the
+  above stayed hidden: `findChromeExecutable()` now probes the download caches with
+  a **numeric** version comparison (a string sort picked `...7680.76` over
+  `...7680.153`, which is how this was caught), and the two specs that launched with
+  no `executablePath` now skip explicitly instead of hard-failing;
 - moving built-in tool/frame/command catalogue families from P5 (bounded loop
   controls landed: `registerLoopControl`, `spec/plugins/plugin-loop-control-spec.mjs`,
   exit proof "reject unbounded or unknown terminal paths" met);

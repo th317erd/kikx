@@ -49,6 +49,8 @@ export function captureRenderSnapshot(app) {
 
   let composer = app.querySelector('textarea[name="message"]');
   let composerFocused = app.contains(document.activeElement) && document.activeElement === composer;
+  // A plugin view's own input is not the composer, so nothing above captures it.
+  let viewFocus = captureViewSurfaceFocus(app);
   let locked = isScrollLockedForSession(app, sessionID);
   let bottomMode = locked && getScrollLockModeForSession(app, sessionID) === 'bottom';
   let scrollFocus = captureScrollFocus(app, frameList, { bottom: bottomMode });
@@ -67,6 +69,7 @@ export function captureRenderSnapshot(app) {
     composerSelectionDirection: composerFocused ? composer.selectionDirection : 'none',
     frameListNearBottom: app._frameListAnchoredToBottom,
     scrollFocus,
+    viewFocus,
     viewFrameCount: Array.isArray(view?.frames) ? view.frames.length : 0,
     viewLastFrameID: Array.isArray(view?.frames) ? (view.frames.at(-1)?.id || '') : '',
     forceScrollToBottom: app._forceScrollToBottomAfterRender,
@@ -181,7 +184,100 @@ export function afterRender(app, snapshot = {}) {
     });
   }
 
+
+  // The work-area view was just rebuilt, so any focus inside it was blurred by the
+  // detach. Restore only when the composer is not claiming focus: a composer focus
+  // request is an explicit intent, and stealing it back to the view would drop the
+  // caret the user is typing in.
+  if (!shouldFocusComposer)
+    restoreViewSurfaceFocus(app, snapshot.viewFocus);
   syncThinkingRack(app);
+}
+
+// =============================================================================
+// Focus inside a plugin view surface (campaign P4)
+// =============================================================================
+// The shell empties the app and rebuilds its tree on every paint. Emptying detaches
+// the plugin's element, and detaching blurs whatever was focused inside it, so
+// document.activeElement falls back to <body>. Element reuse
+// (view-surface-elements.mjs) keeps the view's scroll position and open row, but a
+// blurred input loses its caret placement regardless of reuse -- it has to be
+// restored explicitly, which is what these two functions do.
+//
+// Identity is a data attribute rather than a remembered node because the node lives
+// in the plugin's own render, not the shell's: the attribute travels with the
+// content the plugin recomputes, so the lookup after the rebuild finds what the
+// plugin rendered this time rather than a node that is no longer in the tree.
+function viewSurfaceHost(app) {
+  return app?.querySelector?.("[data-kikx-view-surface]") || null;
+}
+
+function captureViewSurfaceFocus(app) {
+  let active = document.activeElement;
+  if (!active || active === document.body)
+    return null;
+
+  let host = viewSurfaceHost(app);
+  if (!host || !host.contains(active))
+    return null;
+
+  let key = active.getAttribute?.("data-kikx-focus-key") || "";
+  if (!key)
+    return null;
+
+  let snapshot = { surfaceID: host.getAttribute("data-kikx-view-surface") || null, key };
+
+  // A caret exists only on controls that model selection. Reading it off anything
+  // else yields undefined, and restoring a caret onto a non-text control is a no-op
+  // at best, so the presence of the fields is recorded rather than assumed.
+  if (typeof active.selectionStart === "number") {
+    snapshot.selectionStart = active.selectionStart;
+    snapshot.selectionEnd = typeof active.selectionEnd === "number" ? active.selectionEnd : active.selectionStart;
+    snapshot.selectionDirection = active.selectionDirection || "none";
+  }
+
+  return snapshot;
+}
+
+function restoreViewSurfaceFocus(app, snapshot) {
+  if (!snapshot || !snapshot.key)
+    return false;
+
+  let host = viewSurfaceHost(app);
+  if (!host)
+    return false;
+
+  // The plugin replaced its surface on reload: restoring a key into a different view
+  // would put the caret somewhere the user never was.
+  if (snapshot.surfaceID && host.getAttribute("data-kikx-view-surface") !== snapshot.surfaceID)
+    return false;
+
+  // Attribute comparison, not a selector built from the key: the key is arbitrary
+  // plugin-authored text, and interpolating it into a selector would make the plugin
+  // able to choose what the shell queries -- including a throwing selector.
+  let target = null;
+  for (let candidate of host.querySelectorAll("[data-kikx-focus-key]")) {
+    if (candidate.getAttribute("data-kikx-focus-key") === snapshot.key) {
+      target = candidate;
+      break;
+    }
+  }
+  if (!target || typeof target.focus !== "function")
+    return false;
+
+  // preventScroll: the frame-list placement above already decided where the page
+  // sits; a browser scroll-into-view here would silently override it.
+  target.focus({ preventScroll: true });
+
+  if (typeof target.setSelectionRange === "function"
+    && Number.isInteger(snapshot.selectionStart)
+    && Number.isInteger(snapshot.selectionEnd)) {
+    let max = typeof target.value === "string" ? target.value.length : null;
+    let clamp = (index) => (max === null ? index : Math.min(index, max));
+    target.setSelectionRange(clamp(snapshot.selectionStart), clamp(snapshot.selectionEnd), snapshot.selectionDirection || "none");
+  }
+
+  return document.activeElement === target;
 }
 
 // Repaint the pinned thinking rack from the session's live frames. Cheap: it
