@@ -161,6 +161,51 @@ test('an authenticated caller still gets the inventory', async () => {
   assert.equal(payload.data.plugins[0].name, 'miri');
 });
 
+// The registry knowing an override is stale is worthless if the inventory does not say so.
+// This is the reachability half of the restart-required contract: it proves the field is
+// built from the registry and survives into the HTTP payload an operator actually reads.
+test('the inventory reports which class overrides need a restart to take effect', async () => {
+  let registry = {
+    _pluginRegistrations: new Map([['miri', { pluginName: 'miri', pluginLocation: 'miri' }]]),
+    _pluginLoadErrors: [],
+    listRestartRequired: () => [ 'FrameRouter' ],
+  };
+  let router = new PluginRouter({ logger: { error() {} } });
+
+  let stale = fakeResponse();
+  await handlePluginRoutes({
+    request: fakeRequest({ method: 'GET', url: '/api/v1/plugins' }),
+    response: stale,
+    url: new URL('/api/v1/plugins', 'http://localhost'),
+    context: fakeContext({
+      pluginRouter: router,
+      pluginRegistry: registry,
+      accountStore: identityStore({ id: 'user-1' }),
+    }),
+  });
+
+  assert.equal(stale.statusCode, 200);
+  assert.deepEqual(JSON.parse(stale.body).data.restartRequired, [ 'FrameRouter' ]);
+
+  // A registry that predates this field (or a bare ClassRegistry without it) must not
+  // break the inventory - absent means "reported nothing", not a crash.
+  delete registry.listRestartRequired;
+  let healthy = fakeResponse();
+  await handlePluginRoutes({
+    request: fakeRequest({ method: 'GET', url: '/api/v1/plugins' }),
+    response: healthy,
+    url: new URL('/api/v1/plugins', 'http://localhost'),
+    context: fakeContext({
+      pluginRouter: router,
+      pluginRegistry: registry,
+      accountStore: identityStore({ id: 'user-1' }),
+    }),
+  });
+
+  assert.equal(healthy.statusCode, 200);
+  assert.deepEqual(JSON.parse(healthy.body).data.restartRequired, []);
+});
+
 test('reload is gated, and a refused reload executes nothing', async () => {
   // Reload had NO gate at all before this change, so this is the case that used to be open.
   let registry = { _pluginRegistrations: new Map(), _pluginLoadErrors: [] };

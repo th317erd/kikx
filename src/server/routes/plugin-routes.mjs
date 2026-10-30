@@ -40,6 +40,14 @@ export async function handlePluginRoutes({ request, response, url, context, json
           manifest: r.manifest || null,
         })),
         failures: registry?._pluginLoadErrors || [],
+        // A class override does not change a live instance (campaign §8.1.5). create-server
+        // resolves FrameRouter before plugins load, so a plugin override of it changes the
+        // registry row while the router that is serving requests keeps executing core. Listing
+        // those keys here is the difference between "the platform says it is overridden" and
+        // "the platform says this needs a restart to become true".
+        restartRequired: typeof registry.listRestartRequired === 'function'
+          ? registry.listRestartRequired()
+          : [],
       },
     }));
     return true;

@@ -634,8 +634,9 @@ Landed and verified:
 
 Still open:
 
-- the full direct-construction audit and live-instance generation/reload policy
-  from P1;
+- the full direct-construction audit from P1 (the generation half is done:
+  `listRestartRequired()` plus the inventory field; auditing every remaining
+  `new CoreClass()` site is separate work);
 - migrating Questions or Todo into the first plugin-owned service from P2;
 - per-mount request limits and moving one integration route out of core from P3;
 - moving built-in Agents/Teams views behind client descriptors and testing
@@ -720,8 +721,8 @@ These findings are part of the plan, not objections to it:
 1. **`PluginAuthority` is intentionally not generalized in this campaign.** It remains Miri-specific. The owner ruling makes the main application class hijackable and treats plugins as trusted code, so building a capability boundary around plugin overrides would be misleading.
 2. **Plugin routes currently bypass core auth.** The route handler table runs before the auth chain. P3 still needs ordinary Kikx authentication before plugin handlers and inventory/reload/install; this is transport safety, not a plugin capability boundary.
 3. **Persistence is driver-qualified, not driver-neutral.** PostgreSQL migrations now refuse unsupported drivers; AeorDB/SQLite behavior remains an explicit capability decision, not an assumed equivalence.
-4. **Unload is now mostly reversible but split across two mechanisms.** The ownership ledger releases mounts, migrations, tools, selectors, tags, drivers, components, indexes, DB handles and subscriptions; class-stack overrides are released separately. The remaining test gap is proving both paths, plus live-instance generation, in one unload contract.
-5. **A class override is not a live behavior change.** A reload that does not reconstruct the affected instance must report `restart-required`; otherwise the registry row looks changed while the running service is stale.
+4. **Unload is now mostly reversible but split across two mechanisms.** The ownership ledger releases mounts, migrations, tools, selectors, tags, drivers, components, indexes, DB handles and subscriptions; class-stack overrides are released separately. **Both paths are now proven together**: `spec/plugins/plugin-unload-contract-spec.mjs` releases twelve ledger families and pops a class override in one `unloadPlugin()` call, asserts the stack falls back to the core class rather than emptying, and repeats it for a failed load's rollback.
+5. **A class override is not a live behavior change.** A reload that does not reconstruct the affected instance must report `restart-required`; otherwise the registry row looks changed while the running service is stale. **Implemented.** `ClassRegistry.noteClassResolved()` records what each live instance was built from, `resolveCoreClass()` — the single construction-resolution point — calls it, and `listRestartRequired()` reports keys whose stack top no longer matches the running instance. The inventory route (`GET /api/v1/plugins`) now returns `data.restartRequired`. The defect this closes is concrete: `create-server.mjs` resolves `frameRouter` at line 242 but only awaits the plugin load at 281, so a plugin `FrameRouter` override can never affect the running router, while `FrameRuntime` (473) and `CompactionService` (519) overrides do take effect. Both orderings are asserted.
 6. **The merge is complete but the platform is not contract-complete.** The merged
    revision is green on the non-doc suite after the ownership ledger; still run the new
    platform contract tests and live install/reload/unload exercise. Preserve our

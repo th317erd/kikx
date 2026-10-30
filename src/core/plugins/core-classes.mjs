@@ -79,11 +79,18 @@ export function registerFrameTypeClasses(registry, { pluginName = 'core' } = {})
 //   let Router = resolveCoreClass(registry, 'FrameRouter', FrameRouter);
 //   let router = new Router(...);
 export function resolveCoreClass(registry, key, Fallback) {
-  if (registry && typeof registry.getClass === 'function') {
-    let resolved = registry.getClass(key);
-    if (resolved)
-      return resolved;
-  }
+  let resolved = null;
+  if (registry && typeof registry.getClass === 'function')
+    resolved = registry.getClass(key);
 
-  return Fallback;
+  let ClassRef = resolved || Fallback;
+
+  // Record what this instance is being built from, so a later override or a later
+  // unload can be told apart from a change that actually took effect. Without this the
+  // registry row says "FrameRouter is the plugin's class" while the router serving
+  // requests was constructed earlier from core - and nothing anywhere says so.
+  if (registry && typeof registry.noteClassResolved === 'function')
+    registry.noteClassResolved(key, ClassRef);
+
+  return ClassRef;
 }

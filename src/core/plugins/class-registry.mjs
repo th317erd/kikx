@@ -17,6 +17,12 @@ export class ClassRegistry {
     this._registrations = [];     // ordered list of every registration
     this._loadCounter = 0;        // monotonic counter for load order
     this._version = 0;            // bumped on any change (hot-reload detection)
+    // key -> the class a live instance was actually constructed from. Filled by
+    // noteClassResolved() at every construction site that resolves through this
+    // registry. A stack top that later differs from this value means the running
+    // object is stale, which is reported by listRestartRequired() rather than
+    // silently implied to have changed.
+    this._resolvedClasses = new Map();
   }
 
   // registerClass patterns:
@@ -127,10 +133,48 @@ export class ClassRegistry {
       this._version++;
   }
 
+  // Record that a live instance was built from `classRef` for `key`. Called from
+  // resolveCoreClass() / resolveRegistered() at construction time.
+  //
+  // This is deliberately separate from the stack: the stack answers "what would be
+  // constructed now", this answers "what was constructed". Conflating them is what
+  // makes an override look applied when the running service still executes core.
+  noteClassResolved(key, classRef) {
+    if (!key)
+      return;
+    this._resolvedClasses.set(key, classRef || null);
+  }
+
+  // Forget that a live instance exists for `key` (e.g. the instance was rebuilt from
+  // the current stack top).
+  clearClassResolved(key) {
+    this._resolvedClasses.delete(key);
+  }
+
+  classRefForResolved(key) {
+    return this._resolvedClasses.has(key) ? this._resolvedClasses.get(key) : undefined;
+  }
+
+  // Keys where a live instance exists and the class it was built from is no longer
+  // what the stack would produce. Those instances are running stale code and cannot be
+  // replaced in place; the platform must say so instead of letting the registry row
+  // look like a live behaviour change.
+  listRestartRequired() {
+    let keys = [];
+    for (let [ key, builtFrom ] of this._resolvedClasses) {
+      let current = this.getClass(key);
+      if (current !== (builtFrom || null))
+        keys.push(key);
+    }
+
+    return keys.sort();
+  }
+
   clear() {
     this._stacks.clear();
     this._registrations = [];
     this._loadCounter = 0;
+    this._resolvedClasses.clear();
     this._version++;
   }
 
