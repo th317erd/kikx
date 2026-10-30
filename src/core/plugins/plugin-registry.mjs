@@ -43,6 +43,76 @@ export class PluginRegistry extends ClassRegistry {
     return this._pluginPaths.get(pluginID) || null;
   }
 
+  // Schema migrations. The directory is relative to the plugin, resolved by the caller.
+  registerMigrations(pluginId, options = {}) {
+    if (!this._pluginMigrations)
+      throw new Error('registerMigrations called before the migrations registry was attached');
+    return this._pluginMigrations.register(pluginId, options);
+  }
+
+  // A plugin gets a scoped handle, never a pool. Created lazily from the shared pool so
+  // a plugin that never touches the database costs nothing.
+  getPluginAuthority(pluginId) {
+    if (!this._pluginAuthorityFactory)
+      throw new Error('authorize() called before the plugin authority was attached');
+    if (!this._pluginAuthorities) this._pluginAuthorities = new Map();
+    if (!this._pluginAuthorities.has(pluginId))
+      this._pluginAuthorities.set(pluginId, this._pluginAuthorityFactory(pluginId));
+    return this._pluginAuthorities.get(pluginId);
+  }
+
+  setPluginFrameRuntime(runtime) {
+    this._pluginFrameRuntime = runtime;
+  }
+
+  setPluginAuthorityFactory(factory) {
+    this._pluginAuthorityFactory = factory;
+  }
+
+  setPluginDatabaseFactory(factory) {
+    this._pluginDatabaseFactory = factory;
+  }
+
+  getPluginDatabase(pluginId) {
+    if (!this._pluginDatabaseFactory)
+      throw new Error('db() called before the plugin database factory was attached');
+    if (!this._pluginDatabases) this._pluginDatabases = new Map();
+    if (!this._pluginDatabases.has(pluginId))
+      this._pluginDatabases.set(pluginId, this._pluginDatabaseFactory(pluginId));
+    return this._pluginDatabases.get(pluginId);
+  }
+
+  setPluginEventBus(bus) {
+    this._pluginEventBus = bus;
+  }
+
+  listEventSubscriptions() {
+    return this._pluginEventBus ? this._pluginEventBus.list() : [];
+  }
+
+  setPluginMigrations(migrations) {
+    this._pluginMigrations = migrations;
+  }
+
+  // HTTP mounting. A plugin gets one mount point; everything below it is its own.
+  mountHttp(pluginId, handler) {
+    return this.getPluginRouter().mount(pluginId, handler);
+  }
+
+  listHttpMounts() {
+    return this.getPluginRouter().listMounts();
+  }
+
+  setPluginRouter(router) {
+    this._pluginRouter = router;
+  }
+
+  getPluginRouter() {
+    if (!this._pluginRouter)
+      throw new Error('mountHttp called before the plugin router was attached');
+    return this._pluginRouter;
+  }
+
   registerTool(name, ToolClass) {
     if (!name || typeof name !== 'string')
       throw new TypeError('Tool name must be a non-empty string');

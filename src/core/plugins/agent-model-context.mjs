@@ -52,7 +52,34 @@ export function resolvePromptContent(params = {}) {
 // decision; an optional `options.registry` lets a plugin override the type.
 export function frameToModelTurn(frame, options = {}) {
   let typed = createTypedFrame(frame, { registry: options.registry || null });
-  return typed.toAgentMessage(options);
+  let turn = typed.toAgentMessage(options);
+  if (!turn || typeof turn.content !== 'string')
+    return turn;
+
+  // A frame may carry an audit tail alongside its text - an edited message keeps the
+  // original and appends what changed. The type owns the base rendering, and the tail is
+  // appended here so it reaches the agent without every frame type having to know about
+  // it. The original text stays first: the agent must always see what was said before
+  // what was changed.
+  let audit = frame?.content?.audit;
+  if (!Array.isArray(audit) || audit.length === 0)
+    return turn;
+
+  let lines = audit
+    .filter((entry) => entry && typeof entry === 'object')
+    .map((entry) => {
+      let when = typeof entry.editedAt === 'string' ? entry.editedAt : 'an earlier time';
+      let diff = typeof entry.diff === 'string' ? entry.diff : '(no diff recorded)';
+      return `Edited at ${when}. The diff is:\n${diff}`;
+    });
+
+  if (lines.length === 0)
+    return turn;
+
+  return {
+    ...turn,
+    content: `${turn.content}\n\n--- edit history ---\n${lines.join('\n\n')}`,
+  };
 }
 
 // Build the full ordered message list for a provider request (two-tier, P3):

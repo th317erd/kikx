@@ -2,6 +2,7 @@
 
 import { writeJSON } from './http-helpers.mjs';
 import { serveStaticRequest } from './static-files.mjs';
+import { handlePluginRoutes } from './routes/plugin-routes.mjs';
 import { handlePluginAssetRoutes } from './routes/plugin-asset-routes.mjs';
 import { handleInfraRoutes } from './routes/infra-routes.mjs';
 import { handleAccountRoutes } from './routes/account-routes.mjs';
@@ -24,6 +25,8 @@ export async function routeRequest({ request, response, context, staticRoots }) 
   let url = new URL(request.url, 'http://localhost');
 
   let handlers = [
+      // Plugin routes run first so a built-in path cannot shadow a plugin route.
+      handlePluginRoutes,
     handlePluginAssetRoutes,
     handleInfraRoutes,
     handleAccountRoutes,
