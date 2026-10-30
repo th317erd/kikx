@@ -13,14 +13,12 @@ last_verified: 2026-10-29
 
 ### Current baseline
 
-- Kikx main at planning start: `0bbfcf2a`.
-- Non-doc suite on this checkout: **2784 tests, 2755 pass, 0 fail, 29 skipped**.
-- Plugin HTTP/runtime work exists on `origin/miri-plugin` at `f201985e`.
-- That branch is **48 commits ahead / 18 behind** the current main; its merge base is `2ab9bf03`.
-- Its non-doc suite, with the shared `node_modules` available, is **2709 tests, 2680 pass, 0 fail, 29 skipped**.
-- Its new plugin-router spec is **12/12 pass**.
-- A `git merge-tree` trial between current main and `origin/miri-plugin` is textually clean, but the merged revision has not been tested.
-- The laptop dirty tree is the documentation migration plus untracked docs/testbed/public files; no plugin source is dirty.
+- Final-pass baseline: Kikx main `850c811b`, after merging `origin/miri-plugin`.
+- Non-doc suite after that merge: **2811 tests, 2782 pass, 0 fail, 29 skipped**.
+- The original Miri branch was `f201985e`, **48 commits ahead / 18 behind** at review time; that branch's isolated suite was **2709 tests, 2680 pass, 0 fail, 29 skipped**.
+- The plugin-router spec is **12/12 pass**.
+- The merge completed; the combined revision has passed the non-doc suite. It has not yet passed the new platform contract tests (DB/events/migrations/install/unload) because those do not exist yet.
+- The laptop dirty tree was the documentation migration plus untracked docs/testbed/public files; no plugin source was dirty.
 
 ### Registry facts
 
@@ -58,7 +56,7 @@ last_verified: 2026-10-29
 
 ### Miri's platform work
 
-Miri has added:
+Miri's work is now merged into main at `850c811b`. It added:
 
 - plugin HTTP mounts under `/api/plugins/<plugin-id>/`;
 - a plugin inventory, reload endpoint, and gated install endpoint;
@@ -79,7 +77,7 @@ This is a substantial platform foundation. It is not yet a complete plugin-way i
 - `PluginDatabase` and `PluginMigrations` are PostgreSQL/SQL-specific (`pg`, SQL statements, database URL). They are not driver-neutral.
 - Plugin routes/inventory/reload/install run before the normal auth chain and have no shared Kikx authentication/capability contract. Install is config-gated but not authenticated; reload is not gated.
 - `unloadPlugin()` does not remove HTTP mounts, migrations, scoped DB handles, authority instances, or event subscriptions. `dropPluginSubscriptions()` exists but is unused.
-- There is no contract test for authority, scoped DB, events, migrations, install/reload, or unload.
+- Authority has a scoped-revoke regression spec and the router has behavior tests, but there is no contract coverage for scoped DB, event delivery, migrations, install/reload, or unload cleanup.
 - The branch has no client view/navigation registration.
 - The branch has no generic service registration or startup/recovery registration.
 - The branch's package/config changes include plugin-specific Discord paths in core config.
@@ -357,11 +355,12 @@ wake path.
 
 ## 5. Decisions
 
-### D1 — Integrate Miri's branch as the platform foundation
+### D1 — Treat the merged Miri platform as the foundation
 
-Use `origin/miri-plugin` as the starting point, merged with current main. Preserve our
-newer scrollview, session-scope, filter, end-turn and todo-focus-index work. Do not
-cherry-pick selectively without a written conflict map.
+`origin/miri-plugin` has been merged into main at `850c811b`. Preserve the merged
+scrollview, session-scope, filter, end-turn and todo-focus-index work while hardening the
+platform. Do not re-integrate the old branch or selectively revert it without a written
+conflict map.
 
 Reason: it already supplies routes, DB, events, migrations, lifecycle and inventory.
 Rebuilding those in parallel would duplicate work and create incompatible contracts.
@@ -417,12 +416,16 @@ Recommended defaults are stated above.
 
 ### P0 — Integrate and harden the existing platform
 
-Start gate: current main and `origin/miri-plugin` both green in their own worktrees.
+Start gate: current main `850c811b` is green on the non-doc suite, and the merged
+platform work has been inspected against the current construction sites.
 
 Work:
 
-- Merge `origin/miri-plugin` into main with a conflict map; preserve both plugin-index and
-  Miri platform work.
+- Record the merged baseline (`850c811b`, 2811/2782) and remove the stale "not yet
+  merged" assumption from the campaign.
+- Resolve the duplicate `pg` package declaration created by the merge
+  (`optionalDependencies` and `dependencies` both contain `pg`).
+- Preserve both plugin-index and Miri platform work; do not re-apply the old branch.
 - Add tests for `PluginAuthority`, `PluginDatabase`, `PluginEvents`, migrations, install,
   reload and unload. Do not rely on the 12 router tests alone.
 - Fix `PluginAuthority` to use a generic plugin-owned capability table.
@@ -604,8 +607,9 @@ A phase is done only when:
 
 ## 8. Risks and constraints
 
-- **Branch divergence:** 48 ahead / 18 behind; merge-tree is clean but runtime behavior is
-  not proven until merged. Preserve current main features.
+- **Integration state:** the Miri platform is merged at `850c811b`; the combined revision
+  has a green non-doc suite, but plugin-specific contract tests and live platform
+  exercises are still owed. Preserve current main features.
 - **Concurrent docs edit:** docs tree is being rewritten; do not commit docs-bot
   in-progress files. Add the campaign plan only where the docs migration permits.
 - **Security:** plugin routes and install/reload are code-execution surfaces. Do not ship
@@ -615,6 +619,9 @@ A phase is done only when:
 - **Class override blast radius:** replacing `FrameRuntime` or `FrameRouter` can change
   every turn. Phase it, test construction, and require explicit owner approval for any
   change to core classes outside the allowlist.
+- **Duplicate dependency declaration:** the merge leaves `pg` in both
+  `optionalDependencies` and `dependencies`. Normalize to one declaration and verify the
+  optional-install behavior before release.
 - **Performance:** plugin stamping and migrations must not add per-frame database reads
   without measurement. Record latency and memory baselines.
 - **Backward compatibility:** existing plugin packages, route URLs, manifests and client
@@ -645,9 +652,9 @@ These findings are part of the plan, not objections to it:
 When implementation is authorized:
 
 ```text
-integrate origin/miri-plugin
-→ resolve conflicts manually, union semantics
+re-confirm merged baseline 850c811b and duplicate-package cleanup
 → run full non-doc suite
+→ platform contract tests
 → P0 contract tests
 → P1 registry construction
 → P2 services/startup
