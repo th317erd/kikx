@@ -586,7 +586,12 @@ export async function loadFramePage(app, sessionID, pageIndex, pageSize = 120) {
   let params = new URLSearchParams({ pageSize: String(pageSize) });
   let promise = getJSON(app, `/api/v1/sessions/${encodeURIComponent(sessionID)}/frame-page/${encodeURIComponent(pageIndex)}?${params}`)
     .then((result) => {
-      framePageRequests.set(cacheKey, { at: Date.now(), data: result.data });
+      let entry = { at: Date.now(), data: result.data };
+      framePageRequests.set(cacheKey, entry);
+      setTimeout(() => {
+        if (framePageRequests.get(cacheKey) === entry)
+          framePageRequests.delete(cacheKey);
+      }, FRAME_PAGE_CACHE_MS);
       return result.data;
     })
     .finally(() => {
