@@ -1543,6 +1543,15 @@ kikx-app {
   }
 }
 
+.kikx-compaction-card .kikx-tool-card__details pre {
+  /* Compacted memory is prose, not a shell transcript. Wrap it inside the card
+     instead of forcing a horizontal scrollbar that competes with the frame
+     disclosure. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-x: hidden;
+}
+
 .kikx-compaction-card--success {
   border-left-color: #2f8f5b;
   background: #121c16;

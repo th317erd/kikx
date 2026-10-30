@@ -128,3 +128,16 @@ test('the page source applies the active category filters to projected heads', a
   let result = await source.loadPage({ pageIndex: 0 });
   assert.deepEqual(result.items.map((item) => item.frame.id), [ 'create_2' ]);
 });
+
+test('a duplicated raw delivery projects to one page item', async () => {
+  let duplicate = { id: 'user_1', type: 'UserMessage', order: 1, authorType: 'user', content: { text: 'once' } };
+  let source = new KikxThreadPageSource({
+    pageSize: 2,
+    totalRawFrames: 2,
+    loadPage: async () => rawPage(0, [ duplicate, { ...duplicate } ]),
+    getFilters: () => null,
+  });
+
+  let result = await source.loadPage({ pageIndex: 0 });
+  assert.deepEqual(result.items.map((item) => item.key), [ 'user_1' ]);
+});

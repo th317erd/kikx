@@ -112,6 +112,16 @@ export class KikxThreadPageSource {
       heads = heads.filter((frame) => frameMatchesWindowFilters(frame, filters, query));
     heads = threadRenderFrames(heads)
       .filter((frame) => frame.deleted !== true);
+    // A projected head can be emitted from two adjacent raw windows during a
+    // tool call/result seam. Keep one row per frame id even if the seam logic
+    // ever sees the same head twice.
+    let seen = new Set();
+    heads = heads.filter((frame) => {
+      if (!frame?.id || seen.has(frame.id))
+        return false;
+      seen.add(frame.id);
+      return true;
+    });
     let items = heads.map((frame, offset) => ({
       key: frame.id,
       index: index * this.pageSize + offset,
