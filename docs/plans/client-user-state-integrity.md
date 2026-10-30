@@ -155,8 +155,17 @@ A renderer must never do these as a side effect:
 
 The composer is a view of `ComposerController`, not a copy of `_state.draft`.
 
-- On every `input`, update the controller revision and write the full local
-  draft synchronously. Debounce only the server PUT.
+- On every `input`, update the controller revision in memory immediately. Do not
+  serialize or write `localStorage` on the keystroke hot path: coalesce local
+  persistence through one write-behind job (idle callback, or a bounded short
+  timer where idle callbacks are unavailable), and force a flush on blur,
+  `visibilitychange`, `pagehide`, and before send.
+- The persistence guarantee is explicit: the in-memory controller is current
+  immediately; the local recovery copy is allowed to trail by at most one
+  bounded write-behind window, and that window is asserted by a performance and
+  recovery test. A hard process kill outside the window is the only accepted
+  recovery boundary; a render, navigation, reconnect, or ordinary lifecycle
+  event is never allowed to lose the current draft.
 - On render, construct the textarea with the controller text. After mount,
   restore value and caret only if the controller revision matches the snapshot.
 - Server hydration:
@@ -167,8 +176,8 @@ The composer is a view of `ComposerController`, not a copy of `_state.draft`.
   - deletion is idempotent and cannot remove a different draft id.
 - Add an explicit recovery surface: if a local draft exists but server hydration
   fails or conflicts, keep it and show a non-destructive “restore” state.
-- Add `pagehide`/`visibilitychange` synchronous flush as a last-resort local
-  write, never as the only write.
+- Add explicit `pagehide`/`visibilitychange` flush and a test that it runs
+  without waiting for the idle write-behind job.
 
 ### 4. Question answer durability
 
@@ -218,6 +227,90 @@ No component should:
 - install a listener that captures a component instance without a teardown
   token;
 - mutate a shared map from an event whose element may be stale.
+
+## State-update test contract
+
+This is a primary quality gate, not an afterthought. Every state mutation emitted
+by a controller or component must be observable in tests as a typed record, and
+the tests must assert the whole record set, not just the final visible text.
+
+### Mutation ledger
+
+Test mode records each update with at least:
+
+```js
+{
+  scope,          // 'composer' | 'question-draft' | 'expansion' | 'view' | 'frame'
+  owner,          // controller/component identity
+  key,            // exact changed field
+  previous,
+  next,
+  operation,      // setText, restore, clear, prune, toggle, ...
+  revision,       // monotonic per controller
+  epoch,          // session/render generation
+  cause,          // input, server-load, user-toggle, runtime-event, ...
+  sessionID,
+  frameID,
+  questionID,
+  at
+}
+```
+
+Controllers expose their mutation ledger to the test harness. Production code
+does not log draft text or secrets.
+
+### Required assertions for every state-update test
+
+1. **Expected:** the operation emits exactly the expected mutations; no extra
+   notification, no missing notification. Assert the full ordered ledger.
+2. **Breadth:** only the intended key/controller changes. A component update must
+   not replace a parent object, reset an unrelated field, or trigger a blanket
+   app-state assignment.
+3. **Containment:** a component's state update never escapes its ownership scope
+   into parent or sibling controllers. The test harness snapshots parent and
+   sibling controllers before and after and asserts they are unchanged.
+4. **Correctness:** each value, revision, epoch, and cause is correct, and domain
+   invariants hold (for example, a non-empty local draft cannot become empty
+   unless delivery/authoritative deletion was proven).
+5. **Ordering:** revisions strictly increase for a controller; stale async
+   responses cannot apply after newer local input; duplicate/coalesced events
+   produce one logical mutation; out-of-order resolutions leave the newer value
+   intact.
+
+### Test matrix
+
+Run these through mini-dom/JSDOM for deterministic event/state tests, and through
+a real browser for native `<details>`, textarea selection, and lifecycle events:
+
+- Composer: each keystroke, rapid burst, empty input, large multiline input,
+  blur, reload hydration, empty server result, stale server result, failed PUT,
+  reordered PUT/DELETE, send acknowledgement, session switch and return.
+- Question drafts: one question, sibling questions, question batch, terminal
+  status, partial/truncated fetch, reconnect, inline frame and Inbox card sharing
+  one draft, stale question event.
+- Expansion: top-level end-turn disclosure, nested question disclosure, forced
+  frame rebuild, forced shell render, frame type transition, stale detached
+  `toggle`, session switch and return, reload.
+- Focus/caret/scroll: typing while a live frame arrives, filter change, scroll
+  anchor restore, composer focus after render, selection direction.
+- Render control: every runtime event type, forced repaint storm, no full shell
+  render while dirty, no render from scroll/measurement.
+
+Use controlled promises and a mutation recorder for async ordering. Add a
+property/fuzz test that generates operation sequences (type, expand, question
+update, reconnect, session switch, stale response) and asserts the five
+properties above after every step.
+
+### CI gates
+
+- A component that writes parent/app state directly fails an ownership test.
+- An operation that emits an unexpected extra mutation fails.
+- An operation that emits mutations in non-monotonic revision order fails.
+- An operation that changes a parent/sibling scope fails.
+- A typing test that performs synchronous `localStorage` serialization per
+  keystroke fails the typing-performance budget (no long task attributable to
+  persistence).
+- A full shell render while composer/question state is dirty fails.
 
 ## Verification strategy
 
