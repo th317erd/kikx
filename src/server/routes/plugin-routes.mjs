@@ -110,6 +110,12 @@ export async function handlePluginRoutes({ request, response, url, context, json
 
     let before = new Set((registry._pluginRegistrations || new Map()).keys());
     let failuresBefore = (registry._pluginLoadErrors || []).length;
+    // Plugins this install brought in - not plugins that were already loaded. The
+    // distinction is the whole safety property here: migrations.run() applies every
+    // registered directory, so a migration failure is not attributable to one plugin, and
+    // unloading "everything that declared migrations" would tear down plugins that were
+    // installed and healthy before this request arrived.
+    let added = [];
     try {
       const { loadPlugins } = await import('../../core/plugins/plugin-loader.mjs');
       await loadPlugins({
@@ -118,6 +124,10 @@ export async function handlePluginRoutes({ request, response, url, context, json
         commandRegistry: context.require('commandRegistry'),
         context,
       });
+
+      // Computed before migrations run, for the reason above: if the migration step
+      // throws, this is the only accurate record of what this request added.
+      added = [...(registry._pluginRegistrations || new Map()).keys()].filter((k) => !before.has(k));
 
       // Migrations run at startup, so a plugin installed afterwards has registered its
       // SQL and never had it applied - it would load and then fail on its first query.
@@ -132,13 +142,35 @@ export async function handlePluginRoutes({ request, response, url, context, json
           console.warn('[plugin-install] migrations applied:', JSON.stringify(context.require('pluginMigrations').applied || []));
       }
     } catch (error) {
+      // An install that reports failure must not leave the plugin running. The load above
+      // succeeded, so the registry now holds a plugin whose SQL was never applied: its
+      // mount is reachable and its first query fails at the caller's expense. Answering
+      // 500 while keeping it loaded also makes a retry install it a second time.
+      //
+      // Only `added` is undone. Plugins that predate this request keep working even
+      // though the failing directory may be shared with them.
+      let unloaded = [];
+      for (let name of added) {
+        try {
+          const { unloadPlugin } = await import('../../core/plugins/plugin-loader.mjs');
+          await unloadPlugin(registry, name, { logger: console });
+          unloaded.push(name);
+        } catch (unloadError) {
+          // A rollback failure must not replace the migration failure the caller needs to
+          // see. It is reported alongside instead of masking it.
+          console.warn(`[plugin-install] failed to unload "${name}" after a failed install:`, unloadError?.message);
+        }
+      }
       response.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
-      response.end(JSON.stringify({ error: { message: String(error?.message || error) } }));
+      response.end(JSON.stringify({
+        error: { message: String(error?.message || error) },
+        data: { path: target, added, unloaded },
+      }));
       return true;
     }
 
     let after = new Set((registry._pluginRegistrations || new Map()).keys());
-    let added = [...after].filter((k) => !before.has(k));
+    // `added` was computed before migrations ran; nothing loads during the migration step.
     let newFailures = (registry._pluginLoadErrors || []).slice(failuresBefore);
 
     response.writeHead(added.length ? 201 : 200, { 'Content-Type': 'application/json; charset=utf-8' });
