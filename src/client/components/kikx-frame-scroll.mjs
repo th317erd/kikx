@@ -50,6 +50,11 @@ export function captureRenderSnapshot(app) {
 
   let composer = app.querySelector('textarea[name="message"]');
   let composerFocused = app.contains(document.activeElement) && document.activeElement === composer;
+  // The header search is outside the composer. A full shell repaint detaches
+  // it too, and detaching a focused input blurs it. Capture the caret so a
+  // query-triggered repaint cannot eat the next key.
+  let search = app.querySelector('.kikx-session-search input');
+  let searchFocused = Boolean(search && document.activeElement === search);
   // A plugin view's own input is not the composer, so nothing above captures it.
   let viewFocus = captureViewSurfaceFocus(app);
   let locked = isScrollLockedForSession(app, sessionID);
@@ -69,6 +74,11 @@ export function captureRenderSnapshot(app) {
     composerSelectionEnd: composerFocused ? composer.selectionEnd : null,
     composerSelectionDirection: composerFocused ? composer.selectionDirection : 'none',
     composerValue: composer && typeof composer.value === 'string' ? composer.value : '',
+    searchFocused,
+    searchValue: search && typeof search.value === 'string' ? search.value : '',
+    searchSelectionStart: searchFocused ? search.selectionStart : null,
+    searchSelectionEnd: searchFocused ? search.selectionEnd : null,
+    searchSelectionDirection: searchFocused ? search.selectionDirection : 'none',
     frameListNearBottom: app._frameListAnchoredToBottom,
     scrollFocus,
     viewFocus,
@@ -121,6 +131,22 @@ export function afterRender(app, snapshot = {}) {
   }
   if (composer && composer.value !== (app._state.draft || ''))
     composer.value = app._state.draft || '';
+
+  // Restore the header search before scroll work. The rebuilt input is the
+  // only control that can receive the next character, and restoring its caret
+  // here keeps a repaint from looking like the field was clicked away.
+  let search = app.querySelector('.kikx-session-search input');
+  if (snapshot.searchFocused && search) {
+    search.focus({ preventScroll: true });
+    let max = search.value.length;
+    if (Number.isInteger(snapshot.searchSelectionStart) && Number.isInteger(snapshot.searchSelectionEnd)) {
+      search.setSelectionRange(
+        Math.min(snapshot.searchSelectionStart, max),
+        Math.min(snapshot.searchSelectionEnd, max),
+        snapshot.searchSelectionDirection || 'none',
+      );
+    }
+  }
 
   // Reconnect before scheduling any placement. connectFrameListObserver tears
   // down the previous observer, and that teardown cancels the active scroll

@@ -124,6 +124,31 @@ test('Puppeteer preserves typed text and expansion across a full shell render', 
     await waitForComposer(page);
     let afterWipe = await page.evaluate(() => document.querySelector('textarea[name="message"]')?.value || '');
     assert.equal(afterWipe, text, 'a programmatic wipe must be recoverable');
+
+    // The header search has the same contract. A full repaint used to detach
+    // the focused input, so the next keystroke went nowhere. Keep the value,
+    // focus, and caret across the rebuild.
+    await page.click('.kikx-session-search input');
+    await page.keyboard.type('Please');
+    await page.evaluate(() => {
+      let input = document.querySelector('.kikx-session-search input');
+      input.setSelectionRange(2, 4);
+    });
+    await page.evaluate(() => document.querySelector('kikx-app')._render());
+    await page.waitForSelector('.kikx-session-search input', { timeout: 15000 });
+    let searchState = await page.evaluate(() => {
+      let input = document.querySelector('.kikx-session-search input');
+      return {
+        focused: document.activeElement === input,
+        value: input?.value || '',
+        start: input?.selectionStart ?? null,
+        end: input?.selectionEnd ?? null,
+      };
+    });
+    assert.equal(searchState.focused, true, 'full shell render must not blur the search field');
+    assert.equal(searchState.value, 'Please', 'the search query must survive the rebuild');
+    assert.equal(searchState.start, 2, 'the search caret start must survive the rebuild');
+    assert.equal(searchState.end, 4, 'the search caret end must survive the rebuild');
   } finally {
     await browser?.close();
     await fixture.close();

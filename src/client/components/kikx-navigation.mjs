@@ -445,7 +445,24 @@ function reloadVisibleWindow(app) {
   // paged threads, so update its context and stop.
   let view = app.querySelector?.('kikx-chat-view');
   if (sessionID && view?.usesPagedScrollview === true) {
+    let search = app.querySelector?.('.kikx-session-search input');
+    let restoreSearch = search && document.activeElement === search
+      ? { start: search.selectionStart, end: search.selectionEnd, direction: search.selectionDirection }
+      : null;
     app._syncFrameThread?.(sessionID, { force: true });
+    // Re-scoping a page source normally leaves the header untouched, but a
+    // mounted shell may repaint around the thread. Do not let a query change
+    // cost the user the caret that is producing it.
+    let nextSearch = app.querySelector?.('.kikx-session-search input');
+    if (restoreSearch && nextSearch) {
+      nextSearch.focus({ preventScroll: true });
+      let max = nextSearch.value.length;
+      nextSearch.setSelectionRange(
+        Math.min(restoreSearch.start, max),
+        Math.min(restoreSearch.end, max),
+        restoreSearch.direction || 'none',
+      );
+    }
     return;
   }
 
