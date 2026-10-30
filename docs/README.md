@@ -159,6 +159,7 @@ These dated plans and reports are implementation evidence, not general
 architecture. Their own authority banners govern how they may be used.
 
 - [Plugin-way gap analysis, 2026-10-29](./reports/plugin-way-gap-analysis-2026-10-29.md)
+- [Discord plugin status, 2026-10-30](./reports/discord-plugin-status-2026-10-30.md)
 - [Sidebar scope seam, 2026-10-30](./reports/sidebar-scope-seam-2026-10-30.md)
 - [Thinking rack repaint, 2026-10-30](./reports/thinking-rack-repaint-2026-10-30.md)
 - [Composer emoji typeahead, 2026-10-30](./reports/emoji-typeahead-2026-10-30.md)

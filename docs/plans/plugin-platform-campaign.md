@@ -1047,3 +1047,50 @@ Each phase is an independently green landing and a one-unit revert. Do not push 
 failing gate. Do not deploy. Re-run the full suite after merging current main and after
 any upstream sync.
 
+
+### P7 live proof — Discord inbound, measured on a running process (2026-10-30)
+
+Recorded because it changes what is known, not because it closes a checklist line. Every
+"inbound routes to the bound session" assertion up to now was a unit test driving an
+injected double, and the largest green-to-reality gap in the Discord plugin was that
+**no production code path could write `discord_channel_session`** — the tests fabricated
+a binding row the running system could not create.
+
+Measured against `src/server/index.mjs` booted from this tree on `:3019`, with a
+self-generated Ed25519 keypair and no bot token (so no gateway competed with the live
+instance):
+
+- unsigned POST → `401 invalid request signature / missing signature headers`;
+- signed PING → `200 {"type":1}`;
+- signed interaction from an actor with **no** grant → `202 not framed: not_authorized`,
+  and zero rows in `discord_message_frame` (deny-by-default holds, and denies *before*
+  any write);
+- grant written through the plugin's own `discord:policy_grant` tool → `granted:true`,
+  `verified:true`;
+- same signed interaction → `202 {sessionID, frameID}`;
+- **the `discord_channel_session` row was created by the production auto-bind path**,
+  not by the test;
+- the session API on that same process returns the frame:
+  `UserMessage "[discord:e2e-prober] e2e inbound proof e2e-after-grant"`;
+- replaying the same message id → `202 not framed: duplicate` (dedupe holds);
+- deleting the grant → `202 not framed: not_authorized` again.
+
+So the chain `signed request → capability gate → binding → frame in a real session` is
+proven end-to-end at the system boundary, and the two defects that made the first
+attempt fail were both mine, not the product's: the dev process pointed at AeorDB `:6830`
+while the session I had chosen lived in the host store on `:6833`, and `pkill -f` matched
+its own wrapper shell.
+
+Found while doing it, and fixed in `kikx-plugin-discord` `00af1d6`: there was a
+`discord:policy_grant` tool and **no revoke tool**, so a capability could only be taken
+away by hand-written SQL. Under the owner's strict-security ruling that is a one-way
+door, not a control. `discord:policy_revoke` now mirrors the grant's narrow remit and
+reports the effect rather than the intent — a scoped revoke that leaves a broader
+unscoped grant authorizing the action returns `revoked:false` with `stillAllowed:true`
+and tells the caller to repeat with `allScopes:true`.
+
+Still **not** proven: a real Discord message reaching this code. The gateway reached
+READY with the real Miri token and the fatal-close latch is proven against Discord's own
+4004, but no `MESSAGE_CREATE` has ever been delivered by Discord into a Kikx session.
+That needs a token in the 3003 container plus the Message Content intent, and it is the
+remaining live gap.
