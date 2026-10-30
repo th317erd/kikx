@@ -285,7 +285,7 @@ Main application descriptor shape:
 {
   kind: 'main-app',
   id: 'plugin-id.main-app',
-  moduleURL: '/api/v1/plugin-assets/plugin-id/client/app.mjs',
+  moduleURL: '/api/v1/plugin-assets/plugin-id/app.mjs',
   tagName: 'kikx-app',
   dispose
 }
@@ -305,7 +305,7 @@ View descriptor shape:
   label: 'View title',
   icon: 'icon-name',
   scope: 'session' | 'workspace' | 'global',
-  moduleURL: '/api/v1/plugin-assets/plugin-id/client/view.mjs',
+  moduleURL: '/api/v1/plugin-assets/plugin-id/view.mjs',
   tagName: 'plugin-view-id',
   dispose
 }

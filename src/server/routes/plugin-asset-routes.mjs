@@ -39,6 +39,12 @@ export async function handlePluginAssetRoutes({ request, response, url, context 
     ? registry.getPluginPath(pluginID)
     : null;
   if (!pluginPath) {
+    let record = registry._pluginRegistrations instanceof Map
+      ? registry._pluginRegistrations.get(pluginID)
+      : null;
+    pluginPath = record?.pluginPath || null;
+  }
+  if (!pluginPath) {
     writeText(response, 404, 'Not Found');
     return true;
   }

@@ -36,6 +36,10 @@ export async function loadClientComponentDescriptors(components = []) {
   return descriptors;
 }
 
+export function selectMainAppDescriptor(components = []) {
+  return normalizeDescriptors(components).find((component) => component.kind === 'main-app') || null;
+}
+
 export function resolveFrameComponentDescriptor(frame, state = {}) {
   if (!frame)
     return null;
@@ -58,7 +62,16 @@ export function resolveFrameComponentDescriptor(frame, state = {}) {
   return null;
 }
 
-const CLIENT_COMPONENT_KINDS = [ 'frame', 'tool', 'agent-config-form' ];
+const CLIENT_COMPONENT_KINDS = [
+  'frame',
+  'tool',
+  'agent-config-form',
+  'main-app',
+  'view',
+  'sidebar-item',
+  'toolbar-action',
+  'settings-panel',
+];
 
 function normalizeDescriptors(components) {
   return (Array.isArray(components) ? components : [])

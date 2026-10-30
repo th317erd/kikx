@@ -674,6 +674,12 @@ export async function createServer(options = {}) {
     }));
   }
 
+  // Plugin services are constructed only after every core service they may depend
+  // on exists. A required service failure stops boot rather than producing a
+  // half-live server.
+  if (context.has('pluginRegistry') && typeof context.require('pluginRegistry').initializePluginServices === 'function')
+    await context.require('pluginRegistry').initializePluginServices(context);
+
   // Readiness gate for probes and the deploy verifier: false until startup
   // recovery and the scheduled-frame worker have settled, so a probe never
   // observes the transient window before persisted scheduled frames are loaded.

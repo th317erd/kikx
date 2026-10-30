@@ -358,7 +358,7 @@ function createPluginSetupContext({ registry, commandRegistry, context, pluginPa
     AgentInterface,
     registerClass,
     registerTool: (...args) => registry.registerTool(...attributeToPlugin(args, pluginName)),
-    mountHttp: (handler) => registry.mountHttp(pluginName, handler),
+    mountHttp: (handler, options = {}) => registry.mountHttp(pluginName, handler, options),
     // Scoped database handle. Enforces the plugin's table prefix and refuses DDL.
     db: () => registry.getPluginDatabase(pluginName),
     // Deny-by-default capability check. A transport must call this before acting.
@@ -389,6 +389,8 @@ function createPluginSetupContext({ registry, commandRegistry, context, pluginPa
         throw new Error('subscribe() called before the plugin event bus was attached');
       return registry._pluginEventBus.subscribe(pluginName, handler, options);
     },
+    registerService: (name, definition = {}, options = {}) =>
+      registry.registerService(name, definition, withPluginName(options, pluginName)),
     registerMigrations: (options = {}) => {
       // A relative directory is resolved against the plugin, so a plugin never has to
       // know where it is installed.

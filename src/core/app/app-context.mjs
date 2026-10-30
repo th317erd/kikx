@@ -19,6 +19,11 @@ export class AppContext {
     return this;
   }
 
+  delete(name) {
+    this._services.delete(name);
+    return this;
+  }
+
   get(name) {
     return this._services.get(name);
   }

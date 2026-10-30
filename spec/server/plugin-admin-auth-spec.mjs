@@ -236,13 +236,12 @@ test('an authenticated install still honours the disabled config gate', async ()
   assert.equal(response.statusCode, 403);
 });
 
-test('plugin mounts stay reachable without an identity', async () => {
-  // Deliberate scope boundary. Miri serves /health to an unauthenticated deploy verifier,
-  // and per-route auth descriptors (campaign 4.3) are the designed contract for mounts.
-  // Losing this property silently would break kikx-docker/verify-miri-plugin.sh.
+test('a plugin mount can explicitly opt into public access', async () => {
+  // Miri serves /health to an unauthenticated deploy verifier. Mounts are
+  // authenticated by default; this route is an explicit, reviewed public opt-in.
   let seen = null;
   let router = new PluginRouter({ logger: { error() {} } });
-  router.mount('miri', async ({ subPath }) => { seen = subPath; });
+  router.mount('miri', async ({ subPath }) => { seen = subPath; }, { auth: 'public' });
   let response = fakeResponse();
 
   let handled = await handlePluginRoutes({

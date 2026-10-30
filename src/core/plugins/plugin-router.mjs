@@ -20,6 +20,7 @@ export const PLUGIN_MOUNT_ROOT = '/api/plugins/';
 const RESERVED_PLUGIN_IDS = new Set(['plugins', 'v1', 'api']);
 const DEFAULT_HANDLER_TIMEOUT_MS = 30000;
 const DEFAULT_MAX_BODY_BYTES = 5 * 1024 * 1024;
+const AUTH_MODES = new Set(['required', 'public']);
 
 export class PluginRouter {
   constructor(options = {}) {
@@ -40,9 +41,11 @@ export class PluginRouter {
     return `${PLUGIN_MOUNT_ROOT}${id}/`;
   }
 
-  mount(pluginId, handler) {
+  mount(pluginId, handler, { auth = 'required' } = {}) {
     if (typeof handler !== 'function')
       throw new TypeError('mount requires a handler function');
+    if (!AUTH_MODES.has(auth))
+      throw new TypeError(`mount auth must be "required" or "public", got "${auth}"`);
     let path = PluginRouter.mountPathFor(pluginId);
     let existing = this.mounts.get(pluginId);
     if (existing) {
@@ -52,7 +55,7 @@ export class PluginRouter {
         throw new TypeError(`plugin "${pluginId}" already mounted at ${existing.path}, cannot move to ${path}`);
       this.mounts.delete(pluginId);
     }
-    this.mounts.set(pluginId, { pluginId, path, handler });
+    this.mounts.set(pluginId, { pluginId, path, handler, auth });
     return path;
   }
 
@@ -80,8 +83,9 @@ export class PluginRouter {
   async invoke({ match, request, response, context }) {
     let timer = null;
     try {
+      let identity = await this.#authorize(match.mount, request, context);
       await Promise.race([
-        this.#dispatch(match, request, response, context),
+        this.#dispatch(match, request, response, context, identity),
         new Promise((_resolve, reject) => {
           timer = setTimeout(
             () => reject(Object.assign(new Error('Plugin handler timed out'), { status: 504 })),
@@ -107,7 +111,28 @@ export class PluginRouter {
     }
   }
 
-  async #dispatch(match, request, response, context) {
+  async #authorize(mount, request, context) {
+    if (mount.auth === 'public')
+      return null;
+
+    let accountStore = context?.has?.('accountStore')
+      ? context.require('accountStore')
+      : context?.accountStore || null;
+    if (!accountStore || typeof accountStore.resolveIdentity !== 'function')
+      throw Object.assign(new Error('Plugin mount requires an authenticated Kikx identity'), { status: 503 });
+
+    let identity;
+    try {
+      identity = await accountStore.resolveIdentity(request);
+    } catch (error) {
+      throw Object.assign(new Error('Sign in required to access this plugin route'), { status: 401 });
+    }
+    if (!identity)
+      throw Object.assign(new Error('Sign in required to access this plugin route'), { status: 401 });
+    return identity;
+  }
+
+  async #dispatch(match, request, response, context, identity = null) {
     let rawBody = await this.#bufferBody(request);
 
     // The plugin sees the raw bytes and may parse them itself. `json()` is a
@@ -131,6 +156,7 @@ export class PluginRouter {
       response,
       context,
       pluginId: match.mount.pluginId,
+      identity,
       subPath: match.subPath,
       mountPath: match.mount.path,
       url,

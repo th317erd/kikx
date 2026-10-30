@@ -21,8 +21,12 @@ export class PluginRegistry extends ClassRegistry {
     this._frameComponents = new Map();
     this._toolComponents = new Map();
     this._agentConfigForms = new Map();
+    this._clientSurfaces = new Map();
     this._tagDefinitions = new Map();
     this._frameIndexes = new Map();
+    this._pluginServices = new Map();
+    this._pluginServiceInstances = new Map();
+    this._pluginServiceContext = null;
     this._pluginPaths = new Map();
     // Every registration a plugin made, with a closure that undoes exactly that one
     // registration. Unload replays it in reverse, so an override falls back to what was
@@ -54,6 +58,85 @@ export class PluginRegistry extends ClassRegistry {
 
   getPluginPath(pluginID) {
     return this._pluginPaths.get(pluginID) || null;
+  }
+
+  // Plugin-owned services. Factories run after the core services exist, in
+  // dependency order; a service may replace a context service, and unload restores
+  // whatever was there before it.
+  registerService(name, definition = {}, options = {}) {
+    let serviceName = normalizeRequiredString(name, 'service name');
+    let factory = typeof definition === 'function' ? definition : definition.factory;
+    if (typeof factory !== 'function')
+      throw new TypeError(`Service "${serviceName}" requires a factory function`);
+    let pluginName = options.pluginName || null;
+    let previous = this._pluginServices.get(serviceName);
+    let entry = {
+      name: serviceName,
+      pluginName,
+      factory,
+      dependsOn: Array.isArray(definition.dependsOn) ? [ ...definition.dependsOn ] : [],
+      shutdown: typeof definition.shutdown === 'function' ? definition.shutdown : null,
+    };
+    this._pluginServices.set(serviceName, entry);
+    this._recordOwnership(pluginName, 'service', serviceName, () => {
+      if (previous === undefined)
+        this._pluginServices.delete(serviceName);
+      else
+        this._pluginServices.set(serviceName, previous);
+    });
+    return entry;
+  }
+
+  listPluginServices() {
+    return [ ...this._pluginServices.values() ].map(({ name, pluginName, dependsOn }) => ({ name, pluginName, dependsOn: [ ...dependsOn ] }));
+  }
+
+  async initializePluginServices(context) {
+    this._pluginServiceContext = context;
+    let pending = new Map(this._pluginServices);
+    while (pending.size > 0) {
+      let progressed = false;
+      for (let [name, entry] of pending) {
+        if (entry.dependsOn.some((dependency) => pending.has(dependency)))
+          continue;
+        let missing = entry.dependsOn.filter((dependency) => !context.has?.(dependency));
+        if (missing.length > 0)
+          throw new Error(`Service "${name}" requires missing service(s): ${missing.join(', ')}`);
+        let instance = await entry.factory(context);
+        let previous = context.has?.(name) ? context.require(name) : undefined;
+        context.set(name, instance);
+        this._pluginServiceInstances.set(name, { ...entry, instance, previous });
+        pending.delete(name);
+        progressed = true;
+      }
+      if (!progressed) {
+        let names = [ ...pending.keys() ].join(', ');
+        throw new Error(`Plugin service dependency cycle or unresolved dependency: ${names}`);
+      }
+    }
+    return this.listPluginServices();
+  }
+
+  async releasePluginServices(pluginName) {
+    let context = this._pluginServiceContext;
+    let entries = [ ...this._pluginServiceInstances.entries() ]
+      .filter(([, entry]) => entry.pluginName === pluginName)
+      .reverse();
+    for (let [name, entry] of entries) {
+      this._pluginServiceInstances.delete(name);
+      try {
+        await entry.shutdown?.(entry.instance, context);
+      } catch (error) {
+        this.logger?.warn?.(`releasePluginServices("${pluginName}"): shutdown for "${name}" failed: ${error?.message || error}`);
+      }
+      if (context?.has?.(name) && context.require(name) === entry.instance) {
+        if (entry.previous === undefined)
+          context.delete?.(name);
+        else
+          context.set(name, entry.previous);
+      }
+    }
+    return entries.length;
   }
 
   // Schema migrations. The directory is relative to the plugin, resolved by the caller.
@@ -113,8 +196,8 @@ export class PluginRegistry extends ClassRegistry {
   }
 
   // HTTP mounting. A plugin gets one mount point; everything below it is its own.
-  mountHttp(pluginId, handler) {
-    let path = this.getPluginRouter().mount(pluginId, handler);
+  mountHttp(pluginId, handler, options = {}) {
+    let path = this.getPluginRouter().mount(pluginId, handler, options);
     this._recordOwnership(pluginId, "http-mount", path, () => {
       this._pluginRouter?.unmount?.(pluginId);
     });
@@ -349,9 +432,46 @@ export class PluginRegistry extends ClassRegistry {
         return this.registerToolComponent(key, descriptor, options);
       case 'agent-config-form':
         return this.registerAgentConfigForm(key, descriptor, options);
+      case 'main-app':
+      case 'view':
+      case 'sidebar-item':
+      case 'toolbar-action':
+      case 'settings-panel':
+        return this.registerClientSurface(kind, key, descriptor, options);
       default:
         throw new TypeError(`Unknown client component kind: ${kind}`);
     }
+  }
+
+  // Main shell and composition surfaces contributed by plugins. The descriptor
+  // carries the same tagName/moduleURL contract as frame components; the key is
+  // the stable surface id within its kind.
+  registerClientSurface(kind, key, descriptor = {}, options = {}) {
+    let normalized = normalizeComponentDescriptor(descriptor, {
+      kind,
+      surfaceID: key,
+    });
+    let pluginName = options.pluginName || null;
+    let mapKey = `${kind}:${normalized.surfaceID}`;
+    let previous = this._clientSurfaces.get(mapKey);
+    if (previous)
+      this.logger.warn?.(`Client surface "${mapKey}" is being overridden`);
+    this._clientSurfaces.set(mapKey, normalized);
+    this._recordOwnership(pluginName, 'client-surface', mapKey, () => {
+      if (previous === undefined)
+        this._clientSurfaces.delete(mapKey);
+      else
+        this._clientSurfaces.set(mapKey, previous);
+    });
+    return normalized;
+  }
+
+  registerMainApp(key, descriptor = {}, options = {}) {
+    return this.registerClientSurface('main-app', key, descriptor, options);
+  }
+
+  getMainAppDescriptor() {
+    return [ ...this._clientSurfaces.values() ].find((descriptor) => descriptor.kind === 'main-app') || null;
   }
 
   registerFrameComponent(frameType, descriptor = {}, options = {}) {
@@ -469,6 +589,7 @@ export class PluginRegistry extends ClassRegistry {
       ...this._frameComponents.values(),
       ...this._toolComponents.values(),
       ...this._agentConfigForms.values(),
+      ...this._clientSurfaces.values(),
     ].map((descriptor) => ({ ...descriptor }));
   }
 
@@ -530,6 +651,8 @@ export class PluginRegistry extends ClassRegistry {
       }
     }
 
+    await this.releasePluginServices(pluginName);
+
     // Lazily created resources are not registrations, so they are not in the ledger,
     // but they hold a pool reference and a cache slot that would outlive the plugin.
     this._pluginAuthorities?.delete(pluginName);
@@ -558,8 +681,9 @@ function isSubclassOf(candidate, BaseClass) {
 function normalizeComponentDescriptor(descriptor, defaults = {}) {
   let input = normalizeDescriptorInput(descriptor);
   let kind = normalizeRequiredString(input.kind || defaults.kind, 'component kind');
-  if (kind !== 'frame' && kind !== 'tool' && kind !== 'agent-config-form')
-    throw new TypeError('Component kind must be "frame", "tool" or "agent-config-form"');
+  let surfaceKinds = new Set(['main-app', 'view', 'sidebar-item', 'toolbar-action', 'settings-panel']);
+  if (kind !== 'frame' && kind !== 'tool' && kind !== 'agent-config-form' && !surfaceKinds.has(kind))
+    throw new TypeError('Component kind must be frame, tool, agent-config-form, main-app, view, sidebar-item, toolbar-action or settings-panel');
 
   let output = {
     ...input,
@@ -572,8 +696,10 @@ function normalizeComponentDescriptor(descriptor, defaults = {}) {
     output.frameType = normalizeRequiredString(input.frameType || defaults.frameType, 'frameType');
   else if (kind === 'tool')
     output.toolName = normalizeRequiredString(input.toolName || defaults.toolName, 'toolName');
-  else
+  else if (kind === 'agent-config-form')
     output.pluginID = normalizeRequiredString(input.pluginID || defaults.pluginID, 'pluginID');
+  else
+    output.surfaceID = normalizeRequiredString(input.surfaceID || input.id || defaults.surfaceID, 'surface id');
 
   delete output.tag;
   delete output.elementName;

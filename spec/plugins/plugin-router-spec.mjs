@@ -29,7 +29,7 @@ function fakeResponse() {
 
 function mountWith(handler, options = {}) {
   let router = new PluginRouter({ logger: { error() {} }, ...options });
-  let path = router.mount('miri', handler);
+  let path = router.mount('miri', handler, { auth: 'public' });
   return { router, path };
 }
 
@@ -56,8 +56,8 @@ test('re-mounting the same plugin replaces its handler', () => {
   let router = new PluginRouter({ logger: { error() {} } });
   let first = async () => 'first';
   let second = async () => 'second';
-  router.mount('miri', first);
-  router.mount('miri', second);
+  router.mount('miri', first, { auth: 'public' });
+  router.mount('miri', second, { auth: 'public' });
   let mounts = router.listMounts();
   assert.equal(mounts.length, 1);
   assert.equal(mounts[0].pluginId, 'miri');
@@ -134,4 +134,59 @@ test('a declared oversize content-length is refused before reading', async () =>
     context: {},
   });
   assert.equal(response.statusCode, 413);
+});
+
+
+test('a mount is authenticated by default', async () => {
+  let reached = false;
+  let router = new PluginRouter({ logger: { error() {} } });
+  router.mount('miri', async () => { reached = true; });
+  let response = fakeResponse();
+  await router.invoke({
+    match: router.match(`${PLUGIN_MOUNT_ROOT}miri/private`),
+    request: fakeRequest(),
+    response,
+    context: {},
+  });
+  assert.equal(response.statusCode, 503);
+  assert.equal(reached, false);
+});
+
+test('an authenticated mount rejects missing identity and passes valid identity to the handler', async () => {
+  let seen = null;
+  let router = new PluginRouter({ logger: { error() {} } });
+  router.mount('miri', async ({ identity }) => { seen = identity; });
+  let response = fakeResponse();
+  await router.invoke({
+    match: router.match(`${PLUGIN_MOUNT_ROOT}miri/private`),
+    request: fakeRequest(),
+    response,
+    context: { has: () => true, require: () => ({ resolveIdentity: async () => null }) },
+  });
+  assert.equal(response.statusCode, 401);
+  assert.equal(seen, null);
+
+  response = fakeResponse();
+  await router.invoke({
+    match: router.match(`${PLUGIN_MOUNT_ROOT}miri/private`),
+    request: fakeRequest(),
+    response,
+    context: { has: () => true, require: () => ({ resolveIdentity: async () => ({ id: 'user_1' }) }) },
+  });
+  assert.deepEqual(seen, { id: 'user_1' });
+});
+
+test('a public mount is explicitly opt-in', async () => {
+  let reached = false;
+  let router = new PluginRouter({ logger: { error() {} } });
+  router.mount('miri', async () => { reached = true; }, { auth: 'public' });
+  let response = fakeResponse();
+  await router.invoke({
+    match: router.match(`${PLUGIN_MOUNT_ROOT}miri/health`),
+    request: fakeRequest(),
+    response,
+    context: {},
+  });
+  assert.equal(response.statusCode, 0);
+  assert.equal(reached, true);
 });

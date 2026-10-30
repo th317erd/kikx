@@ -5,6 +5,7 @@ import test from 'node:test';
 
 import { PermissionRequiredError } from '../../src/core/permissions/permission-required-error.mjs';
 import { AgentInterface, PluginInterface, PluginRegistry } from '../../src/core/plugins/index.mjs';
+import { AppContext } from '../../src/core/app/app-context.mjs';
 
 class EchoTool extends PluginInterface {
   static pluginID = 'test';
@@ -300,4 +301,56 @@ test('PluginInterface executes through an explicit permission boundary', async (
   assert.equal(await tool.execute({ command: 'date' }), 'should not run');
   assert.equal(calls.length, 1);
   assert.equal(calls[0].featureName, 'test:danger');
+});
+
+test('PluginRegistry registers a main-app shell and releases it with its plugin', async () => {
+  let registry = new PluginRegistry({ logger: { warn() {} } });
+
+  let descriptor = registry.registerMainApp('shell', {
+    tagName: 'kikx-app',
+    moduleURL: '/api/v1/plugin-assets/main-app/client/app.mjs',
+  }, { pluginName: 'main-app' });
+
+  assert.equal(descriptor.kind, 'main-app');
+  assert.equal(descriptor.surfaceID, 'shell');
+  assert.equal(registry.getMainAppDescriptor().tagName, 'kikx-app');
+  assert.equal(registry.listClientComponentDescriptors().some((item) => item.kind === 'main-app'), true);
+
+  await registry.releasePlugin('main-app');
+  assert.equal(registry.getMainAppDescriptor(), null);
+  assert.equal(registry.listClientComponentDescriptors().some((item) => item.kind === 'main-app'), false);
+});
+
+
+test('plugin services initialize in dependency order and release cleanly', async () => {
+  let registry = new PluginRegistry({ logger: { warn() {} } });
+  let context = new AppContext({ base: { value: 1 } });
+  let shutdowns = [];
+  let initialized = [];
+
+  registry.registerService('later', {
+    dependsOn: [ 'earlier' ],
+    factory: () => {
+      initialized.push('later');
+      return { value: context.require('earlier').value + 1 };
+    },
+    shutdown: (instance) => { shutdowns.push([ 'later', instance.value ]); },
+  }, { pluginName: 'svc-plugin' });
+  registry.registerService('earlier', {
+    factory: () => {
+      initialized.push('earlier');
+      return { value: context.require('base').value };
+    },
+    shutdown: (instance) => { shutdowns.push([ 'earlier', instance.value ]); },
+  }, { pluginName: 'svc-plugin' });
+
+  await registry.initializePluginServices(context);
+  assert.deepEqual(initialized, [ 'earlier', 'later' ]);
+  assert.equal(context.require('later').value, 2);
+
+  await registry.releasePlugin('svc-plugin');
+  assert.deepEqual(shutdowns, [ [ 'later', 2 ], [ 'earlier', 1 ] ]);
+  assert.equal(context.has('later'), false);
+  assert.equal(context.has('earlier'), false);
+  assert.equal(context.require('base').value, 1);
 });

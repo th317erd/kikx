@@ -86,7 +86,11 @@ export class FrameStoreSessionBase {
   }
 
   sessionIndexConfigs(sessionID) {
-    return buildSessionIndexConfigs(this.rootPath, sessionID, this.extraSessionIndexes?.() || []);
+    let driverID = this.aeordb?.driverID || this.aeordb?.constructor?.driverID || null;
+    let extras = this.extraSessionIndexes?.() || [];
+    if (driverID)
+      extras = extras.filter((index) => !Array.isArray(index?.drivers) || index.drivers.length === 0 || index.drivers.includes(driverID));
+    return buildSessionIndexConfigs(this.rootPath, sessionID, extras);
   }
 
   async saveSession(session) {

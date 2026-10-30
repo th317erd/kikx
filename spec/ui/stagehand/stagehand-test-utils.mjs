@@ -145,6 +145,7 @@ export async function startStagehandUIServer(options = {}) {
 
   return {
     baseURL,
+    context,
     frameRuntime,
     tokenUsage,
     agentManager,
