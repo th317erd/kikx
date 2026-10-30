@@ -73,6 +73,18 @@ const COORDINATION_AUTHOR_PREFIX = 'internal:';
 // is the only caller of `wakeAgentInSession` that passes an authorID at all.
 const SURFACED_WAKE_AUTHORS = new Set([
   'internal:session-invite',
+  // A coordinator telling a WORKER what to do. The invite wake only proves a bot
+  // arrived; it says nothing about the instruction that followed, which is the
+  // half of the owner's report this file could not answer ("I would have liked
+  // to see Zav messaging this bot, and what instructions were given").
+  // `session-message` with `wake: true` writes exactly that: hidden, directed at
+  // one agent, prose authored by the coordinating agent.
+  //
+  // Deliberately NOT the same author as the invite wake. Two different events —
+  // arrival and instruction — have to stay distinguishable in the card header,
+  // and `describeCoordinationWake` already falls back to "show the whole text,
+  // claim no inviter" for anything that is not the generated invite sentence.
+  'internal:session-message',
 ]);
 
 // Named for the report's benefit and to keep the reasoning above checkable: these

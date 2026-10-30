@@ -20,6 +20,7 @@ import {
   normalizeRequiredString,
   normalizeStringArray,
   postAgentSessionMessage,
+  resolveSessionMessageWakeTargets,
   requireTargetSessionID,
   resolveAgents,
   resolveContextService,
@@ -608,24 +609,38 @@ export class SessionSearchTool extends SessionTool {
   }
 }
 
+// The author stamped on a wake written by this tool. It is also the entry
+// registered in `SURFACED_WAKE_AUTHORS` (src/shared/coordination-visibility.mjs),
+// which is what makes the instruction visible in the thread. One constant, so
+// the write path and the display rule cannot drift apart.
+const WAKE_AUTHOR_ID = 'internal:session-message';
+
 export class SessionMessageTool extends SessionTool {
   static featureName = 'session-message';
   static displayName = 'Post session message';
   static requiresTargetSessionID = true;
-  static description = 'Post a visible agent message into an explicit target Kikx session.';
+  static description = 'Post a visible agent message into an explicit target Kikx session, and optionally start the mentioned agents with it.';
   static frameType = 'SessionMessageToolFrame';
   static inputSchema = {
     type: 'object',
     properties: {
       text: {
         type: 'string',
-        description: 'Visible message text to post into the target session.',
+        description: 'Visible message text to post into the target session. Mention an agent with @Name to address it.',
+      },
+      wake: {
+        type: 'boolean',
+        description: 'Start the agent(s) mentioned in the text with this message. Without it this tool only posts. A posted message is NOT a prompt: an agent that is not already running will not read it. This is the difference between "I told it" and "it is working on it".',
+      },
+      resumeSuspended: {
+        type: 'boolean',
+        description: 'Required, together with wake, to start a mentioned agent that is currently suspended. Without it a suspended agent is skipped and reported in skippedWake. Deliberately not implicit: only an explicit resume clears a halt, so a wake can never quietly undo a STOP.',
       },
     },
     required: [ 'text' ],
     additionalProperties: false,
   };
-  static help = 'Use session-message to post a visible agent-authored message into another session. session_id is REQUIRED: resolve it with session-list query=<title or id fragment> first, then pass the returned ID. Omitting session_id is an error and posts nothing — it never falls back to the current session. This is different from end-turn, which ends your current routed turn.';
+  static help = 'Use session-message to post a visible agent-authored message into another session. session_id is REQUIRED: resolve it with session-list query=<title or id fragment> first, then pass the returned ID. Omitting session_id is an error and posts nothing — it never falls back to the current session. This is different from end-turn, which ends your current routed turn. IMPORTANT: posting does not start anyone. Add wake:true to also start the agent(s) you @mention with this message as their instruction; the result then reports wokeAgentIDs and skippedWake, so a message that nobody received can never be mistaken for one that was acted on.';
 
   async _execute(params = {}) {
     let text = normalizeRequiredString(params.text, 'text');
@@ -635,7 +650,19 @@ export class SessionMessageTool extends SessionTool {
     // plain messages (and email addresses) must keep working in contexts that
     // do not expose one.
     let agentManager = parseMentionReferences(text).length > 0 ? this.agentManager() : null;
-    return await postAgentSessionMessage({
+
+    // Who this message is FOR is resolved once, by the same resolver that
+    // stamps `frame.mentions`, so the wake target and the rendered mention can
+    // never disagree.
+    let targets = params.wake === true
+      ? await resolveSessionMessageWakeTargets({ text, context: this.context, agentManager })
+      : [];
+    // A single addressee is recorded structurally, which is what lets the
+    // coordination card name the recipient. A broadcast stays a broadcast: no
+    // targetAgentID rather than an arbitrary first name.
+    let targetAgentID = targets.length === 1 ? targets[0].id : null;
+
+    let response = await postAgentSessionMessage({
       runtime,
       context: this.context,
       agentManager,
@@ -643,8 +670,66 @@ export class SessionMessageTool extends SessionTool {
       text,
       interactionID: params.interactionID,
       agentID: params._agentID,
+      targetAgentID,
       sourceSessionID: params._sourceSessionID,
       sourceFrameID: params._frameID,
     });
+
+    if (params.wake !== true)
+      return response;
+
+    // A POST IS NOT A PROMPT. Before this existed a coordinator could post an
+    // assignment, read `posted: true`, and have no way to notice that no bot
+    // ever read it, because the message sat in the transcript of an agent that
+    // was not running. Every field below exists so that a message nobody
+    // received cannot be mistaken for one that was acted on.
+    let entry = await runtime.ensureSessionEntry(sessionID);
+    let participants = normalizeStringArray(entry?.session?.participantAgentIDs);
+    let author = this.context.agent || {};
+    let wokeAgentIDs = [];
+    let wokeFrameIDs = [];
+    let skippedWake = [];
+
+    // No author check here: `resolveSessionMessageWakeTargets` already excludes
+    // the sender, so a target equal to the author is unreachable by construction.
+    // An unreachable branch that looks like a guard is worse than none.
+    for (let target of targets) {
+      if (!participants.includes(target.id)) {
+        // Waking a non-participant would write a turn into a session the agent
+        // cannot then read. Invite first, explicitly.
+        skippedWake.push({ agentID: target.id, reason: 'not-participant' });
+        continue;
+      }
+
+      let suspended = typeof runtime.isAgentSuspended === 'function'
+        && runtime.isAgentSuspended(sessionID, target.id);
+
+      if (suspended) {
+        if (params.resumeSuspended !== true) {
+          // A wake must never quietly undo a STOP. Only an explicit resume
+          // clears a halt, so this is skipped and named, never granted by
+          // accident.
+          skippedWake.push({ agentID: target.id, reason: 'suspended' });
+          continue;
+        }
+        runtime.resumeAgent(sessionID, target.id);
+      }
+
+      let frame = await runtime.wakeAgentInSession(sessionID, {
+        agentID: target.id,
+        agentName: target.name || target.id,
+        // The same text the person saw posted, so the card is the instruction
+        // itself rather than a paraphrase of it.
+        authorID: WAKE_AUTHOR_ID,
+        authorDisplayName: author.name || author.id || 'Kikx coordinator',
+        text,
+        parentID: response?.frame?.id || null,
+      });
+      wokeAgentIDs.push(target.id);
+      if (frame?.id)
+        wokeFrameIDs.push(frame.id);
+    }
+
+    return { ...response, wake: true, wokeAgentIDs, wokeFrameIDs, skippedWake };
   }
 }
