@@ -191,3 +191,184 @@ test('the composer emoji typeahead opens on a real colon, filters, and inserts b
     await fixture.close();
   }
 });
+
+// Arrow-key navigation is the one DoD item the test above cannot express: it
+// presses Enter and clicks, but never an arrow. Mini-dom can prove the index
+// maths (emoji-picker-spec.mjs: 'arrow movement wraps at both ends'), yet it has
+// no layout engine, so it cannot prove the highlighted row is actually inside
+// the popup's 320px scroll box. That needs Chromium.
+//
+// Also covered here: `12:30` in a real browser. The unit lane asserts it
+// (emoji-picker-spec.mjs:130) and the test above asserts `https://`, but a real
+// keystroke sequence is the only thing that proves the shell's input bridge
+// agrees with the tokenizer about what a "mid-word colon" is.
+test('arrow keys move the highlight and keep it inside the popup, and 12:30 stays shut', async (t) => {
+  let chromePath = findChromeExecutable();
+  if (!chromePath) {
+    t.skip('real-browser coverage requires Chrome');
+    return;
+  }
+
+  let fixture = await startStagehandUIServer({
+    sessions: [ { id: 'session_1', title: 'Emoji Session', messageCount: 0 } ],
+  });
+
+  let browser = await chromium.launch({
+    headless: true,
+    executablePath: chromePath,
+    chromiumSandbox: false,
+    args: [ '--no-sandbox', '--disable-setuid-sandbox' ],
+  });
+
+  let pageErrors = [];
+  try {
+    let page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    page.on('pageerror', (error) => pageErrors.push(String(error)));
+
+    await page.addInitScript(() => {
+      sessionStorage.setItem('kikx.auth.session', JSON.stringify({ token: 'playwright-test-token', refresh_token: 'playwright-test-refresh' }));
+    });
+
+    await page.goto(`${fixture.baseURL}/`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await page.waitForSelector('kikx-session-card', { timeout: 10000 });
+    await page.locator('kikx-session-card').first().locator('article.kikx-session-card').click();
+    await page.waitForSelector(TEXTAREA, { timeout: 10000 });
+
+    let textarea = page.locator(TEXTAREA);
+
+    // --- a clock time must not open the picker ------------------------------
+    await textarea.click();
+    await textarea.type('12:30', { delay: 25 });
+    await page.waitForTimeout(250);
+    assert.equal(
+      await page.evaluate((pickerSel) => document.querySelector(pickerSel)?.hidden === true, PICKER),
+      true,
+      'a colon inside a clock time must not open the picker',
+    );
+    assert.equal(
+      await page.evaluate((pickerSel) => document.querySelectorAll(`${pickerSel} .kikx-emoji-picker__option`).length, PICKER),
+      0,
+      'a closed picker leaves no rendered options behind',
+    );
+
+    // --- arrows move the highlight and keep it on screen --------------------
+    await textarea.fill('');
+    await textarea.click();
+    await textarea.type(':a', { delay: 25 });
+    await page.waitForSelector(`${PICKER}:not([hidden])`, { timeout: 5000 });
+
+    // scrollIntoView walks ANCESTORS, not just the popup. Snapshot every
+    // scrollable ancestor so an outer scroll cannot hide behind a passing
+    // "row is inside the popup" check.
+    let snapshotScrollers = () => page.evaluate(({ pickerSel }) => {
+      let picker = document.querySelector(pickerSel);
+      let out = { viewport: window.scrollY, elements: [] };
+      let node = picker?.parentElement;
+      while (node) {
+        let style = getComputedStyle(node);
+        if (/(auto|scroll)/.test(style.overflowY + style.overflowX))
+          out.elements.push({ tag: node.tagName, cls: node.className || '', top: node.scrollTop, left: node.scrollLeft });
+        node = node.parentElement;
+      }
+      let root = document.scrollingElement;
+      out.elements.push({ tag: 'DOCUMENT', cls: '', top: root?.scrollTop ?? 0, left: root?.scrollLeft ?? 0 });
+      return out;
+    }, { pickerSel: PICKER });
+
+    let before = await snapshotScrollers();
+
+    let geometry = await page.evaluate((optionSel) => {
+      let picker = document.querySelector('kikx-emoji-picker');
+      return {
+        options: document.querySelectorAll(optionSel).length,
+        scrollHeight: picker.scrollHeight,
+        clientHeight: picker.clientHeight,
+      };
+    }, OPTION);
+
+    assert.ok(geometry.options > 1, `a :a query should list several emoji, got ${geometry.options}`);
+    assert.ok(geometry.scrollHeight > geometry.clientHeight + 1,
+      `the list must overflow (scrollHeight=${geometry.scrollHeight} clientHeight=${geometry.clientHeight}) or scroll-into-view is a silent no-op`);
+
+    let offscreen = [];
+    let scrollTops = [];
+    let wraps = 0;
+    for (let step = 0; step < geometry.options + 1; step += 1) {
+      await textarea.press('ArrowDown');
+      await page.waitForTimeout(70);
+      let view = await page.evaluate((optionSel) => {
+        let picker = document.querySelector('kikx-emoji-picker');
+        let box = picker.getBoundingClientRect();
+        let active = document.querySelector(`${optionSel}[aria-selected="true"]`);
+        if (!active)
+          return { ok: false, why: 'no aria-selected row' };
+        let row = active.getBoundingClientRect();
+        return {
+          ok: row.top >= box.top - 1 && row.bottom <= box.bottom + 1,
+          scrollTop: Math.round(picker.scrollTop),
+          rowTop: Math.round(row.top),
+          rowBottom: Math.round(row.bottom),
+          boxTop: Math.round(box.top),
+          boxBottom: Math.round(box.bottom),
+          id: active.id,
+        };
+      }, OPTION);
+      if (!view.ok)
+        offscreen.push({ step, ...view });
+      if (typeof view.scrollTop === 'number')
+        scrollTops.push(view.scrollTop);
+      if (view.id && view.id.endsWith('-option-0') && step > 0)
+        wraps += 1;
+    }
+
+    assert.deepEqual(offscreen, [],
+      `the highlighted row must stay inside the popup box on every arrow step; offscreen at ${JSON.stringify(offscreen.slice(0, 3))}`);
+    assert.ok(wraps > 0, 'ArrowDown past the last option wraps back to the first');
+
+    // Scroll must be observed DURING the walk: the walk ends back on row 0,
+    // where scrollTop is legitimately 0 again.
+    let maxScroll = Math.max(0, ...scrollTops);
+    assert.ok(maxScroll > 0,
+      `the popup must actually scroll during arrow navigation, saw max scrollTop=${maxScroll} (trace ${scrollTops.join(',')})`);
+
+    let after = await snapshotScrollers();
+    assert.equal(after.viewport, before.viewport, 'arrow navigation must not scroll the page');
+    let moved = after.elements.filter((element, index) => {
+      let previous = before.elements[index];
+      return previous && (element.top !== previous.top || element.left !== previous.left);
+    });
+    assert.deepEqual(moved, [],
+      'arrow navigation must not scroll an ancestor of the popup -- scrollIntoView walks ancestors');
+
+    // --- Escape still closes and leaves the query alone ---------------------
+    await textarea.press('Escape');
+    await page.waitForTimeout(150);
+    assert.equal(
+      await page.evaluate((pickerSel) => document.querySelector(pickerSel)?.hidden === true, PICKER),
+      true,
+      'Escape closes the picker after arrow navigation',
+    );
+    assert.equal(await textarea.inputValue(), ':a', 'Escape leaves the typed text exactly as typed');
+
+    // --- with no colon, arrows must NOT be claimed by the picker ------------
+    // Message history owns ArrowUp. If the picker swallowed it while closed,
+    // history navigation would be dead and nothing above would notice.
+    await textarea.fill('');
+    await textarea.click();
+    await page.keyboard.press('ArrowUp');
+    await page.waitForTimeout(150);
+    assert.equal(
+      await page.evaluate((pickerSel) => document.querySelector(pickerSel)?.hidden === true, PICKER),
+      true,
+      'ArrowUp with no colon must not open the picker',
+    );
+
+    assert.deepEqual(pageErrors, [], 'no page errors during the whole flow');
+  } finally {
+    // Order is load-bearing: closing the fixture first leaves keep-alive
+    // sockets holding http.Server.close() open and node:test reports an opaque
+    // timeout instead of the real assertion failure.
+    await browser.close();
+    await fixture.close();
+  }
+});
