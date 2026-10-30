@@ -11,6 +11,12 @@ import {
   LOOP_CONTROL_TERMINALS,
 } from './agent-loop-state.mjs';
 
+// The retention vocabulary for plugin-owned index declarations. See
+// registerFrameIndex for what each policy promises on unload. Exported so the
+// contract is inspectable instead of being spelled out only in a document.
+export const FRAME_INDEX_RETENTION_POLICIES = new Set([ 'definition-only', 'retain-data' ]);
+export const FRAME_INDEX_RETENTION_DEFAULT = 'definition-only';
+
 // PluginRegistry extends the universal ClassRegistry: tools/providers/selectors/
 // components live here, and *any* class can be registered and overridden via the
 // inherited stack methods (registerClass / getClass / unregisterPlugin).
@@ -486,13 +492,40 @@ export class PluginRegistry extends ClassRegistry {
   // A plugin may contribute an index for the frame documents it annotates.
   // FrameStore merges these into each session's interaction index config; the
   // plugin never owns or replaces the core index list.
+  //
+  // RETENTION (campaign §4.5, owner ruling D8.4). An index declaration carries an
+  // explicit `removeOnUnload` policy, because "unload removes the definition" and
+  // "the index stays declared across an unload" are different promises and the
+  // platform was silently making the second one: every declaration survived unload.
+  //
+  //   'definition-only' (default) - unload removes the declaration, so the config
+  //       written to the driver stops naming the index. Durable data is untouched.
+  //   'retain-data' - unload leaves the declaration in place, so a reinstall finds
+  //       its index still declared. Durable data is untouched.
+  //
+  // Both policies retain durable plugin data. Nothing here deletes documents or
+  // drops a physical index; removing data is a separate, explicit purge. The two
+  // policies therefore differ ONLY in whether the declaration outlives the unload.
   registerFrameIndex(name, definition = {}, options = {}) {
     if (!name || typeof name !== 'string')
       throw new TypeError('Frame index name must be a non-empty string');
 
+    let removeOnUnload = definition.removeOnUnload === undefined
+      ? FRAME_INDEX_RETENTION_DEFAULT
+      : definition.removeOnUnload;
+    // Fail closed on a typo. A misspelled policy must never be read as the
+    // permissive one, and must never be silently replaced by the default: either
+    // would decide a data-retention question on the plugin's behalf.
+    if (!FRAME_INDEX_RETENTION_POLICIES.has(removeOnUnload))
+      throw new TypeError(
+        `Frame index "${name}" has an unknown removeOnUnload policy "${String(removeOnUnload)}"; `
+        + `expected one of: ${[ ...FRAME_INDEX_RETENTION_POLICIES ].join(', ')}`,
+      );
+
     let normalized = {
       ...definition,
       name,
+      removeOnUnload,
     };
     if (!normalized.type)
       throw new TypeError(`Frame index "${name}" requires a type`);
@@ -500,6 +533,10 @@ export class PluginRegistry extends ClassRegistry {
     let previous = this._frameIndexes.get(name);
     this._frameIndexes.set(name, normalized);
     this._recordOwnership(pluginName, "frame-index", name, () => {
+      // A retained declaration outlives the unload on purpose; undoing it here
+      // would make the two policies indistinguishable.
+      if (removeOnUnload === 'retain-data')
+        return;
       if (previous === undefined)
         this._frameIndexes.delete(name);
       else

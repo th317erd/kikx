@@ -729,17 +729,54 @@ Still open:
 - ~~migrating Questions or Todo into the first plugin-owned service from P2~~ —
   **landed** (`plugins/todo-focus-index`, `spec/plugins/todo-focus-index-service-spec.mjs`);
 - moving one integration route out of core from P3 (per-mount request limits
-  landed: `spec/plugins/plugin-mount-limits-spec.mjs`);
+  landed: `spec/plugins/plugin-mount-limits-spec.mjs`, 18 tests, 14 failing before).
+  The only plausible candidate is `src/server/routes/image-proxy-route.mjs` (152
+  lines), and it is **not a mechanical move**: that route reads arbitrary absolute
+  host paths behind a `BLOCKED_ROOTS` denylist plus a per-session user preference,
+  so relocating it to a plugin mount changes the trust boundary. Awaiting an owner
+  decision, not additional analysis;
 - focus/selection preservation for plugin views from P4 (the view/descriptor
   plumbing landed: `client-view-surfaces.mjs`, `view-name-registry.mjs`,
   `spec/client/view-surface-descriptors-spec.mjs`; `viewName ===` branches are
-  gone). What remains is proving a plugin view survives reload/removal without
-  losing the user's focus and selection;
+  gone). The enabling mechanism has since landed twice over: `resolveViewSurface`
+  now reuses one element per surfaceID across paints (`spec/client/view-surface-identity-spec.mjs`,
+  6 tests, 3 failing before), and the element cache is pruned at the exact point
+  `syncViewNames()` shrinks the addressable set (`spec/client/view-surface-prune-spec.mjs`,
+  which drives the real `setClientComponents` path so the pruner is not dead code).
+  What remains is proving focus and selection actually survive — and that half is
+  **blocked in this environment, not unbuilt**. Reuse is necessary but not
+  sufficient: detaching a node blurs it, so `document.activeElement` and the caret
+  need explicit restoration around the rebuild, and `spec/client/support/mini-dom.mjs`
+  (704 lines) models **no** focus at all — no `activeElement`, no selection, no
+  `focus()`. Asserting focus in that harness would prove the mock. The honest
+  instrument is the real-browser harness (`spec/ui/playwright/`), which skips here
+  because `findChromeExecutable()` returns empty in this container — no Chrome is
+  installed. So this needs a lane with a browser, or a deliberate decision to add
+  focus semantics to mini-dom first;
 - moving built-in tool/frame/command catalogue families from P5 (bounded loop
   controls landed: `registerLoopControl`, `spec/plugins/plugin-loop-control-spec.mjs`,
   exit proof "reject unbounded or unknown terminal paths" met);
-- dual-driver index execution from P6 (checksum/advisory-lock/rollback migration
-  tests landed: `spec/core/plugins/plugin-migrations-integrity-spec.mjs`);
+- ~~dual-driver index execution from P6~~ **closed**. Index support is now two
+  declared capabilities rather than one probe: `indexDocuments` (AeorDB persists
+  `indexes.json` documents) and `scalarIndex` (PostgreSQL expression index, SQLite
+  JSON1), and both hooks raise `capability_unsupported` instead of resolving to a
+  no-op that was indistinguishable from success. `spec/core/database/plugin-index-parity-spec.mjs`
+  drives the shipped `plugins/todo-focus-index` service against real SQLite and real
+  PostgreSQL; revert-measured at 8 of 9 failing, the single pass being the proof of
+  shape (the query returns right rows because it scans). The same audit surfaced the
+  original defect: `writeIndexConfigs` gated on `typeof configureIndexes === 'function'`,
+  true for every driver because the base class supplied the no-op;
+- ~~unload follows the declared retention policy from P6~~ **closed**, and the field
+  had never been implemented. `removeOnUnload: 'definition-only' | 'retain-data'`
+  appeared in §4.5 and nowhere in `src/`: unload removed every frame-index
+  declaration unconditionally, so a plugin asking for `retain-data` silently got the
+  opposite, while the documented default was neither reported nor enforced. An index
+  declaration now carries the resolved policy on its descriptor, a mistyped policy
+  fails closed at registration, and the ledger closure honours the policy.
+  `spec/core/plugins/plugin-index-retention-spec.mjs` (7 tests) loads a real plugin
+  from disk through `loadPlugins`; revert-measured at 4 of 7 failing. Neither policy
+  deletes durable data — that is asserted against a counted `delete`, because
+  removal of data is a separate explicit purge, not an unload side effect;
 - demonstrating install/reload/unload on a live boot from P7 (needs the host-side
   `deploy.sh`; there is no unload HTTP route today — `/api/v1/plugins` exposes GET
   inventory plus POST `/install` and POST `/reload` only).
@@ -755,8 +792,13 @@ Still open:
   an unbuilt decision — building it is scope the owner has not authorized, and
   deleting the item would hide that.
 
-The full suite is green at 3,030 tests (3,001 pass, 29 skipped), including the
-documentation consolidation gate.
+The full suite is green at 3,063 tests (3,033 pass, 30 skipped) at this commit,
+`npm test` = `node --test "spec/**/*-spec.mjs"`. The P6 retention contract above
+adds its own seven (`spec/core/plugins/plugin-index-retention-spec.mjs`) and no
+pre-existing assertion broke. Correcting an inherited claim: earlier revisions of
+this paragraph said the suite `includes the documentation consolidation gate`. There
+is no such gate — nothing in `spec/` reads `docs/`, so this document is not
+test-enforced and its counts are hand-verified.
 
 ## 7. Verification spine
 
