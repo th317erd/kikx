@@ -17,9 +17,9 @@ applies_to: development-v3
 
 | Lane | Specs | Tests | Deps | Runs here? | Latest result |
 |---|---|---|---|---|---|
-| `ui:playwright` | 13 | 18 | `playwright` only | **Yes** | **18/18 pass, EXIT=0** (5 of 6 runs); 17/18 once |
-| `ui:puppeteer` | 17 | 20 | `puppeteer-core` only | **Yes** | **20/20 pass, EXIT=0** (2 consecutive) |
-| `ui:stagehand` | 26 | 28 | `@browserbasehq/stagehand` | **No** | **never executed on this host** |
+| `ui:playwright` | 13 | 18 | `playwright` only | **Yes** | **18/18 pass, EXIT=0** (6 of 7 runs); 17/18 once |
+| `ui:puppeteer` | 17 | 20 | `puppeteer-core` only | **Yes** | **20/20 pass, EXIT=0** (3 consecutive full-lane runs) |
+| `ui:stagehand` | 27 | 28 | `@browserbasehq/stagehand` | **No** | **never executed on this host** |
 
 Import counts are exclusive — `grep -ho "from '...'"` yields exactly one browser
 package per lane (`playwright`, `puppeteer-core`, `@browserbasehq/stagehand`), so
@@ -27,7 +27,7 @@ there is no hidden cross-dependency between them.
 
 ### Why Stagehand is disqualified on evidence, not preference
 
-All 26 Stagehand specs gate on `loadStagehandOpenAIAPIKey()`. `OPENAI_API_KEY` is
+All 27 Stagehand specs gate on `loadStagehandOpenAIAPIKey()`. `OPENAI_API_KEY` is
 unset and AereoDB on `:6830` is not listening, so **every spec skips** and the lane
 exits **0 having asserted nothing**. That is the "PASS having executed zero tests"
 defect in its purest form: it reports success by doing no work. It also drives a
@@ -159,6 +159,10 @@ it. Either way it is upstream of this repo.
 **Proven**
 - Playwright 18/18 EXIT=0 and Puppeteer 20/20 EXIT=0 at HEAD `8722b4e1`,
   sequentially, no Chrome contention.
+- Both lanes re-run sequentially at `54535c4e` (the only intervening commit touches
+  this report, 0 files under `src/` or `spec/`), so the numbers describe the shipped
+  tree: Puppeteer 20/20 EXIT=0 for a third consecutive full-lane run, Playwright
+  18/18 EXIT=0 for a second.
 - Per-spec negative controls for every spec changed, each going red at the original
   assertion and green after the fix.
 - No `src/` file was modified by any test fix. `git diff --stat` touches specs and
