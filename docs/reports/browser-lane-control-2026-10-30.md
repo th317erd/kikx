@@ -1,3 +1,11 @@
+---
+title: Browser-lane control
+status: current
+doc_type: report
+audience: [maintainers, developers]
+applies_to: development-v3
+---
+
 # Browser-lane control: the 4 Playwright failures predate the emoji work
 
 Measured 2026-10-30 01:46-01:49 UTC. Two trees, same specs, same CHROME_BIN.
@@ -49,3 +57,27 @@ package.json `test` = 'spec/**/*-spec.mjs'; the lane is 'spec/ui/playwright/*-pl
 Different suffixes, so `npm test` never collects a single Playwright spec. Every
 "full suite green" figure for this repo has been structurally blind to this lane.
 Already documented in docs/history/incidents/2026-10-18-browser-gate.md; never fixed.
+
+## Verification limits (added on review, 2026-10-30 01:50 UTC)
+
+The six logs above still exist and their mtimes (18:47:44-18:48:42 PDT) fall inside
+the claimed measurement window. The control logs self-identify their tree: four
+`/tmp/kikx-preemoji` path markers appear across `/tmp/ctrl-*.log`.
+
+But the tree itself is GONE. `git worktree list` at `6b9cf808` shows only
+`kikx2 [main]`, and `/tmp/kikx-preemoji` no longer exists. Tree B's result can no
+longer be re-run or re-derived; it survives only as the captured logs. Treat the
+control as log-backed, not re-runnable, until the worktree is recreated.
+
+Two further scope notes:
+
+- "NO emoji files" in the Tree B heading was never individually proven per file.
+  Tree A's emoji modules live in `src/client/components/` — `emoji-data.mjs`,
+  `composer-emoji.mjs`, `kikx-emoji-picker.mjs`, plus
+  `src/client/styles/emoji-picker.css`. There is no `src/shared/emoji-data.mjs`;
+  an earlier review claim naming that path was wrong. The Tree B commit predates
+  the emoji commits, so the absence follows from the commit graph rather than from
+  a directory listing.
+- The emoji rows in this report come from the Playwright lane, which `npm test`
+  never collects (see "Why this went unnoticed"). A green `npm test` number says
+  nothing about them, in either direction.
