@@ -66,7 +66,9 @@ The intended result:
 - **Phase 3, first slice complete:** filter/query re-scoping now updates mounted
   pages in place through `aeor-scrollview.updatePage` and a Kikx page-source item
   updater. The thread, page wrappers, and scroll position survive a search/filter
-  change. The full shell and runtime shell phases remain.
+  change. An existing `kikx-chat-view.update()` also routes through
+  `syncFrames` instead of rebuilding. The full shell and runtime shell phases
+  remain.
 - **Not started:** the shell section registry, the full chat-view migration, and
   replacement of runtime/data/editor full-render fallbacks. Those remain behind
   the Phase 2 approval/verification gate described below.
