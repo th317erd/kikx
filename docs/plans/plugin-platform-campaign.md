@@ -241,10 +241,12 @@ registerService(name, {
   - `required` by default for non-public routes;
   - `public` must be declared and reviewed.
 - Auth is an ordinary HTTP policy, not a plugin capability boundary. Plugins are trusted
-  code and may override the main application class.
+  code and may override the main server application class and the browser shell.
 - Raw body is preserved; size/deadline/error behavior is fixed in core.
-- Install/reload endpoints require Kikx auth and an explicit operator capability, not
-  only a config flag.
+- Install/reload endpoints require Kikx authentication, not only a config flag. An
+  explicit operator capability is required if/when Kikx has a role model; until then the
+  authenticated-identity check is the honest boundary, and the missing role model is
+  reported rather than invented.
 - Unload removes the mount and refuses new requests.
 
 Route descriptor shape:
@@ -276,6 +278,23 @@ The server inventory returns descriptors; the browser imports modules through th
 existing plugin asset route. A missing optional surface degrades; it does not reject the
 entire client module graph. Unload must remove descriptors and the client must be able to
 reconcile without a full shell rebuild where practical.
+
+Main application descriptor shape:
+
+```js
+{
+  kind: 'main-app',
+  id: 'plugin-id.main-app',
+  moduleURL: '/api/v1/plugin-assets/plugin-id/client/app.mjs',
+  tagName: 'kikx-app',
+  dispose
+}
+```
+
+The bootstrap loader must select the main application module **before** the built-in
+`kikx-app` is defined. The core `src/client/app.mjs` becomes a bootstrap that resolves the
+descriptor and imports either the plugin main app or the built-in fallback. A plugin main
+app owns shell composition but still receives the shared session/auth services.
 
 View descriptor shape:
 
@@ -379,11 +398,17 @@ UI) as the reference plugin. It does not mechanically move all 63 tools in one p
 
 Reason: a reference plugin proves routes, views, services, indexes and unload together.
 
-### D4 — The main application class is deliberately hijackable
+### D4 — The main application shell is deliberately hijackable
 
-Plugins are trusted code. A plugin may override the main application class and any
-service/store it can resolve through the registry. Do not build a per-class allowlist or
-an authority boundary around plugin overrides in this campaign.
+Plugins are trusted code. A plugin may override the main **server** application class,
+the browser **`kikx-app` shell**, and any service/store or client composition surface it
+can resolve through the relevant registry. Do not build a per-class allowlist or an
+authority boundary around plugin overrides in this campaign.
+
+This includes the shell's composition surfaces: root app element, topbar, navigation,
+views, sidebar/session objects, toolbar/actions and settings panels. A plugin that
+replaces `kikx-app` may choose a different composition of those surfaces; it must still
+use the shared auth/session data services rather than inventing a second credential model.
 
 `registerService` remains useful for dependency order, lifecycle and teardown, but it is
 not a security boundary. Existing database-prefix checks and route authentication are
@@ -415,9 +440,10 @@ Recorded owner rulings:
    family in this campaign; move the remaining built-in tools/frames in later phases.
 2. **Public plugin routes:** authenticated by default; a route may be public only by an
    explicit reviewed declaration. No public default in development.
-3. **Service/class override:** the main application class is deliberately hijackable.
-   Plugins are trusted code; no allowlist and no new authority boundary around plugin
-   overrides. Existing safety checks remain ordinary defenses, not a containment claim.
+3. **Service/class and shell override:** the main server application class and the
+   browser `kikx-app` shell are deliberately hijackable. Plugins are trusted code; no
+   allowlist and no new authority boundary around plugin overrides. Existing safety
+   checks remain ordinary defenses, not a containment claim.
 4. **Uninstall retention:** remove definitions, routes, indexes and migration
    registrations by default; retain durable plugin data unless an explicit purge is
    requested.
@@ -474,7 +500,9 @@ Work:
 Exit proof:
 
 - A test plugin overrides `FrameRouter`, `FrameRuntime`, `CompactionService` and the main
-  application class; the next constructed instances use the overrides.
+  server application class; the next constructed instances use the overrides.
+- A browser bootstrap test selects a plugin `main-app` descriptor before the built-in
+  `kikx-app` is registered, and falls back when none is present.
 - Direct construction tests prove no bypass remains for registered classes.
 - Unload test proves every registry collection returns to its pre-plugin state.
 
@@ -516,8 +544,10 @@ Exit proof:
 
 Work:
 
-- Add view/sidebar/toolbar/settings descriptors.
-- Extend client component loading to consume them.
+- Add main-app/view/sidebar/toolbar/settings descriptors.
+- Replace the static `src/client/app.mjs` import with a bootstrap that chooses a plugin
+  `main-app` module before defining the built-in `kikx-app` fallback.
+- Extend client component loading to consume the descriptors.
 - Move Agents and Teams views behind descriptors as the first reference.
 - Keep Inbox available as core or move it after parity.
 - Add unload/reload reconciliation and focus/selection preservation.
@@ -525,6 +555,8 @@ Work:
 
 Exit proof:
 
+- A plugin `main-app` can replace the shell and render a view with no core shell edit; the
+  built-in app remains the fallback.
 - A plugin view renders in the main area with no core shell edit.
 - A plugin sidebar entry navigates and shows active state.
 - Reload/removal returns to the prior view.
@@ -634,9 +666,10 @@ A phase is done only when:
 - **Class override blast radius:** replacing the main application class, `FrameRuntime` or
   `FrameRouter` can change everything. Phase it and test construction; the owner has
   explicitly accepted this blast radius for trusted plugins.
-- **Trusted plugins:** plugins can hijack the main application class. Do not describe
-  registry overrides, database-prefix checks, or route auth as a sandbox. A malicious
-  plugin is a compromised process, not a contained tenant.
+- **Trusted plugins:** plugins can hijack the main server application class and the
+  browser `kikx-app` shell. Do not describe registry overrides, database-prefix checks,
+  or route auth as a sandbox. A malicious plugin is a compromised process/client, not a
+  contained tenant.
 - **Optional dependency behavior:** `pg` is now declared once; verify the optional-install
   path still refuses gracefully when it is absent.
 - **Performance:** plugin stamping and migrations must not add per-frame database reads
