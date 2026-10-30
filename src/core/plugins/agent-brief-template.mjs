@@ -100,8 +100,15 @@ function buildMessageBriefAnswerLine(_context = {}) {
 
 // AGIS precept lines are always included; the tool map and turn-ending phrase
 // carry the turn contract.
-function buildBriefPreceptLines(_context = {}) {
-  return AGIS_PRECEPTS_LINES;
+function buildBriefPreceptLines(context = {}) {
+  let registry = context.pluginRegistry
+    || context.services?.pluginRegistry
+    || context.services?.context?.get?.('pluginRegistry')
+    || null;
+  let sections = registry?.listPromptSections?.() || [];
+  return sections.length > 0
+    ? [ AGIS_PRECEPTS_LINES, ...sections.map((section) => section.text) ].join('\n')
+    : AGIS_PRECEPTS_LINES;
 }
 
 // Brief A ("start brief") — sent ONCE per (re)start: session start, new agent,

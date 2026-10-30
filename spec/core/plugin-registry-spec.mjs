@@ -354,3 +354,13 @@ test('plugin services initialize in dependency order and release cleanly', async
   assert.equal(context.has('earlier'), false);
   assert.equal(context.require('base').value, 1);
 });
+
+
+test('plugin prompt sections are ordered and released with their plugin', async () => {
+  let registry = new PluginRegistry({ logger: { warn() {} } });
+  registry.registerPromptSection('late', { text: 'late section', order: 200 }, { pluginName: 'prompt-plugin' });
+  registry.registerPromptSection('early', { text: 'early section', order: 50 }, { pluginName: 'prompt-plugin' });
+  assert.deepEqual(registry.listPromptSections().map((entry) => entry.name), [ 'early', 'late' ]);
+  await registry.releasePlugin('prompt-plugin');
+  assert.deepEqual(registry.listPromptSections(), []);
+});

@@ -22,6 +22,7 @@ export class PluginRegistry extends ClassRegistry {
     this._toolComponents = new Map();
     this._agentConfigForms = new Map();
     this._clientSurfaces = new Map();
+    this._promptSections = new Map();
     this._tagDefinitions = new Map();
     this._frameIndexes = new Map();
     this._pluginServices = new Map();
@@ -140,6 +141,28 @@ export class PluginRegistry extends ClassRegistry {
   }
 
   // Schema migrations. The directory is relative to the plugin, resolved by the caller.
+  registerPromptSection(name, definition = {}, options = {}) {
+    let key = normalizeRequiredString(name, 'prompt section name');
+    let text = normalizeRequiredString(definition.text || definition.content, 'prompt section text');
+    let pluginName = options.pluginName || null;
+    let previous = this._promptSections.get(key);
+    let entry = { name: key, text, order: Number.isFinite(Number(definition.order)) ? Number(definition.order) : 100 };
+    this._promptSections.set(key, entry);
+    this._recordOwnership(pluginName, 'prompt-section', key, () => {
+      if (previous === undefined)
+        this._promptSections.delete(key);
+      else
+        this._promptSections.set(key, previous);
+    });
+    return entry;
+  }
+
+  listPromptSections() {
+    return [ ...this._promptSections.values() ]
+      .sort((left, right) => left.order - right.order || left.name.localeCompare(right.name))
+      .map((entry) => ({ ...entry }));
+  }
+
   registerMigrations(pluginId, options = {}) {
     if (!this._pluginMigrations)
       throw new Error('registerMigrations called before the migrations registry was attached');
