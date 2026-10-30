@@ -78,6 +78,22 @@ recommendation is therefore *port, then remove*, not *switch*.
   are declared dependencies imported by **production** code
   (`src/core/tools/puppeteer-browser-service.mjs:4-5`), not by this lane, so
   deleting the Puppeteer *specs* would not drop them from `package.json`.
+
+- **But two Playwright specs hard-depend on a sibling checkout, and no Puppeteer
+  spec does.** This cuts the other way and was missing from an earlier draft of
+  this section. `aeor-framework-playwright.mjs:98` asserts the aeor-web-components
+  checkout exists (`AEOR_WEB_COMPONENTS_DIR`, default `~/Projects/aeor-web-components`),
+  and `inbox-frame-visual-parity-playwright.mjs:286` asserts the vendored
+  stylesheets are present. Both `assert`, so on a host without that checkout they
+  **fail** rather than skip — Playwright is 2 of 13 specs less portable than its
+  "bundles its own browser" story implies. The one Puppeteer file that names the
+  path (`frame-window-puppeteer.mjs:14`) mentions it only in a comment explaining
+  why that spec reads constants from source; it has no runtime dependency. This
+  does not flip the recommendation — 11 of 13 Playwright specs are self-contained,
+  and the two that are not are testing framework and vendoring concerns that
+  legitimately need a real browser — but Playwright's portability advantage is
+  narrower than the bullet above states, and a host without the checkout would
+  turn the lane red for reasons unrelated to `kikx`.
 - Playwright's auto-waiting assertions are structurally less prone to the failure
   class that dominated this triage (§4).
 - Already the default in `npm test` (`DEFAULT_LANE_NAMES = ['unit','ui:playwright']`).
@@ -233,6 +249,30 @@ repeated: the original spec was copied to `.gate/v3/`, where its relative import
 `ERR_MODULE_NOT_FOUND` — a red that proves nothing. A negative control must be run
 in the directory whose imports it needs, and a fast failure must be read before it
 is counted.
+
+### 9.1 Independent corroboration of the four older repairs
+
+`Kikx-Test-Eng` re-ran the four previously-repaired specs at `38aec6e4` and rebuilt
+a negative control for each, restoring every file byte-identically afterwards. This
+is stronger evidence than the coordinator's own controls, because each red fired on
+its **named assertion** rather than on a missing module or a load error — the exact
+mistake recorded above.
+
+| Spec | Green | Control exit | Control failed on |
+|---|---|---|---|
+| `commit-runtime-event` | `1/1` `EXIT=0` | `1` | `expected the list scrolled to the top before the commit burst` |
+| `frame-bottom-scroll` | `1/1` `EXIT=0` | `1` | `the thread reaches its bottom` |
+| `frame-window` | `1/1` `EXIT=0` | `1` | `older reveal remains bounded (140)` |
+| `tool-output-overflow` | `1/1` `EXIT=0` | `1` | `the collapsed command is clipped horizontally` |
+
+`AssertionError=1 / TimeoutError=0` for all four, i.e. no control red was a timeout
+masquerading as a failure. Restoration verified by `md5sum` against
+`git show HEAD:` for each path (`match=YES` ×4) with `git diff --stat` empty.
+
+Its full-lane run at the same tree is a fifth consecutive Puppeteer green:
+`TE4_LANE_FULL_EXIT=0`, `tests 20 / pass 20 / fail 0 / skipped 0`,
+`duration_ms 10673.6`, 17 spec files, `--- any failures: NONE`,
+`--- any skipped: NONE`.
 
 ## 10. What would change this recommendation
 
