@@ -128,6 +128,14 @@ export class KikxChatView extends HTMLElement {
       this.syncFrames(this._frames, this._appState, { animate: false });
       return;
     }
+    if (this._scrollview?.element?.isConnected) {
+      this.syncFrames(this._frames, this._appState, {
+        windowStart: Number.isInteger(this._pendingWindowStart) ? this._pendingWindowStart : undefined,
+        animate: false,
+      });
+      this._pendingWindowStart = null;
+      return;
+    }
     this._render();
   }
 
