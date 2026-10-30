@@ -23,6 +23,40 @@ import { SQLiteConnection } from '../database/sqlite-connection.mjs';
 import { PostgreSQLConnection } from '../database/postgresql-connection.mjs';
 import { AeorDBConnection } from '../aeordb/aeordb-connection.mjs';
 
+// Keys that a real construction site asks the registry for. Everything in
+// CORE_CLASSES is *registered* for override, but registration is only half the
+// contract: a key becomes effective only where the running system resolves it
+// instead of importing the class directly. This list is the audited second half.
+//
+// Audited 2026-10-30 against every `new CoreClass()` and every `extends`:
+//   FrameRouter        create-server.mjs -> resolveCoreClass('FrameRouter')
+//   FrameRuntime       create-server.mjs -> resolveCoreClass('FrameRuntime')
+//   CompactionService  create-server.mjs -> resolveCoreClass('CompactionService')
+//   CommandRegistry    create-server.mjs -> resolveCoreClass('CommandRegistry')
+//
+// Deliberately NOT here, because no construction site resolves them:
+//   PluginInterface, AgentInterface, DatabaseConnectionBase
+//     Every consumer imports the class and `extends` it, or subclasses it at
+//     module load (SQLiteConnection/PostgreSQLConnection/AeorDBConnection all
+//     `extends DatabaseConnectionBase` at parse time). Database drivers are chosen
+//     through registerDatabaseDriver(), a separate registry, not through
+//     getClass(). An override on these keys is accepted and does nothing.
+//   FrameType<Type>
+//     createTypedFrame() reads registry.getClass() only when a caller passes a
+//     registry. The only production path is AgentInterface.buildModelMessages(),
+//     and both providers that call it (ollama, codex) invoke
+//     `this.constructor.buildModelMessages(params)` with no options, so `registry`
+//     is always null. The frame-type override therefore never takes effect today.
+//
+// These keys are reported by ClassRegistry.listInertOverrides() so an operator is
+// told the override did not apply, instead of inferring it from a registry row.
+export const CONSUMED_CLASS_KEYS = Object.freeze([
+  'FrameRouter',
+  'FrameRuntime',
+  'CompactionService',
+  'CommandRegistry',
+]);
+
 // Classes registered for override. Kept to the classes a plugin has a plausible
 // reason to replace (engine/router/runtime/compaction registries), not the whole
 // tree, to bound the blast radius.
@@ -45,6 +79,12 @@ export function registerCoreClasses(registry) {
     registry.registerClass(ClassRef.name, ClassRef, { pluginName: 'core' });
 
   registerFrameTypeClasses(registry);
+
+  // Declare which keys a construction site actually resolves, so an override on a
+  // key that nothing resolves is reported as inert instead of being accepted
+  // silently. Registration alone promises more than the engine delivers.
+  if (typeof registry.setConsumedKeys === 'function')
+    registry.setConsumedKeys(CONSUMED_CLASS_KEYS);
 
   // Register the built-in AeorDB and SQLite drivers so a default boot never
   // depends on a user plugin. SQLiteConnection imports `node:sqlite` lazily, so

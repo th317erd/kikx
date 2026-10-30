@@ -658,11 +658,22 @@ Still open:
     `listRestartRequired()`/`data.restartRequired`. `CommandRegistry` was the
     audit's real find: registered as overridable but constructed directly, so an
     override was ignored *and* unreported.
-  - **resolved per use, override takes effect live** — the `FrameType<Type>` keys.
-    `frameTypeClass()` in `src/core/frames/frame-types/create-typed-frame.mjs`
-    (not `core/frames/create-typed-frame.mjs`) looks the class up on every frame
-    creation, so a plugin frame-type override applies to the next frame. This path
-    must *not* report `restart-required`; doing so would be wrong.
+  - **resolved per use, but never reached in production today** — the
+    `FrameType<Type>` keys. `frameTypeClass()` in
+    `src/core/frames/frame-types/create-typed-frame.mjs` (not
+    `core/frames/create-typed-frame.mjs`) does look the class up on every frame
+    creation, and `buildModelMessages()` does forward `options.registry` down to
+    it, so the mechanism is live-capable. But the lookup only runs when a caller
+    passes a registry, and both production providers call
+    `this.constructor.buildModelMessages(params)` with no options
+    (`kikx-plugin-ollama/index.mjs:191`, `kikx-plugin-codex/index.mjs:226`), so
+    `options.registry` is always undefined and the static `FRAME_TYPE_CLASSES`
+    map always wins. A frame-type override therefore registers, appears in the
+    inventory, and changes no message. This path must *not* report
+    `restart-required` - a restart would not help - which is why it is reported
+    as `data.inertOverrides` instead, a category kept separate precisely so a
+    restart is never promised for something a restart cannot fix. Threading a
+    registry through from the providers is a real follow-up, not a doc fix.
   - **no construction site to audit** — `PluginInterface`, `AgentInterface`,
     `DatabaseConnectionBase`. They are plugin-facing base classes and subclass
     guards (`isSubclassOf` in `plugin-registry.mjs`), never instantiated by core,
@@ -800,10 +811,14 @@ These findings are part of the plan, not objections to it:
    `restart-required` answer as `FrameRouter`, but now a reported one.
    The audit is now closed: three registered classes have no core construction site
    at all (plugin-facing base classes and subclass guards), and the
-   `FrameType<Type>` keys are a third category - resolved on every use, so those
-   overrides take effect live and must not be filed as restart-required. The
-   lesson generalises: "overridable" needs a resolution mode (construction-time vs
-   per-use vs none), because only the first can be stale.
+   `FrameType<Type>` keys are a third category - resolved per use by
+   `frameTypeClass()`, but only when the caller supplies a registry, which no
+   production provider does today. Those overrides must not be filed as
+   restart-required (a restart would not help); they are reported as
+   `data.inertOverrides` instead. The lesson generalises: "overridable" needs a
+   resolution mode (construction-time vs per-use vs currently unreachable),
+   because only the first can be stale and only the last is beyond a restart's
+   reach.
 10. **Existing plugin packages need a compatibility ingress.** Preserve old manifests, `/api/plugins/` mounts, plugin asset URLs and class registrations for one transition window; version-gate legacy rows in an adapter rather than teaching every consumer both shapes.
 
 ## 9. Artifacts
