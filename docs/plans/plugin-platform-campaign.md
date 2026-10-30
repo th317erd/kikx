@@ -13,11 +13,11 @@ last_verified: 2026-10-29
 
 ### Current baseline
 
-- Final-pass baseline: Kikx main `65f1fb1a`, after merging the plugin platform and the plugin ownership ledger.
-- Non-doc suite after that merge: **2824 tests, 2795 pass, 0 fail, 29 skipped**.
+- Final-pass baseline: Kikx main `fb45f8b6`, after the plugin platform, ownership ledger, authority namespace, admin auth, and driver-qualified migration work.
+- Non-doc suite after that merge: **2863 tests, 2834 pass, 0 fail, 29 skipped**.
 - The original Miri branch was `f201985e`, **48 commits ahead / 18 behind** at review time; that branch's isolated suite was **2709 tests, 2680 pass, 0 fail, 29 skipped**.
 - The plugin-router spec is **12/12 pass**.
-- The merge completed; the combined revision has passed the non-doc suite. Plugin attribution/unload contract tests now exist; route auth, scoped DB/events/migrations contracts and live install/reload/unload still need work.
+- The merge completed; the combined revision has passed the non-doc suite. Plugin attribution/unload tests, authority namespace tests, admin-auth tests, and migration-driver tests now exist. Plugin mount auth descriptors, scoped-DB/event contracts, and live install/reload/unload still need work.
 - The laptop dirty tree was the documentation migration plus untracked docs/testbed/public files; no plugin source was dirty.
 
 ### Registry facts
@@ -56,7 +56,7 @@ last_verified: 2026-10-29
 
 ### Miri's platform work
 
-Miri's work is now merged into main; the platform was merged at `850c811b` and the ownership ledger completed at `65f1fb1a`. It added:
+Miri's work is now merged into main; the platform was merged at `850c811b`, the ownership ledger completed at `65f1fb1a`, and the latest platform baseline is `fb45f8b6`. It added:
 
 - plugin HTTP mounts under `/api/plugins/<plugin-id>/`;
 - a plugin inventory, reload endpoint, and gated install endpoint;
@@ -73,11 +73,11 @@ This is a substantial platform foundation. It is not yet a complete plugin-way i
 
 ### Concrete defects in the existing platform work
 
-- `PluginAuthority` hardcodes `miri_capability`; under the owner ruling it stays Miri-specific and is not a campaign blocker.
-- `PluginDatabase` and `PluginMigrations` are PostgreSQL/SQL-specific (`pg`, SQL statements, database URL). They are not driver-neutral.
-- Plugin routes/inventory/reload/install run before the normal auth chain and have no shared Kikx authentication/capability contract. Install is config-gated but not authenticated; reload is not gated.
-- The ownership ledger now attributes and releases mounts, migrations, tools, selectors, tags, drivers, components, indexes, scoped DB handles and subscriptions. This is a major improvement; the remaining lifecycle risk is that class-stack overrides are still released through a separate path and existing instances are not rebuilt.
-- Authority has a scoped-revoke regression spec, the router has behavior tests, and plugin attribution/unload specs now exist. There is still no contract coverage for route auth, scoped-DB driver behavior, event delivery, or install/reload failure paths.
+- Authority now derives its table from the plugin namespace and is generic; the remaining authority question is only the owner ruling that plugins are trusted code.
+- `PluginDatabase` is still SQL-shaped. `PluginMigrations` now declares driver support and refuses unsupported drivers instead of silently applying PostgreSQL DDL.
+- Core-owned plugin admin endpoints now require an authenticated Kikx identity. Plugin mount handlers still need per-route auth descriptors; the plugin-admin policy deliberately does not cover mounts.
+- The ownership ledger now attributes and releases mounts, migrations, tools, selectors, tags, drivers, components, indexes, scoped DB handles and subscriptions. The remaining lifecycle risk is that class-stack overrides are released through a separate path and existing instances are not rebuilt.
+- Authority, admin auth, router and unload/attribution have regression tests. Remaining contract gaps are plugin mount auth descriptors, scoped-DB driver behavior, event delivery, and install/reload failure paths.
 - The branch has no client view/navigation registration.
 - The branch has no generic service registration or startup/recovery registration.
 - The branch's package/config changes include plugin-specific Discord paths in core config.
@@ -357,7 +357,7 @@ wake path.
 
 ### D1 — Treat the merged Miri platform as the foundation
 
-`origin/miri-plugin` has been merged into main; the current platform baseline is `65f1fb1a`. Preserve the merged
+`origin/miri-plugin` has been merged into main; the current platform baseline is `fb45f8b6`. Preserve the merged
 scrollview, session-scope, filter, end-turn and todo-focus-index work while hardening the
 platform. Do not re-integrate the old branch or selectively revert it without a written
 conflict map.
@@ -428,15 +428,15 @@ These are owner rulings, not recommendations still awaiting ratification.
 
 ### P0 — Integrate and harden the existing platform
 
-Start gate: current main `65f1fb1a` is green on the non-doc suite, and the merged
+Start gate: current main `fb45f8b6` is green on the non-doc suite, and the merged
 platform work has been inspected against the current construction sites.
 
 Work:
 
-- Record the final merged baseline (`65f1fb1a`, 2824/2795) and remove the stale
+- Record the final merged baseline (`fb45f8b6`, 2863/2834) and remove the stale
   "not yet merged" assumption from the campaign.
-- Resolve the duplicate `pg` package declaration created by the merge
-  (`optionalDependencies` and `dependencies` both contain `pg`).
+- The duplicate `pg` declaration has been normalized; verify the optional dependency
+  installation path remains intact.
 - Preserve both plugin-index and Miri platform work; do not re-apply the old branch.
 - Extend the existing authority/attribution/unload tests to cover route auth, scoped-DB
   driver behavior, event delivery, migrations and install/reload failure paths. Do not
@@ -622,7 +622,7 @@ A phase is done only when:
 
 ## 8. Risks and constraints
 
-- **Integration state:** the Miri platform is merged and ownership-ledger complete at `65f1fb1a`; the combined revision
+- **Integration state:** the Miri platform is merged, ownership-ledger complete and driver-qualified at `fb45f8b6`; the combined revision
   has a green non-doc suite, but plugin-specific contract tests and live platform
   exercises are still owed. Preserve current main features.
 - **Concurrent docs edit:** docs tree is being rewritten; do not commit docs-bot
@@ -637,9 +637,8 @@ A phase is done only when:
 - **Trusted plugins:** plugins can hijack the main application class. Do not describe
   registry overrides, database-prefix checks, or route auth as a sandbox. A malicious
   plugin is a compromised process, not a contained tenant.
-- **Duplicate dependency declaration:** the merge leaves `pg` in both
-  `optionalDependencies` and `dependencies`. Normalize to one declaration and verify the
-  optional-install behavior before release.
+- **Optional dependency behavior:** `pg` is now declared once; verify the optional-install
+  path still refuses gracefully when it is absent.
 - **Performance:** plugin stamping and migrations must not add per-frame database reads
   without measurement. Record latency and memory baselines.
 - **Backward compatibility:** existing plugin packages, route URLs, manifests and client
@@ -651,7 +650,7 @@ These findings are part of the plan, not objections to it:
 
 1. **`PluginAuthority` is intentionally not generalized in this campaign.** It remains Miri-specific. The owner ruling makes the main application class hijackable and treats plugins as trusted code, so building a capability boundary around plugin overrides would be misleading.
 2. **Plugin routes currently bypass core auth.** The route handler table runs before the auth chain. P3 still needs ordinary Kikx authentication before plugin handlers and inventory/reload/install; this is transport safety, not a plugin capability boundary.
-3. **`PluginDatabase` and migrations are Postgres-shaped.** The plan must not claim driver-neutral persistence until a driver contract test proves AeorDB and SQLite behavior or explicitly reports unsupported capabilities.
+3. **Persistence is driver-qualified, not driver-neutral.** PostgreSQL migrations now refuse unsupported drivers; AeorDB/SQLite behavior remains an explicit capability decision, not an assumed equivalence.
 4. **Unload is now mostly reversible but split across two mechanisms.** The ownership ledger releases mounts, migrations, tools, selectors, tags, drivers, components, indexes, DB handles and subscriptions; class-stack overrides are released separately. The remaining test gap is proving both paths, plus live-instance generation, in one unload contract.
 5. **A class override is not a live behavior change.** A reload that does not reconstruct the affected instance must report `restart-required`; otherwise the registry row looks changed while the running service is stale.
 6. **The merge is complete but the platform is not contract-complete.** The merged
@@ -674,7 +673,7 @@ These findings are part of the plan, not objections to it:
 When implementation is authorized:
 
 ```text
-re-confirm merged baseline 65f1fb1a and duplicate-package cleanup
+re-confirm merged baseline fb45f8b6 and optional-dependency behavior
 → run full non-doc suite
 → platform contract tests
 → P0 contract tests
