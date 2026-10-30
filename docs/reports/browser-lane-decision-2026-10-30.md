@@ -17,9 +17,9 @@ applies_to: development-v3
 
 | Lane | Specs | Tests | Deps | Runs here? | Latest result |
 |---|---|---|---|---|---|
-| `ui:playwright` | 13 | 18 | `playwright` only | **Yes** | **18/18 pass, EXIT=0** (6 of 7 runs); 17/18 once |
-| `ui:puppeteer` | 17 | 20 | `puppeteer-core` only | **Yes** | **20/20 pass, EXIT=0** (3 consecutive full-lane runs) |
-| `ui:stagehand` | 27 | 28 | `@browserbasehq/stagehand` | **No** | **never executed on this host** |
+| `ui:playwright` | 13 | 18 | `playwright` only | **Yes** | **18/18 pass, EXIT=0** (5 of 6 full-lane runs on disk); 17/18 once, pre-merge |
+| `ui:puppeteer` | 17 | 20 | `puppeteer-core` only | **Yes** | **20/20 pass, EXIT=0** (4 consecutive post-merge full-lane runs) |
+| `ui:stagehand` | 26 | 28 | `@browserbasehq/stagehand` | **No** | **never executed on this host** |
 
 Import counts are exclusive — `grep -ho "from '...'"` yields exactly one browser
 package per lane (`playwright`, `puppeteer-core`, `@browserbasehq/stagehand`), so
@@ -27,7 +27,7 @@ there is no hidden cross-dependency between them.
 
 ### Why Stagehand is disqualified on evidence, not preference
 
-All 27 Stagehand specs gate on `loadStagehandOpenAIAPIKey()`. `OPENAI_API_KEY` is
+All 26 Stagehand specs gate on `loadStagehandOpenAIAPIKey()`. `OPENAI_API_KEY` is
 unset and AereoDB on `:6830` is not listening, so **every spec skips** and the lane
 exits **0 having asserted nothing**. That is the "PASS having executed zero tests"
 defect in its purest form: it reports success by doing no work. It also drives a
@@ -36,8 +36,12 @@ it can run. It is the one lane with **zero** measurements behind it.
 
 ## 2. The two viable lanes barely overlap
 
-Only **one** spec name is common to both lanes: `thinking-rack`. The globs are
+Exactly **one** file stem is common to both lanes: `thinking-rack`. The globs are
 disjoint (`*-playwright.mjs` vs `*-puppeteer.mjs`), so `npm test` never sees either.
+The overlap is a name, not a spec: **zero test titles are shared**
+(`comm -12` over the two title lists is empty), and the two `thinking-rack` files
+assert different things. Treat the stem count as a floor on duplication, not a
+measure of it — differently named tests can still overlap.
 
 - Playwright-only: 12 specs — `aeor-framework`, `agent-view`, `answer-feedback`,
   `emoji-picker`, `emoji-picker-keys`, `inbox-draft-preservation`,
@@ -57,16 +61,23 @@ recommendation is therefore *port, then remove*, not *switch*.
 ## 3. Why Playwright wins the port target
 
 - **18 tests today vs 20, but a narrower failure surface.** Playwright's 18 tests
-  were green in 5 of 6 recorded full runs; the single red run failed one spec
-  (`aeor-framework`, see §6). Puppeteer was red in **every** full run for the whole
-  of this session until its specs were repaired, going 13/18 → 20/20.
-- **One dependency.** Playwright bundles its own browser. Puppeteer needs
-  `puppeteer-core` plus a system Chrome at `/opt/google/chrome/chrome`
+  were green in 5 of the 6 full-lane runs recorded on disk; the single red run
+  failed one spec (`aeor-framework`, see §6). That red run finished 16:13:36,
+  **before** the origin merge was committed here at 16:21:13 (`.gate/zav-pl-head.log`
+  vs `git log 5910fc4f`), so it describes a tree this branch no longer has. The
+  three post-merge runs are green. Puppeteer was red in **every** full run for the
+  whole of this session until its specs were repaired, going 13/18 → 20/20.
+- **One dependency, and removing the lane would not remove the others.**
+  Playwright bundles its own browser. Puppeteer's *lane* imports only
+  `puppeteer-core` and needs a system Chrome at `/opt/google/chrome/chrome`
   (`findChromeExecutable()` reads `KIKX_STAGEHAND_CHROME_PATH`, `CHROME_PATH`, then
   system paths — `CHROME_BIN` is inert), so it breaks on any host without Chrome
   and every spec `t.skip()`s. Playwright here still drives system Chrome, so this
   is a smaller advantage than it first appears: **both lanes skip when Chrome is
-  absent.**
+  absent.** Note also that `puppeteer-extra` and `puppeteer-extra-plugin-stealth`
+  are declared dependencies imported by **production** code
+  (`src/core/tools/puppeteer-browser-service.mjs:4-5`), not by this lane, so
+  deleting the Puppeteer *specs* would not drop them from `package.json`.
 - Playwright's auto-waiting assertions are structurally less prone to the failure
   class that dominated this triage (§4).
 - Already the default in `npm test` (`DEFAULT_LANE_NAMES = ['unit','ui:playwright']`).
@@ -159,10 +170,16 @@ it. Either way it is upstream of this repo.
 **Proven**
 - Playwright 18/18 EXIT=0 and Puppeteer 20/20 EXIT=0 at HEAD `8722b4e1`,
   sequentially, no Chrome contention.
-- Both lanes re-run sequentially at `54535c4e` (the only intervening commit touches
-  this report, 0 files under `src/` or `spec/`), so the numbers describe the shipped
-  tree: Puppeteer 20/20 EXIT=0 for a third consecutive full-lane run, Playwright
-  18/18 EXIT=0 for a second.
+- **Four consecutive Puppeteer full-lane greens, all post-merge,** by log mtime:
+  `.gate/final-pp.log` 16:21:28, `.gate/v2-pp.log` 16:28:04, `.gate/zav-pp-det3.log`
+  16:30:07, `.gate/zav-pp-det4.log` 16:30:18 — each `tests 20 / pass 20 / fail 0 /
+  skipped 0` and `EXIT=0`. The merge was committed at 16:21:13 and `6c923a3f` is an
+  ancestor of every fix commit (`9b911866`'s parent *is* `6c923a3f`), so these runs
+  describe the merged tree, not the local one. The last two ran after `9675efb3`,
+  which touches this report only.
+- **Three consecutive Playwright full-lane greens post-merge**: `.gate/final-pl.log`
+  16:21:40, `.gate/post-cre-pl.log` 16:25:01, `.gate/v2-pl.log` 16:28:16, each
+  18/18 `EXIT=0`.
 - Per-spec negative controls for every spec changed, each going red at the original
   assertion and green after the fix.
 - No `src/` file was modified by any test fix. `git diff --stat` touches specs and
@@ -196,3 +213,34 @@ it. Either way it is upstream of this repo.
    live work, not dead weight.
 5. **Track the `aeor` intermittent upstream.** It is the only red Playwright has
    produced, and it is in the framework repo's own suite, not in a `kikx2` spec.
+
+## 9. Coordinator validation of the Test-Eng triage
+
+The `todo-card-load` repair was delivered by a delegated agent and then re-proved
+here independently rather than accepted on its report. Its message cited
+`HEAD 4233fa2e`, which is three commits stale; every check below was therefore run
+at the shipped tree.
+
+| Check | Command | Result |
+|---|---|---|
+| Fix is green, twice | `node --test --test-timeout=60000 spec/ui/puppeteer/todo-card-load-puppeteer.mjs` | `EXIT=0` ×2, `tests 1 / pass 1 / fail 0 / skipped 0` (`.gate/v3/todo-1.log`, `todo-2.log`) |
+| Negative control really ran a browser | spec replaced in place by `git show 5910fc4f^:` (md5 `93ebfbaf…`), run, then `git checkout --` to md5 `7d4b218e…` | `EXIT=1`, `fail 1`, `duration_ms 16252`, `TimeoutError: Waiting for selector kikx-todo-tool-use .kikx-todo-item__title` at `todo-card-load-puppeteer.mjs:101:5` (`.gate/v3/todo-negctl2.log`) |
+| Fix is spec-only | `git show --stat 5910fc4f` | one file, `+51 / −7`, 0 under `src/` |
+
+The first attempt at that control was invalid and is recorded so the mistake is not
+repeated: the original spec was copied to `.gate/v3/`, where its relative import
+`../stagehand/stagehand-test-utils.mjs` does not resolve. It exited 1 in 158 ms with
+`ERR_MODULE_NOT_FOUND` — a red that proves nothing. A negative control must be run
+in the directory whose imports it needs, and a fast failure must be read before it
+is counted.
+
+## 10. What would change this recommendation
+
+- If the 16 Puppeteer-only specs are ported and green in Playwright, Puppeteer has
+  no unique coverage left and the "keep both" half of this recommendation expires.
+- If Playwright's `aeor-framework` intermittent turns out to be *caused* by this
+  repo's usage rather than the framework's own deferred render, the "Playwright has
+  a narrower failure surface" argument weakens.
+- If `OPENAI_API_KEY` and AereoDB become available, Stagehand's 28 tests could be
+  measured for the first time. Disqualification here is on *unavailability and
+  silent pass*, not on measured failure.
