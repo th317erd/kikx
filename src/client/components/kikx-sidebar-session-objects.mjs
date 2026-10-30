@@ -43,7 +43,8 @@
 
 import { elements } from '../lib/aeor-ui.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
-import { getScopeSessionID, isViewOpen } from '../state/kikx-state.mjs';
+import { getScopeSessionID, isViewOpen, navigateView } from '../state/kikx-state.mjs';
+import { listSidebarItemSurfaces } from './client-view-surfaces.mjs';
 import { createSessionScope, sessionIDOf } from '../state/session-scope.mjs';
 
 const { div, span, button } = elements;
@@ -115,7 +116,44 @@ export function buildSessionObjectItems(app) {
       scopeSessionID,
       onSelect: () => app._signOut(),
     },
+    // Campaign P4: a plugin sidebar entry navigates and shows active state with
+    // no core shell edit. Appended AFTER the core view rows so the built-in
+    // cluster keeps its established order, and marked group 'view' so it gets the
+    // same styling and the same scope filtering as Inbox/Agents/Teams -- a plugin
+    // row is a view into the session tree like the others, not a privileged one.
+    ...buildPluginViewItems(app, scopeSessionID),
   ];
+}
+
+// Sidebar rows contributed by 'sidebar-item' client descriptors.
+//
+// `view` is required: a sidebar row exists to navigate somewhere, and a row that
+// cannot name its destination would be a dead control. Active state comes from the
+// same `isViewOpen` the core rows use, so a plugin row highlights correctly for
+// free. The handler pushes the descriptor's view through `navigateView`, the
+// state-layer seam that already owns that transition.
+function buildPluginViewItems(app, scopeSessionID) {
+  let items = listSidebarItemSurfaces(app?._state);
+
+  return items
+    .filter((descriptor) => typeof descriptor.view === 'string' && descriptor.view.trim() !== '')
+    .map((descriptor) => ({
+      id: descriptor.surfaceID,
+      kind: 'button',
+      group: 'view',
+      label: typeof descriptor.label === 'string' && descriptor.label.trim() !== ''
+        ? descriptor.label.trim()
+        : descriptor.surfaceID,
+      scopeSessionID,
+      active: isViewOpen(descriptor.view, app?._state),
+      // A plugin row must not be a dead control, so the handler calls the state
+      // seam that already owns this transition and then redraws. Delegating to a
+      // hypothetical app method would make the row look wired while doing nothing.
+      onSelect: () => {
+        navigateView(descriptor.view, app._state);
+        app._render?.();
+      },
+    }));
 }
 
 // The only supported way to change what the sidebar shows. Identity by default,

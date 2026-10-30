@@ -571,6 +571,34 @@ Exit proof:
 - Reload/removal returns to the prior view.
 - Existing Agents/Teams/Inbox Playwright tests remain green.
 
+**P4 view surfaces by descriptor — landed.** The work-area dispatch no longer
+compares the view name against literals. `kikx-shell-builders.mjs` renders
+`resolveViewSurface(viewName, state, app) || buildWindow(app, entry)`, so the P7 grep
+gate (no new `viewName ===` branch) is met rather than re-broken by the next view.
+
+Three defects fell out of writing the contract, none of which was the documented
+task. First, `setClientComponents()` filed only `frame`/`tool`/`agent-config-form`
+descriptors and dropped `view` and `sidebar-item` on the floor, so a plugin view was
+advertised by `GET /api/v1/client-components` and discarded by the client —
+unreachable, not merely unimplemented. Second, the addressable view vocabulary was a
+frozen literal in `navigation-stack.mjs`, so `pushView()` refused a plugin view name
+even after a successful registration; it is now derived from the descriptors served,
+which also means uninstalling a plugin shrinks the set again instead of leaving the
+stack able to hold a view nothing renders. Third, resolving a surface with no app
+produced an empty section — the blank work area the null fallback exists to prevent —
+so the resolver now answers null without one.
+
+Core view ids are **reserved**: a plugin descriptor whose surfaceID collides with
+`inbox`/`agents`/`teams` is refused at `setClientComponents`, so a plugin cannot
+silently take over a built-in surface. Core views are NOT server descriptors — they
+are builder functions, and a descriptor requires a `moduleURL` custom element — so the
+built-ins live in a core fallback table keyed by the same ids. Plugin `sidebar-item`
+descriptors render as rows in the view cluster, after the core rows, reusing the same
+`isViewOpen` active state and the `navigateView` seam. Proven:
+`spec/client/view-surface-descriptors-spec.mjs`, 16 tests, of which reverting only
+`kikx-state.mjs` fails exactly 8 and reverting only `kikx-shell-builders.mjs` fails
+exactly the grep gate.
+
 ### P5 — Domain catalogues and prompt/loop policy
 
 Work:
@@ -702,17 +730,32 @@ Still open:
   **landed** (`plugins/todo-focus-index`, `spec/plugins/todo-focus-index-service-spec.mjs`);
 - moving one integration route out of core from P3 (per-mount request limits
   landed: `spec/plugins/plugin-mount-limits-spec.mjs`);
-- moving built-in Agents/Teams views behind client descriptors and testing
-  focus/selection preservation from P4;
+- focus/selection preservation for plugin views from P4 (the view/descriptor
+  plumbing landed: `client-view-surfaces.mjs`, `view-name-registry.mjs`,
+  `spec/client/view-surface-descriptors-spec.mjs`; `viewName ===` branches are
+  gone). What remains is proving a plugin view survives reload/removal without
+  losing the user's focus and selection;
 - moving built-in tool/frame/command catalogue families from P5 (bounded loop
   controls landed: `registerLoopControl`, `spec/plugins/plugin-loop-control-spec.mjs`,
   exit proof "reject unbounded or unknown terminal paths" met);
 - dual-driver index execution from P6 (checksum/advisory-lock/rollback migration
   tests landed: `spec/core/plugins/plugin-migrations-integrity-spec.mjs`);
-- removing remaining transitional shims and demonstrating install/reload/unload
-  on a live boot from P7.
+- demonstrating install/reload/unload on a live boot from P7 (needs the host-side
+  `deploy.sh`; there is no unload HTTP route today — `/api/v1/plugins` exposes GET
+  inventory plus POST `/install` and POST `/reload` only).
+- ~~removing remaining transitional shims~~ — **measured, and the item was
+  mis-worded.** A grep for transitional/compat-shim markers across `src/` returns
+  nothing; the five `legacy`/`backwards-compat` hits are data-format fallbacks
+  (`chat-view-model.mjs`, `frame-type-base.mjs`, `config-paths.mjs`) and one rename
+  alias in `session-state-utils.mjs`, none of them plugin-platform code. There is
+  nothing to remove because decision 10's compatibility ingress (old manifests,
+  `/api/plugins/` mounts, plugin asset URLs, class registrations behind one
+  version-gated adapter) was never built: no `manifestVersion`, `apiVersion` or
+  version-gate symbol exists in `src/core/plugins/`. So this is not shim cleanup but
+  an unbuilt decision — building it is scope the owner has not authorized, and
+  deleting the item would hide that.
 
-The full suite is green at 2,988 tests (2,959 pass, 29 skipped), including the
+The full suite is green at 3,030 tests (3,001 pass, 29 skipped), including the
 documentation consolidation gate.
 
 ## 7. Verification spine

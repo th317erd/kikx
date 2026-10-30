@@ -1,5 +1,25 @@
 'use strict';
 
+import {
+  CORE_VIEW_SURFACE_IDS,
+  getRegisteredViewNames,
+  isRegisteredViewName,
+  listAddressableViewNames,
+  registerViewNames,
+  syncViewNames,
+} from './view-name-registry.mjs';
+
+// Re-exported so the stack module is the one import site for the view vocabulary;
+// client-view-surfaces.mjs re-exports the same set for the shell's convenience.
+export {
+  CORE_VIEW_SURFACE_IDS,
+  getRegisteredViewNames,
+  isRegisteredViewName,
+  listAddressableViewNames,
+  registerViewNames,
+  syncViewNames,
+};
+
 // Every non-session surface the stack can address. Order is the URL/UI order.
 //
 // 'activities' was REMOVED at the owner's request (2026-10-28): the view, its sidebar
@@ -8,7 +28,10 @@
 // would let `pushView` accept a view no builder can render, which is a blank work
 // area. A legacy `?view=activities` therefore fails this membership test at the parse
 // site (`:204` below) and degrades to a normal window.
-export const VIEW_NAMES = [ 'inbox', 'agents', 'teams' ];
+// The core default, re-exported from the shared registry so the stack and the
+// view-surface dispatch cannot disagree about it. Kept exported (and kept a real
+// array) because existing specs assert deepEqual on it.
+export const VIEW_NAMES = [ ...CORE_VIEW_SURFACE_IDS ];
 
 // A navigation stack of "windows" over a single work area. Each entry is either
 // the root (top-level projects) or an entered session. A session entry always
@@ -39,8 +62,12 @@ export function normalizeNavigationStack(stack) {
       collapsed: entry?.collapsed === true,
     };
 
-    if (VIEW_NAMES.includes(entry?.view))
-      normalizedEntry.view = entry.view;
+    // Accept any name that is addressable right now, not only core ones: a plugin
+    // view the user is standing on must survive a normalize/rebuild. A name whose
+    // plugin has been uninstalled is no longer addressable and is dropped here,
+    // which is what stops a stale ?view= from producing a blank work area.
+    if (isRegisteredViewName(entry?.view))
+      normalizedEntry.view = entry.view.trim();
 
     return normalizedEntry;
   });
@@ -107,7 +134,7 @@ export function popStack(stack) {
 // root. It is idempotent: entering the Inbox twice must not stack two copies
 // (that would make Back appear broken).
 export function isViewEntry(entry) {
-  return VIEW_NAMES.includes(entry?.view);
+  return isRegisteredViewName(entry?.view);
 }
 
 // The view name on top of the stack, or null when the top is a session surface.
@@ -121,7 +148,7 @@ export function isViewOpen(stack, view) {
 }
 
 export function pushView(stack, view) {
-  if (!VIEW_NAMES.includes(view))
+  if (!isRegisteredViewName(view))
     throw new TypeError(`pushView() unknown view: ${view}`);
 
   let base = normalizeNavigationStack(stack);

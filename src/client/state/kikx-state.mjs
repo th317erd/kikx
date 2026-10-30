@@ -2,6 +2,11 @@
 
 import { ReactiveState } from '../lib/aeor-ui.mjs';
 import {
+  isReservedViewSurfaceID,
+  syncViewNames,
+  viewNamesFromComponents,
+} from './view-name-registry.mjs';
+import {
   defaultConfigForProvider,
   defaultTagValues,
   mergeAgentConfigWithProviderDefaults,
@@ -88,6 +93,10 @@ export const kikxState = new ReactiveState({
   clientFrameComponentsByType: {},
   clientToolComponentsByName: {},
   clientAgentConfigFormsByPluginID: {},
+  // P4: plugin-contributed surfaces. Absent before this change, which is why a
+  // 'view' or 'sidebar-item' descriptor could not reach the shell at all.
+  clientViewSurfaces: {},
+  clientSidebarItems: {},
   connectionStatus: 'Disconnected',
   connectionStatusKind: 'error',
   // The "show deleted sessions" eye and the title filter. deletedSessionIDs /
@@ -482,22 +491,47 @@ export function setAgentTagDefinitions(definitions, state = kikxState) {
 }
 
 export function setClientComponents(components, state = kikxState) {
+  let list = Array.isArray(components) ? components : [];
   let frameComponents = {};
   let toolComponents = {};
   let agentConfigForms = {};
+  let viewSurfaces = {};
+  let sidebarItems = {};
 
-  for (let component of Array.isArray(components) ? components : []) {
+  for (let component of list) {
     if (component?.kind === 'frame' && component.frameType)
       frameComponents[component.frameType] = component;
     else if (component?.kind === 'tool' && component.toolName)
       toolComponents[component.toolName] = component;
     else if (component?.kind === 'agent-config-form' && component.pluginID)
       agentConfigForms[component.pluginID] = component;
+    else if (component?.kind === 'view' && component.surfaceID) {
+      // Campaign P4: a plugin view has to reach the shell. Before this branch the
+      // descriptor was dropped here, so the server advertised a surface the client
+      // discarded and the work-area dispatch could only ever be a core ternary.
+      //
+      // A core surface id is reserved: a plugin must not take over the Inbox (or
+      // Agents/Teams) by registering a colliding id, so it is refused rather than
+      // stored, and it stays out of the addressable name set too.
+      if (!isReservedViewSurfaceID(component.surfaceID))
+        viewSurfaces[component.surfaceID] = component;
+    }
+    else if (component?.kind === 'sidebar-item' && component.surfaceID) {
+      sidebarItems[component.surfaceID] = component;
+    }
   }
 
   state.clientFrameComponentsByType = frameComponents;
   state.clientToolComponentsByName = toolComponents;
   state.clientAgentConfigFormsByPluginID = agentConfigForms;
+  state.clientViewSurfaces = viewSurfaces;
+  state.clientSidebarItems = sidebarItems;
+
+  // The single writer for the addressable view vocabulary. Derived from the
+  // descriptors just filed, so uninstalling a plugin shrinks the set again instead
+  // of leaving the stack able to hold a view nothing can render.
+  syncViewNames(viewNamesFromComponents(list));
+
   state.clientComponentStatus = 'ready';
 }
 
