@@ -148,6 +148,7 @@ roadmap item is shipped.
 - [Plugin extensibility campaign](./roadmap/plugin-extensibility.md)
 - [Plugin platform campaign](./plans/plugin-platform-campaign.md)
 - [Scrollview campaign](./plans/scrollview-campaign.md)
+- [Client user-state integrity](./plans/client-user-state-integrity.md)
 - [Session-tree consolidation](./roadmap/session-tree-consolidation.md)
 - [Session work area](./roadmap/session-work-area.md)
 - [Owner UI review, 2026-10-27](./roadmap/reviews/owner-ui-review-2026-10-27.md)
