@@ -32,6 +32,7 @@ import {
   createLoopToolDefinitions,
   createLoopTools,
   dispatchForwards,
+  resolvePluginRegistry,
 } from './agent-loop-tools.mjs';
 import {
   SESSION_SYSTEM_PROMPT,
@@ -278,9 +279,28 @@ export class AgentInterface extends PluginInterface {
       step,
     });
 
+    let loopControlOptions = {
+      resolveTerminal: (action) => {
+        let pluginRegistry = resolvePluginRegistry(context);
+        if (typeof pluginRegistry?.getLoopControlTerminal !== 'function')
+          return null;
+
+        return pluginRegistry.getLoopControlTerminal(action);
+      },
+    };
+
     for await (let output of iterateAgentResult(result)) {
-      if (handleLoopControl(output, state))
+      if (handleLoopControl(output, state, loopControlOptions))
         continue;
+
+      // A LoopControl the loop does not recognise is a hard stop, not something to
+      // ignore. Falling through would leave state.finalized/break untouched and let a
+      // plugin-supplied control silently keep the turn alive - the unbounded hidden wake
+      // path the loop contract forbids. Breaking here bounds it to the current turn.
+      if (output?.type === 'LoopControl') {
+        state.break = true;
+        continue;
+      }
 
       captureProviderDoneUsage(state, output);
 

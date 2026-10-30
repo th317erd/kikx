@@ -56,7 +56,82 @@ export function buildLoopDoneContent(state, content = {}) {
     : content;
 }
 
-export function handleLoopControl(output, state) {
+// The closed terminal vocabulary a loop control may end in. Core owns every one of
+// these; a plugin extension names its action but must map it onto one of these, so the
+// loop's termination paths stay finite and auditable no matter what is installed.
+//
+//   finalize         - end the turn, optionally with a visible report
+//   respond          - end the turn and schedule exactly one continuation
+//   break            - stop the loop without a report
+//   route            - forward to other agents and stop
+//   null-response    - end silently, emitting no frame
+//
+// There is deliberately no "continue indefinitely" or "wake later" terminal.
+export const LOOP_CONTROL_TERMINALS = Object.freeze(new Set([
+  'finalize',
+  'respond',
+  'break',
+  'route',
+  'null-response',
+]));
+
+// Actions the loop already understands. A plugin may not register these names: the
+// core's own controls are not replaceable, only extendable.
+export const CORE_LOOP_CONTROL_ACTIONS = Object.freeze(new Set([
+  'finalize',
+  'respond-and-continue',
+  'null-response',
+  'break',
+  'route',
+  'forward',
+]));
+
+// Apply a terminal state on behalf of a declared control. Kept separate from
+// handleLoopControl so the core mapping stays a plain, readable switch and the plugin
+// path has exactly one place to be validated.
+function applyLoopControlTerminal(terminal, output, state) {
+  switch (terminal) {
+    case 'finalize':
+      state.finalized = true;
+      state.continuation = null;
+      state.finalFrame = {
+        type: 'AgentMessage',
+        content: normalizeToolResponseContent(output.content),
+      };
+      return true;
+    case 'respond':
+      state.finalized = true;
+      state.continuation = normalizeContinuationRequest(output.continuation || output.content);
+      state.finalFrame = {
+        type: 'AgentMessage',
+        content: normalizeToolResponseContent(output.content),
+      };
+      return true;
+    case 'break':
+      state.break = true;
+      return true;
+    case 'null-response':
+      state.nullResponse = true;
+      return true;
+    case 'route':
+      recordForward(state, {
+        targets: normalizeForwardTargets(output.targets || output.target),
+        remove: normalizeForwardTargets(output.remove),
+        message: output.message || output.note,
+      });
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Returns true when the output was a loop control the loop understood and applied.
+//
+// options.resolveTerminal maps a plugin-declared action to its terminal state; without
+// it only the core actions are recognised. A false return is NOT permission to fall
+// through - the caller treats an unrecognised control as a hard stop, because ignoring
+// it would let a buggy or hostile control keep the loop alive silently.
+export function handleLoopControl(output, state, options = {}) {
   if (!output || output.type !== 'LoopControl')
     return false;
 
@@ -97,6 +172,15 @@ export function handleLoopControl(output, state) {
       message: output.message || output.note,
     });
     return true;
+  }
+
+  // Plugin-declared extensions. The registry has already refused any terminal outside
+  // LOOP_CONTROL_TERMINALS, so this can only apply a fixed, auditable outcome.
+  let resolveTerminal = options?.resolveTerminal;
+  if (typeof resolveTerminal === 'function') {
+    let terminal = resolveTerminal(output.action);
+    if (terminal)
+      return applyLoopControlTerminal(terminal, output, state);
   }
 
   return false;
