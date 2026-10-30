@@ -11,7 +11,7 @@
 // exactly one chunk and prevents duplicate heads at the seam.
 
 import { projectFrameMessages } from '../../shared/frame-manager/frame-manager.mjs';
-import { frameMatchesWindowFilters } from '../../shared/frame-window-filters.mjs';
+import { defaultFrameWindowFilters, frameMatchesWindowFilters } from '../../shared/frame-window-filters.mjs';
 import { threadRenderFrames } from '../state/thinking-state.mjs';
 
 const DEFAULT_PAGE_HEIGHT = 3500;
@@ -106,12 +106,14 @@ export class KikxThreadPageSource {
         return order < nextStart;
       return end == null || order <= end;
     });
-    let filters = this.getFilters?.() || null;
+    // A null app filter means "untouched defaults", not "skip filtering". The
+    // query and the default category set still have to be applied, or a search
+    // over a freshly loaded session returns every frame on the page.
+    let filters = this.getFilters?.() || defaultFrameWindowFilters();
     let query = this.getQuery?.() || '';
-    if (filters)
-      heads = heads.filter((frame) => frameMatchesWindowFilters(frame, filters, query));
-    heads = threadRenderFrames(heads, { includeHidden: filters?.deleted === true })
-      .filter((frame) => frame.deleted !== true || filters?.deleted === true);
+    heads = heads.filter((frame) => frameMatchesWindowFilters(frame, filters, query));
+    heads = threadRenderFrames(heads, { includeHidden: filters.deleted === true })
+      .filter((frame) => frame.deleted !== true || filters.deleted === true);
     // A projected head can be emitted from two adjacent raw windows during a
     // tool call/result seam. Keep one row per frame id even if the seam logic
     // ever sees the same head twice.

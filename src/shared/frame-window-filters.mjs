@@ -423,26 +423,13 @@ export function frameQueryMatchesText(text, query) {
     return true;
   }
 
-  // Plain queries are fuzzy: every whitespace-separated token must match,
-  // either as a substring or as an in-order character subsequence. This keeps
-  // "rename" exact-fast while letting "frmfltr" find "frame filter".
+  // Plain queries are token substrings: every whitespace-separated token must
+  // occur verbatim. An in-order subsequence matcher used to live here, but on
+  // long tool output almost any letters appear in order, so a search matched
+  // nearly every frame and looked like it did nothing. Wildcards above still
+  // provide the cheap abbreviated form.
   let tokens = needle.split(/\s+/).filter(Boolean);
-  return tokens.every((token) => fuzzyTokenMatches(haystack, token));
-}
-
-function fuzzyTokenMatches(haystack, token) {
-  if (haystack.includes(token))
-    return true;
-
-  let cursor = 0;
-  for (let char of token) {
-    let index = haystack.indexOf(char, cursor);
-    if (index === -1)
-      return false;
-
-    cursor = index + 1;
-  }
-  return true;
+  return tokens.every((token) => haystack.includes(token));
 }
 
 // Every field a person could plausibly be searching for. Kept explicit rather

@@ -254,14 +254,17 @@ test('pathMatchesTypes excludes only what it can prove', () => {
 
 // --- the generalized search ----------------------------------------------
 
-test('frameQueryMatchesText is case-insensitive fuzzy matching when there is no wildcard', () => {
+test('frameQueryMatchesText is case-insensitive token substring matching', () => {
   assert.equal(frameQueryMatchesText('Rename the session', 'rename'), true);
   assert.equal(frameQueryMatchesText('Rename the session', 'RENAME'), true);
   assert.equal(frameQueryMatchesText('Rename the session', 'delete'), false);
   assert.equal(frameQueryMatchesText('anything', ''), true);
-  assert.equal(frameQueryMatchesText('frame filter popup', 'frmfltr'), true);
-  assert.equal(frameQueryMatchesText('Rename the session', 'rn ss'), true);
+  assert.equal(frameQueryMatchesText('frame filter popup', 'frame filter'), true);
+  assert.equal(frameQueryMatchesText('frame filter popup', 'frmfltr'), false);
+  assert.equal(frameQueryMatchesText('Rename the session', 'rn ss'), false);
   assert.equal(frameQueryMatchesText('frame filter popup', 'frm zzz'), false);
+  // A subsequence over long tool output used to match almost everything.
+  assert.equal(frameQueryMatchesText('ShellToolFrame\nexec', 'Exec Status'), false);
 });
 
 test('frameQueryMatchesText honours * as a wildcard in order', () => {

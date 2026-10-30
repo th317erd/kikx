@@ -377,11 +377,12 @@ export function setFrameFilters(app, filters) {
   // A filter change can originate outside the popup (the header clear button).
   // Repaint its checkboxes without rebuilding the shell or moving focus.
   app.querySelector?.('kikx-frame-filter-popup')?.refresh?.();
-  // Apply the new selection to the mounted page source immediately. The
-  // server window scan can take seconds on a large session; leaving the old
-  // unfiltered page on screen until it returns is what made a filter click look
-  // like a no-op. The server result replaces this provisional page view.
-  app._syncFrameThread?.(app._state.selectedSessionID, { force: true });
+  // A paged thread re-scopes synchronously in reloadVisibleWindow(); doing it
+  // here too would mount the same source twice. Non-paged threads keep the
+  // provisional repaint while the server window is fetched.
+  let paged = app.querySelector?.('kikx-chat-view')?.usesPagedScrollview === true;
+  if (!paged)
+    app._syncFrameThread?.(app._state.selectedSessionID, { force: true });
 
   // The Deleted row also governs the session grid's soft-deleted bucket. These
   // two used to be separate controls (a frame filter here, an eye in the search
@@ -403,7 +404,7 @@ export function setFrameFilters(app, filters) {
 // six requests, and the answers could land out of order. Collapse a burst into
 // a single scan once the typist pauses. Popup row clicks stay immediate: a
 // click is one deliberate action and should not wait on a timer.
-const QUERY_DEBOUNCE_MS = 250;
+const QUERY_DEBOUNCE_MS = 350;
 
 function cancelPendingWindowQuery(app) {
   if (!app._queryDebounceTimer)
@@ -436,6 +437,18 @@ function scheduleWindowQuery(app, run) {
 // has to come back over the wire.
 function reloadVisibleWindow(app) {
   let sessionID = app._state.selectedSessionID;
+  // A whole-session page source already holds the raw pages and runs the same
+  // predicate as the server. Re-scoping it is synchronous and local; asking
+  // the server for a filtered window here hydrates every body in the session
+  // (tens of thousands on a live thread) and freezes the browser while the
+  // old, unfiltered page stays on screen. The page source is authoritative for
+  // paged threads, so update its context and stop.
+  let view = app.querySelector?.('kikx-chat-view');
+  if (sessionID && view?.usesPagedScrollview === true) {
+    app._syncFrameThread?.(sessionID, { force: true });
+    return;
+  }
+
   if (sessionID && typeof app._loadFrames === 'function') {
     // Keep the existing thread mounted while the filtered window is fetched.
     // A full _render() rebuilds the header search input and destroys its

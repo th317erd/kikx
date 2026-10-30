@@ -13,7 +13,7 @@ const { incomingFrameMatchesWindow } = await import('../../src/client/components
 
 const STATE = {
   selectedSessionID: 'ses_1',
-  sessionSearch: 'frmfltr',
+  sessionSearch: 'frame',
   frameFilters: {
     agent: true,
     user: true,

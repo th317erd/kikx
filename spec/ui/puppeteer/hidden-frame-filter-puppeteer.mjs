@@ -82,3 +82,53 @@ test('Puppeteer Hidden filter reveals hidden and soft-deleted frames', async (t)
     await fixture.close();
   }
 });
+
+test('Puppeteer search filters a fresh paged thread without a whole-session scan', async (t) => {
+  let chromePath = findChromeExecutable();
+  if (!chromePath) {
+    t.skip('Puppeteer search coverage requires Chrome');
+    return;
+  }
+
+  let fixture = await startStagehandUIServer({
+    sessions: [ { id: 'session_search', title: 'Search Filter', messageCount: 3 } ],
+  });
+  fixture.frameRuntime.framesBySessionID.set('session_search', [
+    frame('user_1', 1, { content: { text: 'alpha deploy' } }),
+    frame('user_2', 2, { content: { text: 'beta status' } }),
+    frame('user_3', 3, { content: { text: 'gamma deploy' } }),
+  ]);
+
+  let browser = await puppeteer.launch({
+    executablePath: chromePath,
+    headless: 'new',
+    args: [ '--no-sandbox', '--disable-setuid-sandbox' ],
+  });
+  try {
+    let page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 800 });
+    await page.evaluateOnNewDocument(() => {
+      sessionStorage.setItem('kikx.auth.session', JSON.stringify({ token: 'search-test-token', refresh_token: 'search-test-refresh' }));
+    });
+    await page.goto(`${fixture.baseURL}/?session=session_search`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.waitForFunction(() => document.querySelectorAll('kikx-frame-item[data-frame-id]').length === 3, { timeout: 15000 });
+
+    let input = await page.$('.kikx-session-search input');
+    await input.click();
+    await page.keyboard.type('beta');
+    await page.waitForFunction(() => {
+      let ids = [ ...document.querySelectorAll('kikx-frame-item[data-frame-id]') ].map((item) => item.dataset.frameId);
+      return ids.length === 1 && ids[0] === 'user_2';
+    }, { timeout: 15000 });
+
+    await input.click();
+    await page.keyboard.down('Control');
+    await page.keyboard.press('A');
+    await page.keyboard.up('Control');
+    await page.keyboard.press('Backspace');
+    await page.waitForFunction(() => document.querySelectorAll('kikx-frame-item[data-frame-id]').length === 3, { timeout: 15000 });
+  } finally {
+    await browser?.close();
+    await fixture.close();
+  }
+});

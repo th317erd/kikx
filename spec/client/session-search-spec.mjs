@@ -215,3 +215,28 @@ test('typing back to the already-loaded query does not scan again', async () => 
 
   assert.equal(app.loads.length, 1, 'the burst settled back on the loaded query, so nothing to do');
 });
+
+test('a paged session filters its mounted pages instead of scanning the whole session', () => {
+  let app = makeApp({ selectedSessionID: 'ses_1' });
+  app.querySelector = (selector) => (
+    selector === 'kikx-chat-view' ? { usesPagedScrollview: true } : null
+  );
+
+  applyWindowQuery(app, 'deploy');
+
+  assert.equal(app._state.sessionSearch, 'deploy');
+  assert.deepEqual(app.loads, [], 'a paged thread must not run the whole-session body scan');
+  assert.equal(app.threadSyncs, 1, 'the page source must be re-scoped with the new query');
+});
+
+test('a paged filter click re-scopes the page source without a body scan', () => {
+  let app = makeApp({ selectedSessionID: 'ses_1' });
+  app.querySelector = (selector) => (
+    selector === 'kikx-chat-view' ? { usesPagedScrollview: true } : null
+  );
+
+  setFrameFilters(app, toggleFilter(defaultFrameFilters(), 'tools'));
+
+  assert.deepEqual(app.loads, [], 'checkbox changes must stay local to the loaded pages');
+  assert.equal(app.threadSyncs, 1, 'the page source must be re-scoped with the new filters');
+});

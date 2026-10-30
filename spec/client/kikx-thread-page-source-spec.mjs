@@ -164,3 +164,20 @@ test('the Hidden gate reveals hidden and soft-deleted raw heads', async () => {
   let hiddenOn = await source.loadPage({ pageIndex: 0 });
   assert.deepEqual(hiddenOn.items.map((item) => item.frame.id), [ 'visible_1', 'hidden_2', 'deleted_3' ]);
 });
+
+test('a query filters a fresh page even before app filters are initialised', async () => {
+  let pages = frames();
+  let source = new KikxThreadPageSource({
+    pageSize: 2,
+    totalRawFrames: 4,
+    loadPage: async (index) => pages[index],
+    // A new session starts with `frameFilters: null`; the popup treats that as
+    // defaults, so the page source must too. This is the search-did-nothing
+    // regression: `null` used to skip the predicate entirely.
+    getFilters: () => null,
+    getQuery: () => 'last',
+  });
+
+  let page = await source.loadPage({ pageIndex: 1 });
+  assert.deepEqual(page.items.map((item) => item.frame.id), [ 'user_4' ]);
+});
