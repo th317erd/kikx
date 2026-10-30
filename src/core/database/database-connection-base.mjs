@@ -23,6 +23,8 @@ export class DatabaseConnectionBase extends PluginInterface {
     events: false,
     auth: false,
     ranges: false,
+    indexDocuments: false,
+    scalarIndex: false,
   };
   static configFields = [];
   static configKeys = [];
@@ -117,15 +119,37 @@ export class DatabaseConnectionBase extends PluginInterface {
     throw unimplemented(this, 'getMany');
   }
 
-  // Index configuration is a driver concern. Drivers backed by a store with a
-  // persistent index (AeorDB) override this; drivers that have no index
-  // concept inherit the no-op and simply ignore the request.
-  async configureIndexes(_configs) {}
+  // Index declaration is a driver concern, and the two mechanisms are separate
+  // capabilities because they are genuinely different operations:
+  //
+  //  - `indexDocuments` — the driver persists index *configuration documents*
+  //    (AeorDB writes `.aeordb-config/indexes.json` and the server maintains the
+  //    index).
+  //  - `scalarIndex` — the driver can build a real index over one JSON field
+  //    (PostgreSQL expression index, SQLite JSON1).
+  //
+  // A driver may support either, both, or neither. Both hooks are capability
+  // gated rather than silent no-ops: a no-op resolving to `undefined` is
+  // indistinguishable from a successful index, which is how a plugin's index
+  // quietly stopped existing on a driver that never supported it. An unsupported
+  // driver now raises `capability_unsupported` so the caller can report a scan
+  // fallback instead of assuming coverage.
+  async configureIndexes(configs) {
+    this.requireCapability('indexDocuments');
+    if (!Array.isArray(configs))
+      throw new TypeError('configureIndexes() configs must be an array');
 
-  // Optional hook for a plugin index that is not expressed as an AeorDB index
-  // document. Drivers with real schema indexes can implement this; drivers
-  // without one fall back to their normal query scan.
-  async ensureScalarIndex(_name) {}
+    return { applied: true, driver: this.constructor.driverID, count: configs.length };
+  }
+
+  async ensureScalarIndex(name) {
+    this.requireCapability('scalarIndex');
+    let field = String(name || '').trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(field))
+      throw new TypeError(`invalid scalar index name: ${name}`);
+
+    return { applied: true, driver: this.constructor.driverID, name: field };
+  }
 
   async batch() {
     throw unimplemented(this, 'batch');

@@ -45,6 +45,8 @@ export class SQLiteConnection extends DatabaseConnectionBase {
     events: false,
     auth: false,
     ranges: true,
+    indexDocuments: false,
+    scalarIndex: true,
   };
   static configFields = [
     {
@@ -86,6 +88,26 @@ export class SQLiteConnection extends DatabaseConnectionBase {
     this.sqlite?.close();
     this.sqlite = null;
     this._connected = false;
+  }
+
+  // SQLite indexes a JSON field directly through JSON1, which is what lets this
+  // driver honour a plugin's scalar index instead of scanning. The index is
+  // partial on `raw = 0` so it covers exactly the document rows the driver
+  // stores, mirroring the PostgreSQL driver's expression index.
+  async ensureScalarIndex(name) {
+    let field = String(name || '').trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(field))
+      throw new TypeError(`invalid scalar index name: ${name}`);
+    if (!this.sqlite)
+      return { applied: false, driver: SQLiteConnection.driverID, name: field, reason: 'not connected' };
+
+    let indexName = `documents_${field}_idx`;
+    // `field` is the only interpolated value and is validated to an identifier
+    // shape above, so the DDL cannot be redirected by a caller-supplied name.
+    this.sqlite.exec(
+      `CREATE INDEX IF NOT EXISTS ${indexName} ON documents (json_extract(body, '$${field}')) WHERE raw = 0`,
+    );
+    return { applied: true, driver: SQLiteConnection.driverID, name: field, indexName };
   }
 
   async put(path, body, options = {}) {
