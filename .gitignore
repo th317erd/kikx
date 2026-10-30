@@ -1,5 +1,12 @@
 # Dependencies
-node_modules/
+# No trailing slash on purpose: `node_modules/` matches only a DIRECTORY, so a
+# `node_modules` SYMLINK stayed committable. One was committed (blob 63775bb0 in
+# 80281f87) pointing at ../kikx/node_modules while kikx pointed back at
+# ../kikx2/node_modules, so readlink -f looped and no npm package resolved from
+# either checkout. A checkout of that symlink over a real installed directory
+# emptied both trees: every lane reported 0 executed and unit specs died with
+# ERR_MODULE_NOT_FOUND on puppeteer-core. Never track node_modules here.
+node_modules
 
 # Logs
 logs/
