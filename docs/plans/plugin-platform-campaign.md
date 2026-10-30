@@ -17,7 +17,7 @@ last_verified: 2026-10-29
 - Non-doc suite after that merge: **2824 tests, 2795 pass, 0 fail, 29 skipped**.
 - The original Miri branch was `f201985e`, **48 commits ahead / 18 behind** at review time; that branch's isolated suite was **2709 tests, 2680 pass, 0 fail, 29 skipped**.
 - The plugin-router spec is **12/12 pass**.
-- The merge completed; the combined revision has passed the non-doc suite. Plugin attribution/unload contract tests now exist; authority genericism, route auth, scoped DB/events/migrations contracts and live install/reload/unload still need work.
+- The merge completed; the combined revision has passed the non-doc suite. Plugin attribution/unload contract tests now exist; route auth, scoped DB/events/migrations contracts and live install/reload/unload still need work.
 - The laptop dirty tree was the documentation migration plus untracked docs/testbed/public files; no plugin source was dirty.
 
 ### Registry facts
@@ -73,7 +73,7 @@ This is a substantial platform foundation. It is not yet a complete plugin-way i
 
 ### Concrete defects in the existing platform work
 
-- `PluginAuthority` hardcodes `miri_capability`, while `PluginDatabase` permits only `<pluginId>_*` tables. A generic plugin cannot use the authority table unless it is named `miri`.
+- `PluginAuthority` hardcodes `miri_capability`; under the owner ruling it stays Miri-specific and is not a campaign blocker.
 - `PluginDatabase` and `PluginMigrations` are PostgreSQL/SQL-specific (`pg`, SQL statements, database URL). They are not driver-neutral.
 - Plugin routes/inventory/reload/install run before the normal auth chain and have no shared Kikx authentication/capability contract. Install is config-gated but not authenticated; reload is not gated.
 - The ownership ledger now attributes and releases mounts, migrations, tools, selectors, tags, drivers, components, indexes, scoped DB handles and subscriptions. This is a major improvement; the remaining lifecycle risk is that class-stack overrides are still released through a separate path and existing instances are not rebuilt.
@@ -237,11 +237,11 @@ registerService(name, {
 
 - Plugins receive a scoped mount: `/api/plugins/<plugin-id>/`.
 - Reserved IDs `api`, `v1`, `plugins` remain refused.
-- Every plugin route has an explicit auth policy:
+- Every plugin route has an explicit transport auth policy:
   - `required` by default for non-public routes;
-  - `public` must be declared and reviewed;
-  - capability checks are enforced before the plugin handler for actions that mutate or
-    read protected data.
+  - `public` must be declared and reviewed.
+- Auth is an ordinary HTTP policy, not a plugin capability boundary. Plugins are trusted
+  code and may override the main application class.
 - Raw body is preserved; size/deadline/error behavior is fixed in core.
 - Install/reload endpoints require Kikx auth and an explicit operator capability, not
   only a config flag.
@@ -379,10 +379,18 @@ UI) as the reference plugin. It does not mechanically move all 63 tools in one p
 
 Reason: a reference plugin proves routes, views, services, indexes and unload together.
 
-### D4 — Service override remains allowlisted
+### D4 — The main application class is deliberately hijackable
 
-Do not make every store or security service replaceable. Register service factories for
-feature services with explicit dependency and teardown contracts. Auth/crypto stay core.
+Plugins are trusted code. A plugin may override the main application class and any
+service/store it can resolve through the registry. Do not build a per-class allowlist or
+an authority boundary around plugin overrides in this campaign.
+
+`registerService` remains useful for dependency order, lifecycle and teardown, but it is
+not a security boundary. Existing database-prefix checks and route authentication are
+kept as ordinary safety/transport policies, not as claims that a hostile plugin is
+contained. Do not spend campaign effort generalizing `PluginAuthority`; the existing
+Miri-specific authority code is out of scope unless a later security campaign asks for
+it.
 
 ### D5 — Mount paths remain scoped
 
@@ -399,18 +407,22 @@ pretending the index exists.
 No new `viewName === ...` branches in `kikx-shell-builders.mjs`. Views/sidebar/toolbar
 entries come from descriptors and modules.
 
-### D8 — Owner decisions still required
+### D8 — Owner rulings
 
-The following need an explicit owner ruling before implementation:
+Recorded owner rulings:
 
-1. Whether all existing built-in tools/frames must become bundled plugins in this
-   campaign or after the platform seams land.
-2. Whether plugin routes may ever be public by default in a development profile.
-3. Whether plugin service registration may replace any core persistence service, or only
-   feature services.
-4. Retention policy for plugin-owned migrations/data on uninstall.
+1. **Built-in migration scope:** build the seams and migrate one complete reference
+   family in this campaign; move the remaining built-in tools/frames in later phases.
+2. **Public plugin routes:** authenticated by default; a route may be public only by an
+   explicit reviewed declaration. No public default in development.
+3. **Service/class override:** the main application class is deliberately hijackable.
+   Plugins are trusted code; no allowlist and no new authority boundary around plugin
+   overrides. Existing safety checks remain ordinary defenses, not a containment claim.
+4. **Uninstall retention:** remove definitions, routes, indexes and migration
+   registrations by default; retain durable plugin data unless an explicit purge is
+   requested.
 
-Recommended defaults are stated above.
+These are owner rulings, not recommendations still awaiting ratification.
 
 ## 6. Phases
 
@@ -429,9 +441,10 @@ Work:
 - Extend the existing authority/attribution/unload tests to cover route auth, scoped-DB
   driver behavior, event delivery, migrations and install/reload failure paths. Do not
   rely on the router and ownership tests alone.
-- Fix `PluginAuthority` to use a generic plugin-owned capability table.
-- Add auth/capability gates to plugin inventory, reload, install and mutating plugin
-  routes.
+- Add ordinary Kikx authentication gates to plugin inventory, reload, install and
+  mutating plugin routes.
+- Do not generalize `PluginAuthority` or add a plugin capability boundary; the owner
+  ruling makes plugins trusted code.
 - Make migration/database contracts explicitly driver-qualified; keep Postgres working
   while reporting unsupported drivers.
 - Run full suite and plugin contract tests.
@@ -441,6 +454,8 @@ Exit proof:
 - Existing suite green.
 - New platform tests cover success, malformed input, timeout, oversized body, duplicate
   name, failed setup, failed migration, unauthorized route, unload cleanup.
+- The main application class override is explicitly tested; no authority boundary is
+  claimed.
 - One live boot with a no-op plugin confirms inventory/mount/auth/unload.
 
 ### P1 — Registry construction and ownership
@@ -458,8 +473,8 @@ Work:
 
 Exit proof:
 
-- A test plugin overrides `FrameRouter`, `FrameRuntime` and `CompactionService`; the next
-  constructed instances use the override.
+- A test plugin overrides `FrameRouter`, `FrameRuntime`, `CompactionService` and the main
+  application class; the next constructed instances use the overrides.
 - Direct construction tests prove no bypass remains for registered classes.
 - Unload test proves every registry collection returns to its pre-plugin state.
 
@@ -493,7 +508,7 @@ Work:
 Exit proof:
 
 - Authorized route succeeds.
-- Unauthorized route is rejected before handler.
+- Unauthorized route is rejected before handler by ordinary Kikx auth.
 - Oversized body, malformed JSON, timeout and handler failure are deterministic.
 - Unload returns 404/route-not-found immediately.
 
@@ -616,9 +631,12 @@ A phase is done only when:
   the current unauthenticated inventory/reload behavior as complete.
 - **Driver divergence:** PostgreSQL is operational; AeorDB/SQLite must report capabilities
   honestly. SQL migrations cannot be assumed portable.
-- **Class override blast radius:** replacing `FrameRuntime` or `FrameRouter` can change
-  every turn. Phase it, test construction, and require explicit owner approval for any
-  change to core classes outside the allowlist.
+- **Class override blast radius:** replacing the main application class, `FrameRuntime` or
+  `FrameRouter` can change everything. Phase it and test construction; the owner has
+  explicitly accepted this blast radius for trusted plugins.
+- **Trusted plugins:** plugins can hijack the main application class. Do not describe
+  registry overrides, database-prefix checks, or route auth as a sandbox. A malicious
+  plugin is a compromised process, not a contained tenant.
 - **Duplicate dependency declaration:** the merge leaves `pg` in both
   `optionalDependencies` and `dependencies`. Normalize to one declaration and verify the
   optional-install behavior before release.
@@ -631,8 +649,8 @@ A phase is done only when:
 
 These findings are part of the plan, not objections to it:
 
-1. **The `PluginAuthority` table is not generic.** `miri_capability` is a plugin-specific name; the scoped DB wrapper rejects it for any other plugin. P0 must define a plugin-owned capability table namespace and test a non-Miri plugin.
-2. **Plugin routes currently bypass core auth.** The route handler table runs before the auth chain. P3 cannot claim route ownership until auth/capability policy is enforced before plugin handlers and inventory/reload/install are protected.
+1. **`PluginAuthority` is intentionally not generalized in this campaign.** It remains Miri-specific. The owner ruling makes the main application class hijackable and treats plugins as trusted code, so building a capability boundary around plugin overrides would be misleading.
+2. **Plugin routes currently bypass core auth.** The route handler table runs before the auth chain. P3 still needs ordinary Kikx authentication before plugin handlers and inventory/reload/install; this is transport safety, not a plugin capability boundary.
 3. **`PluginDatabase` and migrations are Postgres-shaped.** The plan must not claim driver-neutral persistence until a driver contract test proves AeorDB and SQLite behavior or explicitly reports unsupported capabilities.
 4. **Unload is now mostly reversible but split across two mechanisms.** The ownership ledger releases mounts, migrations, tools, selectors, tags, drivers, components, indexes, DB handles and subscriptions; class-stack overrides are released separately. The remaining test gap is proving both paths, plus live-instance generation, in one unload contract.
 5. **A class override is not a live behavior change.** A reload that does not reconstruct the affected instance must report `restart-required`; otherwise the registry row looks changed while the running service is stale.
