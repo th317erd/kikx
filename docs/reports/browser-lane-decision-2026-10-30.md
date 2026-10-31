@@ -19,7 +19,7 @@ applies_to: development-v3
 |---|---|---|---|---|---|
 | `ui:playwright` | 13 | 18 | `playwright` only | **Yes** | **18/18 pass, EXIT=0** (5 of 6 full-lane runs on disk); 17/18 once, pre-merge |
 | `ui:puppeteer` | 17 | 20 | `puppeteer-core` only | **Yes** | **20/20 pass, EXIT=0 in 6 consecutive concurrent lane runs** — 3 pre-commit (§7.1), 2/2 at committed `379bac1c` (`.gate/v18/`), 1/1 at committed `4b2e5dff` (`.gate/v22/lane.exit`); **a 3-way concurrent triple at `a205609f` was 2/3** (`.gate/te12/head-lane{1,2,3}.log`: pass 20 / fail 0, pass 20 / fail 0, pass 19 / fail 1), the single red being `commit-runtime-event-puppeteer.mjs:65` — a 10 s boot `waitForSelector` — which passes solo in 2.3 s (`.gate/v28/commit-solo1.log`); `frame-window` itself passed in all three lanes at 34.2/34.3/34.6 s — after `frame-window` was rewritten to remove the eager-preload race; the rewritten spec alone is also 3/3 green at the committed bytes `a40bd6bf` and 3/3 again at `4b2e5dff` (`.gate/v21/post.{1,2,3}.log`). Before that rewrite the same lane was 4/6 green, 2 red (19/20) |
-| `ui:stagehand` | 26 | 28 | `@browserbasehq/stagehand` | **No** | **28/28 fail, EXIT=1** (fresh run at `9e9ec60d`; AereoDB `:6830` refused) |
+| `ui:stagehand` | 26 | 28 | `@browserbasehq/stagehand` | **No** | **28/28 fail, EXIT=1** (fresh run at `9e9ec60d`; AeorDB `:6830` refused) |
 
 Import counts are exclusive — `grep -ho "from '...'"` yields exactly one browser
 package per lane (`playwright`, `puppeteer-core`, `@browserbasehq/stagehand`), so
@@ -52,7 +52,7 @@ behaviour, but `spec/scripts/test-lane-coverage-spec.mjs` asserts nothing about 
 Treat it as untested rather than proven.
 
 **What disqualifies Stagehand is simpler and unchanged:** it needs a paid
-`OPENAI_API_KEY` plus a live AereoDB on `:6830`, neither is present, and it has
+`OPENAI_API_KEY` plus a live AeorDB on `:6830`, neither is present, and it has
 never produced a single passing test on this machine. Zero passing tests in a lane's
 history is enough to keep it out of the gate.
 
@@ -505,9 +505,9 @@ was running.
 
 1. **Keep both lanes for now.** Both are green; deletion costs 16 specs of coverage.
 2. **Drop Stagehand.** Measured at `9e9ec60d`: 28/28 fail, 0 pass, 0 skipped, on a
-   refused AereoDB connection. It needs a paid key plus a live `:6830` and has never
+   refused AeorDB connection. It needs a paid key plus a live `:6830` and has never
    passed a single test here, so it can gate nothing. If it is kept it must be given
-   credentials and a live AereoDB, because a lane that always fails is as useless as
+   credentials and a live AeorDB, because a lane that always fails is as useless as
    one that always silently passes.
 3. **Port the 16 Puppeteer-only specs to Playwright**, highest-value first:
    `frame-window`, `frame-bottom-scroll`, `tool-output-overflow`,
@@ -572,6 +572,6 @@ Its full-lane run at the same tree is a fifth consecutive Puppeteer green:
 - If Playwright's `aeor-framework` intermittent turns out to be *caused* by this
   repo's usage rather than the framework's own deferred render, the "Playwright has
   a narrower failure surface" argument weakens.
-- If `OPENAI_API_KEY` and AereoDB become available, Stagehand's 28 tests could be
+- If `OPENAI_API_KEY` and AeorDB become available, Stagehand's 28 tests could be
   measured for the first time. Disqualification here is on *unavailability and
   silent pass*, not on measured failure.
