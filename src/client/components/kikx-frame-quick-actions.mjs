@@ -1,8 +1,64 @@
 'use strict';
 
-import { createIcon } from '../lib/icons.mjs';
+import { createIcon, setIcon } from '../lib/icons.mjs';
 
 export const QUOTE_FRAME_EVENT = 'kikx-quote-frame';
+
+function depth(node) {
+  let count = 0;
+  let parent = node.parentNode;
+  while (parent) {
+    count += 1;
+    parent = parent.parentNode;
+  }
+  return count;
+}
+
+function allDetails(root) {
+  if (!root)
+    return [];
+  return [ ...root.querySelectorAll('details') ];
+}
+
+export function isFrameExpandedState(root) {
+  return allDetails(root).some((details) => details.open === true);
+}
+
+function syncExpandCollapseIcon(button, root) {
+  if (!button)
+    return;
+  setIcon(button, isFrameExpandedState(root) ? 'unfold-less' : 'unfold-more');
+}
+
+export function syncExpandCollapseButton(toolbar) {
+  if (!toolbar)
+    return;
+  let button = toolbar.querySelector('.kikx-frame__quick-action--expand-collapse');
+  syncExpandCollapseIcon(button, toolbar.parentNode);
+}
+
+function toggleAll(root, button) {
+  let details = allDetails(root).sort((a, b) => depth(a) - depth(b));
+  let expanded = details.some((node) => node.open === true);
+
+  if (expanded) {
+    [ ...details ].reverse().forEach((node) => {
+      if (node.open !== true)
+        return;
+      node.open = false;
+      node.dispatchEvent(new Event('toggle', { bubbles: true }));
+    });
+  } else {
+    details.forEach((node) => {
+      if (node.open === true)
+        return;
+      node.open = true;
+      node.dispatchEvent(new Event('toggle', { bubbles: true }));
+    });
+  }
+
+  syncExpandCollapseIcon(button, root);
+}
 
 // A frame's quick actions live just outside the frame surface. The frame item
 // keeps one bar alive across in-place updates and swaps its `_frame` reference,
@@ -36,6 +92,21 @@ export function buildFrameQuickActions(frame, ownerDocument = document) {
   });
 
   toolbar.appendChild(quote);
+
+  let expandCollapse = ownerDocument.createElement('button');
+  expandCollapse.type = 'button';
+  expandCollapse.className = 'kikx-frame__quick-action kikx-frame__quick-action--expand-collapse';
+  expandCollapse.title = 'Expand/collapse';
+  expandCollapse.setAttribute('aria-label', 'Expand/collapse');
+  expandCollapse.appendChild(createIcon('unfold-more', { ownerDocument }));
+  expandCollapse.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleAll(toolbar.parentNode, expandCollapse);
+  });
+
+  toolbar.appendChild(expandCollapse);
+
   return toolbar;
 }
 

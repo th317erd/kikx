@@ -3,7 +3,7 @@
 import './kikx-user-message-frame.mjs';
 import './kikx-coordination-frame.mjs';
 import { isCoordinationWakeFrame } from '../../shared/coordination-visibility.mjs';
-import { buildFrameQuickActions } from './kikx-frame-quick-actions.mjs';
+import { buildFrameQuickActions, syncExpandCollapseButton } from './kikx-frame-quick-actions.mjs';
 import { elements, $, cleanupBindings } from '../lib/aeor-ui.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { renderMarkdownToElement } from '../lib/markdown-renderer.mjs';
@@ -241,6 +241,21 @@ export class KikxFrameItem extends HTMLElement {
     if (!details)
       return;
 
+    // Only the frame header bar may expand/collapse the row. Clicks anywhere
+    // else (content, controls, scrollbars) are selection/interaction, not a
+    // toggle request.
+    let headerTarget = false;
+    if (typeof event.target?.closest === 'function') {
+      headerTarget = !!event.target.closest('.kikx-frame__meta, .kikx-frame__compact-summary');
+    } else {
+      headerTarget = event.target === this._metaElement
+        || !!this._metaElement?.contains?.(event.target)
+        || event.target === this._compactView?.summary
+        || !!this._compactView?.summary?.contains?.(event.target);
+    }
+    if (!headerTarget)
+      return;
+
     // Clicking inside expanded content is selection/scroll interaction, not a
     // request to collapse the row. In particular, the horizontal scrollbar on
     // a <pre> must not close the disclosure under the pointer.
@@ -380,6 +395,7 @@ export class KikxFrameItem extends HTMLElement {
 
       this._quickActions = buildFrameQuickActions(frame, document);
       this.appendChild(this._quickActions);
+      syncExpandCollapseButton(this._quickActions);
 
       return true;
     }, { frameID: frame.id, frameType: frame.type });
@@ -499,6 +515,8 @@ export class KikxFrameItem extends HTMLElement {
 
     // Record what the user just did so a later rebuild can restore it.
     setFrameExpanded(this._frame?.id, details.open);
+    if (this._quickActions)
+      syncExpandCollapseButton(this._quickActions);
 
     if (!details.open) {
       this._discardContentElement();
