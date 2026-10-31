@@ -188,7 +188,10 @@ async function prefixQuoteBlock(app, frameID, frameText) {
   let quotedText = typeof frameText === 'string' ? frameText.trim() : '';
   let block = quotedText ? `${marker}\n${quotedText}` : marker;
   let next = current.trim() !== '' ? `${block}\n\n${current}` : block;
-  let replaced = await replaceComposerText(app, next);
+  // A quote is an immediate user edit, not a server transaction. Do not wait
+  // for a previous draft save to settle (or fail); the local controller already
+  // holds the current text, and the new draft is queued after the edit.
+  let replaced = await replaceComposerText(app, next, { flush: false });
   if (replaced) {
     composer = app.querySelector?.('textarea[name="message"]');
     composer?.focus?.();

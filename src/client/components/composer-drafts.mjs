@@ -409,14 +409,16 @@ export async function flushComposerDraft(app, sessionID = app._state.selectedSes
   return await queueComposerDraftSave(app, sessionID, { immediate: options.keepalive === true });
 }
 
-export async function replaceComposerText(app, text, { draftID = null, savedText = null } = {}) {
+export async function replaceComposerText(app, text, { draftID = null, savedText = null, flush = true } = {}) {
   let sessionID = app._state.selectedSessionID;
   if (!sessionID)
     return false;
 
-  let saved = await flushComposerDraft(app, sessionID);
-  if (!saved)
-    return false;
+  if (flush) {
+    let saved = await flushComposerDraft(app, sessionID);
+    if (!saved)
+      return false;
+  }
 
   let controller = getComposerDraftController(app, sessionID);
   bumpComposerDraftRevision(controller);

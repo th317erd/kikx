@@ -115,6 +115,40 @@ test('Puppeteer preserves typed text and expansion across a full shell render', 
     });
     assert.equal(stored, text, 'the draft must be present in the local recovery cache');
 
+
+    // Generic focused form state: an account editor is rebuilt by a full shell
+    // render (and its modal opens on a later animation frame), so the snapshot
+    // must preserve its value, focus, and caret.
+    await page.evaluate(() => {
+      let app = document.querySelector('kikx-app');
+      app._state.account = { id: 'state-account', name: 'State Name', email: 'state@example.test' };
+      app._state.accountEditorOpen = true;
+      app._state.accountFormName = 'State Name';
+      app._state.accountFormEmail = 'state@example.test';
+      app._render();
+    });
+    await page.waitForSelector('aeor-modal input[name="name"]', { timeout: 15000 });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await page.click('aeor-modal input[name="name"]');
+    await page.keyboard.press('End');
+    await page.keyboard.type(' renamed');
+    await page.evaluate(() => document.querySelector('kikx-app')._render());
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    let formState = await page.evaluate(() => {
+      let input = document.querySelector('aeor-modal input[name="name"]');
+      return {
+        focused: document.activeElement === input,
+        value: input?.value || '',
+      };
+    });
+    assert.equal(formState.focused, true, 'full shell render must not blur a modal editor field');
+    assert.match(formState.value, /State Name renamed$/);
+    await page.evaluate(() => {
+      let app = document.querySelector('kikx-app');
+      app._state.accountEditorOpen = false;
+      app._render();
+    });
+
     // A programmatic wipe is the path native `input` does not report. The
     // valuechange defense must preserve the old value before clearing it.
     await page.evaluate(() => {

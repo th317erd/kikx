@@ -818,14 +818,20 @@ kikx-app {
   flex-direction: column;
   gap: 6px;
   opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
+  /* Keep the rail hit-testable while it is visually hidden. The rail sits in
+   * the gutter just outside the frame; if it became pointer-events:none when
+   * the pointer crossed the frame edge, the user could never reach the quote
+   * button. Hovering the rail itself reveals it. */
+  visibility: visible;
+  pointer-events: auto;
   transform: translateX(-4px);
-  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
+  transition: opacity 120ms ease, transform 120ms ease;
 }
 
 .kikx-frame:hover .kikx-frame__quick-actions,
-.kikx-frame:focus-within .kikx-frame__quick-actions {
+.kikx-frame:focus-within .kikx-frame__quick-actions,
+.kikx-frame__quick-actions:hover,
+.kikx-frame__quick-actions:focus-within {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;

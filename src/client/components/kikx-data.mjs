@@ -314,9 +314,10 @@ export async function loadDeletedSessions(app) {
     app._state.statusKind = 'error';
   } finally {
     // The fetch resolves after the eye was toggled, so repaint here for the
-    // deleted cards to appear. requestRender coalesces with any render already
-    // scheduled by the caller.
-    app._requestRender?.();
+    // deleted cards to appear. Prefer the keyed grid sync over a full shell
+    // rebuild; fall back only when no mounted shell can be updated.
+    if (!app._syncSessionShell?.())
+      app._requestRender?.();
   }
 }
 
@@ -672,7 +673,10 @@ export async function loadNewerFrames(app, sessionID = app._state.selectedSessio
     setSessionPaging(sessionID, { hasMoreNewer: result?.hasMoreNewer === true }, app._state);
     if (wasAnchored)
       app._forceScrollToBottomAfterRender = true;
-    app._render();
+    if (app._syncFrameThread)
+      app._syncFrameThread(sessionID);
+    else
+      app._render();
     return result;
   } catch (error) {
     app._state.status = error.message;
@@ -764,7 +768,7 @@ async function loadSessionPreviewsNow(app) {
     setPreviewStatus(error.message, app._state);
   } finally {
     setPreviewsLoading(false, app._state);
-    if (isCollapsed(app._state))
+    if (isCollapsed(app._state) && !app._syncSessionShell?.())
       app._requestRender();
   }
 }

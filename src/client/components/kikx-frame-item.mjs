@@ -214,7 +214,11 @@ export class KikxFrameItem extends HTMLElement {
     // Object identity is only one rebuild trigger: a different key or app state
     // requires a wholesale rebuild, but a fresh frame object for the same logical
     // frame is reconciled in place so the subtree (and its animations) survive.
-    if (options.force === true || keyChanged || appStateChanged)
+    // A different app-state object is not a reason to rebuild the frame. The
+    // scoped stores and the frame record own the values this item renders; the
+    // item can reconcile them in place. Only an explicit force or a changed
+    // frame identity is structural.
+    if (options.force === true || keyChanged)
       this._render();
     else
       this._reconcile();
