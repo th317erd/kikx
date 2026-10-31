@@ -82,3 +82,13 @@ test('clearing the app set before a full re-render does not resurrect the flag',
 
   assert.ok(!cardRoot(grid).classList.contains('is-deleting'));
 });
+
+test('update() reuses existing cards instead of rebuilding the grid', () => {
+  let grid = mountGrid([ { id: 'ses_1', title: 'Alpha' } ]);
+  let card = grid.querySelector('kikx-session-card');
+  assert.ok(card);
+
+  grid.update({ allSessions: [ { id: 'ses_1', title: 'Alpha updated' } ], parentSessionID: null });
+
+  assert.equal(grid.querySelector('kikx-session-card'), card, 'the keyed card must retain DOM identity');
+});
