@@ -12,7 +12,7 @@ export const AGENT_TOOL_DEFINITIONS = [
     help: [
       'Use end-turn only when the request is satisfied, or when you are pausing/waiting after work. It is terminal: no later tool call in the same model round executes.',
       'Ending with a summary posts a completion notice to the nearest coordinator responsible for you, who is asked to validate your work. If you are the highest coordinator, no notice is posted. A silent end-turn with no summary or details notifies nobody.',
-      'summary is REQUIRED: start with one or two sentences summarizing the goals completed, then add 2-5 Markdown bullets describing the steps taken, outcome first. Do not paste tables, logs, or a full report into summary.',
+      'summary is REQUIRED: start with one or two sentences summarizing the goals completed, then add 2-5 Markdown bullets describing the steps taken, outcome first. This summary is the first thing the user will see when you end your turn; do not paste tables, logs, or a full report into summary.',
       'details is optional for evidence, proof, failures/risks, and remaining work. The user can expand the collapsed end-turn frame to read it.',
       'Omit both only when you did no visible work and have nothing new to report; the completion or reply will wake you.',
       'If you have actionable work you can do right now, use continue-turn instead and name the next step.',
@@ -22,7 +22,7 @@ export const AGENT_TOOL_DEFINITIONS = [
       properties: {
         summary: {
           type: 'string',
-          description: 'REQUIRED summary: one or two sentences on the goals completed, then 2-5 Markdown bullets of the steps taken. This is the collapsed visible line; do not paste a full report here.',
+          description: 'REQUIRED summary: one or two sentences on the goals completed, then 2-5 Markdown bullets of the steps taken. This summary is the first thing the user will see when you end your turn; it is the collapsed visible line. Do not paste a full report here.',
         },
         details: {
           type: 'string',

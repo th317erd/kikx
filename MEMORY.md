@@ -9,7 +9,7 @@ history.
 
 - Checkout: `/home/wyatt/Projects/kikx-workspace/kikx`
 - Branch: `main`; clean and pushed. The latest source merge at handoff is
-  `818b90f1`, which includes the remote browser-lane/report work; the handoff
+  `61b3927a`, which includes the remote browser-lane/report work; the handoff
   file itself is committed after that merge.
 - Dev server: `kikx-dev2-run.service` on `127.0.0.1:3002`, PostgreSQL
   `kikx-dev2` on `127.0.0.1:5434`; service active and `/health` ready.
@@ -56,6 +56,37 @@ The audit confirmed:
   ~78 `app._render()`/`_requestRender()` call sites remain across ordinary data,
   editor, navigation, agent/team, and runtime paths.
 - Raw mode was one symptom; it is now paint-only.
+
+### Miri display-order diagnosis and fix
+
+Miri on `wyatt-laptop:3098` was **not actually mid-turn**. The last turn
+`MessageDone` was complete at `2026-10-30 19:53:17 UTC`; the final AgentMessage
+was complete, SSE was connected, and there was no thinking output or frame-load
+error. The apparent stop was an ordering bug:
+
+- final AgentMessage `88a1bdcc…`: raw order `351384`, commit order `16582`
+- later tool frames `5983c7e6…` / `189ccd84…`: raw order `361731/361732`,
+  commit order `16579/16578`
+- page source assigned by raw order, so the final response was on page 64 while
+  the tool tail was on page 66
+
+Local fix `f5368881` adds `thread-display-order.mjs` and promotes one completed
+AgentMessage to the last loaded page when its commitOrder is newer than
+everything there. A real-browser regression confirms the final response is the
+last visible frame. Also fixed durable tool-call status: `markToolCallFinished`
+now sets `content.status` and `state.status` to success/error, not just
+`finishedProcessingAt`.
+
+The remote container remains on image `7d484126`; the fix is **not deployed or
+applied to the laptop checkout**. Latest local full suite after the fix/merge:
+**3,137 tests / 3,107 pass / 0 fail / 30 skipped**; targeted browser tests
+**2/2 pass**.
+
+### End-turn summary wording
+
+The end-turn summary schema, model brief, and precepts now say explicitly:
+
+> This summary is the first thing the user will see when you end your turn.
 
 ## 3. Implemented in this session
 

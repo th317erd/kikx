@@ -6,6 +6,7 @@
 
 import { captureFrameListAnchor, frameItemTopWithinList, restoreFrameListAnchor } from './frame-scroll-anchor.mjs';
 import { KikxThreadPageSource } from './kikx-thread-page-source.mjs';
+import { promoteTailResponse } from './thread-display-order.mjs';
 import { getSessionPaging } from '../state/kikx-state.mjs';
 
 const CSS_ESCAPE = globalThis.CSS?.escape || ((value) => String(value).replace(/["\\]/g, '\\$&'));
@@ -146,6 +147,7 @@ export class KikxChatScrollView {
         if (epoch !== this._pageContextEpoch || this._pageSourceKey !== key)
           return;
         this.element.updatePage(index, page.items);
+        this._promoteTailResponse();
       }).catch(() => null);
     }
     return true;
@@ -166,6 +168,7 @@ export class KikxChatScrollView {
         this._restoreAnchor(anchor);
       }
       this._flushPendingLiveFrames();
+      this._promoteTailResponse();
     });
   }
 
@@ -304,6 +307,19 @@ export class KikxChatScrollView {
     this.windowEnd = next.length;
     restoreFrameListAnchor(this.frameList, anchor);
     return { insertedNew };
+  }
+
+  _promoteTailResponse() {
+    if (!this.element || !this.pageSource)
+      return;
+    let updates = promoteTailResponse(this.element.pages || []);
+    for (let update of updates) {
+      let page = this.element.pages?.[update.pageIndex];
+      if (!page)
+        continue;
+      page.items = update.items;
+      this.element.updatePage(update.pageIndex, update.items);
+    }
   }
 
   _flushPendingLiveFrames() {

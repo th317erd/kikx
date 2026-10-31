@@ -69,16 +69,43 @@ test('Puppeteer commit bursts do not rebuild the thread or move the viewport', a
     // change" cannot pass merely because events were never delivered.
     await waitForConnected(page);
 
-    // Scroll away from the bottom and remember the exact DOM nodes.
+    // Remember the exact DOM nodes so the later identity checks mean something.
     await page.evaluate(() => {
-      let list = document.querySelector('.kikx-frame-list');
-      window.__kikxListNode = list;
+      window.__kikxListNode = document.querySelector('.kikx-frame-list');
       window.__kikxTopNode = document.querySelector('kikx-frame-item[data-frame-id="frame_1"]');
       window.__kikxLastNode = document.querySelector('kikx-frame-item[data-frame-id="frame_24"]');
-      list.scrollTop = 0;
-      list.dispatchEvent(new Event('scroll', { bubbles: true }));
     });
-    await delay(150);
+
+    // Scroll away from the bottom with a REAL wheel gesture.
+    //
+    // The product deliberately ignores scroll events that arrive inside a
+    // programmatic placement window: onFrameListScroll() computes
+    // `programmatic = Date.now() < app._ignoreFrameScrollUntil` and skips the whole
+    // break-the-pin path when that is true. Only a genuine input gesture
+    // (_onFrameListUserInterrupt: wheel / touchmove / keydown) zeroes that window
+    // and marks _frameListUserGestureUntil. A synthetic `new Event('scroll')` sets
+    // neither, so during the initial-placement grace window the product keeps
+    // re-placing the viewport at the bottom and the assertion below would be
+    // measuring the test's own fake input rather than a user scroll.
+    let listBox = await page.evaluate(() => {
+      let rect = document.querySelector('.kikx-frame-list').getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    });
+    await page.mouse.move(listBox.x, listBox.y);
+    for (let step = 0; step < 20; step++) {
+      let atTopAlready = await page.evaluate(() => (
+        (document.querySelector('.kikx-frame-list')?.scrollTop ?? 1) <= 5
+      ));
+      if (atTopAlready)
+        break;
+      await page.mouse.wheel({ deltaY: -600 });
+      await delay(40);
+    }
+
+    // Wait for the viewport to actually arrive rather than assuming a fixed delay.
+    await page.waitForFunction(() => (
+      (document.querySelector('.kikx-frame-list')?.scrollTop ?? 1) <= 5
+    ), { timeout: 5000 });
 
     let scrolled = await readScrollMetrics(page);
     assert.equal(scrolled.atTop, true, 'expected the list scrolled to the top before the commit burst');

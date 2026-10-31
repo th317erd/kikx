@@ -22,6 +22,55 @@ const TODO_STATE = {
   focus: null,
 };
 
+// A tool result frame is compact and minimized by default, so its card subtree
+// is built lazily on first expansion (`kikx-frame-item._ensureCompactContent`).
+// Reveal through the product's own affordances, in the order a user performs
+// them, rather than by poking `details.open`:
+//
+//   1. `waitForSelector` for the frame item. The item is mounted
+//      asynchronously; the old reveal ran `querySelectorAll` straight after the
+//      tool-component registration gate and silently matched nothing, because
+//      the frame had not been appended yet. That empty NodeList dispatched no
+//      toggle and the following selector wait then expired after 15 s.
+//   2. Click `.kikx-frame__meta`, which carries `role="button"` while
+//      minimized, to un-minimize the row (`_revealMinimized`).
+//   3. Click the compact row's `<summary>`, which the browser turns into a
+//      native `toggle` that builds the card content.
+//
+// One meta click alone is NOT enough: it flips `_minimized` to false but leaves
+// the disclosure closed, so no card is built. Both steps are required.
+async function revealTodoCard(page) {
+  await page.waitForSelector(
+    'kikx-frame-item[data-frame-id="todo_result"] details.kikx-frame__compact',
+    { timeout: 15000 },
+  );
+
+  let revealed = await page.evaluate(() => {
+    let item = document.querySelector('kikx-frame-item[data-frame-id="todo_result"]');
+    let meta = item?.querySelector('.kikx-frame__meta');
+    let summary = item?.querySelector('details.kikx-frame__compact > summary');
+    if (!summary)
+      return { ok: false, reason: 'no compact summary' };
+
+    let metaClickable = Boolean(meta && meta.getAttribute('role') === 'button');
+
+    // Step 2 only applies while the row is still minimized.
+    if (metaClickable)
+      meta.click();
+
+    return { ok: true, metaClickable };
+  });
+
+  assert.equal(revealed.ok, true, `compact summary is not reachable: ${revealed.reason || ''}`);
+
+  // Step 3: a real click on the summary. The native disclosure toggles, fires
+  // `toggle`, and that is what builds the lazily rendered card body.
+  await page.evaluate(() => {
+    let item = document.querySelector('kikx-frame-item[data-frame-id="todo_result"]');
+    item.querySelector('details.kikx-frame__compact > summary').click();
+  });
+}
+
 test('Puppeteer loads a truncated todo result and renders real titles/counts', async (t) => {
   let chromePath = findChromeExecutable();
   if (!chromePath) {
@@ -91,13 +140,8 @@ test('Puppeteer loads a truncated todo result and renders real titles/counts', a
     });
     await page.goto(`${fixture.baseURL}/?view=thread`, { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.waitForFunction(() => document.querySelector('kikx-app')?._state?.clientToolComponentsByName?.['todo-get']);
-    await page.evaluate(() => {
-      for (let details of document.querySelectorAll('details.kikx-frame__compact')) {
-        details.setAttribute('open', '');
-        details.open = true;
-        details.dispatchEvent(new Event('toggle'));
-      }
-    });
+
+    await revealTodoCard(page);
     await page.waitForSelector('kikx-todo-tool-use .kikx-todo-item__title', { timeout: 15000 });
 
     let result = await page.evaluate(() => {

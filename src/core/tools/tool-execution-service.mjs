@@ -283,8 +283,8 @@ async function markToolCallStarted({ toolCallFrame, context = {} } = {}) {
   return merged[0] || frameEngine.get?.(toolCallFrame.id) || { ...toolCallFrame, startedProcessingAt: now };
 }
 
-async function markToolCallFinished({ toolCallFrame, context = {}, finishedAt = null } = {}) {
-  if (!toolCallFrame?.id || toolCallFrame.finishedProcessingAt != null)
+async function markToolCallFinished({ toolCallFrame, context = {}, finishedAt = null, status = 'success' } = {}) {
+  if (!toolCallFrame?.id)
     return toolCallFrame;
 
   let frameEngine = await resolveFrameEngine(context);
@@ -292,18 +292,40 @@ async function markToolCallFinished({ toolCallFrame, context = {}, finishedAt = 
     return toolCallFrame;
 
   let existing = frameEngine.get?.(toolCallFrame.id) || toolCallFrame;
+  // Older records may have finishedProcessingAt but still carry the original
+  // running content/state. Repair those too: the durable call frame must agree
+  // with its result frame, not merely have a completion timestamp.
+  if (existing.finishedProcessingAt != null
+    && existing.content?.status === status
+    && existing.state?.status === status)
+    return existing;
+
   let now = finishedAt ?? resolveClock(context)();
   let merged = frameEngine.merge([ {
     ...existing,
     startedProcessingAt: existing.startedProcessingAt ?? now,
     finishedProcessingAt: now,
+    content: {
+      ...(existing.content || {}),
+      status,
+      finishedAt: now,
+    },
+    state: {
+      ...(existing.state || {}),
+      status,
+    },
   } ], {
     authorType: 'tool',
     authorID: existing.authorID || 'tool',
     silent: true,
   });
   await flushFrameStore(context);
-  return merged[0] || frameEngine.get?.(toolCallFrame.id) || { ...toolCallFrame, finishedProcessingAt: now };
+  return merged[0] || frameEngine.get?.(toolCallFrame.id) || {
+    ...toolCallFrame,
+    finishedProcessingAt: now,
+    content: { ...(toolCallFrame.content || {}), status, finishedAt: now },
+    state: { ...(toolCallFrame.state || {}), status },
+  };
 }
 
 // Tools whose invocation is plumbing rather than conversation.
@@ -434,7 +456,7 @@ async function recordToolResultFrame({
   await flushFrameStore(context);
   let resultFrame = merged[0] || frameEngine.get?.(frame.id) || frame;
   if (toolCallFrame)
-    await markToolCallFinished({ toolCallFrame, context, finishedAt: now });
+    await markToolCallFinished({ toolCallFrame, context, finishedAt: now, status });
   return resultFrame;
 }
 

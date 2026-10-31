@@ -32,6 +32,11 @@ test('model-facing tool descriptions carry the communication contract', () => {
   assert.match(descriptions.get('end-turn'), /REQUIRED short summary of the goals completed/);
   assert.match(descriptions.get('end-turn'), /detail/);
   assert.match(descriptions.get('end-turn'), /nearest coordinator responsible for you is notified/);
+  let endTurn = AGENT_TOOL_DEFINITIONS.find((definition) => definition.name === 'end-turn');
+  assert.match(
+    endTurn.parameters.properties.summary.description,
+    /This summary is the first thing the user will see when you end your turn/,
+  );
   assert.match(descriptions.get('continue-turn'), /visible progress report/);
 });
 

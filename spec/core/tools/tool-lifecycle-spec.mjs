@@ -72,6 +72,8 @@ test('a tool call is marked started before execution and finished after its resu
   call = frameEngine.toArray().find((frame) => frame.content?.phase === 'call');
   assert.equal(call.startedProcessingAt, 1000);
   assert.equal(call.finishedProcessingAt, 1000);
+  assert.equal(call.content.status, 'success', 'the durable call frame must be marked successful');
+  assert.equal(call.state.status, 'success', 'the durable call state must be marked successful');
   assert.equal(shutdownState.inFlight().length, 0);
   assert.ok(frameEngine.toArray().some((frame) => frame.content?.phase === 'result'));
 });
@@ -126,6 +128,8 @@ test('deadline abandonment writes an explicit failed result and closes the call'
   let call = frameEngine.toArray().find((frame) => frame.content?.phase === 'call');
   let result = frameEngine.toArray().find((frame) => frame.content?.phase === 'result');
   assert.equal(call.finishedProcessingAt, 1000);
+  assert.equal(call.content.status, 'error', 'the durable call frame must be marked failed');
+  assert.equal(call.state.status, 'error', 'the durable call state must be marked failed');
   assert.equal(result.content.status, 'error');
   assert.match(result.content.message, /NOT completed successfully/);
 });

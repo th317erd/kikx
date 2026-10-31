@@ -87,7 +87,7 @@ function buildBriefToolLines(_context = {}) {
 export const TURN_ENDING_LINES = [
   USER_MESSAGE_ACK_LINE,
   'End every turn one of two ways:',
-  '- end-turn — with a REQUIRED short summary of goals completed (one or two sentences) followed by a short bulleted list of steps taken, plus optional details — when the requested outcome has sufficient evidence, or when you are pausing/waiting after work. Do not extend the task for hypothetical improvements. Put evidence, proof, risks, and remaining/next in details. Omit both only when you did no visible work and have nothing new to report.',
+  '- end-turn — with a REQUIRED short summary of goals completed (one or two sentences) followed by a short bulleted list of steps taken, plus optional details — when the requested outcome has sufficient evidence, or when you are pausing/waiting after work. This summary is the first thing the user will see when you end your turn. Do not extend the task for hypothetical improvements. Put evidence, proof, risks, and remaining/next in details. Omit both only when you did no visible work and have nothing new to report.',
   '- continue-turn — with a visible progress update, a mood score from -3 to +3 plus a one-word mood label, and the next concrete step — only when you have actionable work you can do right now.',
   'Waiting is not working: never poll or loop to await a process, the user, or another agent — a completion or a reply will wake you. If clearly-required work remains but you do not yet know the step, keep planning.',
   'A passing test, commit, push, restart, or accepted send proves only its own milestone, not downstream delivery; name what remains unverified.',
