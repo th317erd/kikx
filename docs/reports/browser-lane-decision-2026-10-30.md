@@ -18,7 +18,7 @@ applies_to: development-v3
 | Lane | Specs | Tests | Deps | Runs here? | Latest result |
 |---|---|---|---|---|---|
 | `ui:playwright` | 13 | 18 | `playwright` only | **Yes** | **18/18 pass, EXIT=0** (5 of 6 full-lane runs on disk); 17/18 once, pre-merge |
-| `ui:puppeteer` | 17 | 20 | `puppeteer-core` only | **Yes** | **Flaky: 4/6 concurrent runs green, 2 red (19/20)** — `frame-window` races the eager page preload (§7). Not a deterministic red |
+| `ui:puppeteer` | 17 | 20 | `puppeteer-core` only | **Yes** | **20/20 pass, EXIT=0 in 3/3 concurrent lane runs** at `f9ae9d05`, after `frame-window` was rewritten to remove the eager-preload race (§7.1). Before that rewrite the same lane was 4/6 green, 2 red (19/20) |
 | `ui:stagehand` | 26 | 28 | `@browserbasehq/stagehand` | **No** | **28/28 fail, EXIT=1** (fresh run at `9e9ec60d`; AereoDB `:6830` refused) |
 
 Import counts are exclusive — `grep -ho "from '...'"` yields exactly one browser
@@ -238,8 +238,9 @@ it. Either way it is upstream of this repo.
   on it stably holds **140** with `windowStart 0` and page 0 loaded (120 + 20
   items). The spec samples at a fixed `delay(300)`, which straddles that transition.
 
-- **The assertion is semantically wrong, which is why it both races and cannot
-  catch a cap regression.** `MAX_RENDERED_FRAMES` does double duty and the spec
+- **Historical — the old assertion before the `f9ae9d05` rewrite.** It was
+  semantically wrong, which is why it both raced and could not catch a cap
+  regression; §7.1 records the replacement. `MAX_RENDERED_FRAMES` did double duty, and the spec
   conflates the two roles:
   - `kikx-chat-view.mjs:474` — `pageSize: MAX_RENDERED_FRAMES` handed to
     `KikxChatScrollView`. On the shared path the constant **is the page size**.
@@ -297,23 +298,55 @@ it. Either way it is upstream of this repo.
   executed counts and exits non-zero if any selected lane fails, so a lane that
   asserts nothing can no longer read as green.
 
+### 7.1 The `frame-window` race is now removed, not tolerated
+
+The race above was a **spec** defect with a measurable mechanism, so it was fixed
+at the source rather than serialised around. `frame-window-puppeteer.mjs` changed
+as follows (base `f9ae9d05`; `src/` unmodified, so the product under test is the
+committed product):
+
+- Fixture 140 → **700 frames (6 pages)**. At 140 frames two pages hold the
+  whole thread, so "bounded" was true only during the ~300 ms transient; at 700
+  it is true in every state, so no sample timing is load-bearing.
+- **Both fixed `delay()` calls are gone.** The spec now uses
+  `waitForFunction` (50 ms poll) to wait for the oldest frame and for the settled
+  count, so there is no window to straddle.
+- The reveal uses a **real wheel gesture** (`page.mouse.wheel`), not
+  `dispatchEvent(new Event('scroll'))`. Measured: a fresh profile is scroll-locked
+  (`DEFAULT_LOCKED = true`), and the pin is only broken inside
+  `onFrameListScroll()`'s `userGesture` branch, reached only from real input
+  listeners. A synthetic scroll leaves the thread locked and the product
+  correctly snaps back to the bottom (`.gate/fw3/synthetic.log`: items 100,
+  `has0 false` at +250 ms and +3000 ms) while a wheel reaches 700 items with
+  frame 0 mounted in 250 ms (`.gate/fw3/wheel.log`). This is the same trap
+  already documented in `commit-runtime-event-puppeteer.mjs`.
+
+Evidence. **Provenance:** `src/` is exactly `f9ae9d05` (both files md5-verified),
+but the spec itself was the working-tree copy (`b5f58acb…`) — the same content
+this commit lands. Every run below post-dates the spec's last write (spec 17:12:08,
+runs 17:12:19–17:13:50), so all six measured exactly this content. No other lane
+was running.
+
+| what | file | result |
+| --- | --- | --- |
+| spec x3 | `.gate/fw3/green/run{1,2,3}.log`, `exits.txt` | `RUN1/2/3=0`, `pass 1 / fail 0` each, 8166–8435 ms |
+| whole lane, default concurrency, x3 | `.gate/fw3/lane{,2,3}.log`, `lane.exit` | `LANE_EXIT=0`, `LANE2_EXIT=0`, `LANE3_EXIT=0`, `tests 20 / pass 20 / fail 0` each |
+| idle stability, 59 samples / 12 s | `.gate/fw3/idle12s.log` | `IDLE_EXIT=0`, `peak_items=460`, never reaches frame 0 |
+
 **Not proven / open**
-- **Long-run determinism for either lane.** Both have now shown a membership flip
-  at least once. Single green runs are not a stability claim, and "green in
-  isolation" is not "green in the lane": `frame-window` ran 3/3 green alone at
-  `399c1e4c` and again 3/3 at `410e1dc2`, while the same spec at the same HEAD is
-  the one red in the concurrent lane. `tool-output-overflow` ran 3/3 green in
-  isolation (`.gate/det6/to-{1,2,3}.log`); its lane behaviour is untested.
-- **A surviving mutation in one of the specs behind the 20/20 number.** Setting
-  `MAX_RENDERED_FRAMES = 120` to `800` in `src/client/components/kikx-chat-view.mjs`
-  leaves `frame-window-puppeteer.mjs` GREEN. Measured cause (probe, cap read from
-  source each run): at 140 frames the DOM holds 20 items for *either* cap, with
-  identical `window_msg_120..139`; only `windowStart`/`pageSize` change. So
-  `assert.ok(count <= MAX_RENDERED_FRAMES)` is satisfiable by any cap >= 20 and
-  cannot discriminate. The consequence is precise and must be carried with the
-  lane numbers: **20/20 is an honest pass count, but it must not be quoted as
-  "the frame window is regression-guarded".** Tracked as todo `55fe281e`. The
-  mutation was reverted; cap is 120 and the tree is clean.
+- **Long-run determinism for either lane.** Single green runs are not a
+  stability claim. `frame-window` specifically is now 3/3 green alone **and** 3/3
+  green in the full concurrent lane at `f9ae9d05` (§7.1), which retires the
+  earlier "green in isolation, red in the lane" split — but that is 6 runs in
+  two modes, not a soak. `tool-output-overflow` ran 3/3 green in isolation
+  (`.gate/det6/to-{1,2,3}.log`); its lane behaviour is still untested.
+- ~~A surviving `MAX_RENDERED_FRAMES` mutation~~ — **resolved at `f9ae9d05`;
+  see §7.1.** History: setting the constant from 120 to 800 left the spec GREEN
+  because `count <= MAX_RENDERED_FRAMES` was satisfiable by any cap >= 20. The
+  rewritten spec asserts `windowStart === first mounted index` instead, which the
+  mutation breaks (`.gate/fw3/mut-max800.exit` = `1`). Tracked as todo `15848cf2`
+  (subsuming `55fe281e`), now closed on that evidence.
+
 - The `tool-output-overflow` mutation (force a visible scrollbar) was designed but
   never run, so that spec's discriminating power is unmeasured, not proven.
 - `aeor-framework`'s intermittent (§6), which lives upstream.
