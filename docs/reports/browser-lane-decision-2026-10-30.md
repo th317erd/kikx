@@ -444,8 +444,11 @@ was running.
   — the *boot* wait, 16.5 s into the test, before any commit-burst assertion runs.
   The same spec is green solo in 2285 ms with the same command
   (`.gate/v28/commit-solo1.log`, `COMMIT_SOLO1_EXIT=0`), and green in lanes 2 and 3
-  at 21.5 s and 21.7 s. So the 10 s boot budget is contended by two sibling Chrome
-  instances, and the test is concurrency-fragile at its first step. That spec is
+  at 21.5 s and 21.7 s. Note what those two passes mean: even when it *passed*, the
+  full lane inflated this spec from 1.96 s to 21.5 s (~11x), so its fixed 10 s boot
+  budget sits inside the lane's own noise band and failed in 1 of 3 runs. A causal
+  sentence here previously read "the 10 s boot budget is contended by two sibling
+  Chrome instances" — **that is falsified below and has been removed.** That spec is
   untouched by this work (`git diff --name-only a40bd6bf..HEAD` lists only
   `frame-window-puppeteer.mjs` and this report) and was last changed by `8722b4e1`,
   which introduced its real-wheel scroll. **Not fixed here** — it is a different
@@ -464,6 +467,25 @@ was running.
   three siblings in their **boot phase simultaneously**. A 20-way concurrent boot ladder
   spanned 3337–5341 ms (`.gate/te13/c20-*.log`), also under budget. So the phase that
   absorbs the cost remains unmeasured; the reproduction gap is recorded, not papered over.
+  Three targeted reproductions of the *sibling-contention* model all came back green, so
+  that model is falsified rather than merely unproven (`.gate/te14/`, prediction written to
+  disk before each launch): (a) **3 concurrent copies of only this spec** — `LANE1/2/3_EXIT=0`,
+  test bodies 2311 / 2337 / 2317 ms against a 1949 ms solo control, ~19% inflation against
+  te12's 16.5 s; runner wall 3080 ms < summed lane durations 8133 ms, so the overlap is
+  proven rather than assumed; (b) **the same copy under two 700-frame `frame-window`
+  siblings** — green at 2030 ms with boot 612 ms vs 542 ms solo (fixture 18 ms, launch
+  208 ms, goto 54 ms, `frame_24` 283 ms; ~13% inflation); (c) the earlier te13 ladder, whose
+  null is separately discounted above. Copies were staged under `.gate/te14/` with the shared
+  fixture import rewritten to an absolute path, because a relative `../stagehand/` import from
+  that directory dies in ~158 ms with `ERR_MODULE_NOT_FOUND` — and the staged copy was
+  itself control-run green in 2321 ms, so the passes are not module artefacts. What remains
+  untested is the third model: sequential boot churn across the full 20-spec lane.
+  **Fleet context, re-derived from source rather than the earlier classification file:**
+  `commit-runtime-event` is the *only* spec in the 17 with both `goto` (`:63`) and its first
+  boot selector (`:65`) at 10000 ms. An earlier claim in this session that `mention-message`
+  also held both at 10000 was **wrong**: its `goto` is 10000 (`:49`) but its first selector is
+  15000 (`:51`), as is its `_startupSettled` poll (`:57`), and its only 10000 selector (`:63`)
+  is post-boot. So the narrow boot budget is a singleton, not a fleet pattern.
 - `aeor-framework`'s intermittent (§6), which lives upstream.
 - The 16 Puppeteer-only specs have not been ported. Until they are, Puppeteer is
   load-bearing and must stay.
