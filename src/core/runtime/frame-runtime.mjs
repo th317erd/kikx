@@ -432,8 +432,6 @@ export class FrameRuntime extends EventEmitter {
     return await this.attachEffectivePreferences(visible, { seed: sessions });
   }
 
-  // Append without waking anything. An edit to a message already in the session must not
-  // start an agent turn: the bot sees the change in its context when it next runs.
   // Append a frame of a plugin-declared type.
   //
   // Transport plugins own frame types that are not user messages: a Discord
@@ -487,6 +485,8 @@ export class FrameRuntime extends EventEmitter {
     return type === 'Default' ? fallback : null;
   }
 
+  // Append without waking anything. An edit to a message already in the session must not
+  // start an agent turn: the bot sees the change in its context when it next runs.
   async appendUserMessageQuietly(sessionID, input = {}) {
     return this.#appendUserMessage(sessionID, input, { wake: false });
   }
@@ -539,7 +539,6 @@ export class FrameRuntime extends EventEmitter {
       // byte-identical to before this path existed.
       if (agentOnly)
         frame.agentOnly = true;
-
 
       // An explicit target is what turns a plain message into a single-agent
       // wake: resolveRouteTargets() short-circuits to a single-target bypass
