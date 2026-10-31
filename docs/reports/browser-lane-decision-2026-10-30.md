@@ -18,7 +18,7 @@ applies_to: development-v3
 | Lane | Specs | Tests | Deps | Runs here? | Latest result |
 |---|---|---|---|---|---|
 | `ui:playwright` | 13 | 18 | `playwright` only | **Yes** | **18/18 pass, EXIT=0** (5 of 6 full-lane runs on disk); 17/18 once, pre-merge |
-| `ui:puppeteer` | 17 | 20 | `puppeteer-core` only | **Yes** | **20/20 pass, EXIT=0 in 3/3 concurrent lane runs** (§7.1), after `frame-window` was rewritten to remove the eager-preload race; the rewritten spec alone is also 3/3 green at the committed bytes `a40bd6bf`. Before that rewrite the same lane was 4/6 green, 2 red (19/20) |
+| `ui:puppeteer` | 17 | 20 | `puppeteer-core` only | **Yes** | **20/20 pass, EXIT=0 in 5 consecutive concurrent lane runs** — 3 pre-commit (§7.1) and 2/2 at the committed tree `379bac1c` (`.gate/v18/`) — after `frame-window` was rewritten to remove the eager-preload race; the rewritten spec alone is also 3/3 green at the committed bytes `a40bd6bf`. Before that rewrite the same lane was 4/6 green, 2 red (19/20) |
 | `ui:stagehand` | 26 | 28 | `@browserbasehq/stagehand` | **No** | **28/28 fail, EXIT=1** (fresh run at `9e9ec60d`; AereoDB `:6830` refused) |
 
 Import counts are exclusive — `grep -ho "from '...'"` yields exactly one browser
@@ -210,7 +210,12 @@ it. Either way it is upstream of this repo.
 
 **Proven**
 - Playwright 18/18 EXIT=0 and Puppeteer 20/20 EXIT=0 at HEAD `8722b4e1`,
-  sequentially, no Chrome contention.
+  sequentially, no Chrome contention. The Puppeteer half was re-measured
+  after the `frame-window` rewrite landed: **2/2 concurrent full-lane runs,
+  20/20 each, `LANE_1=0` / `LANE_2=0`, at committed HEAD `379bac1c`**, clean
+  tree, no other lane running (`.gate/v18/lane-{1,2}.log`, `lane.exit`).
+  Playwright was not re-run at `379bac1c`; its last measured full-lane greens
+  are `18/18 EXIT=0`, 3× post-merge (see below).
 - **`frame-window` is INTERMITTENTLY red under the lane's default concurrency —
   2 red in 6 runs, not "red".** All six runs at HEAD `d2598f42`, clean tree, no
   other lane running; `git diff 6c923a3f..d2598f42 -- src/` is empty, so this is
@@ -345,8 +350,12 @@ was running.
   green alone at the **committed** bytes `a40bd6bf` (`.gate/v16/committed.*`),
   and 3/3 green inside the full 20-test concurrent lane (§7.1), which retires the
   earlier "green in isolation, red in the lane" split — but that is 9 runs in two
-  modes, not a soak. Only the solo triples are measured post-commit; the
-  whole-lane triples predate the commit by minutes. `tool-output-overflow` ran 3/3 green in isolation
+  modes, not a soak. The solo triples are measured at the committed bytes
+  `a40bd6bf`; the whole-lane triples at `.gate/v15` predate the commit by
+  minutes, but two further whole-lane concurrent runs were measured **at
+  committed HEAD `379bac1c`** (`.gate/v18/`: `LANE_1=0`, `LANE_2=0`, 20/20
+  each), so the lane-green claim no longer rests on pre-commit runs.
+- `tool-output-overflow` ran 3/3 green in isolation
   (`.gate/det6/to-{1,2,3}.log`); its lane behaviour is still untested.
 - ~~A surviving `MAX_RENDERED_FRAMES` mutation~~ — **resolved by the §7.1 rewrite.**
   The mutation run (`.gate/fw3/mut-max800.exit`, 17:12:41) executed the
