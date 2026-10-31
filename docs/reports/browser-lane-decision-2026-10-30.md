@@ -18,7 +18,7 @@ applies_to: development-v3
 | Lane | Specs | Tests | Deps | Runs here? | Latest result |
 |---|---|---|---|---|---|
 | `ui:playwright` | 13 | 18 | `playwright` only | **Yes** | **18/18 pass, EXIT=0** (5 of 6 full-lane runs on disk); 17/18 once, pre-merge |
-| `ui:puppeteer` | 17 | 20 | `puppeteer-core` only | **Yes** | **20/20 pass, EXIT=0 in 6 consecutive concurrent lane runs** — 3 pre-commit (§7.1), 2/2 at committed `379bac1c` (`.gate/v18/`), 1/1 at committed `4b2e5dff` (`.gate/v22/lane.exit`) — after `frame-window` was rewritten to remove the eager-preload race; the rewritten spec alone is also 3/3 green at the committed bytes `a40bd6bf` and 3/3 again at `4b2e5dff` (`.gate/v21/post.{1,2,3}.log`). Before that rewrite the same lane was 4/6 green, 2 red (19/20) |
+| `ui:puppeteer` | 17 | 20 | `puppeteer-core` only | **Yes** | **20/20 pass, EXIT=0 in 6 consecutive concurrent lane runs** — 3 pre-commit (§7.1), 2/2 at committed `379bac1c` (`.gate/v18/`), 1/1 at committed `4b2e5dff` (`.gate/v22/lane.exit`); **a 3-way concurrent triple at `a205609f` was 2/3** (`.gate/te12/head-lane{1,2,3}.log`: pass 20 / fail 0, pass 20 / fail 0, pass 19 / fail 1), the single red being `commit-runtime-event-puppeteer.mjs:65` — a 10 s boot `waitForSelector` — which passes solo in 2.3 s (`.gate/v28/commit-solo1.log`); `frame-window` itself passed in all three lanes at 34.2/34.3/34.6 s — after `frame-window` was rewritten to remove the eager-preload race; the rewritten spec alone is also 3/3 green at the committed bytes `a40bd6bf` and 3/3 again at `4b2e5dff` (`.gate/v21/post.{1,2,3}.log`). Before that rewrite the same lane was 4/6 green, 2 red (19/20) |
 | `ui:stagehand` | 26 | 28 | `@browserbasehq/stagehand` | **No** | **28/28 fail, EXIT=1** (fresh run at `9e9ec60d`; AereoDB `:6830` refused) |
 
 Import counts are exclusive — `grep -ho "from '...'"` yields exactly one browser
@@ -436,6 +436,21 @@ was running.
 
 - The `tool-output-overflow` mutation (force a visible scrollbar) was designed but
   never run, so that spec's discriminating power is unmeasured, not proven.
+- **The lane is not 3/3 green under 3-way concurrency at `a205609f`, and the red is a
+  boot timeout, not this work.** `.gate/te12/head-lane1.log` fails
+  `Puppeteer commit bursts do not rebuild the thread or move the viewport` with
+  `TimeoutError: Waiting for selector kikx-frame-item[data-frame-id="frame_24"]`,
+  cause `Waiting failed: 10000ms exceeded`, at `commit-runtime-event-puppeteer.mjs:65`
+  — the *boot* wait, 16.5 s into the test, before any commit-burst assertion runs.
+  The same spec is green solo in 2285 ms with the same command
+  (`.gate/v28/commit-solo1.log`, `COMMIT_SOLO1_EXIT=0`), and green in lanes 2 and 3
+  at 21.5 s and 21.7 s. So the 10 s boot budget is contended by two sibling Chrome
+  instances, and the test is concurrency-fragile at its first step. That spec is
+  untouched by this work (`git diff --name-only a40bd6bf..HEAD` lists only
+  `frame-window-puppeteer.mjs` and this report) and was last changed by `8722b4e1`,
+  which introduced its real-wheel scroll. **Not fixed here** — it is a different
+  spec's timeout budget, and widening it would mask rather than diagnose boot cost.
+  It is the honest qualifier on any "the lane is green" claim at this HEAD.
 - `aeor-framework`'s intermittent (§6), which lives upstream.
 - The 16 Puppeteer-only specs have not been ported. Until they are, Puppeteer is
   load-bearing and must stay.
