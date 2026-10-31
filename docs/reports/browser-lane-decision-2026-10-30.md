@@ -215,7 +215,11 @@ it. Either way it is upstream of this repo.
   20/20 each, `LANE_1=0` / `LANE_2=0`, at committed HEAD `379bac1c`**, clean
   tree, no other lane running (`.gate/v18/lane-{1,2}.log`, `lane.exit`).
   Playwright was not re-run at `379bac1c`; its last measured full-lane greens
-  are `18/18 EXIT=0`, 3× post-merge (see below).
+  are `18/18 EXIT=0`, 3× post-merge (see below). Re-measured since, so this is no
+  longer an inference from an unchanged `src/`: **`PW_LANE_EXIT=0`, `tests 18 / pass 18 /
+  fail 0 / skipped 0`, zero `✖`, 9.7 s at HEAD `5ef7e0a4`** (`.gate/v36/pw-lane.log`,
+  `.gate/v36/pw-lane.exit`), run directly rather than through
+  `scripts/with-aeordb-token.mjs`. That is one more green run, not a soak.
 - **Historical: `frame-window` WAS intermittently red under the lane's default
   concurrency — 2 red in 6 runs, not "red".** *This bullet records a flake that
   has since been fixed at the source; see §7.1 for the current state and the
