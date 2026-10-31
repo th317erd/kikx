@@ -259,7 +259,7 @@ it. Either way it is upstream of this repo.
     reaches the page source; it only sets `this.pageSize`, the divisor that
     turns a page index into `windowStart`.
   - `kikx-chat-view.mjs:359-360` — `_resolveWindow`'s default `maxRendered`,
-    reached only on the **legacy** path that `_canUseShared()` (`:63-64`) bypasses.
+    reached only on the **legacy** path that `_canUseShared()` (`:411-415`) bypasses.
     The header comment at `:12-15` ("only a recent window is kept in the DOM")
     describes that legacy path.
 
@@ -296,6 +296,20 @@ it. Either way it is upstream of this repo.
   The DOM is still bounded — it does not grow with session length, 440 at 2000
   frames vs 480 at 600 — but the bound is 4x the constant `898a33b0` set when it
   chose "render 120 initial frames instead of 200".
+
+  **Neither cap constant bounds this path.** `MAX_TOTAL_RENDERED_FRAMES = 800`
+  (`kikx-chat-view.mjs:17`) is the other constant a reader might assume is the
+  backstop, and it also never reaches the shared scrollview: all five of its uses
+  (`:205`, `:211`, `:291`, `:327`, `:359`) sit on the legacy path that
+  `_canUseShared()` (`:411-415`) bypasses. `syncFrames` returns at `:183`, before
+  `:205`/`:211`; `expandOlderFrames` and `expandNewerFrames` delegate and return
+  at `:276-277` and `:312-313`, so the legacy bodies holding `:291` and `:327` are
+  never entered, and `showLatestFrames` does the same at `:346-347`; the only two
+  `_resolveWindow` call sites (`:217`, `:443`)
+  are both downstream of a legacy-only return (`:183`, and `_renderFull`'s shared
+  early-return at `:418-421`). On the paged path the bound is therefore
+  `PAGE_SIZE` plus the idle preload depth and nothing else — "the DOM is bounded"
+  is a statement about preload arithmetic, not about a configured cap.
 
   Which of these is intended is a product decision: (a) 4 pages of eager preload is
   deliberate read-ahead and `MAX_RENDERED_FRAMES` is simply a state-window
