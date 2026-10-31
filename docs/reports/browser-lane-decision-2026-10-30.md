@@ -433,6 +433,16 @@ was running.
   not been shown to fire before the `windowStart` identity at any page size that
   keeps the initial bound true.* Making it fire first needs an assertion-order
   restructure, which is a spec-shape change that was deliberately not made.
+- **`SINGLE_PAGE_THREAD` gates no assertion, and no positive-equality form was added
+  to it.** The constant at spec `:107` is arithmetic (`PAGE_SIZE >= FRAME_COUNT`,
+  which is `false` at shipped constants, so a branch body would be unreachable except
+  under a mutation). Its only two live references are those two message sites and
+  they neither skip nor enable a check. A literal `assert.equal(count, FRAME_COUNT)`
+  was proposed for that branch and declined: the shipped strict inequality at `:258`
+  already fails under the `PAGE_SIZE 800` mutation with a message naming `PAGE_SIZE`
+  as the governor, so a second assertion on the same predicate would add churn to a
+  spec whose green and red behaviour had already been measured twice, and buy no
+  discriminating power.
 
 - The `tool-output-overflow` mutation (force a visible scrollbar) was designed but
   never run, so that spec's discriminating power is unmeasured, not proven.
