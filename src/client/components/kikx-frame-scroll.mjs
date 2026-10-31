@@ -976,6 +976,13 @@ function restoreFormFocus(app, snapshot) {
   let focus = () => {
     if (!control.isConnected)
       return;
+    let active = globalThis.document?.activeElement;
+    let modal = control.closest?.('aeor-modal');
+    // Do not steal focus from a control the user clicked after the render. A
+    // modal's own close-button autofocus is inside the same modal, so the
+    // captured field can still reclaim it.
+    if (active && active !== globalThis.document?.body && active !== control && !modal?.contains?.(active))
+      return;
     control.focus?.({ preventScroll: true });
     if (supportsSelection(control)
       && Number.isInteger(snapshot.selectionStart)
