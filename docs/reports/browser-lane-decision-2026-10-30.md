@@ -18,7 +18,7 @@ applies_to: development-v3
 | Lane | Specs | Tests | Deps | Runs here? | Latest result |
 |---|---|---|---|---|---|
 | `ui:playwright` | 13 | 18 | `playwright` only | **Yes** | **18/18 pass, EXIT=0** (5 of 6 full-lane runs on disk); 17/18 once, pre-merge |
-| `ui:puppeteer` | 17 | 20 | `puppeteer-core` only | **Yes** | **20/20 pass, EXIT=0 in 3/3 concurrent lane runs** at `f9ae9d05`, after `frame-window` was rewritten to remove the eager-preload race (§7.1). Before that rewrite the same lane was 4/6 green, 2 red (19/20) |
+| `ui:puppeteer` | 17 | 20 | `puppeteer-core` only | **Yes** | **20/20 pass, EXIT=0 in 3/3 concurrent lane runs** (§7.1), after `frame-window` was rewritten to remove the eager-preload race; the rewritten spec alone is also 3/3 green at the committed bytes `a40bd6bf`. Before that rewrite the same lane was 4/6 green, 2 red (19/20) |
 | `ui:stagehand` | 26 | 28 | `@browserbasehq/stagehand` | **No** | **28/28 fail, EXIT=1** (fresh run at `9e9ec60d`; AereoDB `:6830` refused) |
 
 Import counts are exclusive — `grep -ho "from '...'"` yields exactly one browser
@@ -321,27 +321,37 @@ committed product):
   frame 0 mounted in 250 ms (`.gate/fw3/wheel.log`). This is the same trap
   already documented in `commit-runtime-event-puppeteer.mjs`.
 
-Evidence. **Provenance:** `src/` is exactly `f9ae9d05` (both files md5-verified),
-but the spec itself was the working-tree copy (`b5f58acb…`) — the same content
-this commit lands. Every run below post-dates the spec's last write (spec 17:12:08,
-runs 17:12:19–17:13:50), so all six measured exactly this content. No other lane
+Evidence. **Provenance:** `src/` is exactly `f9ae9d05` (both files md5-verified).
+The three lane runs below ran at 17:12:19–17:13:50 on the working-tree spec
+(`b5f58acb…`), i.e. before commit `a40bd6bf` (17:15:52) recorded those same bytes;
+the spec's mtime never moved after 17:12:08, so the committed blob is the content
+those runs executed. That inference is now backed by direct measurement rather
+than by mtime ordering: a spec-only triple re-run *after* the commit
+(`.gate/v16/committed.{1,2,3}.log`, `committed.exit`) is 3/3 green — `1=0`,
+`2=0`, `3=0`, `pass 1 / fail 0` each, 8194–8458 ms — at `a40bd6bf`, where
+`md5sum` of the working file equals `git show HEAD:` (`b5f58acb…`). No other lane
 was running.
 
 | what | file | result |
 | --- | --- | --- |
 | spec x3 | `.gate/fw3/green/run{1,2,3}.log`, `exits.txt` | `RUN1/2/3=0`, `pass 1 / fail 0` each, 8166–8435 ms |
 | whole lane, default concurrency, x3 | `.gate/fw3/lane{,2,3}.log`, `lane.exit` | `LANE_EXIT=0`, `LANE2_EXIT=0`, `LANE3_EXIT=0`, `tests 20 / pass 20 / fail 0` each |
+| spec x3 **at committed bytes** `a40bd6bf` | `.gate/v16/committed-{1,2,3}.log`, `committed.exit` | `1=0`, `2=0`, `3=0`; `pass 1 / fail 0` each, 8194–8458 ms |
 | idle stability, 59 samples / 12 s | `.gate/fw3/idle12s.log` | `IDLE_EXIT=0`, `peak_items=460`, never reaches frame 0 |
 
 **Not proven / open**
 - **Long-run determinism for either lane.** Single green runs are not a
-  stability claim. `frame-window` specifically is now 3/3 green alone **and** 3/3
-  green in the full concurrent lane at `f9ae9d05` (§7.1), which retires the
-  earlier "green in isolation, red in the lane" split — but that is 6 runs in
-  two modes, not a soak. `tool-output-overflow` ran 3/3 green in isolation
+  stability claim. `frame-window` is now 3/3 green alone on the working tree, 3/3
+  green alone at the **committed** bytes `a40bd6bf` (`.gate/v16/committed.*`),
+  and 3/3 green inside the full 20-test concurrent lane (§7.1), which retires the
+  earlier "green in isolation, red in the lane" split — but that is 9 runs in two
+  modes, not a soak. Only the solo triples are measured post-commit; the
+  whole-lane triples predate the commit by minutes. `tool-output-overflow` ran 3/3 green in isolation
   (`.gate/det6/to-{1,2,3}.log`); its lane behaviour is still untested.
-- ~~A surviving `MAX_RENDERED_FRAMES` mutation~~ — **resolved at `f9ae9d05`;
-  see §7.1.** History: setting the constant from 120 to 800 left the spec GREEN
+- ~~A surviving `MAX_RENDERED_FRAMES` mutation~~ — **resolved by the §7.1 rewrite.**
+  The mutation run (`.gate/fw3/mut-max800.exit`, 17:12:41) executed the
+  working-tree spec whose bytes commit `a40bd6bf` later recorded; it was not
+  re-run post-commit. History: setting the constant from 120 to 800 left the spec GREEN
   because `count <= MAX_RENDERED_FRAMES` was satisfiable by any cap >= 20. The
   rewritten spec asserts `windowStart === first mounted index` instead, which the
   mutation breaks (`.gate/fw3/mut-max800.exit` = `1`). Tracked as todo `15848cf2`
