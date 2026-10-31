@@ -128,7 +128,7 @@ export class KikxChatView extends HTMLElement {
       this.syncFrames(this._frames, this._appState, { animate: false });
       return;
     }
-    if (this._scrollview?.element?.isConnected) {
+    if (this._scrollview?.element?.isConnected && this._frames.length > 0) {
       this.syncFrames(this._frames, this._appState, {
         windowStart: Number.isInteger(this._pendingWindowStart) ? this._pendingWindowStart : undefined,
         animate: false,
@@ -143,12 +143,13 @@ export class KikxChatView extends HTMLElement {
     if (appState)
       this._appState = appState;
 
-    if (this._canUseShared() && this._mode === 'full' && this._scrollview?.element?.isConnected) {
-      this.syncFrames(frames, this._appState, { animate: false });
+    let nextFrames = Array.isArray(frames) ? frames : [];
+    if (this._canUseShared() && this._mode === 'full' && this._scrollview?.element?.isConnected && nextFrames.length > 0) {
+      this.syncFrames(nextFrames, this._appState, { animate: false });
       return;
     }
 
-    this._frames = Array.isArray(frames) ? frames : [];
+    this._frames = nextFrames;
     if (this._canUseShared() && this._mode === 'full') {
       this._renderFullShared();
       return;
