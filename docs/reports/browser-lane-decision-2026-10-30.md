@@ -451,6 +451,19 @@ was running.
   which introduced its real-wheel scroll. **Not fixed here** — it is a different
   spec's timeout budget, and widening it would mask rather than diagnose boot cost.
   It is the honest qualifier on any "the lane is green" claim at this HEAD.
+  **A reproduction attempt under sustained contention did NOT reproduce it, and that
+  null does not clear the failure.** `.gate/te13/sust-probe.log` ran the same ladder
+  under 19 concurrent holders (`HOLD_MS=25000`) with the probe starting 8 s late: it
+  finished in 8536 ms with all work phases totalling ~530 ms against 496 ms solo
+  (`fixture_server` 15 ms, `puppeteer_launch` 199 ms, `goto_domcontentloaded` 38 ms,
+  `wait_frame_24` 238 ms) — nowhere near the budget. Two methodology limits make this a
+  null rather than an exoneration: (a) the ladder allows **20000 ms** on
+  `wait_frame_24` where the failing spec allows **10000 ms** (`.gate/te13/ladder.mjs:117`
+  vs `commit-runtime-event-puppeteer.mjs:65`), so an inflation of up to 2x reads as a
+  ladder success; and (b) the holders idle *after* booting, while the real failure has
+  three siblings in their **boot phase simultaneously**. A 20-way concurrent boot ladder
+  spanned 3337–5341 ms (`.gate/te13/c20-*.log`), also under budget. So the phase that
+  absorbs the cost remains unmeasured; the reproduction gap is recorded, not papered over.
 - `aeor-framework`'s intermittent (§6), which lives upstream.
 - The 16 Puppeteer-only specs have not been ported. Until they are, Puppeteer is
   load-bearing and must stay.
