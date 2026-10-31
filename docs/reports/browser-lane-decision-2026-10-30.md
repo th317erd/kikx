@@ -216,10 +216,13 @@ it. Either way it is upstream of this repo.
   tree, no other lane running (`.gate/v18/lane-{1,2}.log`, `lane.exit`).
   Playwright was not re-run at `379bac1c`; its last measured full-lane greens
   are `18/18 EXIT=0`, 3× post-merge (see below).
-- **`frame-window` is INTERMITTENTLY red under the lane's default concurrency —
-  2 red in 6 runs, not "red".** All six runs at HEAD `d2598f42`, clean tree, no
-  other lane running; `git diff 6c923a3f..d2598f42 -- src/` is empty, so this is
-  not a merge regression:
+- **Historical: `frame-window` WAS intermittently red under the lane's default
+  concurrency — 2 red in 6 runs, not "red".** *This bullet records a flake that
+  has since been fixed at the source; see §7.1 for the current state and the
+  post-fix runs. Do not quote it as the lane's present behaviour.* All six runs at
+  HEAD `d2598f42`, clean tree, no other lane running;
+  `git diff 6c923a3f..d2598f42 -- src/` is empty, so this was not a merge
+  regression:
 
   | run | mode | result |
   | --- | --- | --- |
@@ -231,8 +234,9 @@ it. Either way it is upstream of this repo.
 
   **An earlier revision of this section claimed "Puppeteer is green only when the
   lane is serialised". That was wrong** and is retracted: four consecutive
-  concurrent runs are green. The failure is a race, not a serialisation
-  requirement, and it must not be quoted as a deterministic red.
+  concurrent runs were green. The failure was a race, not a serialisation
+  requirement, and it must not be quoted as a deterministic red. §7.1 then
+  removed the race itself, so neither reading applies to the lane as it stands.
 
   The failing assertion is `rendered window is bounded by the page cap (140 <= 120)`
   at `frame-window-puppeteer.mjs:109:12`. The tell is duration: the red at
