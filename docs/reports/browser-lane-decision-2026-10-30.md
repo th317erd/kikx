@@ -402,6 +402,23 @@ was running.
   no decrease (`.gate/te9/base120.log`, `BASE120_EXIT=0`). Both pass only because
   460 sits 240 below `FRAME_COUNT`; that headroom, not a frame cap, is what the
   assertion rests on.
+- **The settled-idle assertion has never been observed to fail *first*, and cannot be
+  made to without reordering the spec.** A `PAGE_SIZE 180` probe (700 frames -> 4
+  pages) was run with every assertion evaluated observationally, so none aborted the
+  others (`.gate/te9/pagesize180.probe.log`, `PROBE_EXIT=0`; real spec run
+  `PAGESIZE180_SPEC_EXIT=1` at `:262`, no timeout). Result: `initial.count` 160 passes
+  the bound, and `settled.count` 700 **fails** `settled: the settled idle window is
+  bounded` — so the assertion encodes a real property and is not vacuous. But
+  `SETTLED_IS_FIRST_TO_FIRE=false`: at 180 the earlier
+  `windowStart === first mounted index` identity at `:262` breaks first
+  (`3 x 120 = 360` vs `3 x 180 = 540`), because `_mountPagedSource` divides by the
+  constructor `pageSize` (`MAX_RENDERED_FRAMES`) while pages mount at `PAGE_SIZE`.
+  A prediction recorded before that run — that 180 would make `settled` the first
+  assertion to fire — was **falsified** by it. The honest statement is: *the settled
+  assertion covers a later state and would catch a page-size regression, but it has
+  not been shown to fire before the `windowStart` identity at any page size that
+  keeps the initial bound true.* Making it fire first needs an assertion-order
+  restructure, which is a spec-shape change that was deliberately not made.
 
 - The `tool-output-overflow` mutation (force a visible scrollbar) was designed but
   never run, so that spec's discriminating power is unmeasured, not proven.
