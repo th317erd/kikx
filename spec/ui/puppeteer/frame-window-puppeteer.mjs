@@ -264,10 +264,10 @@ test('Puppeteer keeps the initial thread window bounded and reveals older frames
       + 'a mismatch means the render window and the page arithmetic disagree');
 
     // --- settled idle window --------------------------------------------------
-    // Stronger than the initial snapshot: the idle read-ahead must still leave
-    // the window bounded once it stops growing. This is the assertion that
-    // PAGE_SIZE 120 -> 800 breaks (one page then holds all 700 frames), and it
-    // is evaluated from the DOM rather than from a source-vs-fixture comparison.
+    // Stronger than the initial snapshot: idle read-ahead must still leave the
+    // window bounded once it stops growing (DOM-derived). NOT what PAGE_SIZE
+    // 120->800 breaks - that fails earlier at `:258`, so this block is never
+    // reached under it; see report s7. Firing first is unproven, not claimed.
     let settled = await settledSnapshot(page);
     assert.ok(settled.count < FRAME_COUNT, boundedWindowMessage(settled, 'the settled idle window is bounded'));
     assert.equal(settled.distinct, settled.count, 'the idle read-ahead does not duplicate frames');
