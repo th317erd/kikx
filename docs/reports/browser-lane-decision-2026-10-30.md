@@ -249,10 +249,15 @@ it. Either way it is upstream of this repo.
 
 - **Historical — the old assertion before the `f9ae9d05` rewrite.** It was
   semantically wrong, which is why it both raced and could not catch a cap
-  regression; §7.1 records the replacement. `MAX_RENDERED_FRAMES` did double duty, and the spec
-  conflates the two roles:
+  regression; §7.1 records the replacement. The spec conflated two constants that
+  merely share the value 120:
   - `kikx-chat-view.mjs:474` — `pageSize: MAX_RENDERED_FRAMES` handed to
-    `KikxChatScrollView`. On the shared path the constant **is the page size**.
+    `KikxChatScrollView`, but on the **shared** path that is *not* the page size:
+    `createKikxPageContext` (`kikx-chat-scrollview.mjs:27`) hard-codes
+    `pageSize: PAGE_SIZE`, and `_mountPagedSource` (`:94`) prefers
+    `this.pageContext.pageSize || this.pageSize`. So `MAX_RENDERED_FRAMES` never
+    reaches the page source; it only sets `this.pageSize`, the divisor that
+    turns a page index into `windowStart`.
   - `kikx-chat-view.mjs:359-360` — `_resolveWindow`'s default `maxRendered`,
     reached only on the **legacy** path that `_canUseShared()` (`:63-64`) bypasses.
     The header comment at `:12-15` ("only a recent window is kept in the DOM")
@@ -261,14 +266,18 @@ it. Either way it is upstream of this repo.
   Arithmetic: `FRAME_COUNT` 140 with `PAGE_SIZE` 120 is **two** pages, so a fully
   loaded thread is 140 items and `count <= 120` is false *by construction*. The
   assertion therefore measures "has page 0 finished loading yet" — exactly what the
-  fixed `delay(300)` is racing. It is also why the `120 -> 800` mutation survives
-  (§ "A surviving mutation"): with pageSize 800 the 140-frame fixture is one page,
-  `140 <= 800` passes, and the DOM size is unchanged.
+  fixed `delay(300)` was racing. It is also why the `120 -> 800` mutation survived
+  the old spec (§ "A surviving mutation"): with the cap at 800 the 140-frame
+  fixture is one page, `140 <= 800` passes, and the DOM size is unchanged. The
+  same defect explains the mutation's symptom in the rewrite — with the divisor
+  desynchronised from `PAGE_SIZE`, `windowStart` lands at 4000 in a 700-frame
+  session while the DOM still starts at frame 600, which is exactly the
+  mismatch §7.1 now asserts.
 
   Whether the 140-item settled DOM is intended page granularity or a missed trim is
   an **open product decision**, not a spec defect. Waiting for settle without a
   product change makes the spec deterministically red; weakening the assertion to
-  get a green is how the `120 -> 800` mutation survived in the first place.
+  get a green was how the `120 -> 800` mutation survived in the first place.
   Tracked as todo 15848cf2, which subsumes 55fe281e.
 
   **The settled DOM is bounded by page count, not by the frame constant.** Same
@@ -292,10 +301,13 @@ it. Either way it is upstream of this repo.
   deliberate read-ahead and `MAX_RENDERED_FRAMES` is simply a state-window
   constant, or (b) the preload should be trimmed to honour the documented render
   cap. This report does not decide it. What it does establish is that **the
-  existing spec cannot distinguish them**: its assertion samples at 300 ms, before
-  the preload lands, and the assertion arithmetic (`140 <= 120`) is unsatisfiable
-  once both pages are loaded — which is also why the `120 -> 800` mutation
-  survives rather than being caught.
+  pre-rewrite spec could not distinguish them**: its assertion sampled at 300 ms,
+  before the preload lands, and the assertion arithmetic (`140 <= 120`) is
+  unsatisfiable once both pages are loaded — which is also why the `120 -> 800`
+  mutation survived it rather than being caught. The §7.1 rewrite does not decide
+  the product question either; it asserts only the observable contract
+  (`windowStart` equals the first mounted index), which both options satisfy and
+  a desynchronised cap violates.
 - **Three consecutive Playwright full-lane greens post-merge**: `.gate/final-pl.log`
   16:21:40, `.gate/post-cre-pl.log` 16:25:01, `.gate/v2-pl.log` 16:28:16, each
   18/18 `EXIT=0`.
