@@ -59,7 +59,11 @@ export class KikxSessionGrid extends HTMLElement {
 
   update(input = {}) {
     this._applyInput(input);
-    this._render();
+    // A shell repaint used to rebuild every card here. Reconcile by session id
+    // and paint the existing cards instead; only an error state falls back to a
+    // fresh grid in _reconcileCards().
+    this._reconcileCards();
+    this._paintCards();
   }
 
   // S3: coalesced live-sync path used by syncSessionShell() for SSE
