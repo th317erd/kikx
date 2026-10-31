@@ -18,7 +18,7 @@ applies_to: development-v3
 | Lane | Specs | Tests | Deps | Runs here? | Latest result |
 |---|---|---|---|---|---|
 | `ui:playwright` | 13 | 18 | `playwright` only | **Yes** | **18/18 pass, EXIT=0** (5 of 6 full-lane runs on disk); 17/18 once, pre-merge |
-| `ui:puppeteer` | 17 | 20 | `puppeteer-core` only | **Yes** | **20/20 pass, EXIT=0 in 6 consecutive concurrent lane runs** — 3 pre-commit (§7.1), 2/2 at committed `379bac1c` (`.gate/v18/`), 1/1 at committed `4b2e5dff` (`.gate/v22/lane.exit`); **a 3-way concurrent triple at `a205609f` was 2/3** (`.gate/te12/head-lane{1,2,3}.log`: pass 20 / fail 0, pass 20 / fail 0, pass 19 / fail 1), the single red being `commit-runtime-event-puppeteer.mjs:65` — a 10 s boot `waitForSelector` — which passes solo in 2.3 s (`.gate/v28/commit-solo1.log`); `frame-window` itself passed in all three lanes at 34.2/34.3/34.6 s — after `frame-window` was rewritten to remove the eager-preload race; the rewritten spec alone is also 3/3 green at the committed bytes `a40bd6bf` and 3/3 again at `4b2e5dff` (`.gate/v21/post.{1,2,3}.log`). Before that rewrite the same lane was 4/6 green, 2 red (19/20) |
+| `ui:puppeteer` | 17 | 20 | `puppeteer-core` only | **Yes** | **20/20 pass, EXIT=0 in 6 consecutive concurrent lane runs** — 3 pre-commit (§7.1), 2/2 at committed `379bac1c` (`.gate/v18/`), 1/1 at committed `4b2e5dff` (`.gate/v22/lane.exit`); **a 3-way concurrent triple at `a205609f` was 2/3** (`.gate/te12/head-lane{1,2,3}.log`: pass 20 / fail 0, pass 20 / fail 0, pass 19 / fail 1), the single red being `commit-runtime-event-puppeteer.mjs:65` — a 10 s boot `waitForSelector` — which passes solo in 2.3 s (`.gate/v28/commit-solo1.log`); `frame-window` itself passed in all three lanes at 34.2/34.3/34.6 s — after `frame-window` was rewritten to remove the eager-preload race; the rewritten spec alone is also 3/3 green at the committed bytes `a40bd6bf` and 3/3 again at `4b2e5dff` (`.gate/v21/post.{1,2,3}.log`). Before that rewrite the same lane was 4/6 green, 2 red (19/20); a second matched-load 3-way triple at `a330fbfe` was **3/3 with the same wall profile** (37309/37067/37234 ms vs te12's 37205/35827/37602 ms), so the red is non-reproduced under matched load rather than cleared (§7) |
 | `ui:stagehand` | 26 | 28 | `@browserbasehq/stagehand` | **No** | **28/28 fail, EXIT=1** (fresh run at `9e9ec60d`; AeorDB `:6830` refused) |
 
 Import counts are exclusive — `grep -ho "from '...'"` yields exactly one browser
@@ -492,8 +492,32 @@ was running.
   null is separately discounted above. Copies were staged under `.gate/te14/` with the shared
   fixture import rewritten to an absolute path, because a relative `../stagehand/` import from
   that directory dies in ~158 ms with `ERR_MODULE_NOT_FOUND` — and the staged copy was
-  itself control-run green in 2321 ms, so the passes are not module artefacts. What remains
-  untested is the third model: sequential boot churn across the full 20-spec lane.
+  itself control-run green in 2321 ms, so the passes are not module artefacts.
+  **The third model — sequential boot churn across the full 20-spec lane — has now been
+  measured, and it separates into a confirmed mechanism and a non-reproduced failure.**
+  `.gate/te17/` ran te12's exact command three times concurrently with only additive
+  `__mark` calls: budgets untouched, `timeout: 10000` count 3 before and after, spec
+  restored to `95b1bfbf…` and proven by md5 in both directions, prediction on disk before
+  launch. Load was matched, not merely similar — wall 37309 / 37067 / 37234 ms against
+  te12's 37205 / 35827 / 37602 ms, mean parallelism 7.87 / 8.24 / 8.09. All three lanes
+  were green (20/20, zero `TimeoutError`), so pre-registered P1 held and the red was
+  **not reproduced**.
+  The phase ladder does show, for the first time, that contention lands squarely on the
+  budgeted call. Measured against the same instrument in a single lane
+  (`.gate/te16coord`): cumulative puppeteer launch 592 ms → 2715–4597 ms (4.6–7.8x);
+  cumulative goto 1536 ms → 4664–7585 ms (3.0–4.9x); cumulative boot-to-`frame_24`
+  3503 ms → 9956–13001 ms (2.8–3.7x); and the selector wait that actually carries the
+  budget, `frame_24` minus goto, 1967 ms → **4229–5560 ms (2.2–2.8x)**. So the mechanism
+  is real and was previously unmeasured. But it peaked **4440 ms short of the 10000 ms
+  budget**, in the same wall-time band that produced te12's timeout — which is why this
+  is recorded as *non-reproduction with a bound*, not as an exoneration. The bound is the
+  finding: contention alone, measured at matched load, does not reach the budget, so the
+  red also requires something outside this trial — the unseparated host background load,
+  or a rarer event layered on it. Two lanes' boot paths also exceeded 10000 ms *in total*
+  (10224, 13001) while the test still passed, because the fixed budget is on the selector
+  call alone; a boot path slower overall than the budget does not by itself fail.
+  Related null worth keeping: test-body duration does not predict the outcome. Lane 3
+  spent 19040 ms in this test — longer than te12's failing 16507 ms — and passed.
   **Fleet context, re-derived from source rather than the earlier classification file:**
   `commit-runtime-event` is the *only* spec in the 17 with both `goto` (`:63`) and its first
   boot selector (`:65`) at 10000 ms. An earlier claim in this session that `mention-message`
