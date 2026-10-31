@@ -170,7 +170,7 @@ test('changing the frame type rebuilds the item', () => {
   assert.ok(item.querySelector('.kikx-frame__thinking'), 'the new frame type must render');
 });
 
-test('a new app-state object identity still forces a rebuild', () => {
+test('a new app-state object identity does not force a rebuild', () => {
   let item = frameItem();
   let frame = thinkingFrame();
 
@@ -180,7 +180,7 @@ test('a new app-state object identity still forces a rebuild', () => {
   item.updateFrame(frame, {});
   let second = item.querySelector('.kikx-frame__thinking');
 
-  assert.notEqual(second, first, 'app-state identity change remains a rebuild trigger');
+  assert.equal(second, first, 'app-state identity must not replace unchanged frame content');
 });
 
 test('an in-place update neither runs nor duplicates bindings on reused nodes', () => {

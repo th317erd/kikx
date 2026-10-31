@@ -159,6 +159,7 @@ roadmap item is shipped.
 These dated plans and reports are implementation evidence, not general
 architecture. Their own authority banners govern how they may be used.
 
+- [Deploy 3098 runbook, 2026-10-31](./deploy-3098-runbook-20261031.md)
 - [Client targeted-update audit, 2026-10-30](./reports/client-targeted-update-audit-2026-10-30.md)
 - [Plugin-way gap analysis, 2026-10-29](./reports/plugin-way-gap-analysis-2026-10-29.md)
 - [Discord plugin status, 2026-10-30](./reports/discord-plugin-status-2026-10-30.md)

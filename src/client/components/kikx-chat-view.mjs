@@ -140,10 +140,15 @@ export class KikxChatView extends HTMLElement {
   }
 
   setFrames(frames, appState) {
-    this._frames = Array.isArray(frames) ? frames : [];
     if (appState)
       this._appState = appState;
 
+    if (this._canUseShared() && this._mode === 'full' && this._scrollview?.element?.isConnected) {
+      this.syncFrames(frames, this._appState, { animate: false });
+      return;
+    }
+
+    this._frames = Array.isArray(frames) ? frames : [];
     if (this._canUseShared() && this._mode === 'full') {
       this._renderFullShared();
       return;
