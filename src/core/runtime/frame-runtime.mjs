@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { FrameStore } from '../aeordb/frame-store.mjs';
 import { HybridLogicalClock, defaultUnixMicros } from '../clock/hybrid-logical-clock.mjs';
 import { FrameEngine } from '../frames/frame-engine.mjs';
+import { FRAME_TYPE_CLASSES, FrameTypeDefault } from '../frames/frame-types/index.mjs';
 import { ScheduledFrameQueue } from './scheduled-frame-queue.mjs';
 import { countMessageFrames } from '../../shared/frame-manager/frame-manager.mjs';
 import {
@@ -433,6 +434,59 @@ export class FrameRuntime extends EventEmitter {
 
   // Append without waking anything. An edit to a message already in the session must not
   // start an agent turn: the bot sees the change in its context when it next runs.
+  // Append a frame of a plugin-declared type.
+  //
+  // Transport plugins own frame types that are not user messages: a Discord
+  // message is written by a bot on somebody's behalf, not by the person reading
+  // the session. Until this existed `#appendUserMessage` hardcoded
+  // `type: 'UserMessage'`, so the only way to put a transport message into a
+  // session was to impersonate the owner - which is the defect this closes.
+  //
+  // Two things are deliberately NOT taken from the caller:
+  //
+  //   type      - resolved through the registry, so the frame type must already be
+  //               registered (and therefore attributable to a plugin) or this throws.
+  //   agentOnly - read from the registered class, so a caller cannot claim a frame
+  //               is thread-visible when its class says otherwise, or the reverse.
+  //
+  // A frame type that is not registered falls back to the built-in map and then to
+  // FrameTypeDefault. FrameTypeDefault is not an acceptable target here: it would
+  // silently accept any typo as a real frame type, so an unknown name throws.
+  async appendFrame(sessionID, input = {}) {
+    let type = normalizeOptionalString(input.type);
+    if (!type)
+      throw new TypeError('appendFrame requires a frame type');
+
+    let TypeClass = this.#resolveFrameTypeClass(type);
+    if (!TypeClass)
+      throw new TypeError(`appendFrame: frame type "${type}" is not registered`);
+
+    return this.#appendFrame(sessionID, input, {
+      type,
+      agentOnly: TypeClass.agentOnly === true,
+    });
+  }
+
+  #resolveFrameTypeClass(type) {
+    let registry = this.pluginRegistry;
+    if (registry && typeof registry.getClass === 'function') {
+      let resolved = registry.getClass(`FrameType${type}`);
+      if (resolved)
+        return resolved;
+    }
+
+    // Built-in types are not in the registry unless core-classes registered them,
+    // so consult the static map too. An unknown name must not resolve to Default.
+    let builtIn = FRAME_TYPE_CLASSES[type];
+    if (builtIn)
+      return builtIn;
+
+    let fallback = registry && typeof registry.getClass === 'function'
+      ? registry.getClass('FrameTypeDefault')
+      : FrameTypeDefault;
+    return type === 'Default' ? fallback : null;
+  }
+
   async appendUserMessageQuietly(sessionID, input = {}) {
     return this.#appendUserMessage(sessionID, input, { wake: false });
   }
@@ -442,6 +496,12 @@ export class FrameRuntime extends EventEmitter {
   }
 
   async #appendUserMessage(sessionID, input = {}, { wake = true } = {}) {
+    return this.#appendFrame(sessionID, input, { wake, type: 'UserMessage', agentOnly: false });
+  }
+
+  // The one frame-construction path. `type` and `agentOnly` are resolved by the
+  // caller from a registered frame-type class, never from `input`.
+  async #appendFrame(sessionID, input = {}, { wake = true, type = 'UserMessage', agentOnly = false } = {}) {
     let entry = await this.ensureSessionEntry(sessionID);
     // cancelAutonomousWakes() and the router flush both yield. Ordinary LRU
     // pressure could evict this runtime in between and detach the captured
@@ -457,7 +517,7 @@ export class FrameRuntime extends EventEmitter {
       let interactionID = input.interactionID || input.interactionId || this.idGenerator();
       let frame = {
         id: input.id || this.idGenerator(),
-        type: 'UserMessage',
+        type,
         sessionID,
         interactionID,
         parentID: input.parentID || input.parentId || null,
@@ -474,6 +534,12 @@ export class FrameRuntime extends EventEmitter {
         recipients: normalizeStringArray(input.recipients),
         content: buildUserMessageContent(text, input.content),
       };
+
+      // Off the frame entirely unless true, so every ordinary user message stays
+      // byte-identical to before this path existed.
+      if (agentOnly)
+        frame.agentOnly = true;
+
 
       // An explicit target is what turns a plain message into a single-agent
       // wake: resolveRouteTargets() short-circuits to a single-target bypass

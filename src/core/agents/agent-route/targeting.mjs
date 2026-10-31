@@ -14,6 +14,14 @@ export function shouldRouteToAgents(context, frame) {
   if (frame.hidden === true && !isHiddenScheduledTargetFrame(context, frame))
     return false;
 
+  // Agent-only frames (a transport's own frame type) are routed to the agent and
+  // hidden from the thread. They are checked here rather than allowed through a
+  // `hidden` exemption: `hidden` also means "do not project into model context"
+  // in frame-type-base and the compaction builder, so reusing it would deliver
+  // the frame to routing and drop it from the prompt.
+  if (frame.agentOnly === true)
+    return shouldRouteAgentOnlyFrame(context, frame);
+
   if (frame.type === 'UserMessage')
     return shouldRouteUserMessage(context, frame);
 
@@ -21,6 +29,22 @@ export function shouldRouteToAgents(context, frame) {
     return shouldRouteAgentMessage(context, frame);
 
   return false;
+}
+
+// An agent-only frame is routed the way a user message is, because that is what
+// it is from the agent's point of view: something addressed to it that it has not
+// answered yet. Only creation routes - an edit must not start a second turn, the
+// same rule shouldRouteUserMessage applies.
+function shouldRouteAgentOnlyFrame(context, frame) {
+  if (frame.deleted === true)
+    return false;
+
+  let operation = context.change?.operation || 'create';
+  if (operation !== 'create' && frame.coordinated !== true)
+    return false;
+
+  let text = frame.content?.text;
+  return typeof text === 'string' && text.trim() !== '';
 }
 
 function shouldRouteUserMessage(context, frame) {

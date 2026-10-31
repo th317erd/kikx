@@ -494,6 +494,14 @@ export function frameMatchesWindowFilters(frame, filters, query = DEFAULT_FRAME_
   // The Hidden gate reveals hidden frames as well as soft-deleted frames.
   // Coordination wakes remain visible without the gate; every other hidden
   // frame needs it. isThreadVisibleFrame owns the wake exception.
+  // An agent-only frame is never thread content, whatever the gate says. Checked
+  // ahead of the hidden/deleted widening below on purpose: that widening exists so
+  // a person can reveal bookkeeping, and an agent-only frame's purpose is the
+  // opposite - it belongs to the agent while being absent from the session. A
+  // filter must not be able to turn that into a visible message.
+  if (frame.agentOnly === true)
+    return false;
+
   if (!isThreadVisibleFrame(frame) && normal.deleted !== true)
     return false;
   if (frame.phantom === true)
@@ -535,6 +543,8 @@ export function frameFilterCounts(frames = []) {
     if (!frame || frame.phantom === true)
       continue;
     if (isNeverVisibleType(frame.type))
+      continue;
+    if (frame.agentOnly === true)
       continue;
 
     if (frame.deleted === true || frame.hidden === true)

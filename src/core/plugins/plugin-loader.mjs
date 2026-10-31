@@ -469,6 +469,19 @@ function createPluginSetupContext({ registry, commandRegistry, context, pluginPa
         throw new Error('appendToSession called before the frame runtime was attached');
       return registry._pluginFrameRuntime.appendUserMessage(sessionID, input);
     },
+    // Write a frame of a frame type this plugin registered.
+    //
+    // Same trust level as appendToSession - both put a message into a session and
+    // wake its agents - but unlike appendToSession the type is not hardcoded to
+    // UserMessage. A transport that is not the owner needs this: writing a Discord
+    // message as a UserMessage is what made the owner's own words appear to come
+    // from him. The frame type and its agent-only flag are resolved from the
+    // registered class, so a caller cannot choose either.
+    appendFrame: (sessionID, input) => {
+      if (!registry._pluginFrameRuntime)
+        throw new Error('appendFrame called before the frame runtime was attached');
+      return registry._pluginFrameRuntime.appendFrame(sessionID, input);
+    },
     subscribe: (handler, options = {}) => {
       if (!registry._pluginEventBus)
         throw new Error('subscribe() called before the plugin event bus was attached');
