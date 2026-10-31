@@ -18,7 +18,7 @@ applies_to: development-v3
 | Lane | Specs | Tests | Deps | Runs here? | Latest result |
 |---|---|---|---|---|---|
 | `ui:playwright` | 13 | 18 | `playwright` only | **Yes** | **18/18 pass, EXIT=0** (5 of 6 full-lane runs on disk); 17/18 once, pre-merge |
-| `ui:puppeteer` | 17 | 20 | `puppeteer-core` only | **Yes** | **20/20 pass, EXIT=0 in 5 consecutive concurrent lane runs** — 3 pre-commit (§7.1) and 2/2 at the committed tree `379bac1c` (`.gate/v18/`) — after `frame-window` was rewritten to remove the eager-preload race; the rewritten spec alone is also 3/3 green at the committed bytes `a40bd6bf`. Before that rewrite the same lane was 4/6 green, 2 red (19/20) |
+| `ui:puppeteer` | 17 | 20 | `puppeteer-core` only | **Yes** | **20/20 pass, EXIT=0 in 6 consecutive concurrent lane runs** — 3 pre-commit (§7.1), 2/2 at committed `379bac1c` (`.gate/v18/`), 1/1 at committed `4b2e5dff` (`.gate/v22/lane.exit`) — after `frame-window` was rewritten to remove the eager-preload race; the rewritten spec alone is also 3/3 green at the committed bytes `a40bd6bf` and 3/3 again at `4b2e5dff` (`.gate/v21/post.{1,2,3}.log`). Before that rewrite the same lane was 4/6 green, 2 red (19/20) |
 | `ui:stagehand` | 26 | 28 | `@browserbasehq/stagehand` | **No** | **28/28 fail, EXIT=1** (fresh run at `9e9ec60d`; AereoDB `:6830` refused) |
 
 Import counts are exclusive — `grep -ho "from '...'"` yields exactly one browser
@@ -381,6 +381,27 @@ was running.
   rewritten spec asserts `windowStart === first mounted index` instead, which the
   mutation breaks (`.gate/fw3/mut-max800.exit` = `1`). Tracked as todo `15848cf2`
   (subsuming `55fe281e`), now closed on that evidence.
+- **`PAGE_SIZE` now has behavioural coverage too, and the fixture guard is gone.**
+  The first page-size probe was not behavioural: `assert.ok(FRAME_COUNT > PAGE_SIZE * 2)`
+  fired 1.8 ms in, before Chromium launched, so no DOM assertion ever ran
+  (`.gate/fw3/mut-pagesize800.exit`). That guard checked the constant against the
+  fixture rather than the product against behaviour, so it was deleted and the spec
+  now observes the DOM under whatever page size is configured. Measured at `4b2e5dff`:
+  `PAGE_SIZE 120 -> 800` fails in-browser after 876 ms on
+  `the window holds the whole thread (700 === 700)` at `:258`, and
+  `MAX_RENDERED_FRAMES 120 -> 800` still fails on
+  `windowStart 4000 !== first mounted 600` at `:262` (`.gate/fw4/`). Both mutations
+  restored byte-identically (`RESTORED=yes`, three md5s equal in `*.restore.txt`).
+  Caveat: at `PAGE_SIZE 800` the whole 700-frame thread is one server page, so
+  "bounded" is vacuous there — the probe proves the constant reaches the mount path,
+  not that trimming works at multi-page sizes.
+- **The settled-idle assertion is not a duplicate of the initial one.** Measured at
+  `PAGE_SIZE 120` with a 700-frame fixture: the initial snapshot is 100 frames
+  (`windowStart 600`, newest page only) while the settled idle snapshot is 460
+  (`windowStart 240`, after read-ahead), identical across 111 samples over 12 s with
+  no decrease (`.gate/te9/base120.log`, `BASE120_EXIT=0`). Both pass only because
+  460 sits 240 below `FRAME_COUNT`; that headroom, not a frame cap, is what the
+  assertion rests on.
 
 - The `tool-output-overflow` mutation (force a visible scrollbar) was designed but
   never run, so that spec's discriminating power is unmeasured, not proven.
