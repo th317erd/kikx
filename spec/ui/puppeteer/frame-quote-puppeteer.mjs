@@ -41,11 +41,12 @@ test('Puppeteer can move from a frame into the quote gutter and click Quote', as
   }
 
   let fixture = await startStagehandUIServer({
-    sessions: [ { id: 'session_quote', title: 'Quote', messageCount: 2 } ],
+    sessions: [ { id: 'session_quote', title: 'Quote', messageCount: 3 } ],
   });
   fixture.frameRuntime.framesBySessionID.set('session_quote', [
     frame('quote_1', 'UserMessage', 1, 'quote me'),
-    frame('answer_1', 'AgentMessage', 2, 'the answer'),
+    frame('quote_2', 'UserMessage', 2, 'quote two'),
+    frame('answer_1', 'AgentMessage', 3, 'the answer'),
   ]);
 
   let browser = await puppeteer.launch({
@@ -99,6 +100,14 @@ test('Puppeteer can move from a frame into the quote gutter and click Quote', as
 
     let value = await page.evaluate(() => document.querySelector('textarea[name="message"]')?.value || '');
     assert.match(value, /quote me/);
+
+    // A second quote must not be blocked by the first quote's draft-save chain.
+    await page.evaluate(() => document.querySelector('kikx-frame-item[data-frame-id="quote_2"] .kikx-frame__quick-action--quote')?.click());
+    await page.waitForFunction(() => (
+      document.querySelector('textarea[name="message"]')?.value || ''
+    ).includes('frame id[quote_2]:'), { timeout: 15000 });
+    value = await page.evaluate(() => document.querySelector('textarea[name="message"]')?.value || '');
+    assert.match(value, /quote two/);
   } finally {
     await browser?.close();
     await fixture.close();

@@ -102,3 +102,28 @@ test('quoting prefixes the composer and dedupes repeated clicks', async () => {
   await quoteFrameIntoComposer(app, quote);
   assert.equal(textarea.value, once, 'the same frame is not quoted twice');
 });
+
+test('a pending draft save cannot block a second quote', async () => {
+  let textarea = document.createElement('textarea');
+  textarea.name = 'message';
+  let app = {
+    _state: { selectedSessionID: 'ses_1', draft: '' },
+    querySelector(selector) {
+      return selector === 'textarea[name="message"]' ? textarea : null;
+    },
+    // Deliberately never resolves: a quote is a local edit and must not wait
+    // for the previous draft save chain.
+    _putJSON() {
+      return new Promise(() => {});
+    },
+  };
+  let controller = getComposerDraftController(app, 'ses_1');
+  controller.text = '';
+  controller.savedText = '';
+
+  await quoteFrameIntoComposer(app, { frameID: 'frame_1', text: 'first quote' });
+  await quoteFrameIntoComposer(app, { frameID: 'frame_2', text: 'second quote' });
+
+  assert.match(textarea.value, /frame id\[frame_1\]:\nfirst quote/);
+  assert.match(textarea.value, /frame id\[frame_2\]:\nsecond quote/);
+});
