@@ -8,9 +8,8 @@ history.
 ## 1. Current position
 
 - Checkout: `/home/wyatt/Projects/kikx-workspace/kikx`
-- Branch: `main`; clean and pushed. The latest source merge at handoff is
-  `61b3927a`, which includes the remote browser-lane/report work; the handoff
-  file itself is committed after that merge.
+- Branch: `main`; clean and pushed. The latest source commit at handoff is
+  `c8fdd3d8`; the handoff file itself is committed after it.
 - Dev server: `kikx-dev2-run.service` on `127.0.0.1:3002`, PostgreSQL
   `kikx-dev2` on `127.0.0.1:5434`; service active and `/health` ready.
 - **Do not touch `kikx2` or `:3001`.** It is the production-bot clone and is
@@ -57,6 +56,24 @@ The audit confirmed:
   editor, navigation, agent/team, and runtime paths.
 - Raw mode was one symptom; it is now paint-only.
 
+### State integrity continuation
+
+- Generic focused-form capture now preserves value, checked state, focus, and
+  caret across a full shell render, including modal controls portaled outside
+  `kikx-app`; the delayed restore waits for modal autofocus and refuses to steal
+  focus from a control the user clicked afterward.
+- Frame items and existing chat views no longer rebuild solely because the
+  app-state object identity changed.
+- Empty frame arrays no longer sync stale pages; they route through the empty
+  state.
+- Session-grid `update()` reconciles cards by id instead of emptying/rebuilding.
+- Preview/deleted-session refreshes and newer-frame merges prefer mounted keyed
+  grid/thread sync paths.
+- State coverage audit:
+  `docs/reports/client-state-coverage-audit-2026-10-30.md`. It explicitly records
+  that per-component exhaustive coverage and the shell section registry remain
+  open.
+
 ### Miri display-order diagnosis and fix
 
 Miri on `wyatt-laptop:3098` was **not actually mid-turn**. The last turn
@@ -78,9 +95,9 @@ now sets `content.status` and `state.status` to success/error, not just
 `finishedProcessingAt`.
 
 The remote container remains on image `7d484126`; the fix is **not deployed or
-applied to the laptop checkout**. Latest local full suite after the fix/merge:
-**3,137 tests / 3,107 pass / 0 fail / 30 skipped**; targeted browser tests
-**2/2 pass**.
+applied to the laptop checkout**. Latest local full suite after the state fixes:
+**3,139 tests / 3,109 pass / 0 fail / 30 skipped**; targeted browser lane
+**4/4 pass**.
 
 ### End-turn summary wording
 

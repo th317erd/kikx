@@ -77,7 +77,7 @@ matrix for every editor, picker, popup, grid card, and plugin surface.
 
 ## Verification at this audit
 
-- Full suite: **3,138 tests, 3,108 pass, 0 fail, 30 skipped**.
+- Full suite: **3,139 tests, 3,109 pass, 0 fail, 30 skipped**.
 - Targeted state browser lanes: composer/form, quote, display order, search,
   filters, Raw, and mobile passed at the latest check.
 - AEOR harness: property store, keyed list, property binding, and scrollview
