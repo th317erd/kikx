@@ -150,24 +150,62 @@ export class KikxChatScrollView {
 
     let indexes = [ ...this.pageSource.rawPages.keys() ]
       .filter((index) => this.element.pages?.[index]?.loaded === true);
+    let visible = this._visiblePageIndexes(indexes);
+    let visibleSet = new Set(visible);
     let anchor = captureFrameListAnchor(this.frameList);
     let filterAnchor = captureFilterAnchor(this.frameList);
-    let updates = indexes.map((index) => (
+
+    // Clearing a search used to re-project every page the user had ever
+    // scrolled through. On a long session that meant rebuilding thousands of
+    // frame nodes in one turn and could lock the browser. Keep the pages under
+    // the viewport live, and return the rest to the page source's estimated
+    // gaps. They are re-projected against the current query when scrolled back
+    // into range, without rebuilding the scrollview or losing its position.
+    let offscreen = indexes.filter((index) => !visibleSet.has(index));
+    if (offscreen.length > 0)
+      this.element.invalidatePages(offscreen);
+
+    let updates = visible.map((index) => (
       this.pageSource.loadPage({ pageIndex: index }).then((page) => {
         if (epoch !== this._pageContextEpoch || this._pageSourceKey !== key)
           return false;
         this.element.updatePage(index, page.items);
-        this._promoteTailResponse();
         return true;
       }).catch(() => false)
     ));
     Promise.all(updates).then(() => {
       if (epoch !== this._pageContextEpoch || this._pageSourceKey !== key)
         return;
+      this._promoteTailResponse();
       if (!restoreFrameListAnchor(this.frameList, anchor))
         restoreFilterAnchor(this.frameList, filterAnchor);
     });
     return true;
+  }
+
+  _visiblePageIndexes(indexes) {
+    let viewport = this.frameList;
+    if (!viewport)
+      return indexes.slice();
+    let viewportRect = viewport.getBoundingClientRect();
+    let visible = new Set();
+    for (let page of this.element?.querySelectorAll?.('.aeor-scrollview__page') || []) {
+      let index = Number(page.dataset?.page);
+      if (!Number.isInteger(index) || !indexes.includes(index))
+        continue;
+      let rect = page.getBoundingClientRect();
+      let margin = Math.max(0, viewportRect.height * 0.5);
+      if (rect.bottom >= viewportRect.top - margin && rect.top <= viewportRect.bottom + margin)
+        visible.add(index);
+    }
+    if (visible.size === 0) {
+      let center = Number(this.element?.metrics?.().centerPage);
+      if (Number.isInteger(center) && indexes.includes(center))
+        visible.add(center);
+      else if (indexes.length > 0)
+        visible.add(indexes[indexes.length - 1]);
+    }
+    return [ ...visible ].sort((left, right) => left - right);
   }
 
   _installEvents() {
