@@ -216,6 +216,7 @@ Historical, evidence, and superseded plans:
 
 - [Ask-user and activities historical plan](./history/plans/historical/kikx-ask-user-and-activities.md)
 - [Ask-user and activities definition-of-done evidence](./history/plans/evidence/kikx-ask-user-and-activities-v0.2.md)
+- [UserMessage delivery status evidence](./history/plans/evidence/user-message-delivery-status.md)
 - [Superseded Docker distribution plan](./history/plans/superseded/kikx-docker-distribution.md)
 - [Superseded production deployment plan](./history/plans/superseded/kikx-prod-deploy.md)
 
