@@ -511,7 +511,8 @@ function syncFrameThreadBody(app, sessionID, options) {
     && (frames.at(-1)?.id || '') !== previousLastFrameID)
     clearBottomHashMarker(app);
 
-  if (locked && lockMode === 'bottom') {
+  let preserveFilterScroll = options.preserveScroll === true;
+  if (locked && !preserveFilterScroll && lockMode === 'bottom') {
     let initialPlacement = app._lockedPlacementSessionID !== sessionID;
     if (initialPlacement)
       app._lockedPlacementSessionID = sessionID;
@@ -520,7 +521,7 @@ function syncFrameThreadBody(app, sessionID, options) {
       initial: initialPlacement,
       animate: app._runtimeEventsResyncInFlight !== true,
     });
-  } else if (result.insertedNew && locked) {
+  } else if (result.insertedNew && locked && !preserveFilterScroll) {
     let initialPlacement = app._lockedPlacementSessionID !== sessionID;
     if (initialPlacement)
       app._lockedPlacementSessionID = sessionID;

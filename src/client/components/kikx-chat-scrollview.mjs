@@ -104,6 +104,10 @@ export class KikxChatScrollView {
     this.pageSource.renderItem = (item) => this.createFrameItem(item.frame);
     this.source = this.pageSource;
     this.element.setSource(this.source, { follow: false });
+    // Sparse filtered pages can be much shorter than their raw-page estimate.
+    // Preserve the segment under the viewport when a page loads above it;
+    // otherwise a filtered load clamps the viewport to the new bottom.
+    this.element.behavior = { preserveViewportOnPageLoad: true };
     let last = Math.max(0, this.source.totalPages - 1);
     let startPage = this.pageContext?.getStartPage?.();
     let target = Number.isInteger(startPage)
@@ -142,14 +146,23 @@ export class KikxChatScrollView {
 
     let indexes = [ ...this.pageSource.rawPages.keys() ]
       .filter((index) => this.element.pages?.[index]?.loaded === true);
-    for (let index of indexes) {
+    let anchor = captureFrameListAnchor(this.frameList);
+    let filterAnchor = captureFilterAnchor(this.frameList);
+    let updates = indexes.map((index) => (
       this.pageSource.loadPage({ pageIndex: index }).then((page) => {
         if (epoch !== this._pageContextEpoch || this._pageSourceKey !== key)
-          return;
+          return false;
         this.element.updatePage(index, page.items);
         this._promoteTailResponse();
-      }).catch(() => null);
-    }
+        return true;
+      }).catch(() => false)
+    ));
+    Promise.all(updates).then(() => {
+      if (epoch !== this._pageContextEpoch || this._pageSourceKey !== key)
+        return;
+      if (!restoreFrameListAnchor(this.frameList, anchor))
+        restoreFilterAnchor(this.frameList, filterAnchor);
+    });
     return true;
   }
 
@@ -404,4 +417,44 @@ export class KikxChatScrollView {
     this.element.scrollToPage(page, { align: 'end', animate: false });
     return true;
   }
+}
+
+
+function captureFilterAnchor(frameList) {
+  if (!frameList)
+    return null;
+  let listTop = frameList.getBoundingClientRect().top;
+  let items = [ ...frameList.querySelectorAll('kikx-frame-item[data-frame-id]') ];
+  let item = items.find((candidate) => candidate.getBoundingClientRect().bottom > listTop);
+  if (!item)
+    return null;
+
+  let order = Number(item._frame?.order);
+  return {
+    order: Number.isFinite(order) ? order : null,
+    offset: item.getBoundingClientRect().top - listTop,
+  };
+}
+
+function restoreFilterAnchor(frameList, anchor) {
+  if (!frameList || !anchor)
+    return false;
+
+  let items = [ ...frameList.querySelectorAll('kikx-frame-item[data-frame-id]') ];
+  if (items.length === 0 || !Number.isFinite(anchor.order))
+    return false;
+
+  let ordered = items
+    .map((item) => ({ item, order: Number(item._frame?.order) }))
+    .filter((entry) => Number.isFinite(entry.order))
+    .sort((left, right) => left.order - right.order);
+  if (ordered.length === 0)
+    return false;
+
+  let candidate = ordered.find((entry) => entry.order >= anchor.order) || ordered.at(-1);
+  let listTop = frameList.getBoundingClientRect().top;
+  let target = frameItemTopWithinList(frameList, candidate.item) - anchor.offset;
+  let max = Math.max(0, frameList.scrollHeight - frameList.clientHeight);
+  frameList.scrollTop = Math.min(Math.max(0, target), max);
+  return true;
 }
