@@ -2,6 +2,7 @@
 
 import { httpError } from '../http-helpers.mjs';
 import { MAX_CHARACTER_COMPRESSED_LENGTH } from '../../core/agents/character-limits.mjs';
+import { MAX_BEHAVIOR_SCRIPT_LENGTH } from '../../core/agents/script-limits.mjs';
 
 export function validateAgentBody(body, options = {}) {
   if (options.creating && (!body.name || typeof body.name !== 'string' || body.name.trim() === ''))
@@ -24,6 +25,12 @@ export function validateAgentBody(body, options = {}) {
 
   if (typeof body.characterCompressed === 'string' && body.characterCompressed.trim().length > MAX_CHARACTER_COMPRESSED_LENGTH)
     throw httpError(400, `characterCompressed must be ${MAX_CHARACTER_COMPRESSED_LENGTH} characters or fewer`);
+
+  if (body.behaviorScript != null && typeof body.behaviorScript !== 'string')
+    throw httpError(400, 'behaviorScript must be a string');
+
+  if (typeof body.behaviorScript === 'string' && body.behaviorScript.length > MAX_BEHAVIOR_SCRIPT_LENGTH)
+    throw httpError(400, `behaviorScript must be ${MAX_BEHAVIOR_SCRIPT_LENGTH} characters or fewer`);
 
   if (body.config != null && (typeof body.config !== 'object' || Array.isArray(body.config)))
     throw httpError(400, 'config must be an object');

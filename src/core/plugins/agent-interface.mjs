@@ -512,6 +512,7 @@ async function dispatchEndTurnNotice(state, context) {
       context,
       summary: notice.summary,
       details: notice.details,
+      reason: notice.reason || '',
     });
   } catch (error) {
     state.endTurnNoticeError = error?.message || String(error);

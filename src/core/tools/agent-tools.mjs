@@ -6,6 +6,12 @@ import {
   CHARACTER_COMPRESSED_FIELD,
   MAX_CHARACTER_COMPRESSED_LENGTH,
 } from '../agents/character-limits.mjs';
+import {
+  BEHAVIOR_SCRIPT_FIELD,
+  MAX_BEHAVIOR_SCRIPT_LENGTH,
+  normalizeBehaviorScript,
+} from '../agents/script-limits.mjs';
+import { checkAgentMutationAllowedForSession } from '../agents/mutation-authority.mjs';
 
 class AgentTool extends PluginInterface {
   static pluginID = 'internal:agents';
@@ -35,6 +41,28 @@ class AgentTool extends PluginInterface {
     let error = new Error(`${action} is only available to first-generation agents. Current session generation is ${generation}.`);
     error.status = 403;
     throw error;
+  }
+
+  async assertAgentMutation(targetAgentID) {
+    let actor = typeof this.context.agent?.id === 'string' ? this.context.agent.id.trim() : '';
+    if (!actor || actor === targetAgentID)
+      return;
+
+    let runtime = this.context.frameRuntime
+      || this.context.services?.frameRuntime
+      || null;
+    let result = await checkAgentMutationAllowedForSession({
+      actorAgentID: actor,
+      targetAgentID,
+      session: this.sourceSession(),
+      runtime,
+    });
+
+    if (!result.allowed) {
+      let error = new Error(`${actor} may not modify ${targetAgentID} (${result.reason}). Only the agent itself, or a coordinator over descendants, may do that.`);
+      error.status = 403;
+      throw error;
+    }
   }
 
   // Validate a provider/plugin ID against the registered agent providers, so a
@@ -81,6 +109,11 @@ export class AgentCreateTool extends AgentTool {
         maxLength: MAX_CHARACTER_COMPRESSED_LENGTH,
         description: `Optional compressed (short) form of the character, at most ${MAX_CHARACTER_COMPRESSED_LENGTH} characters, used in start briefs.`,
       },
+      behaviorScript: {
+        type: 'string',
+        maxLength: MAX_BEHAVIOR_SCRIPT_LENGTH,
+        description: `Optional AGIS behavioral script the agent follows, at most ${MAX_BEHAVIOR_SCRIPT_LENGTH} characters. An empty string clears it.`,
+      },
       config: {
         type: 'object',
         description: 'Optional non-secret provider config (for example model, baseURL).',
@@ -126,6 +159,9 @@ export class AgentCreateTool extends AgentTool {
       [CHARACTER_COMPRESSED_FIELD]: params.compressedCharacter === undefined
         ? ''
         : normalizeCompressedCharacter(params.compressedCharacter),
+      [BEHAVIOR_SCRIPT_FIELD]: params.behaviorScript === undefined
+        ? ''
+        : normalizeBehaviorScript(params.behaviorScript),
       config: normalizeOptionalObject(params.config, 'config'),
       secrets: normalizeOptionalObject(params.secrets, 'secrets'),
       enabled: params.enabled === undefined ? true : params.enabled === true,
@@ -171,6 +207,11 @@ export class AgentUpdateTool extends AgentTool {
         type: 'string',
         maxLength: MAX_CHARACTER_COMPRESSED_LENGTH,
         description: `New compressed (short) character used in start briefs, at most ${MAX_CHARACTER_COMPRESSED_LENGTH} characters. An empty string clears it.`,
+      },
+      behaviorScript: {
+        type: 'string',
+        maxLength: MAX_BEHAVIOR_SCRIPT_LENGTH,
+        description: `New AGIS behavioral script, at most ${MAX_BEHAVIOR_SCRIPT_LENGTH} characters. An empty string clears it.`,
       },
       pluginID: {
         type: 'string',
@@ -221,6 +262,8 @@ export class AgentUpdateTool extends AgentTool {
     if (!existing?.id)
       throw new Error(`Agent not found: ${reference}`);
 
+    await this.assertAgentMutation(existing.id);
+
     let patch = {};
     if (params.name !== undefined)
       patch.name = normalizeRequiredString(params.name, 'name');
@@ -230,6 +273,9 @@ export class AgentUpdateTool extends AgentTool {
 
     if (params.compressedCharacter !== undefined)
       patch[CHARACTER_COMPRESSED_FIELD] = normalizeCompressedCharacter(params.compressedCharacter);
+
+    if (params.behaviorScript !== undefined)
+      patch[BEHAVIOR_SCRIPT_FIELD] = normalizeBehaviorScript(params.behaviorScript);
 
     if (params.pluginID !== undefined) {
       let pluginID = normalizeRequiredString(params.pluginID, 'pluginID');
@@ -270,6 +316,7 @@ function sanitizeAgent(agent = {}) {
     pluginID: agent.pluginID || null,
     character: typeof agent.character === 'string' ? agent.character : '',
     [CHARACTER_COMPRESSED_FIELD]: typeof agent[CHARACTER_COMPRESSED_FIELD] === 'string' ? agent[CHARACTER_COMPRESSED_FIELD] : '',
+    [BEHAVIOR_SCRIPT_FIELD]: typeof agent[BEHAVIOR_SCRIPT_FIELD] === 'string' ? agent[BEHAVIOR_SCRIPT_FIELD] : '',
     config: isPlainObject(agent.config) ? { ...agent.config } : {},
     secretState: agent.secretState || null,
     enabled: agent.enabled !== false,

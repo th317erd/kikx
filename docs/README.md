@@ -151,6 +151,7 @@ roadmap item is shipped.
 - [Client user-state integrity](./plans/client-user-state-integrity.md)
 - [Client targeted-update layer](./plans/client-targeted-update-layer.md)
 - [UserMessage delivery status](./plans/user-message-delivery-status.md)
+- [Agentic scripts campaign](./plans/agentic-scripts-campaign.md)
 - [Session-tree consolidation](./roadmap/session-tree-consolidation.md)
 - [Session work area](./roadmap/session-work-area.md)
 - [Owner UI review, 2026-10-27](./roadmap/reviews/owner-ui-review-2026-10-27.md)

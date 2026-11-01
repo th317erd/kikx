@@ -8,16 +8,18 @@ const MAX_ANCESTOR_DEPTH = 64;
 // Build the visible message the coordinator receives. The coordinator gets the
 // stopped bot's completed summary plus an explicit validation obligation: the
 // stop message is a signal to check the work, not proof that the work is done.
-export function buildEndTurnNotice({ agentID, sessionID, summary } = {}) {
+export function buildEndTurnNotice({ agentID, sessionID, summary, reason } = {}) {
   let bot = normalizeID(agentID) || '(unknown bot)';
   let session = normalizeID(sessionID) || '(unknown session)';
   let message = typeof summary === 'string' && summary.trim() !== ''
     ? summary.trim()
     : '(The bot ended its turn without a visible summary.)';
+  let reasonLine = normalizeID(reason);
 
   return [
     `Bot ${bot} in session ${session} has stopped. It is either finished with its work, or needs assistance. Please check in on it. It finished its turn with the message:`,
     message,
+    ...(reasonLine ? [ '', `Exit reason: ${reasonLine}` ] : []),
     '',
     'Coordinator validation required: prove that all of the bot\'s work is complete and that no gaps remain. Perform the checks needed, then list the hypotheticals, unknowns, impossible cases, not-thought-of cases, and edge cases that you tested or verified, with proof for each, as a bulleted list of all checks you performed. If you cannot prove a claim, steer the bot or resume the work.',
   ].join('\n');
@@ -31,13 +33,15 @@ export async function notifyCoordinatorOfEndTurn({
   context = {},
   summary = '',
   details = '',
+  reason = '',
   postMessage = postAgentSessionMessage,
 } = {}) {
   let agentID = normalizeID(context.agent?.id);
   let session = context.session;
   let sessionID = normalizeID(session?.id);
-  let message = normalizeID(summary) || normalizeID(details);
-  if (!agentID || !sessionID || !message)
+  let body = normalizeID(summary) || normalizeID(details);
+  let hasReason = normalizeID(reason) !== '';
+  if (!agentID || !sessionID || (!body && !hasReason))
     return { posted: false, reason: 'missing-context' };
 
   let runtime = resolveFrameRuntime(context);
@@ -62,7 +66,7 @@ export async function notifyCoordinatorOfEndTurn({
   // gets the completion notice it is waiting for.
   target = candidates.filter((entry) => entry.agentID === target.agentID).at(-1) || target;
 
-  let text = buildEndTurnNotice({ agentID, sessionID, summary: message });
+  let text = buildEndTurnNotice({ agentID, sessionID, summary: body, reason });
   let result = await postMessage({
     runtime,
     context,
@@ -81,7 +85,7 @@ export async function notifyCoordinatorOfEndTurn({
   };
 }
 
-async function loadSessionChain(runtime, session) {
+export async function loadSessionChain(runtime, session) {
   let sessions = new Map();
   let current = normalizeID(session?.id);
   let seen = new Set();

@@ -25,6 +25,8 @@ import {
 } from './agent-participants.mjs';
 import { sessionGeneration } from './agent-normalizers.mjs';
 import { resolveCompressedCharacter } from '../agents/character-limits.mjs';
+import { BEHAVIOR_SCRIPT_FIELD } from '../agents/script-limits.mjs';
+import { AGIS_EXECUTOR_PREAMBLE } from '../scripts/executor-preamble.mjs';
 
 // P8.3: language that nudges a model to hurry or act out of fear of missing
 // out. The two-tier briefs must never reintroduce it; the brief spec greps both
@@ -129,6 +131,8 @@ export function buildStartBrief(context = {}) {
     'claim work your own tool frames do not show; always leave a truth/proof artifact.',
   ];
 
+  let behaviorScript = normalizeBriefString(context.agent?.[BEHAVIOR_SCRIPT_FIELD]);
+
   let lines = [
     `Kikx Advanced Agent Harness - v${packageVersion()}`,
     '',
@@ -138,6 +142,16 @@ export function buildStartBrief(context = {}) {
     '',
     `Character: ${character}`,
   ];
+
+  if (behaviorScript !== '') {
+    lines.push('');
+    lines.push('Behavior script (AGIS — execute it genuinely, stroke by stroke; it is your operating loop, not decoration):');
+    lines.push(AGIS_EXECUTOR_PREAMBLE);
+    lines.push('');
+    lines.push('--- BEGIN BEHAVIOR SCRIPT ---');
+    lines.push(behaviorScript);
+    lines.push('--- END BEHAVIOR SCRIPT ---');
+  }
 
   if (hasMultiparty(context) && canStaySilent) {
     lines.push('');

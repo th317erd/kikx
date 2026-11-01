@@ -1,6 +1,7 @@
 'use strict';
 
 import { MAX_CHARACTER_COMPRESSED_LENGTH } from '../agents/character-limits.mjs';
+import { MAX_BEHAVIOR_SCRIPT_LENGTH } from '../agents/script-limits.mjs';
 
 // Providers build model-facing tool schemas from `description || help`; when a
 // description exists, `help` is NOT sent. Keep mandatory communication rules in
@@ -30,7 +31,7 @@ export const AGENT_TOOL_DEFINITIONS = [
         },
         reason: {
           type: 'string',
-          description: 'Optional short internal note; not shown to the user.',
+          description: 'Optional exit reason (task-complete, blocked-on-upstream, budget-gate, progress-escalation) or short internal note. Included in the coordinator notice when present; not shown to the user directly.',
         },
       },
       required: [ 'summary' ],
@@ -199,11 +200,40 @@ export const AGENT_TOOL_DEFINITIONS = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'set-script',
+    description: 'Persistently update a behavioral script (AGIS) — for yourself, or for a coordinator: a descendant agent. The script defines how the agent works through its todos, turn after turn.',
+    help: [
+      'Use set-script when the user asks to change how an agent works through its todos: its behavioral loop, phases, or continuation discipline.',
+      'Provide either behaviorScript (raw AGIS text) or scriptID to materialize a library template. Known template IDs include coordinator-loop.',
+      'Omit agent to change yourself. A coordinator may set a descendant agent; nobody may change anything upstream.',
+      'An empty behaviorScript string clears the script (agent returns to default behavior).',
+    ].join(' '),
+    parameters: {
+      type: 'object',
+      properties: {
+        behaviorScript: {
+          type: 'string',
+          maxLength: MAX_BEHAVIOR_SCRIPT_LENGTH,
+          description: `Full AGIS behavioral script text, at most ${MAX_BEHAVIOR_SCRIPT_LENGTH} characters. An empty string clears the script.`,
+        },
+        scriptID: {
+          type: 'string',
+          description: 'Library template ID to materialize (for example coordinator-loop). Mutually exclusive with behaviorScript; when both are given, scriptID wins.',
+        },
+        agent: {
+          type: 'string',
+          description: 'Optional target agent ID or exact name. Omit to change yourself. Requires coordinator authority to name another agent.',
+        },
+      },
+      additionalProperties: false,
+    },
+  },
 ];
 
 export const AGENT_TOOL_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
 export const DELEGATION_TOOL_NAMES = new Set([ 'session-create', 'session-invite-agents' ]);
-export const REVIEW_ONLY_TOOL_DENYLIST = new Set([ 'write-file' ]);
+export const REVIEW_ONLY_TOOL_DENYLIST = new Set([ 'write-file', 'set-script' ]);
 export const REVIEW_ONLY_AGENT_PATTERN = /\b(?:qa|q\.a\.|tester|quality|ux|user[-\s]?experience|designer|reviewer|security|product|coordinator)\b/i;
 export const AVOIDABLE_DEFERRAL_PATTERNS = [
   /\b(?:should|shall)\s+i\s+(?:continue|proceed|read|inspect|review|run|start|create|update|check|look|audit|test)\b/i,

@@ -5,6 +5,10 @@ import {
   CHARACTER_COMPRESSED_FIELD,
   MAX_CHARACTER_COMPRESSED_LENGTH,
 } from './character-limits.mjs';
+import {
+  BEHAVIOR_SCRIPT_FIELD,
+  normalizeBehaviorScript,
+} from './script-limits.mjs';
 import { normalizeTagInputList, tagNumber } from '../tags/tag-definitions.mjs';
 
 export class AgentManager {
@@ -125,6 +129,14 @@ export class AgentManager {
         CHARACTER_COMPRESSED_FIELD,
       );
     }
+
+    return await this.updateAgent(agentID, patch);
+  }
+
+  async updateAgentScript(agentID, script) {
+    let patch = {
+      [BEHAVIOR_SCRIPT_FIELD]: normalizeBehaviorScript(script),
+    };
 
     return await this.updateAgent(agentID, patch);
   }
@@ -290,6 +302,10 @@ export class AgentManager {
     let characterCompressed = hasCompressed
       ? normalizeCompressedCharacter(input[CHARACTER_COMPRESSED_FIELD], CHARACTER_COMPRESSED_FIELD)
       : (options.creating ? '' : undefined);
+    let hasScript = Object.hasOwn(input, BEHAVIOR_SCRIPT_FIELD);
+    let behaviorScript = hasScript
+      ? normalizeBehaviorScript(input[BEHAVIOR_SCRIPT_FIELD])
+      : (options.creating ? '' : undefined);
 
     let errors = [];
     for (let key of Object.keys(config || {})) {
@@ -359,6 +375,7 @@ export class AgentManager {
       pluginID: input.pluginID,
       character,
       [CHARACTER_COMPRESSED_FIELD]: characterCompressed,
+      [BEHAVIOR_SCRIPT_FIELD]: behaviorScript,
       config,
       secrets,
       clearSecrets: input.clearSecrets,

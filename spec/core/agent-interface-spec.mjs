@@ -383,6 +383,7 @@ test('AgentInterface base loop runs first-message hook before asking the provide
     'progress',
     'route',
     'set-character',
+    'set-script',
     'stop',
   ]);
   assert.equal(agent.calls[1].toolNames.includes('agent-null-response'), false);

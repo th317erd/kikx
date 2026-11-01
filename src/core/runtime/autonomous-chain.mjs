@@ -79,3 +79,12 @@ export function nextChainDepth(triggerFrame) {
 export function exceedsChainLimit(depth) {
   return normalizeChainDepth(depth) > MAX_AUTONOMOUS_CHAIN_STEPS;
 }
+
+export function canContinueWithCurrentBudget(options = {}) {
+  return {
+    allowed: true,
+    reason: 'budget-shell-always-yes',
+    chainDepth: normalizeChainDepth(options.chainDepth),
+    ...(options.tokenBudget != null ? { tokenBudget: options.tokenBudget } : {}),
+  };
+}

@@ -274,3 +274,65 @@ test('details are used as the notice body when the summary is empty', async () =
   assert.equal(result.posted, true);
   assert.match(posts[0].text, /Detailed proof of completion\./);
 });
+
+test('an exit reason appears in the notice body', async () => {
+  let text = buildEndTurnNotice({
+    agentID: 'bot-a',
+    sessionID: 'session-child',
+    summary: 'Work paused.',
+    reason: 'blocked-on-upstream',
+  });
+
+  assert.match(text, /Exit reason: blocked-on-upstream/);
+  assert.match(text, /Work paused\./);
+});
+
+test('the notice carries no exit-reason line when none was given', () => {
+  let text = buildEndTurnNotice({
+    agentID: 'bot-a',
+    sessionID: 'session-child',
+    summary: 'Work done.',
+  });
+
+  assert.doesNotMatch(text, /Exit reason/);
+});
+
+test('a silent end-turn with only an exit reason still notifies the coordinator', async () => {
+  let sessions = [
+    session({ id: 'child', parentSessionID: 'parent', participantAgentIDs: [ 'child-bot' ], coordinatorAgentID: 'child-bot' }),
+    session({ id: 'parent', participantAgentIDs: [ 'parent-bot' ], coordinatorAgentID: 'parent-bot' }),
+  ];
+  let posts = [];
+  let result = await notifyCoordinatorOfEndTurn({
+    context: {
+      agent: { id: 'child-bot' },
+      session: sessions[0],
+      services: { frameRuntime: runtimeFor(sessions) },
+    },
+    summary: '',
+    details: '',
+    reason: 'budget-gate',
+    postMessage: async (input) => {
+      posts.push(input);
+      return { frame: { id: 'f' } };
+    },
+  });
+
+  assert.equal(result.posted, true);
+  assert.equal(result.coordinatorAgentID, 'parent-bot');
+  assert.match(posts[0].text, /Exit reason: budget-gate/);
+  assert.match(posts[0].text, /without a visible summary/);
+});
+
+test('a silent end-turn without a reason still does not notify', async () => {
+  let result = await notifyCoordinatorOfEndTurn({
+    context: { agent: { id: 'bot' }, session: { id: 'session' } },
+    summary: '',
+    details: '',
+    reason: '',
+    postMessage: async () => ({ frame: { id: 'f' } }),
+  });
+
+  assert.equal(result.posted, false);
+  assert.equal(result.reason, 'missing-context');
+});

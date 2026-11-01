@@ -34,6 +34,7 @@ import {
   normalizeContinuationDelay,
 } from './continuation.mjs';
 import {
+  canContinueWithCurrentBudget,
   createAutonomousPauseFrame,
   exceedsChainLimit,
   nextChainDepth,
@@ -395,8 +396,23 @@ export class AgentRouteFramePluginBase extends BaseFramePlugin {
   async scheduleAgentContinuation({ agent, frame, responseFrameID, continuation, services = {} }) {
     let delayMs = normalizeContinuationDelay(continuation.delayMs);
     let now = this.clock();
-    let scheduledAt = now + delayMsToClockUnits(delayMs, now);
     let chainDepth = nextChainDepth(frame);
+
+    let budgetGate = services?.budgetGate?.canContinueWithCurrentBudget
+      || this.context?.services?.budgetGate?.canContinueWithCurrentBudget
+      || canContinueWithCurrentBudget;
+    let budget = await budgetGate({
+      chainDepth,
+      agent,
+      sessionID: frame.sessionID,
+    });
+    if (!budget?.allowed) {
+      this.postAutonomousPauseNotice({ frame, now });
+      await services?.frameRuntime?.frameStore?.flush?.();
+      return null;
+    }
+
+    let scheduledAt = now + delayMsToClockUnits(delayMs, now);
     let schedule = {
       agentID: agent.id,
       responseFrameID,

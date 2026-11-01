@@ -27,6 +27,12 @@ import {
   CHARACTER_COMPRESSED_FIELD,
   MAX_CHARACTER_COMPRESSED_LENGTH,
 } from '../agents/character-limits.mjs';
+import {
+  BEHAVIOR_SCRIPT_FIELD,
+  normalizeBehaviorScript,
+} from '../agents/script-limits.mjs';
+import { checkAgentMutationAllowedForSession } from '../agents/mutation-authority.mjs';
+import { getBehaviorScript, listBehaviorScripts } from '../scripts/script-registry.mjs';
 
 export function createLoopToolDefinitions(context = {}) {
   let loopDefinitions = AGENT_TOOL_DEFINITIONS
@@ -49,6 +55,7 @@ export function createLoopTools(state, context) {
     let normalized = normalizeToolResponseContent(content);
     let summary = normalizeBulletedSummary(content?.summary);
     let details = normalizeReportDetails(content?.details);
+    let reason = typeof content?.reason === 'string' ? content.reason.trim() : '';
     if (summary !== '') {
       normalized = {
         ...normalized,
@@ -63,8 +70,12 @@ export function createLoopTools(state, context) {
       : null;
     // The loop dispatches this after the final AgentMessage is yielded and
     // committed, so the coordinator does not race the child's visible report.
-    if (hasText && (summary !== '' || details !== '') && !state.endTurnNotice)
-      state.endTurnNotice = { summary, details };
+    if ((hasText && (summary !== '' || details !== '')) || reason !== '')
+      state.endTurnNotice = {
+        summary: hasText ? summary : '',
+        details: hasText ? details : '',
+        ...(reason !== '' ? { reason } : {}),
+      };
     return { type: 'LoopControl', action: 'finalize', content: normalized };
   };
   let continueTurn = (content) => {
@@ -100,6 +111,7 @@ export function createLoopTools(state, context) {
   };
   let progress = async (content) => await recordAgentProgress(content, context);
   let setCharacter = async (input) => await setAgentCharacter(input, context);
+  let setScript = async (input) => await setAgentBehaviorScript(input, context);
   let help = (input) => formatToolHelp(input, context);
 
   let tools = {
@@ -108,6 +120,7 @@ export function createLoopTools(state, context) {
     'stop': breakLoop,
     'progress': progress,
     'set-character': setCharacter,
+    'set-script': setScript,
     'help': help,
   };
 
@@ -404,6 +417,65 @@ export async function setAgentCharacter(input, context = {}) {
       agentID,
       character: updated?.character || character,
       [CHARACTER_COMPRESSED_FIELD]: updated?.[CHARACTER_COMPRESSED_FIELD] || compressedCharacter,
+    },
+  };
+}
+
+export async function setAgentBehaviorScript(input, context = {}) {
+  let scriptID = normalizeOptionalPromptString(readToolString(input, [ 'scriptID', 'templateID', 'template' ]));
+  let script = normalizeOptionalPromptString(readToolString(input, [ 'behaviorScript', 'script', 'text' ]));
+
+  if (scriptID) {
+    let template = getBehaviorScript(scriptID);
+    if (!template) {
+      let known = listBehaviorScripts().map((entry) => entry.id).join(', ') || 'none';
+      throw new TypeError(`Unknown behavior script template: ${scriptID}. Known templates: ${known}`);
+    }
+    script = template.script;
+  }
+
+  if (!script)
+    throw new TypeError('set-script requires behaviorScript text or a scriptID');
+
+  script = normalizeBehaviorScript(script);
+
+  let targetAgentID = normalizeOptionalPromptString(readToolString(input, [ 'agentID', 'agent' ]))
+    || normalizeOptionalPromptString(context.agent?.id);
+  if (!targetAgentID)
+    throw new TypeError('set-script requires an agent context or agent parameter');
+
+  let actorID = normalizeOptionalPromptString(context.agent?.id);
+  if (actorID && actorID !== targetAgentID) {
+    let runtime = context.frameRuntime || context.services?.frameRuntime || null;
+    let result = await checkAgentMutationAllowedForSession({
+      actorAgentID: actorID,
+      targetAgentID,
+      session: context.session || null,
+      runtime,
+    });
+    if (!result.allowed) {
+      let error = new TypeError(`${actorID} may not modify ${targetAgentID} (${result.reason}). Only the agent itself, or a coordinator over descendants, may do that.`);
+      error.status = 403;
+      throw error;
+    }
+  }
+
+  let agentManager = resolveService(context.services, 'agentManager');
+  if (!agentManager?.updateAgentScript)
+    throw new Error('set-script requires agentManager.updateAgentScript()');
+
+  let updated = await agentManager.updateAgentScript(targetAgentID, script);
+
+  if (context.agent && targetAgentID === context.agent.id)
+    context.agent[BEHAVIOR_SCRIPT_FIELD] = updated?.[BEHAVIOR_SCRIPT_FIELD] || script;
+
+  return {
+    type: 'ToolResult',
+    action: 'set-script',
+    content: {
+      agentID: targetAgentID,
+      [BEHAVIOR_SCRIPT_FIELD]: updated?.[BEHAVIOR_SCRIPT_FIELD] || script,
+      ...(scriptID ? { scriptID } : {}),
     },
   };
 }
