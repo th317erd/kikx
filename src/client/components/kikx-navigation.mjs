@@ -395,7 +395,13 @@ export function setFrameFilters(app, filters) {
   if (showDeleted && !wasShowingDeleted)
     app._loadDeletedSessions?.();
 
-  reloadVisibleWindow(app);
+  // Collapse rapid filter clicks just like a typing burst. The popup paints
+  // immediately; the potentially expensive paged re-scope waits for the user
+  // to settle on a filter set.
+  if (paged)
+    scheduleWindowQuery(app, () => reloadVisibleWindow(app));
+  else
+    reloadVisibleWindow(app);
 }
 
 // Typing produces one input event per keystroke, and each one that survives the
