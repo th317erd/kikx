@@ -176,10 +176,19 @@ Restored: before/after md5 both `98dc7209382ecdb7633237a721a72394`, `RESTORED=ye
   `agent-route-frame-plugin.mjs` never loads, and the stub `appendUserMessage`
   (`stagehand-test-utils.mjs:444`) hand-builds `content: { text }` with no `delivery` key.
   No provider is ever fed in that harness, so nothing could legitimately write `received`.
-  A composer-driven Puppeteer assertion would therefore be testing a stub, and re-implementing
-  the transition inside the stub to make it pass would be the same class of defect as the
-  fake-`dataset` element already recorded above. It is left unwritten on purpose. Closing it
-  needs a fixture whose runtime is the real runtime — a harness change, not a spec change.
+  Re-implementing the transition inside the stub to make it pass would be the same class of
+  defect as the fake-`dataset` element already recorded above, so the `received` half is not
+  asserted in a browser.
+
+  *What a composer spec can honestly prove, and does.*
+  `spec/ui/puppeteer/composer-delivery-neutral-puppeteer.mjs` types into the real composer,
+  lets the send reach the fixture runtime, and asserts the rendered bubble: explicit
+  `data-delivery="neutral"`, no received modifier, `box-shadow: none`, no `::after` caption,
+  and no announced "received" label. It also asserts the boundary out loud — that the stored
+  frame has **no** `delivery` key in this harness, so the neutral it observes is the client
+  default, not a server stamp. That is the honest extent: it pins the display contract for a
+  real typed message and nothing more. Closing the `received`-in-browser half still needs a
+  fixture whose runtime is the real runtime — a harness change, not a spec change.
 
 ### The lane red, recorded rather than smoothed
 
@@ -189,17 +198,29 @@ It was `filtered-lazy-scroll-puppeteer.mjs:55`, "the viewport jumped more than o
 frame group (frame_1196 -> frame_594)", in a spec with zero delivery references, authored by
 an earlier unrelated commit.
 
-Attribution, measured not assumed: that spec **passes solo** (exit 0, 5 710 ms), and the
-full lane **passes on repeat** (25/25, exit 0) with that same spec still taking 15 301 ms —
-slower than the 15 918 ms red run and green anyway. So it is duration-independent and
-load-insensitive in this band: it is an intermittent race in that spec, not a cliff this
-feature pushed it over. It is a pre-existing flake and is left unfixed here rather than
-folded into this changelog.
+Attribution, measured not assumed: that spec **passes solo** (exit 0, 5 710 ms) and the
+full lane **passes on repeat** (25/25, exit 0) with the same spec still taking 15 301 ms, so
+it is an intermittent race inside that spec rather than a cliff this feature pushed it over.
+
+Do **not** over-read the duration. The 15 918 ms red, the 15 301 ms green and the 16 902 ms
+red seen in a later 23-file run all happened while **other browser lanes from parallel
+sessions were running in this same checkout** (measured: two `node --test
+spec/ui/puppeteer/*-puppeteer.mjs` roots plus ~107 live Chrome processes). Timing under that
+contention is not a clean measurement of this spec, so "load-insensitive" is not proven —
+only "passes solo, passes in-lane on repeat" is. A contended red is not evidence of a
+regression and a contended green is not a certificate; the flake stays out of scope either
+way. Re-measure on an idle machine before drawing any stronger conclusion.
+
+Lane size note: the Puppeteer glob is now **23** files, not 22 — the composer spec below
+joined it. All 23 are collected with no registration step
+(`scripts/test-lanes.mjs:42`).
 
 Corollary worth keeping: a single lane run cannot certify a green for a suite that contains
 a known race. One green after one red is evidence of intermittency, not of a clean suite.
-- **`kikx-frame-item.mjs` is 824 lines**, over the 800 hard guideline before this change
-  (816 at baseline). My delta is +8. Splitting it is a separate, unauthorized refactor.
+- **`kikx-frame-item.mjs` is 822 lines**, over the 800 hard guideline before this change
+  (816 at baseline; the feature commit is +6, measured with `git show --numstat`). Splitting
+  it is a separate, unauthorized refactor. No gate enforces the line cap — `spec/architecture/`
+  and `spec/scripts/` contain no such check — so this is recorded debt, not a failing gate.
 - Retry ladder: marking is idempotent (asserted — second call writes no new commit), so a
   retry cannot produce a second `frame.updated`. Not tested against a real retrying
   provider.
