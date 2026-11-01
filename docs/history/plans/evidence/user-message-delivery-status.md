@@ -62,15 +62,15 @@ Production (6):
 - `src/core/runtime/frame-runtime-prompts.mjs` — `markFrameDelivered()` (uncommitted from the
   earlier interrupted attempt; verified working by spec, not assumed)
 - `src/core/agents/agent-route-frame-plugin.mjs` — the hook
-- `src/client/components/frame-delivery-status.mjs` — **new**, 76 lines
+- `src/client/components/frame-delivery-status.mjs` — **new**, 81 lines
 - `src/client/components/kikx-frame-item.mjs` — `applyFrameDelivery(this, frame)`
 - `src/client/components/kikx-user-message-frame.mjs` — `_updateDelivery()` (aria/title)
 - `src/client/styles/app.css`, `src/client/styles/frame-colors.css` — modifier + token
 
-Specs (4, all new):
+Specs (5, all new):
 - `spec/core/runtime/user-message-delivery-spec.mjs` (11 tests)
 - `spec/core/agents/user-message-delivery-wiring-spec.mjs` (3 tests)
-- `spec/client/frame-delivery-status-spec.mjs` (6 tests)
+- `spec/client/frame-delivery-status-spec.mjs` (11 tests)
 - `spec/client/user-message-delivery-dom-spec.mjs` (4 tests)
 - `spec/ui/puppeteer/user-message-delivery-puppeteer.mjs` (1 test, real Chromium) — added
   after this record was first written, to close the rendering gap §Known limits described
@@ -94,7 +94,7 @@ Specs (1, new — route seam, added after the review that found V7 unproven):
 |---|---|---|
 | server spec | 0 | 11 / 11 |
 | wiring spec (real `FrameRouter`) | 0 | 3 / 3 |
-| client helper spec | 0 | 6 / 6 |
+| client helper spec | 0 | 11 / 11 |
 | client DOM spec | 0 | 4 / 4 |
 | existing client specs (regression) | 0 | 34 / 34 |
 | existing core specs (regression) | 0 | 42 / 42 |
@@ -104,6 +104,7 @@ Specs (1, new — route seam, added after the review that found V7 unproven):
 | full Puppeteer lane, 22 files incl. it | 0 | 25 / 25 (30 665 ms) |
 | route spec, real HTTP route (2 tests) | 0 | 2 / 2 |
 | route spec, negative controls A/B/C | 1 / 1 / 1 | red for the intended reason, restored |
+| full Puppeteer lane, **23 files**, uncontended | 0 | 26 / 26 (30 210 ms) |
 
 The lane total matters more than the single spec: a green in isolation does not show the
 new spec coexists with the other 21. It was first measured RED (24/25) and then green on a
@@ -125,6 +126,19 @@ repeat run — see §The lane red, below. That is written down because the red w
    (`frame-runtime.mjs:611-620`), not a bare frame. Two assertions were reading the
    envelope.
 4. The wiring harness mints its own session id; hardcoding `ses_1` produced a 404.
+5. **The composer spec asserted a literal Chromium never returns.** It compared the
+   computed `::after` content to `'normal'`; with no matching rule Chromium reports
+   `'none'`, so the assertion was red on **any** tree, feature or not. Both caption rules
+   are scoped to `.kikx-frame--UserMessage.kikx-frame--delivery-received` (`app.css:697`,
+   `:701`), and the three assertions before it (neutral, no modifier, `box-shadow: none`)
+   all passed — which is how the defect was localised to the assertion rather than the
+   product. Fixed by porting the shipped spec's `captionText()` normaliser
+   (`user-message-delivery-puppeteer.mjs:133-137`), which maps both `'none'` and `'normal'`
+   to `''` and so tightens to "exactly no caption" instead of relaxing to a literal.
+   Control: unscoping the caption rule turns it red with `'Received' !== ''`.
+6. **The composer spec stranded a browser.** It was the only one of 23 Puppeteer files with
+   no `fixture.close()`, so the run never released its handle. Now 23/23 close their
+   fixture and the spec exits in ~1.4 s instead of being killed.
 
 None of these changed production code. Each was a test that could not have seen the
 thing it claimed to check.
@@ -143,7 +157,10 @@ Mutated `agent-route-frame-plugin.mjs` to skip `markFrameDelivered` behind an en
 ran the wiring spec: **`NEGCTL_EXIT=1`**, the "provider is fed" assertion failed, the two
 never-fed tests still passed. So the green is the hook working, not the test being blind.
 Restored: before/after md5 both `98dc7209382ecdb7633237a721a72394`, `RESTORED=yes`,
-`MUTANT_GREP_COUNT=0`.
+`MUTANT_GREP_COUNT=0`. That md5 is the plugin blob at `0e44653a`; at `ba4046b3` the same
+file is `5b73abd5`, because the merge `1bf5a74c` brought in main-side edits to it. The
+control's identity is commit-scoped — compare it against the commit it was run on, not
+against today's tip.
 
 ## Known limits (stated, not laundered)
 
@@ -210,6 +227,20 @@ contention is not a clean measurement of this spec, so "load-insensitive" is not
 only "passes solo, passes in-lane on repeat" is. A contended red is not evidence of a
 regression and a contended green is not a certificate; the flake stays out of scope either
 way. Re-measure on an idle machine before drawing any stronger conclusion.
+
+**That re-measurement has since been done.** With no other test process running —
+`concurrent_node_test=0` recorded immediately before the run, alongside `HEAD=ba4046b3`,
+`files=23` and the spec md5s (`.gate/node-eng-validate/quietlane-pre.txt`) — the full
+23-file lane passed **26 / 26, exit 0, 30 210 ms**
+(`.gate/node-eng-validate/quietlane.{log,exit}`, `QUIETLANE_EXIT=0`). `filtered-lazy-scroll`
+**passed inside that same quiet lane at 17 139 ms**, and both delivery tests passed in it at
+line 11 (composer-neutral, 6 563 ms) and line 51 (accent, never a recolour, 6 166 ms). What
+that supports: the reds coincided with contention and the green with a quiet machine, which is
+consistent with a load-sensitive race rather than a spec that only passes alone. What it does
+**not** support: that the flake is gone. The observed sequence is red (22-file lane), green
+(repeat), red again in a 23-file lane, and now green on a quiet machine — a distribution that
+still contains reds, so the spec stays recorded as intermittent and out of scope. The quiet
+green is one sample, not a fixed flake.
 
 Lane size note: the Puppeteer glob is now **23** files, not 22 — the composer spec below
 joined it. All 23 are collected with no registration step
