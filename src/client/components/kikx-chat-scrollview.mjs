@@ -6,6 +6,7 @@
 
 import { captureFrameListAnchor, frameItemTopWithinList, restoreFrameListAnchor } from './frame-scroll-anchor.mjs';
 import { KikxThreadPageSource } from './kikx-thread-page-source.mjs';
+import { frameMatchesWindowFilters } from '../../shared/frame-window-filters.mjs';
 import { promoteTailResponse } from './thread-display-order.mjs';
 import { getSessionPaging } from '../state/kikx-state.mjs';
 
@@ -346,6 +347,30 @@ export class KikxChatScrollView {
     this.windowEnd = next.length;
     restoreFrameListAnchor(this.frameList, anchor);
     return { insertedNew };
+  }
+
+  // Append a just-written frame to the mounted tail immediately. The state
+  // upsert and SSE echo can race; waiting for the next page/sync can leave the
+  // sent message invisible for a moment. appendItem is key-idempotent.
+  appendFrame(frame) {
+    if (!frame?.id || !this.element || !this.pageSource)
+      return false;
+    let state = this.getAppState?.() || {};
+    let filters = state.frameFilters || null;
+    let query = state.sessionSearch || '';
+    if (!frameMatchesWindowFilters(frame, filters, query))
+      return false;
+    let pageIndex = Math.max(0, (this.element.pages?.length || 1) - 1);
+    let page = this.element.pages?.[pageIndex];
+    if (!page?.loaded)
+      return false;
+    let index = pageIndex * this.pageSize + (page.items?.length || 0);
+    let added = this.element.appendItem({ key: frame.id, index, frame });
+    if (added) {
+      this.pageSource.totalRawFrames = Math.max(this.pageSource.totalRawFrames, index + 1);
+      this.pageSource.totalPages = Math.max(this.pageSource.totalPages, pageIndex + 1);
+    }
+    return added;
   }
 
   _promoteTailResponse() {
