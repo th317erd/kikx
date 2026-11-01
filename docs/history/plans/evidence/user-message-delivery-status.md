@@ -99,7 +99,7 @@ Specs (1, new — route seam, added after the review that found V7 unproven):
 | existing client specs (regression) | 0 | 34 / 34 |
 | existing core specs (regression) | 0 | 42 / 42 |
 | `documentation-spec` gate | 0 | 6 / 6 |
-| `test-lane-coverage-spec` gate | 0 | 16 / 16 |
+| `test-lane-coverage-spec` gate (10 tests) + `chat-view-window-spec` | 0 | 16 / 16 |
 | delivery Puppeteer spec, real Chromium | 0 | 1 / 1 (2 267 ms) |
 | full Puppeteer lane, 22 files incl. it | 0 | 25 / 25 (30 665 ms) |
 | route spec, real HTTP route (2 tests) | 0 | 2 / 2 |
