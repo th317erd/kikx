@@ -59,7 +59,7 @@ const BRIEF_TOOL_LINES_COMMON = [
   '  turn:      end-turn (goals summary + steps taken, optional details, or silent), continue-turn',
   '             (keep working, wake later), progress',
   '  route:     route (coordinator only)',
-  '  control:   stop, set-character, exec-suspend, exec-resume, exec-kill;',
+  '  control:   stop, set-character, script-set, script-get, exec-suspend, exec-resume, exec-kill;',
   '             session-control (coordinator; list/resume/suspend/kick/delete a',
   '             current or descendant session),',
   '             session-merge/session-merge-status (coordinator-only session consolidation)',

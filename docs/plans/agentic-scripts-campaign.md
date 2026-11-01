@@ -65,7 +65,7 @@ across turns, halting only via budget/owner-question/completion. (2) Workers get
 next-statement injection; todos synced; end-turn `reason` branches. (3) Budget
 shell called at schedule gate, returns yes. (4) Four library scripts with
 preamble/strokes/selector/terminator. (5) Script settable via
-agent-update/set-script; in brief; no UI required. (6) Suite green + new specs.
+agent-update/script-set; in brief; no UI required. (6) Suite green + new specs.
 (7) Never-ending by default.
 
 **Constraints.** Script subordinate to identity (character/participants remain
@@ -109,7 +109,7 @@ todo verification on wake.
 2. **`end-turn` reason**: optional `step-complete | blocked | done | error`.
    Absent = legacy validation path (backward compatible). Included in
    `buildEndTurnNotice` when present.
-3. **`set-script` loop tool**: clone of `set-character`;
+3. **`script-set` loop tool**: clone of `set-character`;
    `updateAgentScript` on agent-manager; params on `agent-create`/`agent-update`;
    server route + validators. Added to review-only denylist (amendment).
 4. **Registry + preamble**: `src/core/scripts/script-registry.mjs` +
@@ -136,7 +136,7 @@ todo verification on wake.
    descendants — equal-or-lower in its session hierarchy — and never anything
    upstream. One shared authority check mirrors session-control's
    descendants-only rule (`coordinator-scope.mjs`); applied to todo target
-   writes, `set-script`, and `agent-update`. Non-coordinator cross-agent
+   writes, `script-set`, and `agent-update`. Non-coordinator cross-agent
    writes refuse. Verified today: todo tools are hard-scoped to self (no
    target param — coordinator sub-agent todo writes are new capability);
    `agent-tools.mjs` has no hierarchy checks (tightening required).
@@ -146,7 +146,7 @@ todo verification on wake.
 - Progress-escalation exit (semantic-deadlock defense).
 - Continuation-frame visibility check: verify workers cannot read coordinator
   next-step payloads in shared session history — implementation-time spec.
-- `set-script` respects review-only denylist.
+- `script-set` respects review-only denylist.
 - Registry snapshot semantics recorded.
 
 ## 6. Territory
@@ -174,6 +174,9 @@ rendering of continuation frames (follow-up UI pass).
   agent-manager, tools, server, registry, preamble, coordinator-loop library
   script. Gate: existing suite green + plumbing specs.
   **Done 2026-11-01** — unit lane 3140/0/30 green; 22 new specs.
+  (Tool naming later corrected to the noun-first convention: `set-script`
+  renamed to `script-set`, read-only sibling `script-get` added for any
+  agent id including self.)
 - **P2 — Execution wiring.** Brief injection, script-aware continuation prompt,
   budget-gate call, end-turn reason, notice inclusion, mocked wake-loop spec.
   Gate: unit lane green incl. new execution specs.
@@ -191,7 +194,7 @@ rendering of continuation frames (follow-up UI pass).
   prompts); worker ends reason=task-complete → coordinator notice carries the
   Exit reason; worker→coordinator mutation refused; highest coordinator ends
   task-complete without messaging itself.
-- **P4 — Self-authorship (separate authorization).** set-script conversational
+- **P4 — Self-authorship (separate authorization).** script-set conversational
   flow, preview frames, versioning/rollback. Not authorized by this plan.
 
 One phase = one revert unit. P2 depends on P1; P3 depends on P2; P4 independent

@@ -112,6 +112,7 @@ export function createLoopTools(state, context) {
   let progress = async (content) => await recordAgentProgress(content, context);
   let setCharacter = async (input) => await setAgentCharacter(input, context);
   let setScript = async (input) => await setAgentBehaviorScript(input, context);
+  let listScript = async (input) => await listAgentBehaviorScript(input, context);
   let help = (input) => formatToolHelp(input, context);
 
   let tools = {
@@ -120,7 +121,8 @@ export function createLoopTools(state, context) {
     'stop': breakLoop,
     'progress': progress,
     'set-character': setCharacter,
-    'set-script': setScript,
+    'script-set': setScript,
+    'script-get': listScript,
     'help': help,
   };
 
@@ -435,14 +437,14 @@ export async function setAgentBehaviorScript(input, context = {}) {
   }
 
   if (!script)
-    throw new TypeError('set-script requires behaviorScript text or a scriptID');
+    throw new TypeError('script-set requires behaviorScript text or a scriptID');
 
   script = normalizeBehaviorScript(script);
 
   let targetAgentID = normalizeOptionalPromptString(readToolString(input, [ 'agentID', 'agent' ]))
     || normalizeOptionalPromptString(context.agent?.id);
   if (!targetAgentID)
-    throw new TypeError('set-script requires an agent context or agent parameter');
+    throw new TypeError('script-set requires an agent context or agent parameter');
 
   let actorID = normalizeOptionalPromptString(context.agent?.id);
   if (actorID && actorID !== targetAgentID) {
@@ -462,7 +464,7 @@ export async function setAgentBehaviorScript(input, context = {}) {
 
   let agentManager = resolveService(context.services, 'agentManager');
   if (!agentManager?.updateAgentScript)
-    throw new Error('set-script requires agentManager.updateAgentScript()');
+    throw new Error('script-set requires agentManager.updateAgentScript()');
 
   let updated = await agentManager.updateAgentScript(targetAgentID, script);
 
@@ -471,11 +473,39 @@ export async function setAgentBehaviorScript(input, context = {}) {
 
   return {
     type: 'ToolResult',
-    action: 'set-script',
+    action: 'script-set',
     content: {
       agentID: targetAgentID,
       [BEHAVIOR_SCRIPT_FIELD]: updated?.[BEHAVIOR_SCRIPT_FIELD] || script,
       ...(scriptID ? { scriptID } : {}),
+    },
+  };
+}
+
+export async function listAgentBehaviorScript(input, context = {}) {
+  let targetAgentID = normalizeOptionalPromptString(readToolString(input, [ 'agentID', 'agent' ]))
+    || normalizeOptionalPromptString(context.agent?.id);
+  if (!targetAgentID)
+    throw new TypeError('script-get requires an agent id or an agent context');
+
+  let agentManager = resolveService(context.services, 'agentManager');
+  if (!agentManager?.getAgent)
+    throw new Error('script-get requires agentManager.getAgent()');
+
+  let agent = await agentManager.getAgent(targetAgentID);
+  if (!agent)
+    throw new TypeError(`Unknown agent: ${targetAgentID}`);
+
+  let script = typeof agent[BEHAVIOR_SCRIPT_FIELD] === 'string' ? agent[BEHAVIOR_SCRIPT_FIELD] : '';
+
+  return {
+    type: 'ToolResult',
+    action: 'script-get',
+    content: {
+      agentID: agent.id || targetAgentID,
+      name: agent.name || agent.id || targetAgentID,
+      [BEHAVIOR_SCRIPT_FIELD]: script,
+      hasScript: script !== '',
     },
   };
 }

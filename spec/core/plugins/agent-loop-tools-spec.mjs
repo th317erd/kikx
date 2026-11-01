@@ -5,6 +5,7 @@ import test from 'node:test';
 
 import {
   AGENT_TOOL_DEFINITIONS,
+  REVIEW_ONLY_TOOL_DENYLIST,
 } from '../../../src/core/plugins/agent-tool-definitions.mjs';
 import {
   createLoopToolDefinitions,
@@ -183,4 +184,72 @@ test('session merge tools are hidden unless the agent is the coordinator', () =>
     assert.equal(shouldExposeLoopTool(name, { isCoordinator: false }), false);
     assert.equal(shouldExposeLoopTool(name, { isCoordinator: true }), true);
   }
+});
+
+test('script tools follow the noun-first naming convention', () => {
+  let names = AGENT_TOOL_DEFINITIONS.map((definition) => definition.name);
+  assert.ok(names.includes('script-get'), 'script-get is defined');
+  assert.ok(names.includes('script-set'), 'script-set is defined');
+  assert.equal(names.includes('set-script'), false, 'the old verb-first name is gone');
+  assert.equal(names.includes('list-script'), false, 'the old verb-first name is gone');
+  assert.ok(REVIEW_ONLY_TOOL_DENYLIST.has('script-set'));
+  assert.equal(REVIEW_ONLY_TOOL_DENYLIST.has('script-get'), false, 'reads stay available to review-only agents');
+});
+
+function scriptTestContext(agents = {}) {
+  return {
+    isCoordinator: false,
+    agent: { id: 'self-bot' },
+    services: {
+      agentManager: {
+        async getAgent(id) {
+          return agents[id];
+        },
+      },
+    },
+  };
+}
+
+test('script-get reads your own script when no agent is given', async () => {
+  let state = createLoopState();
+  let tools = createLoopTools(state, scriptTestContext({
+    'self-bot': { id: 'self-bot', name: 'Self', behaviorScript: 'SCRIPT self\nEND' },
+  }));
+
+  let result = await tools['script-get']({});
+  assert.equal(result.action, 'script-get');
+  assert.equal(result.content.agentID, 'self-bot');
+  assert.equal(result.content.behaviorScript, 'SCRIPT self\nEND');
+  assert.equal(result.content.hasScript, true);
+});
+
+test('script-get reads any agent by id without authority checks', async () => {
+  let state = createLoopState();
+  let tools = createLoopTools(state, scriptTestContext({
+    'self-bot': { id: 'self-bot', name: 'Self', behaviorScript: '' },
+    'other-bot': { id: 'other-bot', name: 'Other', behaviorScript: 'SCRIPT other\nEND' },
+  }));
+
+  let result = await tools['script-get']({ agent: 'other-bot' });
+  assert.equal(result.content.agentID, 'other-bot');
+  assert.equal(result.content.name, 'Other');
+  assert.equal(result.content.behaviorScript, 'SCRIPT other\nEND');
+  assert.equal(result.content.hasScript, true);
+
+  let own = await tools['script-get']({});
+  assert.equal(own.content.behaviorScript, '');
+  assert.equal(own.content.hasScript, false);
+});
+
+test('script-get fails clearly for unknown agents and missing targets', async () => {
+  let state = createLoopState();
+  let tools = createLoopTools(state, scriptTestContext({}));
+
+  await assert.rejects(() => tools['script-get']({ agent: 'ghost' }), /Unknown agent: ghost/);
+
+  let noContext = createLoopTools(createLoopState(), {
+    isCoordinator: false,
+    services: { agentManager: { async getAgent() { return null; } } },
+  });
+  await assert.rejects(() => noContext['script-get']({}), /script-get requires an agent id/);
 });

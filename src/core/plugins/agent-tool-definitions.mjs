@@ -201,10 +201,29 @@ export const AGENT_TOOL_DEFINITIONS = [
     },
   },
   {
-    name: 'set-script',
+    name: 'script-get',
+    description: 'Show an agent\'s current behaviorScript (AGIS) in full. Works for any agent id — including your own — with no coordinator authority required.',
+    help: [
+      'Use script-get to read the current behaviorScript of any agent: yourself or another agent by id.',
+      'Omit agent to read your own script.',
+      'Returns the full script text plus hasScript, so an agent with no script is distinguishable from an error.',
+    ].join(' '),
+    parameters: {
+      type: 'object',
+      properties: {
+        agent: {
+          type: 'string',
+          description: 'Agent ID to read. Omit to read your own script.',
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'script-set',
     description: 'Persistently update a behavioral script (AGIS) — for yourself, or for a coordinator: a descendant agent. The script defines how the agent works through its todos, turn after turn.',
     help: [
-      'Use set-script when the user asks to change how an agent works through its todos: its behavioral loop, phases, or continuation discipline.',
+      'Use script-set when the user asks to change how an agent works through its todos: its behavioral loop, phases, or continuation discipline.',
       'Provide either behaviorScript (raw AGIS text) or scriptID to materialize a library template. Known template IDs include coordinator-loop.',
       'Omit agent to change yourself. A coordinator may set a descendant agent; nobody may change anything upstream.',
       'An empty behaviorScript string clears the script (agent returns to default behavior).',
@@ -233,7 +252,7 @@ export const AGENT_TOOL_DEFINITIONS = [
 
 export const AGENT_TOOL_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
 export const DELEGATION_TOOL_NAMES = new Set([ 'session-create', 'session-invite-agents' ]);
-export const REVIEW_ONLY_TOOL_DENYLIST = new Set([ 'write-file', 'set-script' ]);
+export const REVIEW_ONLY_TOOL_DENYLIST = new Set([ 'write-file', 'script-set' ]);
 export const REVIEW_ONLY_AGENT_PATTERN = /\b(?:qa|q\.a\.|tester|quality|ux|user[-\s]?experience|designer|reviewer|security|product|coordinator)\b/i;
 export const AVOIDABLE_DEFERRAL_PATTERNS = [
   /\b(?:should|shall)\s+i\s+(?:continue|proceed|read|inspect|review|run|start|create|update|check|look|audit|test)\b/i,
