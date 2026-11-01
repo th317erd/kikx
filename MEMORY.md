@@ -9,7 +9,7 @@ history.
 
 - Checkout: `/home/wyatt/Projects/kikx-workspace/kikx`
 - Branch: `main`; clean and pushed. The latest source commit at handoff is
-  `c8fdd3d8`; the handoff file itself is committed after it.
+  `5c2b2a55`; the handoff file itself is committed after it.
 - Dev server: `kikx-dev2-run.service` on `127.0.0.1:3002`, PostgreSQL
   `kikx-dev2` on `127.0.0.1:5434`; service active and `/health` ready.
 - **Do not touch `kikx2` or `:3001`.** It is the production-bot clone and is
@@ -55,6 +55,18 @@ The audit confirmed:
   ~78 `app._render()`/`_requestRender()` call sites remain across ordinary data,
   editor, navigation, agent/team, and runtime paths.
 - Raw mode was one symptom; it is now paint-only.
+
+### Filtered lazy-loading scroll investigation
+
+Filtered/search pages are sparse: a raw 120-frame page may project to one or
+zero matching rows. Loading several such pages above the viewport used to
+shrink the layout and clamp the viewport to the bottom. AEOR now serializes
+viewport-preserving page loads, captures a segment/relative anchor for gaps,
+falls back to the nearest item outside the viewport, and avoids stale focal
+corrections. Kikx captures and restores the visible frame around paged loads
+and opts into the preservation behavior. A deterministic repro still showed
+scroll movement during aggressive filtered prefetch, so this needs another
+verification pass before claiming it fixed.
 
 ### State integrity continuation
 
