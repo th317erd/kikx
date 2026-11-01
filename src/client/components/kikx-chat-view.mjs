@@ -157,6 +157,10 @@ export class KikxChatView extends HTMLElement {
     this._render();
   }
 
+  appendLiveFrame(frame) {
+    return this._scrollview?.appendFrame?.(frame) === true;
+  }
+
   get windowStart() {
     return this._scrollview?.windowStart ?? this._windowStart;
   }

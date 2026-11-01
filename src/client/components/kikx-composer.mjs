@@ -96,11 +96,22 @@ export async function onSubmit(app, event) {
     if (result.data.frame?.id)
       upsertFrame(sessionID, result.data.frame, app._state);
     ensureAutoScrollAfterSend(app);
-    app._forceScrollToBottomAfterRender = true;
-    app._focusComposerAfterRender = true;
+    app._forceScrollToBottomAfterRender = false;
+    app._focusComposerAfterRender = false;
     app._state.status = 'Message committed';
     app._state.statusKind = 'ready';
-    app._render();
+
+    // The durable frame is already in state. Update the keyed thread in place;
+    // a full shell render would detach the composer and remount the scrollview,
+    // showing a loading page and losing the just-sent message for a moment.
+    if (typeof app._syncFrameThread === 'function')
+      app._syncFrameThread(sessionID, { force: true, followLatest: true });
+    else
+      app._render();
+    if (result.data.frame?.id)
+      app.querySelector?.('kikx-chat-view')?.appendLiveFrame?.(result.data.frame);
+    app._scrollFramesToBottom?.();
+    queueMicrotask(() => app.querySelector?.('textarea[name="message"]')?.focus?.());
 
     // Draft cleanup continues in the background. Do not refetch the frame
     // window after a send: the durable frame is already in state and a second

@@ -69,6 +69,9 @@ test('sending renders the durable message before draft cleanup or refresh comple
     _render() {
       timeline.push('render');
     },
+    _syncFrameThread(_sessionID, options) {
+      timeline.push({ type: 'sync', options });
+    },
   };
   let controller = getComposerDraftController(app, 'ses_1');
   controller.draftID = 'draft_1';
@@ -77,11 +80,13 @@ test('sending renders the durable message before draft cleanup or refresh comple
 
   await onSubmit(app, { preventDefault() {} });
 
-  assert.deepEqual(timeline, [ 'delete', 'post', 'render' ]);
+  assert.equal(timeline[0], 'delete');
+  assert.equal(timeline[1], 'post');
+  assert.deepEqual(timeline[2], { type: 'sync', options: { force: true, followLatest: true } });
   assert.equal(textarea.value, '');
   assert.equal(app._state.draft, '');
-  assert.equal(app._state.frameListAnchoredToBottom, undefined);
-  assert.equal(app._forceScrollToBottomAfterRender, true);
+  assert.equal(timeline.includes('render'), false, 'a send must update the thread, not rebuild the shell');
+  assert.equal(app._forceScrollToBottomAfterRender, false);
 
   resolveDelete();
   await deleteDone;

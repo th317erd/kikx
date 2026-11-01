@@ -382,7 +382,7 @@ export function setFrameFilters(app, filters) {
   // provisional repaint while the server window is fetched.
   let paged = app.querySelector?.('kikx-chat-view')?.usesPagedScrollview === true;
   if (!paged)
-    app._syncFrameThread?.(app._state.selectedSessionID, { force: true });
+    app._syncFrameThread?.(app._state.selectedSessionID, { force: true, preserveScroll: true });
 
   // The Deleted row also governs the session grid's soft-deleted bucket. These
   // two used to be separate controls (a frame filter here, an eye in the search
@@ -449,7 +449,7 @@ function reloadVisibleWindow(app) {
     let restoreSearch = search && document.activeElement === search
       ? { start: search.selectionStart, end: search.selectionEnd, direction: search.selectionDirection }
       : null;
-    app._syncFrameThread?.(sessionID, { force: true });
+    app._syncFrameThread?.(sessionID, { force: true, preserveScroll: true });
     // Re-scoping a page source normally leaves the header untouched, but a
     // mounted shell may repaint around the thread. Do not let a query change
     // cost the user the caret that is producing it.
@@ -473,11 +473,11 @@ function reloadVisibleWindow(app) {
     app._loadFrames(sessionID, { render: false }).then(
       () => {
         if (app._state.selectedSessionID === sessionID)
-          app._syncFrameThread?.(sessionID, { force: true });
+          app._syncFrameThread?.(sessionID, { force: true, preserveScroll: true });
       },
       () => {
         if (app._state.selectedSessionID === sessionID)
-          app._syncFrameThread?.(sessionID, { force: true });
+          app._syncFrameThread?.(sessionID, { force: true, preserveScroll: true });
       },
     );
     return;

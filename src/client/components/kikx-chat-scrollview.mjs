@@ -6,6 +6,7 @@
 
 import { captureFrameListAnchor, frameItemTopWithinList, restoreFrameListAnchor } from './frame-scroll-anchor.mjs';
 import { KikxThreadPageSource } from './kikx-thread-page-source.mjs';
+import { frameMatchesWindowFilters } from '../../shared/frame-window-filters.mjs';
 import { promoteTailResponse } from './thread-display-order.mjs';
 import { getSessionPaging } from '../state/kikx-state.mjs';
 
@@ -53,6 +54,9 @@ export class KikxChatScrollView {
     this._pendingAnchor = null;
     this._pendingPage = null;
     this._pendingLiveFrames = new Map();
+    this._visiblePageAnchors = new Map();
+    this._userPageAnchor = null;
+    this._userPageAnchorTimer = null;
   }
 
   get frameList() {
@@ -104,6 +108,10 @@ export class KikxChatScrollView {
     this.pageSource.renderItem = (item) => this.createFrameItem(item.frame);
     this.source = this.pageSource;
     this.element.setSource(this.source, { follow: false });
+    // Sparse filtered pages can be much shorter than their raw-page estimate.
+    // Preserve the segment under the viewport when a page loads above it;
+    // otherwise a filtered load clamps the viewport to the new bottom.
+    this.element.behavior = { preserveViewportOnPageLoad: true };
     let last = Math.max(0, this.source.totalPages - 1);
     let startPage = this.pageContext?.getStartPage?.();
     let target = Number.isInteger(startPage)
@@ -142,18 +150,38 @@ export class KikxChatScrollView {
 
     let indexes = [ ...this.pageSource.rawPages.keys() ]
       .filter((index) => this.element.pages?.[index]?.loaded === true);
-    for (let index of indexes) {
+    let anchor = captureFrameListAnchor(this.frameList);
+    let filterAnchor = captureFilterAnchor(this.frameList);
+    let updates = indexes.map((index) => (
       this.pageSource.loadPage({ pageIndex: index }).then((page) => {
         if (epoch !== this._pageContextEpoch || this._pageSourceKey !== key)
-          return;
+          return false;
         this.element.updatePage(index, page.items);
         this._promoteTailResponse();
-      }).catch(() => null);
-    }
+        return true;
+      }).catch(() => false)
+    ));
+    Promise.all(updates).then(() => {
+      if (epoch !== this._pageContextEpoch || this._pageSourceKey !== key)
+        return;
+      if (!restoreFrameListAnchor(this.frameList, anchor))
+        restoreFilterAnchor(this.frameList, filterAnchor);
+    });
     return true;
   }
 
   _installEvents() {
+    this.element.addEventListener('scrollview-page-load', (event) => {
+      let pageIndex = event.detail?.pageIndex;
+      if (!Number.isInteger(pageIndex) || this.element.follow !== false)
+        return;
+      // A pending page belongs to an explicit scrollToPage() transaction. Its
+      // alignment must win; do not capture the pre-jump frame as an anchor.
+      if (this.element._pendingPage)
+        return;
+      if (!this._userPageAnchor)
+        this._userPageAnchor = captureVisibleFrameAnchor(this.frameList);
+    });
     this.element.addEventListener('scrollview-page-loaded', (event) => {
       let pageIndex = event.detail?.pageIndex;
       if (!Number.isInteger(pageIndex))
@@ -169,6 +197,18 @@ export class KikxChatScrollView {
       }
       this._flushPendingLiveFrames();
       this._promoteTailResponse();
+      let anchor = this._userPageAnchor;
+      if (anchor && this.element.follow === false)
+        restoreFrameListAnchor(this.frameList, anchor);
+      if (this.element._loading?.size === 0) {
+        clearTimeout(this._userPageAnchorTimer);
+        this._userPageAnchorTimer = setTimeout(() => {
+          if (anchor && this.element?.follow === false)
+            restoreFrameListAnchor(this.frameList, anchor);
+          this._userPageAnchor = null;
+          this._userPageAnchorTimer = null;
+        }, 220);
+      }
     });
   }
 
@@ -309,6 +349,30 @@ export class KikxChatScrollView {
     return { insertedNew };
   }
 
+  // Append a just-written frame to the mounted tail immediately. The state
+  // upsert and SSE echo can race; waiting for the next page/sync can leave the
+  // sent message invisible for a moment. appendItem is key-idempotent.
+  appendFrame(frame) {
+    if (!frame?.id || !this.element || !this.pageSource)
+      return false;
+    let state = this.getAppState?.() || {};
+    let filters = state.frameFilters || null;
+    let query = state.sessionSearch || '';
+    if (!frameMatchesWindowFilters(frame, filters, query))
+      return false;
+    let pageIndex = Math.max(0, (this.element.pages?.length || 1) - 1);
+    let page = this.element.pages?.[pageIndex];
+    if (!page?.loaded)
+      return false;
+    let index = pageIndex * this.pageSize + (page.items?.length || 0);
+    let added = this.element.appendItem({ key: frame.id, index, frame });
+    if (added) {
+      this.pageSource.totalRawFrames = Math.max(this.pageSource.totalRawFrames, index + 1);
+      this.pageSource.totalPages = Math.max(this.pageSource.totalPages, pageIndex + 1);
+    }
+    return added;
+  }
+
   _promoteTailResponse() {
     if (!this.element || !this.pageSource)
       return;
@@ -404,4 +468,61 @@ export class KikxChatScrollView {
     this.element.scrollToPage(page, { align: 'end', animate: false });
     return true;
   }
+}
+
+
+function captureFilterAnchor(frameList) {
+  if (!frameList)
+    return null;
+  let listTop = frameList.getBoundingClientRect().top;
+  let items = [ ...frameList.querySelectorAll('kikx-frame-item[data-frame-id]') ];
+  let item = items.find((candidate) => candidate.getBoundingClientRect().bottom > listTop);
+  if (!item)
+    return null;
+
+  let order = Number(item._frame?.order);
+  return {
+    order: Number.isFinite(order) ? order : null,
+    offset: item.getBoundingClientRect().top - listTop,
+  };
+}
+
+function restoreFilterAnchor(frameList, anchor) {
+  if (!frameList || !anchor)
+    return false;
+
+  let items = [ ...frameList.querySelectorAll('kikx-frame-item[data-frame-id]') ];
+  if (items.length === 0 || !Number.isFinite(anchor.order))
+    return false;
+
+  let ordered = items
+    .map((item) => ({ item, order: Number(item._frame?.order) }))
+    .filter((entry) => Number.isFinite(entry.order))
+    .sort((left, right) => left.order - right.order);
+  if (ordered.length === 0)
+    return false;
+
+  let candidate = ordered.find((entry) => entry.order >= anchor.order) || ordered.at(-1);
+  let listTop = frameList.getBoundingClientRect().top;
+  let target = frameItemTopWithinList(frameList, candidate.item) - anchor.offset;
+  let max = Math.max(0, frameList.scrollHeight - frameList.clientHeight);
+  frameList.scrollTop = Math.min(Math.max(0, target), max);
+  return true;
+}
+
+function captureVisibleFrameAnchor(frameList) {
+  if (!frameList)
+    return null;
+  let listRect = frameList.getBoundingClientRect();
+  let item = [ ...frameList.querySelectorAll('kikx-frame-item[data-frame-id]') ]
+    .find((candidate) => {
+      let rect = candidate.getBoundingClientRect();
+      return rect.bottom > listRect.top && rect.top < listRect.bottom;
+    });
+  if (!item)
+    return null;
+  return {
+    frameID: item.dataset.frameId,
+    offset: item.getBoundingClientRect().top - listRect.top,
+  };
 }
