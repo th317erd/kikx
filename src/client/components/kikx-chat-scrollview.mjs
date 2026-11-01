@@ -53,6 +53,7 @@ export class KikxChatScrollView {
     this._pendingAnchor = null;
     this._pendingPage = null;
     this._pendingLiveFrames = new Map();
+    this._pageAnchors = new Map();
   }
 
   get frameList() {
@@ -167,6 +168,14 @@ export class KikxChatScrollView {
   }
 
   _installEvents() {
+    this.element.addEventListener('scrollview-page-load', (event) => {
+      let pageIndex = event.detail?.pageIndex;
+      if (!Number.isInteger(pageIndex) || this.element.follow !== false)
+        return;
+      let anchor = captureFrameListAnchor(this.frameList);
+      if (anchor)
+        this._pageAnchors.set(pageIndex, anchor);
+    });
     this.element.addEventListener('scrollview-page-loaded', (event) => {
       let pageIndex = event.detail?.pageIndex;
       if (!Number.isInteger(pageIndex))
@@ -182,6 +191,17 @@ export class KikxChatScrollView {
       }
       this._flushPendingLiveFrames();
       this._promoteTailResponse();
+      let anchor = this._pageAnchors.get(pageIndex);
+      this._pageAnchors.delete(pageIndex);
+      if (anchor && this.element.follow === false) {
+        // Aeor corrects its own focal point, but a sparse filtered page can have
+        // no item in the viewport. Restore the Kikx frame that was visible when
+        // the request started, after the page has settled.
+        setTimeout(() => {
+          if (this.element?.follow === false)
+            restoreFrameListAnchor(this.frameList, anchor);
+        }, 0);
+      }
     });
   }
 
