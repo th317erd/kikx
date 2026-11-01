@@ -75,6 +75,19 @@ Specs (4, all new):
 - `spec/ui/puppeteer/user-message-delivery-puppeteer.mjs` (1 test, real Chromium) — added
   after this record was first written, to close the rendering gap §Known limits described
 
+Specs (1, new — route seam, added after the review that found V7 unproven):
+- `spec/server/user-message-delivery-route-spec.mjs` (2 tests) — real HTTP POST through
+  `createServer` against the real runtime and store. Deliberately a sibling file rather than
+  an extension of `spec/server/create-server-spec.mjs`: that file is already 2218 lines
+  against an 800-line hard guideline, and the unit lane glob `spec/**/*-spec.mjs`
+  (`scripts/test-lanes.mjs:14`) picks a sibling up with no registration step. Inclusion was
+  verified rather than assumed: the full unit-lane run
+  (`.gate/route/unitlane.exit` `UNITLANE_EXIT=0`, 3188 tests / 3158 pass / 0 fail / 30
+  skipped) contains both of this spec's test titles exactly once. Matching is by title
+  because the default reporter prints no file path for a passing test — a filename grep
+  returns nothing even when the spec ran, which is the trap that would have let me claim
+  coverage I had not checked.
+
 ## Results (exit codes captured to files, never read through a pipe)
 
 | Check | Exit | Counts |
@@ -89,6 +102,8 @@ Specs (4, all new):
 | `test-lane-coverage-spec` gate | 0 | 16 / 16 |
 | delivery Puppeteer spec, real Chromium | 0 | 1 / 1 (2 267 ms) |
 | full Puppeteer lane, 22 files incl. it | 0 | 25 / 25 (30 665 ms) |
+| route spec, real HTTP route (2 tests) | 0 | 2 / 2 |
+| route spec, negative controls A/B/C | 1 / 1 / 1 | red for the intended reason, restored |
 
 The lane total matters more than the single spec: a green in isolation does not show the
 new spec coexists with the other 21. It was first measured RED (24/25) and then green on a
@@ -137,12 +152,34 @@ Restored: before/after md5 both `98dc7209382ecdb7633237a721a72394`, `RESTORED=ye
   `user-message-delivery-puppeteer.mjs` asserts the computed inset, that it resolves to the
   delivery token, the `::after` caption text, the announced label, and that the accent
   settles back to `none` on revert — in real Chromium.
-  What it still does NOT prove is the path from a *typed* message to that state. It seeds
-  frames and emits `frame.updated` directly, so it exercises the rendering and the live
-  event path, not the composer. Plan V7 asked for "send a message and watch it go neutral
-  then received"; that remains unbuilt. The transition itself is proven server-side
-  (`markFrameDelivered` mutation control) and through the real router (wiring spec) — those
-  are different layers from the one V7 described.
+  It seeds frames and emits `frame.updated` directly, so it exercises the rendering and the
+  live event path, not the composer.
+
+- **The route seam is now proven; the typed-in-browser seam is not, and is not provable on
+  the current harness.** Plan V7 asked for "send a message and watch it go neutral then
+  received". That sentence is now split into the two halves it always contained, and only
+  the honest half is claimed:
+
+  *The server half is proven.* `spec/server/user-message-delivery-route-spec.mjs` POSTs to
+  the real `/api/v1/sessions/:id/messages` through the real `createServer`, the real
+  `FrameRuntime` and the real `FrameStore`, and asserts on the frame the runtime stored —
+  not on the response body, which a bug could stamp differently from what it saved. Stored
+  `content.delivery === 'neutral'` with **no `deliveryAt` key at all** (asserted with
+  `Object.hasOwn`, so `null` and `0` would both fail), then `received` with a finite
+  `deliveryAt` once the provider is actually fed. "Before the provider is fed" is a held
+  state rather than a race: the harness parks the first `await` inside `routeAgent`
+  (`agentManager.getAgent`) behind a gate, releases it, and awaits `router.flush()`, so the
+  transition is causally ordered. No timers, no retry loops.
+
+  *The browser half is not.* `startStagehandUIServer` pre-resolves the plugin load
+  (`stagehand-test-utils.mjs:208` `pluginLoadPromise: Promise.resolve()`), so
+  `agent-route-frame-plugin.mjs` never loads, and the stub `appendUserMessage`
+  (`stagehand-test-utils.mjs:444`) hand-builds `content: { text }` with no `delivery` key.
+  No provider is ever fed in that harness, so nothing could legitimately write `received`.
+  A composer-driven Puppeteer assertion would therefore be testing a stub, and re-implementing
+  the transition inside the stub to make it pass would be the same class of defect as the
+  fake-`dataset` element already recorded above. It is left unwritten on purpose. Closing it
+  needs a fixture whose runtime is the real runtime — a harness change, not a spec change.
 
 ### The lane red, recorded rather than smoothed
 
