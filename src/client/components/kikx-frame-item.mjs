@@ -7,6 +7,7 @@ import { buildFrameQuickActions, syncExpandCollapseButton } from './kikx-frame-q
 import { elements, $, cleanupBindings } from '../lib/aeor-ui.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { renderMarkdownToElement } from '../lib/markdown-renderer.mjs';
+import { highlightSearchMatches } from '../lib/search-highlight.mjs';
 import {
   frameDisplayLabel,
   frameTimestamp,
@@ -389,6 +390,7 @@ export class KikxFrameItem extends HTMLElement {
         let renderEpoch = ++this._renderEpoch;
         detailsElement.addEventListener('toggle', () => this._onCompactToggle(renderEpoch, detailsElement));
         this.appendChild(this._compactView.element);
+        highlightSearchMatches(this._compactView.element, this._appState?.sessionSearch || '');
         if (this._compactView.element.open)
           this._ensureCompactContent();
       } else {
@@ -398,6 +400,8 @@ export class KikxFrameItem extends HTMLElement {
           this.appendChild(content);
       }
 
+      if (content)
+        highlightSearchMatches(content, this._appState?.sessionSearch || '');
       this._quickActions = buildFrameQuickActions(frame, document);
       this.appendChild(this._quickActions);
       syncExpandCollapseButton(this._quickActions);
@@ -690,6 +694,8 @@ export class KikxFrameItem extends HTMLElement {
 
     if (descriptor.kind === 'markdown')
       this._reconcileMarkdown(frame);
+    if (this._contentElement)
+      highlightSearchMatches(this._contentElement, this._appState?.sessionSearch || '');
   }
 
   _reconcileMarkdown(frame) {
@@ -709,6 +715,7 @@ export class KikxFrameItem extends HTMLElement {
       this._contentElement.appendChild(child);
 
     this._lastMarkdownText = text;
+    highlightSearchMatches(this._contentElement, this._appState?.sessionSearch || '');
   }
 
   _replaceContentElement(frame) {

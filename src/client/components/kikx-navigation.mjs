@@ -404,7 +404,7 @@ export function setFrameFilters(app, filters) {
 // six requests, and the answers could land out of order. Collapse a burst into
 // a single scan once the typist pauses. Popup row clicks stay immediate: a
 // click is one deliberate action and should not wait on a timer.
-const QUERY_DEBOUNCE_MS = 350;
+const QUERY_DEBOUNCE_MS = 1000;
 
 function cancelPendingWindowQuery(app) {
   if (!app._queryDebounceTimer)

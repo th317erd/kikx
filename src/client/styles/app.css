@@ -4159,3 +4159,12 @@ kikx-frame-filter-popup:not(.is-all-on) .kikx-frame-filter__button {
   border-color: #3c444d;
   background: #1c222a;
 }
+
+/* Search/filter match decoration. The mark is inserted after Markdown/HTML has
+ * rendered, so it never changes the frame content or the filter predicate. */
+.kikx-search-highlight {
+  border-radius: 2px;
+  background: #f0c95a;
+  color: #17130a;
+  box-shadow: 0 0 0 1px rgba(240, 201, 90, 0.45);
+}
