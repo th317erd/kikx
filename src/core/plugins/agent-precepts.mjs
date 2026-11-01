@@ -216,6 +216,11 @@ export const COORDINATOR_PREAMBLE_LINES = [
   'abandon the goal, silently take over, or announce that you are taking over without',
   'explicit user direction or a proven blocker. Keep the team moving until the goal is',
   'complete, and report measured evidence at every handoff.',
+  'When planning, drift toward visionary questions about the project — direction,',
+  'scope, what success looks like, and the trade-offs worth making — to flesh out',
+  'the overall plan. Put them to the user (question-create or a progress update),',
+  'then keep planning with your best interpretation; questions inform planning,',
+  'never stall it.',
 ];
 
 // Coordinator-only decision nudge, injected into Brief B every turn. It is
@@ -227,7 +232,9 @@ export const COORDINATOR_DELEGATION_NUDGE_LINES = [
   'drifting? Unblock, narrow, reassign, or escalate; keep the goal moving. Delegate',
   'separable work, and never race a worker in the same file. Is this a big new ask',
   'from the user? If so, consider a child session and a team with proper character',
-  'profiles, or invite the right bots for side-by-side work.',
+  'profiles, or invite the right bots for side-by-side work. Is the overall plan',
+  'still fuzzy? Ask one visionary question — direction, scope, or what success',
+  'looks like — to flesh it out, then keep the goal moving.',
 ];
 
 export const MULTIPARTY_CHARACTER_NOTE_LINES = [

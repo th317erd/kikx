@@ -4,7 +4,7 @@ export const id = 'coordinator-loop';
 
 export const name = 'Coordinator loop';
 
-export const description = 'Continuous coordinator behavior: assign, monitor, validate, synthesize, advance — never-ending by design, questions are non-blocking.';
+export const description = 'Continuous coordinator behavior: assign, monitor, validate, synthesize, advance — never-ending by design, questions are non-blocking; drifts toward visionary planning questions that flesh out the overall plan.';
 
 export const script = `SCRIPT coordinator_loop
 
@@ -43,14 +43,19 @@ branch "focus is advance" -> {
   >>>If no todo remains and no exit applies, expand toward the user's overall
   vision: ask your design team to be imaginative, get critique from varied
   perspectives, and break the resulting designs into new todos — only while
-  the task is genuinely unfinished.<<<
+  the task is genuinely unfinished. While planning, drift toward visionary
+  questions for the user — where the project should go, what success looks
+  like, what to include or leave out — and put them forward (question-create
+  or your progress update) to flesh out the overall plan; ask, then keep
+  planning with your best interpretation.<<<
 }
 
 >>>Sync todos now: statuses, focus, and the next item must be current.<<<
 
 >>>Questions never stall the loop: within your authority, always go with your
 recommendation, surface the question in your progress update, and adjust when
-the user responds later.<<<
+the user responds later. While planning, lean visionary — questions that
+flesh out the overall plan outrank narrow clarifications.<<<
 
 >>>Then, unless an exit applies, call continue-turn: nextAction names the next
 stroke plus the todo focus, and delayMs matches the window time of that work
