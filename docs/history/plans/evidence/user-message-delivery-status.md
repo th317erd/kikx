@@ -4,6 +4,8 @@ Date: 2026-11-01
 Baseline commit: `8b4e5b35` (`plan(client): user-message delivery status (neutral -> received)`)
 Owner authorization: *"let's scope it only to USER messages for now. Continue with implementation please."*
 
+Landed as `0e44653a` (feature) and `6e1209a4` (this record indexed); pushed to `origin/main`.
+
 ## What shipped
 
 A message the operator types carries a two-valued delivery state.
@@ -70,6 +72,8 @@ Specs (4, all new):
 - `spec/core/agents/user-message-delivery-wiring-spec.mjs` (3 tests)
 - `spec/client/frame-delivery-status-spec.mjs` (6 tests)
 - `spec/client/user-message-delivery-dom-spec.mjs` (4 tests)
+- `spec/ui/puppeteer/user-message-delivery-puppeteer.mjs` (1 test, real Chromium) — added
+  after this record was first written, to close the rendering gap §Known limits described
 
 ## Results (exit codes captured to files, never read through a pipe)
 
@@ -82,7 +86,13 @@ Specs (4, all new):
 | existing client specs (regression) | 0 | 34 / 34 |
 | existing core specs (regression) | 0 | 42 / 42 |
 | `documentation-spec` gate | 0 | 6 / 6 |
-| `test-lane-coverage-spec` gate | 0 | 10 / 10 |
+| `test-lane-coverage-spec` gate | 0 | 16 / 16 |
+| delivery Puppeteer spec, real Chromium | 0 | 1 / 1 (2 267 ms) |
+| full Puppeteer lane, 22 files incl. it | 0 | 25 / 25 (30 665 ms) |
+
+The lane total matters more than the single spec: a green in isolation does not show the
+new spec coexists with the other 21. It was first measured RED (24/25) and then green on a
+repeat run — see §The lane red, below. That is written down because the red was real.
 
 ### Spec defects found and fixed while proving (recorded, not hidden)
 
@@ -122,12 +132,35 @@ Restored: before/after md5 both `98dc7209382ecdb7633237a721a72394`, `RESTORED=ye
 
 ## Known limits (stated, not laundered)
 
-- **No browser measurement.** The DOM proof is `mini-dom`, not a real page. The CSS
-  (accent inset, `::after` caption) has never been rendered in a browser; only the class
-  and attribute that trigger it are proven.
-- **No end-to-end live run.** Nothing here proves the transition against a real provider
-  over the real event gateway; the wiring spec uses a recording provider through the real
-  router.
+- **Browser rendering is now measured; end-to-end is NOT.** The earlier version of this
+  record said the CSS had never been rendered in a browser. That is no longer true:
+  `user-message-delivery-puppeteer.mjs` asserts the computed inset, that it resolves to the
+  delivery token, the `::after` caption text, the announced label, and that the accent
+  settles back to `none` on revert — in real Chromium.
+  What it still does NOT prove is the path from a *typed* message to that state. It seeds
+  frames and emits `frame.updated` directly, so it exercises the rendering and the live
+  event path, not the composer. Plan V7 asked for "send a message and watch it go neutral
+  then received"; that remains unbuilt. The transition itself is proven server-side
+  (`markFrameDelivered` mutation control) and through the real router (wiring spec) — those
+  are different layers from the one V7 described.
+
+### The lane red, recorded rather than smoothed
+
+The first 22-file lane run after adding the spec was **RED**: 24 pass / 1 fail
+(`LANE22_EXIT=1`). The failure was not this feature — the delivery test passed in 5 314 ms.
+It was `filtered-lazy-scroll-puppeteer.mjs:55`, "the viewport jumped more than one local
+frame group (frame_1196 -> frame_594)", in a spec with zero delivery references, authored by
+an earlier unrelated commit.
+
+Attribution, measured not assumed: that spec **passes solo** (exit 0, 5 710 ms), and the
+full lane **passes on repeat** (25/25, exit 0) with that same spec still taking 15 301 ms —
+slower than the 15 918 ms red run and green anyway. So it is duration-independent and
+load-insensitive in this band: it is an intermittent race in that spec, not a cliff this
+feature pushed it over. It is a pre-existing flake and is left unfixed here rather than
+folded into this changelog.
+
+Corollary worth keeping: a single lane run cannot certify a green for a suite that contains
+a known race. One green after one red is evidence of intermittency, not of a clean suite.
 - **`kikx-frame-item.mjs` is 824 lines**, over the 800 hard guideline before this change
   (816 at baseline). My delta is +8. Splitting it is a separate, unauthorized refactor.
 - Retry ladder: marking is idempotent (asserted — second call writes no new commit), so a
@@ -141,4 +174,4 @@ Restored: before/after md5 both `98dc7209382ecdb7633237a721a72394`, `RESTORED=ye
 - No `failure`/`error` delivery state (owner asked for two states).
 - No backfill: historical messages stay `neutral`.
 - `recordModelPrompt`'s dead-in-production status left untouched.
-- Nothing committed or pushed (standing rule for this role).
+- The `filtered-lazy-scroll` intermittent above, deliberately out of scope.
