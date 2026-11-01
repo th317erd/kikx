@@ -54,6 +54,8 @@ export class KikxChatScrollView {
     this._pendingPage = null;
     this._pendingLiveFrames = new Map();
     this._visiblePageAnchors = new Map();
+    this._userPageAnchor = null;
+    this._userPageAnchorTimer = null;
   }
 
   get frameList() {
@@ -172,9 +174,12 @@ export class KikxChatScrollView {
       let pageIndex = event.detail?.pageIndex;
       if (!Number.isInteger(pageIndex) || this.element.follow !== false)
         return;
-      let anchor = captureVisibleFrameAnchor(this.frameList);
-      if (anchor)
-        this._visiblePageAnchors.set(pageIndex, anchor);
+      // A pending page belongs to an explicit scrollToPage() transaction. Its
+      // alignment must win; do not capture the pre-jump frame as an anchor.
+      if (this.element._pendingPage)
+        return;
+      if (!this._userPageAnchor)
+        this._userPageAnchor = captureVisibleFrameAnchor(this.frameList);
     });
     this.element.addEventListener('scrollview-page-loaded', (event) => {
       let pageIndex = event.detail?.pageIndex;
@@ -191,10 +196,18 @@ export class KikxChatScrollView {
       }
       this._flushPendingLiveFrames();
       this._promoteTailResponse();
-      let anchor = this._visiblePageAnchors.get(pageIndex);
-      this._visiblePageAnchors.delete(pageIndex);
+      let anchor = this._userPageAnchor;
       if (anchor && this.element.follow === false)
         restoreFrameListAnchor(this.frameList, anchor);
+      if (this.element._loading?.size === 0) {
+        clearTimeout(this._userPageAnchorTimer);
+        this._userPageAnchorTimer = setTimeout(() => {
+          if (anchor && this.element?.follow === false)
+            restoreFrameListAnchor(this.frameList, anchor);
+          this._userPageAnchor = null;
+          this._userPageAnchorTimer = null;
+        }, 220);
+      }
     });
   }
 
