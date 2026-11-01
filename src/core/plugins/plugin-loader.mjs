@@ -319,6 +319,26 @@ export async function unloadPlugin(registry, pluginName, { logger = console } = 
   if (!record)
     return false;
 
+  // onShutdown first, and it is not optional.
+  //
+  // A plugin that returns an object from setup() may declare onShutdown; the Discord
+  // plugin opens a gateway websocket in onInit and closes it there. unloadPlugin() is
+  // the path a RELOAD takes (loadPlugins unloads an already-registered path before
+  // re-importing it), so while this hook was skipped, every reload started another
+  // gateway and retired none. On the live 3003 instance that produced four concurrent
+  // backoff loops against one bot token, Discord closing the duplicates with code 4000,
+  // and the same MESSAGE_CREATE framed twice because two live gateways both saw it.
+  // shutdownPlugins() always called this hook; only the reload path forgot it.
+  //
+  // Its own try/catch, and before teardown: stopping live work (sockets, timers) must
+  // not depend on teardown succeeding, and must not be skipped because it threw.
+  try {
+    if (typeof record.onShutdown === 'function')
+      await record.onShutdown();
+  } catch (error) {
+    logger.warn?.(`Plugin "${pluginName}" onShutdown failed: ${error.message}`);
+  }
+
   // Plugin first, then the generic release. A teardown that throws must not stop the
   // registry from letting go: an unreleased mount keeps serving requests through a
   // handler whose plugin is gone, which is worse than a noisy shutdown.
