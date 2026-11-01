@@ -35,6 +35,21 @@ import { installFrameMethods } from './frame-runtime-frames.mjs';
 import { installComposerMethods } from './frame-runtime-composer.mjs';
 import { installPromptMethods } from './frame-runtime-prompts.mjs';
 
+// A message a person typed starts life `neutral`: written, but not yet consumed
+// by any agent. `FrameRuntime#markFrameDelivered` (frame-runtime-prompts.mjs) is
+// the only writer of `received`, and it runs at the moment a provider is
+// actually fed the message.
+//
+// Gated on the frame TYPE, not on author: this builder serves every appended
+// frame type, and a transport message is written under its own registered type.
+// Stamping delivery onto those would claim a delivery promise for a message
+// nobody typed here.
+function withDeliveryState(type, content) {
+  if (type !== 'UserMessage')
+    return content;
+  return { ...content, delivery: content.delivery || 'neutral' };
+}
+
 export class FrameRuntime extends EventEmitter {
   constructor(options = {}) {
     super();
@@ -532,7 +547,7 @@ export class FrameRuntime extends EventEmitter {
         hidden: false,
         deleted: false,
         recipients: normalizeStringArray(input.recipients),
-        content: buildUserMessageContent(text, input.content),
+        content: withDeliveryState(type, buildUserMessageContent(text, input.content)),
       };
 
       // Off the frame entirely unless true, so every ordinary user message stays

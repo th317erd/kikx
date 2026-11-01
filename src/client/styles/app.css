@@ -683,6 +683,24 @@ kikx-app {
   min-width: 0;
 }
 
+/* Delivery: a message a person typed has reached the agent. The grey fill is
+   deliberately unchanged - the owner said grey is fine - so the signal is a
+   quiet accent inset on the leading edge rather than a recolour. `received` is
+   one-way (there is no failure state yet), so nothing here animates. */
+.kikx-frame--UserMessage.kikx-frame--delivery-received {
+  box-shadow: inset 3px 0 0 var(--kikx-frame-delivery-color);
+}
+
+.kikx-frame--UserMessage.kikx-frame--delivery-received .kikx-frame__content--user-message::after {
+  content: 'Received';
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+
 .kikx-user-message {
   display: grid;
   gap: 8px;

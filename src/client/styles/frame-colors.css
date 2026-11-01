@@ -121,6 +121,11 @@
      shared frame shell. */
   --kikx-frame-type-color: #4d8fb5;
   --kikx-frame-author-color: #d3e4ef;
+  /* Delivery accent: this message reached the agent. Deliberately the same
+     green family as --status-success so "success" reads consistently across the
+     UI, but exposed as its own token because delivery is a separate axis from
+     the generic frame status (see frame-delivery-status.mjs). */
+  --kikx-frame-delivery-color: oklch(from #3ddc84 calc(l - 0.06) c h);
 }
 
 /* Questions are a first-class frame type, not a detached embedded card. */

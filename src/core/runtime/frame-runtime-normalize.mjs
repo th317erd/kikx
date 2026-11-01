@@ -246,7 +246,10 @@ export function buildUserMessageContent(text, extra) {
     return content;
 
   for (let [ key, value ] of Object.entries(extra)) {
-    if (key === 'text' || key === 'modelPrompt')
+    // `delivery` is owned by the runtime, not by callers: letting `input.content`
+    // set it would let any append path assert "the agent received this" without
+    // an agent ever running. Same reason `modelPrompt` is skipped here.
+    if (key === 'text' || key === 'modelPrompt' || key === 'delivery' || key === 'deliveryAt')
       continue;
     if (value === undefined)
       continue;

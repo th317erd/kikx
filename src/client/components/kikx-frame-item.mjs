@@ -22,6 +22,7 @@ import {
   isBotCommunicationFrame,
   isCompactFrame,
 } from './tool-frame-summary.mjs';
+import { applyFrameDelivery } from './frame-delivery-status.mjs';
 import { setIcon } from '../lib/icons.mjs';
 import { countRebuild } from './render-stats.mjs';
 import { isFrameExpanded, isFrameRevealed, revealFrame, setFrameExpanded, setFrameRevealed } from '../state/frame-expansion.mjs';
@@ -440,6 +441,11 @@ export class KikxFrameItem extends HTMLElement {
     this.dataset.frameId = frame.id || '';
     this.dataset.frameType = frame.type || '';
     this.dataset.toolName = frame.content?.toolName || '';
+    // A user message is never `tinted` (BOT_COMMUNICATION_TYPES excludes it),
+    // so delivery needs its own code path or the state would be stored, reach
+    // `frame.updated`, and never appear. No-op for every other frame type.
+    applyFrameDelivery(this, frame);
+
     let moodBand = frameMoodBand(frame);
     if (moodBand)
       this.dataset.moodBand = moodBand;

@@ -6,6 +6,10 @@ const PROMPT_SUMMARY = 'View sent prompt';
 const PROMPT_UNAVAILABLE = 'Sent prompt unavailable';
 const PROMPT_MISSING_TEXT = 'No sent prompt was captured for this message.';
 
+// Same wording as frame-delivery-status.mjs, kept local so the bubble does not
+// pull a module it only needs one constant from.
+const DELIVERY_RECEIVED_LABEL = 'Received by the agent';
+
 export class KikxUserMessageFrame extends HTMLElement {
   constructor() {
     super();
@@ -27,6 +31,25 @@ export class KikxUserMessageFrame extends HTMLElement {
     this._ensureStructure();
     this._renderText();
     this._updatePrompt();
+    this._updateDelivery();
+  }
+
+  // Accessible half of the delivery state. The visual signal lives on the frame
+  // item (`kikx-frame--delivery-received`, styles/app.css); a CSS-only marker is
+  // invisible to assistive technology, so the bubble states it in text too.
+  // Toggled in place: `_ensureStructure` has already run, so this never rebuilds
+  // the text node and cannot wipe a rendered message.
+  _updateDelivery() {
+    let received = this._frame?.content?.delivery === 'received';
+    if (received) {
+      this.dataset.delivery = 'received';
+      this.setAttribute('aria-label', DELIVERY_RECEIVED_LABEL);
+      this.setAttribute('title', DELIVERY_RECEIVED_LABEL);
+    } else {
+      this.removeAttribute('data-delivery');
+      this.removeAttribute('aria-label');
+      this.removeAttribute('title');
+    }
   }
 
   _ensureStructure() {

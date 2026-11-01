@@ -331,6 +331,18 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
         return { status: 'steered' };
       }
 
+      // The person's message is being handed to the provider right here, so
+      // record that the agent received it. Deliberately AFTER the cancellation
+      // and steering guards above: those return before any provider call, so a
+      // turn that stops there was never fed, and marking it delivered would be
+      // a lie. Wrapped because a display concern must never be able to fail a
+      // real turn.
+      try {
+        await frameRuntime?.markFrameDelivered?.(sessionID, frame?.id);
+      } catch (error) {
+        console.warn(`[kikx] delivery mark failed for ${frame?.id}: ${error.message}`);
+      }
+
       for await (let output of runProviderWithRetry({
         createProvider,
         runParams,
