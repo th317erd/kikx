@@ -422,4 +422,24 @@ export function registerAgentRouting(frameRouter) {
 
   frameRouter.registerSelector('Type:UserMessage', AgentRouteFramePlugin, AgentRouteFramePlugin.pluginID);
   frameRouter.registerSelector('Type:AgentMessage', AgentRouteFramePlugin, AgentRouteFramePlugin.pluginID);
+
+  // A transport frame type is routed, or nothing a plugin writes can wake an agent.
+  //
+  // The two selectors above are exact type matches (SelectorCompiler compiles
+  // 'Type:UserMessage' to `frame.type === 'UserMessage'`), so a frame of a
+  // *plugin-registered* type - the Discord transport's DiscordFrame - matched
+  // nothing and was never dispatched here at all. shouldRouteAgentOnlyFrame()
+  // below exists precisely to route such frames, and was unreachable for every
+  // frame it was written for. The live symptom was silence: the frame persisted,
+  // the coordinator resolved, and no turn started.
+  //
+  // The matcher keys on `agentOnly`, which frame-runtime stamps from the
+  // registered frame-type class and never from the caller, so a plugin cannot
+  // forge a wake by pretending to be one. A frame type that is not agent-only is
+  // left to its own selector rather than defaulted to routing.
+  frameRouter.registerSelector(
+    (frame) => frame?.agentOnly === true,
+    AgentRouteFramePlugin,
+    AgentRouteFramePlugin.pluginID,
+  );
 }
