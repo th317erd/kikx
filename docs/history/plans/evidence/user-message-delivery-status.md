@@ -116,9 +116,11 @@ Specs (2, new — the V7 seam, added after the review that found V7 unproven):
 | V7 transition spec, negative control A: hook disabled | 1 | red for the intended reason — never reaches `received`; 20 000 ms wait exceeded |
 | V7 transition spec, negative control B: runtime default flipped to `received` | 1 | red for the intended reason — `actual: 'received'`, `expected: 'neutral'` |
 | all 8 delivery specs together, uncontended (`CONCURRENT=0`) | 0 | 34 / 34 |
+| full Puppeteer lane, **24 files** incl. the V7 transition spec, uncontended | 0 | 27 / 27 (33 296 ms) |
+| same lane re-run on the **shipping** bytes (`19d3edc8`), uncontended | not captured (see below) | 26 / 27 (29 553 ms) — sole red is the known `filtered-lazy-scroll` race |
 
 The lane total matters more than the single spec: a green in isolation does not show the
-new spec coexists with the other 21. It was first measured RED (24/25) and then green on a
+new spec coexists with the other 23. It was first measured RED (24/25) and then green on a
 repeat run — see §The lane red, below. That is written down because the red was real.
 
 ### Spec defects found and fixed while proving (recorded, not hidden)
@@ -195,7 +197,7 @@ against today's tip.
   pre-resolves the plugin load and its stub `appendUserMessage` writes no `delivery` key. But
   that is a property of the default configuration, not of the harness.
   `startStagehandUIServer` accepts a caller-supplied `frameRuntime`
-  (`stagehand-test-utils.mjs:189`), and `createServer` only constructs its own runtime when the
+  (`stagehand-test-utils.mjs:188`), and `createServer` only constructs its own runtime when the
   context does not already have one (`create-server.mjs:485`). Passing the production stack
   through therefore needed **no harness change at all** - only a spec that builds the stack and
   hands it over, which is what `spec/ui/puppeteer/composer-delivery-transition-puppeteer.mjs`
@@ -288,9 +290,32 @@ consistent with a load-sensitive race rather than a spec that only passes alone.
 still contains reds, so the spec stays recorded as intermittent and out of scope. The quiet
 green is one sample, not a fixed flake.
 
-Lane size note: the Puppeteer glob is now **23** files, not 22 — the composer spec below
-joined it. All 23 are collected with no registration step
+Lane size note: the Puppeteer glob is now **24** files, not 22 — the composer spec and the
+V7 transition spec below joined it. All 24 are collected with no registration step
 (`scripts/test-lanes.mjs:42`).
+
+How the 24-file verdict binds to the shipped bytes: two measurements, each hash-bound.
+
+1. `.gate/v7/lane.{log,exit}` — `LANE_EXIT=0`, 27 / 27, 33 296 ms, run with
+   `PRE_CONCURRENT_NODE_TEST=0`. `.gate/v7/lane-pre.txt` recorded `PRE_TRANSITION_MD5=3fd59a8e`
+   and `PRE_DOC_MD5=9e77af38` before it started, and those are exactly the blobs committed as
+   `e8468625`. Inside it the V7 transition spec passed at 9 015 ms, the composer-neutral spec
+   at 9 113 ms, the accent spec at 5 045 ms, and `filtered-lazy-scroll` at 17 149 ms.
+2. `.gate/coord15/lane3.log` — the same 24 files re-run on the **shipping** bytes. A
+   comment-only correction (`stagehand-test-utils.mjs:189` -> `:188`) moved the transition
+   spec from `3fd59a8e` to `19d3edc8`, so measurement 1 no longer described what ships.
+   `lane3-pre.txt` recorded `PRE_SPEC=19d3edc8`, `PRE_DOC=dacf41d7`, `PRE_FILES=24`,
+   `PRE_FIXTURE_CLOSE=24`, `PRE_CONCURRENT_NODE_TEST=0`, with `POST_SPEC=19d3edc8` after.
+   Result: 27 tests / 26 pass / 1 fail, and all three delivery tests green — composer-neutral
+   8 147 ms, V7 neutral->received 7 416 ms, accent-never-a-recolour 4 931 ms. The single red is
+   the same `filtered-lazy-scroll` race (`frame_1196 -> frame_594`), zero delivery references.
+
+Stated limit on measurement 2: the run wrote a **complete log** (full `tests 27 / pass 26 /
+fail 1` counter block plus the failing-test detail) but **no `.exit` file**; its verdict sidecar
+recorded `EXIT_MISSING`. The verdict is therefore read from the log's own counters, not from an
+exit code. A missing exit is a missing exit; it is not rounded up to 0, and the table row above
+says so.
+
 
 Corollary worth keeping: a single lane run cannot certify a green for a suite that contains
 a known race. One green after one red is evidence of intermittency, not of a clean suite.

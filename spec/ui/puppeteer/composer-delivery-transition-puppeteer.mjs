@@ -20,7 +20,7 @@
 // That last limit was recorded in the evidence doc as "not provable on this
 // harness". It is not a property of the harness - it is a property of the
 // DEFAULT harness. `startStagehandUIServer` accepts a caller-supplied
-// `frameRuntime` (`:189`) and `createServer` only constructs its own runtime
+// `frameRuntime` (`:188`) and `createServer` only constructs its own runtime
 // when the context has none (`create-server.mjs:485`). So this spec hands the
 // fixture the production stack - real FrameStore over an in-memory AeorDB, real
 // FrameRuntime, real FrameRouter, real AgentRouteFramePlugin - and keeps only
