@@ -53,7 +53,7 @@ export class KikxChatScrollView {
     this._pendingAnchor = null;
     this._pendingPage = null;
     this._pendingLiveFrames = new Map();
-    this._pageAnchors = new Map();
+    this._visiblePageAnchors = new Map();
   }
 
   get frameList() {
@@ -172,9 +172,9 @@ export class KikxChatScrollView {
       let pageIndex = event.detail?.pageIndex;
       if (!Number.isInteger(pageIndex) || this.element.follow !== false)
         return;
-      let anchor = captureFrameListAnchor(this.frameList);
+      let anchor = captureVisibleFrameAnchor(this.frameList);
       if (anchor)
-        this._pageAnchors.set(pageIndex, anchor);
+        this._visiblePageAnchors.set(pageIndex, anchor);
     });
     this.element.addEventListener('scrollview-page-loaded', (event) => {
       let pageIndex = event.detail?.pageIndex;
@@ -191,17 +191,10 @@ export class KikxChatScrollView {
       }
       this._flushPendingLiveFrames();
       this._promoteTailResponse();
-      let anchor = this._pageAnchors.get(pageIndex);
-      this._pageAnchors.delete(pageIndex);
-      if (anchor && this.element.follow === false) {
-        // Aeor corrects its own focal point, but a sparse filtered page can have
-        // no item in the viewport. Restore the Kikx frame that was visible when
-        // the request started, after the page has settled.
-        setTimeout(() => {
-          if (this.element?.follow === false)
-            restoreFrameListAnchor(this.frameList, anchor);
-        }, 0);
-      }
+      let anchor = this._visiblePageAnchors.get(pageIndex);
+      this._visiblePageAnchors.delete(pageIndex);
+      if (anchor && this.element.follow === false)
+        restoreFrameListAnchor(this.frameList, anchor);
     });
   }
 
@@ -477,4 +470,21 @@ function restoreFilterAnchor(frameList, anchor) {
   let max = Math.max(0, frameList.scrollHeight - frameList.clientHeight);
   frameList.scrollTop = Math.min(Math.max(0, target), max);
   return true;
+}
+
+function captureVisibleFrameAnchor(frameList) {
+  if (!frameList)
+    return null;
+  let listRect = frameList.getBoundingClientRect();
+  let item = [ ...frameList.querySelectorAll('kikx-frame-item[data-frame-id]') ]
+    .find((candidate) => {
+      let rect = candidate.getBoundingClientRect();
+      return rect.bottom > listRect.top && rect.top < listRect.bottom;
+    });
+  if (!item)
+    return null;
+  return {
+    frameID: item.dataset.frameId,
+    offset: item.getBoundingClientRect().top - listRect.top,
+  };
 }
