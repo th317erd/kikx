@@ -75,7 +75,7 @@ Specs (5, all new):
 - `spec/ui/puppeteer/user-message-delivery-puppeteer.mjs` (1 test, real Chromium) — added
   after this record was first written, to close the rendering gap §Known limits described
 
-Specs (1, new — route seam, added after the review that found V7 unproven):
+Specs (2, new — the V7 seam, added after the review that found V7 unproven):
 - `spec/server/user-message-delivery-route-spec.mjs` (2 tests) — real HTTP POST through
   `createServer` against the real runtime and store. Deliberately a sibling file rather than
   an extension of `spec/server/create-server-spec.mjs`: that file is already 2218 lines
@@ -87,6 +87,13 @@ Specs (1, new — route seam, added after the review that found V7 unproven):
   because the default reporter prints no file path for a passing test — a filename grep
   returns nothing even when the spec ran, which is the trap that would have let me claim
   coverage I had not checked.
+- `spec/ui/puppeteer/composer-delivery-transition-puppeteer.mjs` (1 test, real Chromium) —
+  plan V7 itself: typed composer -> real route -> neutral -> provider fed -> received, all
+  asserted on the DOM. Builds the production stack (in-memory AeorDB under the real
+  `FrameStore`) and hands it to the fixture, which is why it can reach a state the default
+  stagehand fixture cannot. Registered with no registration step, like every sibling: the
+  Puppeteer glob (`scripts/test-lanes.mjs:42`) is now **24** files and all 24 call
+  `fixture.close()`.
 
 ## Results (exit codes captured to files, never read through a pipe)
 
@@ -105,6 +112,10 @@ Specs (1, new — route seam, added after the review that found V7 unproven):
 | route spec, real HTTP route (2 tests) | 0 | 2 / 2 |
 | route spec, negative controls A/B/C | 1 / 1 / 1 | red for the intended reason, restored |
 | full Puppeteer lane, **23 files**, uncontended | 0 | 26 / 26 (30 210 ms) |
+| V7 transition spec, real Chromium (solo) | 0 | 1 / 1 (1 697 ms) |
+| V7 transition spec, negative control A: hook disabled | 1 | red for the intended reason — never reaches `received`; 20 000 ms wait exceeded |
+| V7 transition spec, negative control B: runtime default flipped to `received` | 1 | red for the intended reason — `actual: 'received'`, `expected: 'neutral'` |
+| all 8 delivery specs together, uncontended (`CONCURRENT=0`) | 0 | 34 / 34 |
 
 The lane total matters more than the single spec: a green in isolation does not show the
 new spec coexists with the other 21. It was first measured RED (24/25) and then green on a
@@ -172,10 +183,26 @@ against today's tip.
   It seeds frames and emits `frame.updated` directly, so it exercises the rendering and the
   live event path, not the composer.
 
-- **The route seam is now proven; the typed-in-browser seam is not, and is not provable on
-  the current harness.** Plan V7 asked for "send a message and watch it go neutral then
-  received". That sentence is now split into the two halves it always contained, and only
-  the honest half is claimed:
+- **The typed-in-browser seam is now proven too - the earlier "not provable" claim was
+  wrong, and this record says so.** Plan V7 asked for "send a message and watch it go neutral
+  then received". It was previously split into two halves with only the server half claimed,
+  on the stated ground that the browser half could not be reached "without a fixture whose
+  runtime is the real runtime - a harness change, not a spec change". That ground was
+  **false**, and the correction is worth recording precisely because the wrong version was
+  written down as a limit rather than a guess.
+
+  What was actually true: the *default* stagehand fixture cannot reach `received` - it
+  pre-resolves the plugin load and its stub `appendUserMessage` writes no `delivery` key. But
+  that is a property of the default configuration, not of the harness.
+  `startStagehandUIServer` accepts a caller-supplied `frameRuntime`
+  (`stagehand-test-utils.mjs:189`), and `createServer` only constructs its own runtime when the
+  context does not already have one (`create-server.mjs:485`). Passing the production stack
+  through therefore needed **no harness change at all** - only a spec that builds the stack and
+  hands it over, which is what `spec/ui/puppeteer/composer-delivery-transition-puppeteer.mjs`
+  now does. The limit was over-stated by one word ("harness" where "default harness" was
+  meant), and that one word hid a reachable proof.
+
+  The three halves, each proven at a different seam:
 
   *The server half is proven.* `spec/server/user-message-delivery-route-spec.mjs` POSTs to
   the real `/api/v1/sessions/:id/messages` through the real `createServer`, the real
@@ -188,14 +215,31 @@ against today's tip.
   (`agentManager.getAgent`) behind a gate, releases it, and awaits `router.flush()`, so the
   transition is causally ordered. No timers, no retry loops.
 
-  *The browser half is not.* `startStagehandUIServer` pre-resolves the plugin load
-  (`stagehand-test-utils.mjs:208` `pluginLoadPromise: Promise.resolve()`), so
-  `agent-route-frame-plugin.mjs` never loads, and the stub `appendUserMessage`
-  (`stagehand-test-utils.mjs:444`) hand-builds `content: { text }` with no `delivery` key.
-  No provider is ever fed in that harness, so nothing could legitimately write `received`.
-  Re-implementing the transition inside the stub to make it pass would be the same class of
-  defect as the fake-`dataset` element already recorded above, so the `received` half is not
-  asserted in a browser.
+  *The browser half is proven by building the stack instead of accepting the default.*
+  `spec/ui/puppeteer/composer-delivery-transition-puppeteer.mjs` types into the real composer,
+  sends through the real `POST /api/v1/sessions/:id/messages`, and hands the fixture a real
+  `FrameStore` (over an in-memory AeorDB), real `FrameRuntime`, real `FrameRouter` and the real
+  `AgentRouteFramePlugin` registered explicitly by selector. Only the provider is a double, and
+  it stands in for a model, not for the delivery logic - the transition itself is produced by
+  production code (`agent-route-frame-plugin.mjs:341` -> `frame-runtime-prompts.mjs:85`).
+
+  Determinism, not sleeping: the runtime appends with `flushRouter: false`, so routing
+  continues after the 201 and "neutral" could otherwise be a race the browser wins by luck.
+  The spec parks the secrets-carrying `agentManager.getAgent` lookup - the one the plugin makes
+  immediately before constructing the provider - behind an explicit gate, asserts the neutral
+  DOM state with `providerRuns` still empty, then releases the gate and waits for the DOM to
+  reach `received`.
+
+  What it asserts, on the DOM rather than on an exit code: the typed bubble renders
+  `data-delivery="neutral"` with no received modifier, `box-shadow: none`, no `::after`
+  caption, no bubble `data-delivery` and no `aria-label`; the same DOM node (`data-frame-id`
+  identical, `isConnected` true) then becomes `received` with the modifier applied, the
+  `"Received"` caption, `data-delivery="received"` and `aria-label="Received by the agent"`;
+  the settled inset equals a probe's resolved `var(--kikx-frame-delivery-color)` so a
+  hardcoded grey cannot pass; `providerRuns` equals exactly that frame id; and the stored frame
+  carries `received` plus a finite `deliveryAt`, so the picture agrees with the server state.
+  The accent transition is waited out - sampling on the class flip reads mid-flight
+  (`... / 0.084) 0.252px inset`) and is indistinguishable from a broken token.
 
   *What a composer spec can honestly prove, and does.*
   `spec/ui/puppeteer/composer-delivery-neutral-puppeteer.mjs` types into the real composer,
@@ -204,8 +248,10 @@ against today's tip.
   and no announced "received" label. It also asserts the boundary out loud — that the stored
   frame has **no** `delivery` key in this harness, so the neutral it observes is the client
   default, not a server stamp. That is the honest extent: it pins the display contract for a
-  real typed message and nothing more. Closing the `received`-in-browser half still needs a
-  fixture whose runtime is the real runtime — a harness change, not a spec change.
+  real typed message and nothing more. It remains worth keeping alongside the transition spec:
+  it pins the neutral default on the *default* harness, which is the shape every other
+  browser spec runs in, so a regression that made the client stop defaulting to neutral would
+  be caught there rather than only in the heavier production-stack fixture.
 
 ### The lane red, recorded rather than smoothed
 
