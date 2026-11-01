@@ -169,6 +169,15 @@ export function isThreadVisibleFrame(frame) {
   if (!frame || typeof frame !== 'object')
     return false;
 
+  // An agent-only frame was written for the agent, not for the thread. This is a
+  // narrowing that sits BESIDE the hidden widening below, deliberately: the
+  // widening exists so a person can see who woke which bot, and an agent-only
+  // frame is the opposite case - its whole purpose is to stay out of the session
+  // while still being delivered. Read from the persisted flag so a frame written
+  // by a plugin stays out after that plugin is unloaded.
+  if (frame.agentOnly === true)
+    return false;
+
   return frame.hidden !== true || isCoordinationWakeFrame(frame);
 }
 

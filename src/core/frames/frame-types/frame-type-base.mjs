@@ -143,6 +143,26 @@ export class FrameTypeBase {
     return 'System';
   }
 
+  // The frame type declares whether its frames belong to the agent only.
+  //
+  // A class that sets `static agentOnly = true` says: this frame is written FOR
+  // the agent, not for the person looking at the session. The write path copies
+  // the declaration onto the record as `agentOnly`, and every visibility gate
+  // reads the persisted flag rather than the type name. Two consequences matter:
+  //
+  //   1. A caller cannot forge it. The value comes from the registered class, so
+  //      a plugin can only assert it by registering a frame-type class.
+  //   2. It is a display axis, not a `hidden` one. `hidden: true` nulls
+  //      `toAgentMessage()` in this class and `shouldRouteToAgents()` refuses to
+  //      route it - which is why an agent-only frame cannot simply be hidden:
+  //      that would deafen the bot.
+  get agentOnly() {
+    if (this._frameData.agentOnly === true)
+      return true;
+
+    return this.constructor?.agentOnly === true;
+  }
+
   isRenderable() {
     return false;
   }

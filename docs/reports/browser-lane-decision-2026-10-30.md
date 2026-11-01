@@ -9,7 +9,7 @@ applies_to: development-v3
 
 **Date:** 2026-10-30
 **Question (owner):** "Let's please use only one... whichever works the best for tests (Puppeteer or Stagehand)"
-**Recommendation:** **Playwright** as the sole long-term lane. Do **not** delete Puppeteer yet — port its 16 unique specs first. Drop Stagehand.
+**Recommendation:** **Playwright** as the sole long-term lane. Do **not** delete Puppeteer yet — port its 18 unique specs first. Drop Stagehand.
 
 ---
 
@@ -18,7 +18,7 @@ applies_to: development-v3
 | Lane | Specs | Tests | Deps | Runs here? | Latest result |
 |---|---|---|---|---|---|
 | `ui:playwright` | 13 | 18 | `playwright` only | **Yes** | **18/18 pass, EXIT=0** (5 of 6 full-lane runs on disk); 17/18 once, pre-merge |
-| `ui:puppeteer` | 17 | 20 | `puppeteer-core` only | **Yes** | **20/20 pass, EXIT=0 in all 14 full-lane run results on disk** — 4 pre-commit (§7.1 plus `.gate/te4/lane-full.log`), 2/2 at committed `379bac1c` (`.gate/v18/`), 1/1 at committed `4b2e5dff` (`.gate/v22/lane.exit`), and 7 more lanes postdating the red below (`.gate/v33`, `.gate/te16coord`, all of `.gate/te17`, and te12's own lanes 2 and 3); **a 3-way concurrent triple at `a205609f` was 2/3** (`.gate/te12/head-lane{1,2,3}.log`: pass 20 / fail 0, pass 20 / fail 0, pass 19 / fail 1), the single red being `commit-runtime-event-puppeteer.mjs:65` — a 10 s boot `waitForSelector` — which passes solo in 2.3 s (`.gate/v28/commit-solo1.log`); `frame-window` itself passed in all three lanes at 34.2/34.3/34.6 s — after `frame-window` was rewritten to remove the eager-preload race; the rewritten spec alone is also 3/3 green at the committed bytes `a40bd6bf` and 3/3 again at `4b2e5dff` (`.gate/v21/post.{1,2,3}.log`). Before that rewrite the same lane was 4/6 green, 2 red (19/20); a second matched-load 3-way triple at `a330fbfe` was **3/3 with the same wall profile** (37309/37067/37234 ms vs te12's 37205/35827/37602 ms), so the red is non-reproduced under matched load rather than cleared (§7) |
+| `ui:puppeteer` | 19 | 22 | `puppeteer-core` only | **Yes** | **22/22 pass, EXIT=0 at `0bc14bf0`** (`.gate/v42/lane.log`, `LANE_EXIT=0`, 20.9 s), and **20/20 pass, EXIT=0 in all 14 earlier full-lane run results on disk** — 4 pre-commit (§7.1 plus `.gate/te4/lane-full.log`), 2/2 at committed `379bac1c` (`.gate/v18/`), 1/1 at committed `4b2e5dff` (`.gate/v22/lane.exit`), and 7 more lanes postdating the red below (`.gate/v33`, `.gate/te16coord`, all of `.gate/te17`, and te12's own lanes 2 and 3); **a 3-way concurrent triple at `a205609f` was 2/3** (`.gate/te12/head-lane{1,2,3}.log`: pass 20 / fail 0, pass 20 / fail 0, pass 19 / fail 1), the single red being `commit-runtime-event-puppeteer.mjs:65` — a 10 s boot `waitForSelector` — which passes solo in 2.3 s (`.gate/v28/commit-solo1.log`); `frame-window` itself passed in all three lanes at 34.2/34.3/34.6 s — after `frame-window` was rewritten to remove the eager-preload race; the rewritten spec alone is also 3/3 green at the committed bytes `a40bd6bf` and 3/3 again at `4b2e5dff` (`.gate/v21/post.{1,2,3}.log`). Before that rewrite the same lane was 4/6 green, 2 red (19/20); a second matched-load 3-way triple at `a330fbfe` was **3/3 with the same wall profile** (37309/37067/37234 ms vs te12's 37205/35827/37602 ms), so the red is non-reproduced under matched load rather than cleared (§7) |
 | `ui:stagehand` | 26 | 28 | `@browserbasehq/stagehand` | **No** | **28/28 fail, EXIT=1** (fresh run at `9e9ec60d`; AeorDB `:6830` refused) |
 
 Import counts are exclusive — `grep -ho "from '...'"` yields exactly one browser
@@ -72,14 +72,16 @@ measure of it — differently named tests can still overlap.
   `emoji-picker`, `emoji-picker-keys`, `inbox-draft-preservation`,
   `inbox-frame-visual-parity`, `inbox-question`, `plugin-main-app`,
   `plugin-view-focus`, `team-manager`, `thread-scrollview`
-- Puppeteer-only: 16 specs — `agent-progress-full-text`, `commit-runtime-event`,
+- Puppeteer-only: 18 specs — `agent-progress-full-text`, `commit-runtime-event`,
   `composer-state-preservation`, `coordination-wake`, `deleted-sessions`,
   `empty-thread-recovery`, `frame-bottom-scroll`, `frame-filter-popup`,
-  `frame-window`, `hidden-frame-filter`, `mention-message`, `mobile-layout`,
-  `raw-markdown`, `todo-card-load`, `tool-output-overflow`, `user-message-markdown`
+  `frame-quote`, `frame-window`, `hidden-frame-filter`, `mention-message`,
+  `mobile-layout`, `raw-markdown`, `thread-display-order`, `todo-card-load`,
+  `tool-output-overflow`, `user-message-markdown`
+  (`thinking-rack` is **not** unique — it exists in both lanes and is counted in neither list)
 
 **This is why "just delete the lane you like less" is the wrong move.** Choosing
-Playwright and deleting Puppeteer today would drop 16 specs — thread rendering,
+Playwright and deleting Puppeteer today would drop 18 specs — thread rendering,
 frame windowing, mobile layout, tool cards, markdown — to zero coverage. The
 recommendation is therefore *port, then remove*, not *switch*.
 
@@ -123,10 +125,11 @@ recommendation is therefore *port, then remove*, not *switch*.
   class that dominated this triage (§4).
 - Already the default in `npm test` (`DEFAULT_LANE_NAMES = ['unit','ui:playwright']`).
 - **Fairness note:** Playwright's specs mostly assert visibility, text and
-  navigation. Ten of Puppeteer's 17 specs assert computed style or geometry
-  (`getComputedStyle`, `getBoundingClientRect`), which is why Puppeteer absorbed
-  almost all the breakage. That is a difference in what the lanes *test*, not proof
-  that one tool is better. Both drive the same Chrome 155.
+  navigation. Twelve of Puppeteer's 19 specs call a computed-style or geometry API
+  (`getComputedStyle`, `getBoundingClientRect`, `offsetWidth`), and six of them do so
+  inside an assertion, which is why Puppeteer absorbed almost all the breakage. That
+  is a difference in what the lanes *test*, not proof that one tool is better. Both
+  drive the same Chrome 155.
 
 ## 4. The failure class — one disease, in both lanes
 
@@ -413,6 +416,17 @@ was running.
   Caveat: at `PAGE_SIZE 800` the whole 700-frame thread is one server page, so
   "bounded" is vacuous there — the probe proves the constant reaches the mount path,
   not that trimming works at multi-page sizes.
+  **Re-certified at `0bc14bf0`** (the tip 20 commits after the measurements above,
+  which rewrite `kikx-chat-scrollview.mjs` — adding `_promoteTailResponse()` — and
+  `kikx-chat-view.mjs` — `setFrames` now returning early into `syncFrames()` — i.e.
+  exactly the post-mount item-array state these assertions read). The spec file is
+  byte-identical across that gap (`182cd2bb…`), so this is the same instrument
+  against changed product code. Green: `LANE_EXIT=0`, `tests 22 / pass 22 / fail 0`,
+  20.9 s, zero `✖` (`.gate/v42/`). Discriminating: both mutations re-fire at the
+  tip with unchanged messages — `PAGE_SIZE 120 -> 800` red at `:258` in 1246 ms,
+  `MAX_RENDERED_FRAMES 120 -> 800` red at `:262` in 906 ms (`4000 !== 600`), restored
+  byte-identically, `STATUS_LINES_AFTER=0` (`.gate/v41/`). Caveat unchanged: this
+  certifies the frame-window spec and the two constants, **not** the other 20 commits.
 - **The settled-idle assertion is not a duplicate of the initial one.** Measured at
   `PAGE_SIZE 120` with a 700-frame fixture: the initial snapshot is 100 frames
   (`windowStart 600`, newest page only) while the settled idle snapshot is 460
@@ -463,8 +477,9 @@ was running.
   budget sits inside the lane's own noise band and failed in 1 of 3 runs. A causal
   sentence here previously read "the 10 s boot budget is contended by two sibling
   Chrome instances" — **that is falsified below and has been removed.** That spec is
-  untouched by this work (`git diff --name-only a40bd6bf..HEAD` lists only
-  `frame-window-puppeteer.mjs` and this report) and was last changed by `8722b4e1`,
+  untouched by this work (at `0bc14bf0`, `git diff --name-only a40bd6bf..HEAD --
+  spec/ui/puppeteer/commit-runtime-event-puppeteer.mjs` is empty) and was last changed
+  by `8722b4e1`,
   which introduced its real-wheel scroll. **Not fixed here** — it is a different
   spec's timeout budget, and widening it would mask rather than diagnose boot cost.
   It is the honest qualifier on any "the lane is green" claim at this HEAD.
@@ -519,25 +534,25 @@ was running.
   Related null worth keeping: test-body duration does not predict the outcome. Lane 3
   spent 19040 ms in this test — longer than te12's failing 16507 ms — and passed.
   **Fleet context, re-derived from source rather than the earlier classification file:**
-  `commit-runtime-event` is the *only* spec in the 17 with both `goto` (`:63`) and its first
+  `commit-runtime-event` is the *only* spec in the 19 with both `goto` (`:63`) and its first
   boot selector (`:65`) at 10000 ms. An earlier claim in this session that `mention-message`
   also held both at 10000 was **wrong**: its `goto` is 10000 (`:49`) but its first selector is
   15000 (`:51`), as is its `_startupSettled` poll (`:57`), and its only 10000 selector (`:63`)
   is post-boot. So the narrow boot budget is a singleton, not a fleet pattern.
 - `aeor-framework`'s intermittent (§6), which lives upstream.
-- The 16 Puppeteer-only specs have not been ported. Until they are, Puppeteer is
+- The 18 Puppeteer-only specs have not been ported. Until they are, Puppeteer is
   load-bearing and must stay.
 - Stagehand's 28 tests have never run here; whether they pass is unknown, not green.
 
 ## 8. Recommendation
 
-1. **Keep both lanes for now.** Both are green; deletion costs 16 specs of coverage.
+1. **Keep both lanes for now.** Both are green; deletion costs 18 specs of coverage.
 2. **Drop Stagehand.** Measured at `9e9ec60d`: 28/28 fail, 0 pass, 0 skipped, on a
    refused AeorDB connection. It needs a paid key plus a live `:6830` and has never
    passed a single test here, so it can gate nothing. If it is kept it must be given
    credentials and a live AeorDB, because a lane that always fails is as useless as
    one that always silently passes.
-3. **Port the 16 Puppeteer-only specs to Playwright**, highest-value first:
+3. **Port the 18 Puppeteer-only specs to Playwright**, highest-value first:
    `frame-window`, `frame-bottom-scroll`, `tool-output-overflow`,
    `frame-filter-popup`, `hidden-frame-filter`, `mobile-layout`,
    `agent-progress-full-text`, `commit-runtime-event`.
@@ -595,7 +610,7 @@ Its full-lane run at the same tree is a fifth consecutive Puppeteer green:
 
 ## 10. What would change this recommendation
 
-- If the 16 Puppeteer-only specs are ported and green in Playwright, Puppeteer has
+- If the 18 Puppeteer-only specs are ported and green in Playwright, Puppeteer has
   no unique coverage left and the "keep both" half of this recommendation expires.
 - If Playwright's `aeor-framework` intermittent turns out to be *caused* by this
   repo's usage rather than the framework's own deferred render, the "Playwright has
