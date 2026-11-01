@@ -117,7 +117,7 @@ Specs (2, new — the V7 seam, added after the review that found V7 unproven):
 | V7 transition spec, negative control B: runtime default flipped to `received` | 1 | red for the intended reason — `actual: 'received'`, `expected: 'neutral'` |
 | all 8 delivery specs together, uncontended (`CONCURRENT=0`) | 0 | 34 / 34 |
 | full Puppeteer lane, **24 files** incl. the V7 transition spec, uncontended | 0 | 27 / 27 (33 296 ms) |
-| same lane re-run on the **shipping** bytes (`19d3edc8`), uncontended | not captured (see below) | 26 / 27 (29 553 ms) — sole red is the known `filtered-lazy-scroll` race |
+| same lane re-run on the **shipping** bytes (`19d3edc8`), uncontended | 1 (the known flake — see below) | 26 / 27 (29 553 ms) — sole red is the known `filtered-lazy-scroll` race |
 
 The lane total matters more than the single spec: a green in isolation does not show the
 new spec coexists with the other 23. It was first measured RED (24/25) and then green on a
@@ -310,11 +310,25 @@ How the 24-file verdict binds to the shipped bytes: two measurements, each hash-
    8 147 ms, V7 neutral->received 7 416 ms, accent-never-a-recolour 4 931 ms. The single red is
    the same `filtered-lazy-scroll` race (`frame_1196 -> frame_594`), zero delivery references.
 
-Stated limit on measurement 2: the run wrote a **complete log** (full `tests 27 / pass 26 /
-fail 1` counter block plus the failing-test detail) but **no `.exit` file**; its verdict sidecar
-recorded `EXIT_MISSING`. The verdict is therefore read from the log's own counters, not from an
-exit code. A missing exit is a missing exit; it is not rounded up to 0, and the table row above
-says so.
+Exit code on measurement 2: `.gate/coord15/lane3.exit` holds `LANE3_EXIT=1`, written at the
+same instant as the log (11:30:10). `1` is the honest value and it is not a delivery failure —
+26 of 27 passed and the one red is the known `filtered-lazy-scroll` race, so the exit encodes
+that flake. The run's verdict sidecar (`lane3-verdict.txt`) had recorded `EXIT_MISSING`, but it
+was written at 11:29:55, fifteen seconds **before** the lane terminated; the exit file existed by
+the time the run finished. This paragraph originally shipped "no `.exit` file" as a standing
+limit — that was true of the sidecar's moment, not of the artefact on disk, and is corrected
+here. The `26 / 27` figure is still read from the log's own reporter block
+(`.gate/coord15/lane3.log`, md5 `390c8b31`), because the exit alone would only say "not all
+green".
+
+One reading hazard in `lane3-pre.txt`: it also records `PRE_PUPPETEER=3`, which looks like three
+competing browser processes and would contradict "uncontended". It is the `pgrep -f` self-match
+already recorded earlier in this file — the count matches the shell and subprocesses whose own
+command lines contain the string "puppeteer", not browsers. Measured both ways on this host:
+a naive `/proc/*/cmdline` scan for "puppeteer" returns exactly one hit, this session's own
+`bash -lc`; filtering on `comm` to exclude shells gives zero. So the lane had
+`node --test` count 0 and no browser of its own, and "uncontended" rests on the node-test axis,
+not on that stale number.
 
 
 Corollary worth keeping: a single lane run cannot certify a green for a suite that contains
