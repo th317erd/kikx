@@ -30,8 +30,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
+import { readCssBundleSync } from './support/css-bundle.mjs';
 
-const CSS = readFileSync(new URL('../../src/client/styles/questions.css', import.meta.url), 'utf8');
+const CSS = readCssBundleSync(new URL('../../src/client/styles/questions.css', import.meta.url));
 
 const ACCENT = 'rgb(255, 79, 163)'; // #ff4fa3
 const ACCENT_HEX = '#ff4fa3';

@@ -1,0 +1,450 @@
+:root {
+  color-scheme: dark;
+}
+
+/* Inline SVG icons inherit the surrounding text colour. Keep them square and
+   sized by the component's font-size unless a component overrides it. */
+.kikx-icon {
+  display: block;
+  width: 1em;
+  height: 1em;
+  flex: 0 0 auto;
+}
+
+html {
+  /* Global text scale: explicit px font sizes below are also wrapped in
+     calc(... * 1.25) so the whole UI grows together. */
+  font-size: 125%;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+kikx-app {
+  display: block;
+  height: 100%;
+  min-height: 0;
+}
+
+.kikx-shell {
+  height: 100dvh;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  overflow: hidden;
+  background: #101214;
+  color: #f5f7fa;
+}
+
+.kikx-topbar {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 12px 20px;
+  border-bottom: 1px solid #2f3439;
+  background: #171a1d;
+}
+
+.kikx-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.kikx-brand__mark {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #3c444d;
+  border-radius: 6px;
+  background: #22272d;
+  font-weight: 700;
+}
+
+.kikx-brand__copy h1,
+.kikx-brand__copy p,
+.kikx-main h2,
+.kikx-thread__empty p {
+  margin: 0;
+}
+
+.kikx-brand__copy h1 {
+  font-size: calc(18px * 1.25);
+  line-height: 1.2;
+}
+
+.kikx-brand__copy p {
+  color: #aab4bf;
+  font-size: calc(13px * 1.25);
+}
+
+.kikx-topbar__spacer {
+  min-width: 1px;
+}
+
+.kikx-topbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.kikx-account-chip {
+  max-width: 220px;
+  overflow: hidden;
+  color: #cdd6df;
+  font-size: calc(13px * 1.25);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kikx-statusbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 28px;
+  padding: 0 18px;
+  border-top: 1px solid #2f3439;
+  background: #15181b;
+  color: #c4ccd4;
+  font-size: calc(13px * 1.25);
+}
+
+.kikx-statusbar__dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #f87171;
+}
+
+.kikx-statusbar__spacer {
+  flex: 1 1 auto;
+  min-width: 12px;
+}
+
+.kikx-debug-toggle {
+  min-height: 20px;
+  padding: 0 7px;
+  border: 1px solid #39444e;
+  border-radius: 4px;
+  background: transparent;
+  color: #7f8c97;
+  cursor: pointer;
+  font: inherit;
+  font-size: calc(10px * 1.25);
+  letter-spacing: 0.06em;
+  opacity: 0.55;
+  text-transform: uppercase;
+}
+
+.kikx-debug-toggle:hover,
+.kikx-debug-toggle:focus-visible,
+.kikx-debug-toggle.is-on {
+  border-color: #d9b85f;
+  color: #f1d58a;
+  opacity: 1;
+  outline: none;
+}
+
+.kikx-statusbar__tokens {
+  flex: 0 0 auto;
+  color: #aab4bf;
+  white-space: nowrap;
+}
+
+.kikx-statusbar--ready .kikx-statusbar__dot {
+  background: #52b788;
+}
+
+.kikx-statusbar--error .kikx-statusbar__dot {
+  background: #f87171;
+}
+
+.kikx-statusbar--pending .kikx-statusbar__dot {
+  background: #eab308;
+}
+
+.kikx-main {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(360px, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.kikx-startup-loading {
+  display: grid;
+  min-height: 0;
+  overflow: hidden;
+  place-items: center;
+  padding: 32px 20px;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(61, 108, 255, 0.09), transparent 34rem),
+    #101214;
+}
+
+.kikx-startup-loading__panel {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  width: min(100%, 420px);
+  padding: 30px 28px 26px;
+  border: 1px solid #2e3740;
+  border-radius: 12px;
+  background: rgba(21, 27, 32, 0.94);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+  text-align: center;
+}
+
+.kikx-startup-loading__spinner {
+  width: 42px;
+  height: 42px;
+  border: 3px solid rgba(124, 167, 217, 0.18);
+  border-top-color: #7ca7d9;
+  border-radius: 50%;
+  animation: kikx-startup-spin 900ms linear infinite;
+}
+
+.kikx-startup-loading__panel h2 {
+  margin: 0;
+  color: #f5f7fa;
+  font-size: calc(20px * 1.25);
+  line-height: 1.25;
+}
+
+.kikx-startup-loading__panel p {
+  margin: 0;
+  color: #9aa8b4;
+  font-size: calc(13px * 1.25);
+  line-height: 1.45;
+}
+
+.kikx-startup-loading__track {
+  position: relative;
+  width: min(260px, 100%);
+  height: 4px;
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #26313a;
+}
+
+.kikx-startup-loading__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 38%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #3d6cff, #7ca7d9, #7dd3d0);
+  animation: kikx-startup-progress 1.35s ease-in-out infinite;
+}
+
+@keyframes kikx-startup-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes kikx-startup-progress {
+  0% { transform: translateX(-115%); }
+  55% { transform: translateX(165%); }
+  100% { transform: translateX(165%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kikx-startup-loading__spinner,
+  .kikx-startup-loading__fill {
+    animation: none;
+  }
+
+  .kikx-startup-loading__fill {
+    width: 58%;
+  }
+}
+
+.kikx-auth-main {
+  display: grid;
+  place-items: center;
+  padding: 32px 18px;
+}
+
+.kikx-auth-panel {
+  width: min(100%, 460px);
+  display: grid;
+  gap: 18px;
+}
+
+.kikx-auth-panel h2,
+.kikx-auth-panel p {
+  margin: 0;
+}
+
+.kikx-auth-panel h2 {
+  font-size: calc(22px * 1.25);
+}
+
+.kikx-auth-panel p,
+.kikx-auth-status {
+  color: #aab4bf;
+  font-size: calc(13px * 1.25);
+}
+
+.kikx-auth-status {
+  min-height: 18px;
+}
+
+.kikx-auth-status--ready {
+  color: #8bd7ad;
+}
+
+.kikx-auth-status--error {
+  color: #fca5a5;
+}
+
+.kikx-auth-form {
+  display: grid;
+  gap: 10px;
+}
+
+.kikx-auth-form label {
+  color: #aeb8c2;
+  font-size: calc(12px * 1.25);
+  font-weight: 600;
+}
+
+.kikx-sessions {
+  min-height: 0;
+  min-width: 0;
+  padding: 18px;
+}
+
+.kikx-sessions {
+  background: #131619;
+  overflow: auto;
+}
+
+.kikx-sessions {
+  border-right: 1px solid #2f3439;
+}
+
+.kikx-sessions__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.kikx-main h2 {
+  font-size: calc(14px * 1.25);
+  line-height: 1.3;
+  color: #dce3ea;
+}
+
+.kikx-session-list {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.kikx-session-list li {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #1b1f24;
+  cursor: pointer;
+}
+
+.kikx-session-list li.is-selected {
+  border-color: #7ca7d9;
+  background: #202832;
+}
+
+.kikx-session-item__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kikx-session-item__header strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kikx-session-item__edit {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border: 1px solid #3c444d;
+  border-radius: 6px;
+  background: transparent;
+  color: #cdd6df;
+  cursor: pointer;
+}
+
+.kikx-session-item__edit:hover,
+.kikx-session-item__edit:focus-visible {
+  background: #29313a;
+}
+
+.kikx-session-list li.kikx-session-list__empty {
+  place-items: start;
+  gap: 10px;
+  cursor: default;
+}
+
+.kikx-session-list__empty p {
+  margin: 0;
+  color: #97a3ae;
+}
+
+.kikx-session-list span {
+  color: #97a3ae;
+  font-size: calc(12px * 1.25);
+}
+
+/* Thread and workspace are the same window frame so the header never shifts
+   when toggling between chat and sub-session grid. */
+.kikx-thread,
+.kikx-workspace {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 0;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #232a31;
+  border-radius: 8px;
+  background: #12161a;
+}
+
+.kikx-thread {
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+}
+
+.kikx-thread__body {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+  padding: 18px;
+  overflow: hidden;
+}
+
+.kikx-thread .kikx-composer {
+  padding: 0 18px 18px;
+}

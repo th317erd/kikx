@@ -25,10 +25,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
+import { readCssBundleSync } from './support/css-bundle.mjs';
 
 import { RECEIPT_CLASSES } from '../../src/client/components/kikx-answer-receipt.mjs';
 
-const CSS = readFileSync(new URL('../../src/client/styles/questions.css', import.meta.url), 'utf8');
+const CSS = readCssBundleSync(new URL('../../src/client/styles/questions.css', import.meta.url));
 
 // Every `color:` declared inside the first rule block whose selector is `selector`.
 // Parsed rather than regex-scanned over the whole file so a green value in some

@@ -15,6 +15,7 @@
 import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { readCssBundle } from './support/css-bundle.mjs';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
@@ -60,10 +61,30 @@ function linkedClientStylesheets(html) {
   return extractStylesheetHrefs(html).filter((href) => href.startsWith('/client/'));
 }
 
+async function linkedStylesheetBasenames(html) {
+  let linked = new Set();
+  let pending = linkedClientStylesheets(html).map((href) => resolveClientHref(href));
+  while (pending.length > 0) {
+    let file = pending.pop();
+    let name = path.basename(file);
+    if (linked.has(name))
+      continue;
+    linked.add(name);
+    let source = await readFile(file, 'utf8');
+    for (let match of source.matchAll(/@import\s+url\(\s*["']?([^"')]+)["']?\s*\)\s*;/g)) {
+      let target = match[1].split(/[?#]/, 1)[0];
+      if (!target || /^(?:[a-z]+:)?\/\//i.test(target) || target.startsWith('data:'))
+        continue;
+      pending.push(path.resolve(path.dirname(file), target));
+    }
+  }
+  return linked;
+}
+
 async function readLinkedClientCss(html) {
   let css = '';
   for (let href of linkedClientStylesheets(html)) {
-    css += await readFile(resolveClientHref(href), 'utf8');
+    css += await readCssBundle(resolveClientHref(href));
   }
   return css;
 }
@@ -141,7 +162,7 @@ test('the stylesheet carrying the Inbox/Activities/question CSS is linked', asyn
 
 test('every stylesheet in src/client/styles is linked from index.html', async () => {
   let html = await readFile(INDEX_HTML, 'utf8');
-  let linked = new Set(linkedClientStylesheets(html).map((href) => path.basename(href.split(/[?#]/, 1)[0])));
+  let linked = await linkedStylesheetBasenames(html);
   let onDisk = (await readdir(STYLES_DIR)).filter((name) => name.endsWith('.css')).sort();
 
   let orphaned = onDisk.filter((name) => !linked.has(name));
@@ -188,14 +209,14 @@ test('the Inbox question styling survives in a loaded stylesheet', async () => {
 });
 
 test('the shell keeps its base styling', async () => {
-  let css = await readFile(path.join(STYLES_DIR, 'app.css'), 'utf8');
+  let css = await readCssBundle(path.join(STYLES_DIR, 'app.css'));
   for (let required of ['.kikx-shell', '.kikx-topbar']) {
     assert.ok(css.includes(required), `app.css lost the ${required} rule`);
   }
 });
 
 test('inline code uses the shared compact line box in markdown summaries', async () => {
-  let css = await readFile(path.join(STYLES_DIR, 'app.css'), 'utf8');
+  let css = await readCssBundle(path.join(STYLES_DIR, 'app.css'));
   assert.match(css, /\.kikx-markdown code \{[^}]*font-size: 0\.85em/);
   assert.match(css, /\.kikx-frame__compact-description :not\(pre\) > code \{[^}]*font-size: 0\.85em/);
   assert.doesNotMatch(css, /\.kikx-frame__compact-description code \{[^}]*font-size: inherit/);
@@ -204,7 +225,7 @@ test('inline code uses the shared compact line box in markdown summaries', async
 
 
 test('user messages inherit the shared frame shell instead of overriding its fundamentals', async () => {
-  let appCSS = await readFile(path.join(STYLES_DIR, 'app.css'), 'utf8');
+  let appCSS = await readCssBundle(path.join(STYLES_DIR, 'app.css'));
   let colorCSS = await readFile(path.join(STYLES_DIR, 'frame-colors.css'), 'utf8');
 
   // UserMessage may choose its role hue and placement, but radius, border,
@@ -221,7 +242,7 @@ test('user messages inherit the shared frame shell instead of overriding its fun
 });
 
 test('timestamps stay quiet until hover and disappear from minimized rows', async () => {
-  let css = await readFile(path.join(STYLES_DIR, 'app.css'), 'utf8');
+  let css = await readCssBundle(path.join(STYLES_DIR, 'app.css'));
   assert.match(css, /\.kikx-frame__timestamp \{[^}]*opacity: 0\.4/);
   assert.match(css, /\.kikx-frame:hover \.kikx-frame__timestamp[^{]*\{[^}]*opacity: 1/);
   assert.match(css, /\.kikx-frame--minimized \.kikx-frame__timestamp \{[^}]*display: none/);
@@ -236,14 +257,14 @@ test('minimized command labels claim enough width for ordinary tool names', asyn
 
 
 test('the floating scroll-lock control is one and a half times the normal button size', async () => {
-  let css = await readFile(path.join(STYLES_DIR, 'app.css'), 'utf8');
+  let css = await readCssBundle(path.join(STYLES_DIR, 'app.css'));
   assert.match(css, /\.kikx-scroll-lock-floating \{[^}]*width: 45px;[^}]*height: 45px;/);
   assert.match(css, /\.kikx-scroll-lock-floating svg \{[^}]*width: 1\.575em;[^}]*height: 1\.575em;/);
 });
 
 
 test('frame quick actions reserve a right gutter and appear on hover', async () => {
-  let css = await readFile(path.join(STYLES_DIR, 'app.css'), 'utf8');
+  let css = await readCssBundle(path.join(STYLES_DIR, 'app.css'));
   assert.match(css, /\.kikx-frame-stream \{[^}]*padding: 0 72px 1px 0/);
   assert.match(css, /\.kikx-frame:hover \.kikx-frame__quick-actions[^{]*\{[^}]*opacity: 1/);
   assert.match(css, /\.kikx-frame--minimized \.kikx-frame__quick-actions \{[^}]*display: none/);
@@ -252,7 +273,7 @@ test('frame quick actions reserve a right gutter and appear on hover', async () 
 
 
 test('frames transition dimensional and color properties, including auto height entry', async () => {
-  let css = await readFile(path.join(STYLES_DIR, 'app.css'), 'utf8');
+  let css = await readCssBundle(path.join(STYLES_DIR, 'app.css'));
   assert.match(css, /interpolate-size: allow-keywords/);
   assert.match(css, /\.kikx-frame \{[^}]*height 220ms ease/);
   assert.match(css, /\.kikx-frame \{[^}]*width 180ms ease/);
@@ -262,7 +283,7 @@ test('frames transition dimensional and color properties, including auto height 
 
 
 test('frame lists reserve their scrollbar and mini previews never scroll', async () => {
-  let css = await readFile(path.join(STYLES_DIR, 'app.css'), 'utf8');
+  let css = await readCssBundle(path.join(STYLES_DIR, 'app.css'));
   assert.match(css, /\.kikx-frame-list \{[^}]*scrollbar-gutter: stable/);
   assert.match(css, /\.kikx-frame-list:hover \{[^}]*scrollbar-color: #52606c transparent/);
   assert.match(css, /\.kikx-chat-view--mini \.kikx-frame-list \{[^}]*overflow: hidden/);
@@ -272,7 +293,7 @@ test('frame lists reserve their scrollbar and mini previews never scroll', async
 
 
 test('debug mode reveals frame class names and the status-bar toggle', async () => {
-  let css = await readFile(path.join(STYLES_DIR, 'app.css'), 'utf8');
+  let css = await readCssBundle(path.join(STYLES_DIR, 'app.css'));
   assert.match(css, /\.kikx-debug-mode \.kikx-frame__debug-class \{[^}]*display: inline/);
   assert.match(css, /\.kikx-debug-toggle\.is-on \{[^}]*opacity: 1/);
 });

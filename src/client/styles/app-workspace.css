@@ -1,0 +1,450 @@
+
+.kikx-composer-history__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #788592;
+  font-size: calc(11px * 1.25);
+}
+
+.kikx-composer-history__badge {
+  padding: 1px 5px;
+  border: 1px solid #4b5c6d;
+  border-radius: 999px;
+  color: #a9c4dd;
+  font-size: calc(10px * 1.25);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.kikx-composer-history__delete {
+  --apb-size: 1.6rem;
+  --apb-fill: #ef4444;
+  --apb-icon: #ef4444;
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.kikx-composer-history__delete:not(aeor-progress-button) {
+  display: inline-grid;
+  width: var(--apb-size);
+  height: var(--apb-size);
+  padding: 0;
+  place-items: center;
+  border: 1px solid #7f1d1d;
+  border-radius: 50%;
+  background: transparent;
+  color: #ef4444;
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.kikx-composer-history__delete:not(aeor-progress-button):hover {
+  background: rgba(239, 68, 68, 0.16);
+}
+
+@media (max-width: 960px) {
+  .kikx-main {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(88px, 20dvh) minmax(0, 1fr);
+  }
+
+  .kikx-sessions {
+    border: 0;
+    border-bottom: 1px solid #2f3439;
+  }
+
+  .kikx-sessions,
+  .kikx-thread {
+    padding: 12px;
+  }
+
+  .kikx-thread {
+    gap: 10px;
+  }
+
+  .kikx-composer {
+    gap: 8px;
+  }
+
+  .kikx-composer textarea {
+    min-height: 64px;
+  }
+
+  .kikx-statusbar {
+    padding: 0 14px;
+  }
+
+  .kikx-agent-manager {
+    min-width: 0;
+  }
+
+  .kikx-agent-form,
+  .kikx-team-form {
+    min-width: 0;
+  }
+
+  .kikx-account-form {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .kikx-topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+/* Workspace grid (Task 2) */
+
+.kikx-window__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #232a31;
+}
+
+/* Left slot: back button + title. flex:1 balances the right actions slot so the
+   centered search sits in the true middle at EVERY level (root h2 included). */
+.kikx-window__lead {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kikx-window__header h2,
+.kikx-window__header .kikx-window__title {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: calc(15px * 1.25);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kikx-window__actions {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.kikx-workspace__status {
+  color: #8b97a3;
+  font-size: calc(12px * 1.25);
+}
+
+.kikx-workspace__grid {
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+.kikx-session-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.kikx-session-grid__empty,
+.kikx-session-grid__status {
+  color: #8b97a3;
+  font-size: calc(13px * 1.25);
+}
+
+.kikx-session-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #2a3138;
+  border-radius: 10px;
+  background: #171c21;
+  color: #e8edf2;
+  cursor: pointer;
+  content-visibility: auto;
+  contain: content;
+  transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+.kikx-session-card:hover,
+.kikx-session-card:focus-visible {
+  border-color: #3d6cff;
+  outline: none;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.kikx-session-card.is-selected {
+  border-color: #3d6cff;
+}
+
+.kikx-session-card.has-error {
+  border-color: #7a3b3b;
+}
+
+.kikx-session-card__header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 10px;
+  min-width: 0;
+}
+
+.kikx-session-card__title {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: calc(13px * 1.25);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kikx-session-card__meta {
+  grid-column: 2;
+  grid-row: 1;
+  color: #8b97a3;
+  font-size: calc(11px * 1.25);
+  white-space: nowrap;
+}
+
+.kikx-session-card__activity {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  min-width: 0;
+  overflow: hidden;
+  color: #8b97a3;
+  font-size: calc(11px * 1.25);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kikx-session-card__body {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #12161a;
+}
+
+.kikx-session-card__status {
+  margin: 0;
+  color: #e07979;
+  font-size: calc(11px * 1.25);
+}
+
+/* Bottom action toolbar: a distinct row of radial progress buttons separated
+   from the preview by a hairline rule. It stays quiet so the card still reads
+   as a single click target until an action is hovered. */
+.kikx-session-card__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid #2a3138;
+}
+
+.kikx-session-card__action {
+  cursor: pointer;
+}
+
+/* A soft delete is in flight: dim the card and lock the toolbar so a second
+   hold cannot be started while the request completes. */
+.kikx-session-card.is-deleting {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.kikx-session-card.is-deleting .kikx-session-card__toolbar {
+  pointer-events: none;
+}
+
+/* Embedded cards are sub-session previews, not workspace cards: no toolbar.
+   display:none also removes the actions from the tab order. */
+.kikx-session-card--embedded .kikx-session-card__toolbar {
+  display: none;
+}
+
+/* Mini mode renders the real chat thread at a fixed "design" size and scales
+   it down with a transform, so it is literally a tiny chat, not a restyle. */
+.kikx-chat-view--mini {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  display: block;
+  /* A preview is a picture of a thread, not a second wheel target. Its hidden
+     overflow is still a scroll container in Chromium, so a pointer over the
+     preview consumed wheel gestures instead of scrolling the parent thread. */
+  pointer-events: none;
+}
+
+.kikx-chat-view--mini .kikx-chat-view__scaler {
+  width: var(--kikx-mini-design-width, 760px);
+  height: var(--kikx-mini-design-height, 760px);
+  transform: scale(var(--kikx-mini-scale, 1));
+  transform-origin: top left;
+}
+
+.kikx-chat-view--mini .kikx-frame-list {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+
+.kikx-chat-view--mini .kikx-frame-stream {
+  width: 100%;
+  min-height: 0;
+  padding: 0 16px 16px 0;
+}
+
+.kikx-chat-view--mini .kikx-frame {
+  pointer-events: none;
+}
+
+.kikx-chat-view--mini .kikx-user-message__prompt {
+  display: none;
+}
+
+/* Seamless maximize/minimize: shared-element hero morph (View Transitions). */
+
+::view-transition-group(kikx-chat-hero) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+::view-transition-old(kikx-chat-hero),
+::view-transition-new(kikx-chat-hero) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1);
+  mix-blend-mode: normal;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(kikx-chat-hero),
+  ::view-transition-old(kikx-chat-hero),
+  ::view-transition-new(kikx-chat-hero) {
+    animation-duration: 1ms;
+  }
+}
+
+
+/* Session toolbar: currently the scroll-lock toggle. */
+.kikx-session-toolbar {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+}
+
+.kikx-session-toolbar__button {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid #2f373f;
+  border-radius: 7px;
+  background: #151a1f;
+  color: #9aa6b2;
+  cursor: pointer;
+}
+
+.kikx-session-toolbar__button:hover,
+.kikx-session-toolbar__button:focus-visible {
+  border-color: #4b5864;
+  color: #e8edf2;
+  outline: none;
+}
+
+.kikx-session-toolbar__button[aria-pressed="true"] {
+  border-color: #3c6b8f;
+  background: #122431;
+  color: #9ed8ff;
+}
+
+.kikx-session-toolbar__button svg {
+  width: 1.05em;
+  height: 1.05em;
+}
+
+/* The lock floats over the thread viewport, just inside the scrollbar's bottom
+   corner. The header toolbar remains reserved for future session controls. */
+.kikx-scroll-lock-floating {
+  position: absolute;
+  right: 28px;
+  bottom: 24px;
+  z-index: 2;
+  width: 45px;
+  height: 45px;
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.38);
+}
+
+.kikx-scroll-lock-floating svg {
+  width: 1.575em;
+  height: 1.575em;
+}
+
+.kikx-scroll-lock-floating__glyph {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+}
+
+.kikx-scroll-lock-floating__primary {
+  display: inline-grid;
+  place-items: center;
+}
+
+.kikx-scroll-lock-floating__badge {
+  position: absolute;
+  top: -0.05em;
+  right: -0.1em;
+  display: inline-grid;
+  place-items: center;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+}
+
+.kikx-scroll-lock-floating__badge svg {
+  width: 0.66em;
+  height: 0.66em;
+}
+
+/* --- Session workspace: centered search + eye, relocated name --- */
+
+/* The header is a 3-slot row: name/close on the left, the centered search in
+   the middle, actions on the right. The search is centered by giving the middle
+   slot flex:1 and letting the container shrink to a comfortable max width. */
+.kikx-session-search {
+  position: relative;
+  display: flex;
+  flex: 0 1 420px;
+  align-items: center;
+  min-width: 0;
+}
+
+.kikx-session-search__input {
+  flex: 1 1 auto;
+  width: 100%;
+  padding: 6px 34px 6px 12px;
+  border: 1px solid #2a3138;
+  border-radius: 999px;
+  background: #12161a;
+  color: #e8edf2;
+  font: inherit;
+  font-size: calc(13px * 1.25);
+}
+

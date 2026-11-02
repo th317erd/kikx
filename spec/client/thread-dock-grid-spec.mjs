@@ -40,6 +40,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 import { installDom } from './support/mini-dom.mjs';
+import { readCssBundle } from './support/css-bundle.mjs';
 
 register(new URL('./support/frame-item-loader.mjs', import.meta.url).href, import.meta.url);
 
@@ -135,7 +136,10 @@ async function linkedSheetOrder() {
 async function threadRowDeclarations(sheets) {
   let declarations = [];
   for (let [ sheetIndex, sheet ] of sheets.entries()) {
-    let source = await readFile(new URL(sheet, `file://${CLIENT_ROOT}`), 'utf8');
+    let sheetURL = new URL(sheet, `file://${CLIENT_ROOT}`);
+    let source = sheet.endsWith('styles/app.css')
+      ? await readCssBundle(sheetURL)
+      : await readFile(sheetURL, 'utf8');
     let css = source.replace(/\/\*[\s\S]*?\*\//g, '');
     let pattern = /([^{}]+)\{([^{}]*)\}/g;
     let match;
@@ -352,7 +356,7 @@ test('app.css is not where the fix lives', async () => {
   // The merge constraint for this work: do not grow app.css. A future edit that
   // "fixes" the tracks back into app.css would satisfy the behavioural tests
   // while violating the constraint, so pin the location as well.
-  let source = await readFile(new URL('styles/app.css', `file://${CLIENT_ROOT}`), 'utf8');
+  let source = await readCssBundle(new URL('styles/app.css', `file://${CLIENT_ROOT}`));
   let css = source.replace(/\/\*[\s\S]*?\*\//g, '');
   let pattern = /([^{}]+)\{([^{}]*)\}/g;
   let match;

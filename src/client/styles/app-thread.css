@@ -1,0 +1,451 @@
+
+.kikx-frame--UserMessage {
+  /* Placement is the only user-specific shell concern. Everything visual is
+     inherited from the shared frame shell and its status/type tokens. */
+  justify-self: end;
+}
+
+.kikx-frame--BeginTyping {
+  padding: 8px 12px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.kikx-frame--AgentThinking {
+  border-color: #3b434b;
+  background: #15191d;
+}
+
+.kikx-frame--animating {
+  overflow: hidden;
+}
+
+.kikx-frame--entering {
+  height: 0;
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.kikx-frame__meta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  color: #aeb8c2;
+  font-size: calc(12px * 1.25);
+}
+
+.kikx-frame__meta-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.kikx-frame__meta-main strong {
+  color: #f2d488;
+}
+
+.kikx-frame--Question .kikx-frame__meta-main strong {
+  color: #ffd1e8;
+}
+
+.kikx-frame--AgentThinking .kikx-frame__meta-main strong,
+.kikx-frame--BeginTyping .kikx-frame__meta-main strong {
+  color: #a8c7ff;
+}
+
+.kikx-frame[data-frame-type$="ToolFrame"] .kikx-frame__meta-main strong,
+.kikx-frame[data-frame-type="OcrFrame"] .kikx-frame__meta-main strong,
+.kikx-frame--ToolCall .kikx-frame__meta-main strong,
+.kikx-frame--ToolResult .kikx-frame__meta-main strong {
+  color: #f6bd60;
+}
+
+.kikx-frame__debug-class {
+  display: none;
+  color: #7f8c97;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: calc(9px * 1.25);
+  letter-spacing: 0.02em;
+  opacity: 0.8;
+}
+
+.kikx-debug-mode .kikx-frame__debug-class {
+  display: inline;
+}
+
+.kikx-frame__timestamp {
+  color: #87929d;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.4;
+  transition: opacity 120ms ease;
+}
+
+.kikx-frame__timestamp {
+  white-space: nowrap;
+}
+
+.kikx-frame:hover .kikx-frame__timestamp,
+.kikx-frame:focus-within .kikx-frame__timestamp {
+  opacity: 1;
+}
+
+/* Minimized tool rows are compact header chips; the timestamp is noise there. */
+.kikx-frame--minimized .kikx-frame__timestamp {
+  display: none;
+}
+
+.kikx-frame p {
+  margin: 0;
+  color: #edf2f7;
+  white-space: pre-wrap;
+}
+
+.kikx-frame__content {
+  min-width: 0;
+  color: #edf2f7;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.kikx-markdown {
+  display: grid;
+  font-size: calc(13px * 1.25);
+  gap: 0.45rem;
+}
+
+.kikx-markdown > * {
+  margin: 0;
+}
+
+.kikx-markdown__text {
+  white-space: normal;
+}
+
+.kikx-markdown :is(h1, h2, h3, h4, h5, h6) {
+  color: #f5f7fa;
+  /* Two sizes only: primary body text and a slightly larger header size. */
+  font-size: calc(15px * 1.25);
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.kikx-markdown ul,
+.kikx-markdown ol {
+  padding-left: 1.35rem;
+}
+
+.kikx-markdown li + li {
+  margin-top: 0.2rem;
+}
+
+.kikx-markdown blockquote {
+  padding-left: 0.8rem;
+  border-left: 3px solid #7ca7d9;
+  color: #c6d0da;
+}
+
+.kikx-markdown pre {
+  max-width: 100%;
+  padding: 10px;
+  overflow-x: auto;
+  border: 1px solid #303941;
+  border-radius: 6px;
+  background: #0d1013;
+}
+
+.kikx-markdown code {
+  padding: 1px 5px;
+  border: 1px solid rgba(255, 183, 102, 0.24);
+  border-radius: 4px;
+  background: rgba(255, 159, 64, 0.12);
+  color: #ffb86b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85em; /* under the line box so adjacent pills cannot collide */
+}
+
+.kikx-markdown pre code {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #ffd0a3;
+  font-size: inherit;
+  white-space: pre;
+}
+
+.kikx-markdown a {
+  color: #9cc7ff;
+  text-decoration: none;
+}
+
+.kikx-markdown a:hover {
+  text-decoration: underline;
+}
+
+.kikx-markdown__table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.kikx-markdown table {
+  width: 100%;
+  min-width: 34rem;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+
+.kikx-markdown th,
+.kikx-markdown td {
+  padding: 6px 8px;
+  border: 1px solid #303941;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: break-word;
+}
+
+/* IDs, statuses, and short labels should not be split mid-token. */
+.kikx-markdown th:first-child,
+.kikx-markdown td:first-child {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.kikx-markdown table code {
+  white-space: nowrap;
+}
+
+.kikx-markdown th {
+  background: #20262c;
+  font-weight: 700;
+}
+
+.kikx-frame__thinking {
+  color: #aab4bf;
+  font-style: italic;
+}
+
+.kikx-frame__stream {
+  color: #edf2f7;
+  white-space: pre-wrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kikx-frame {
+    transition: none;
+  }
+
+  .kikx-frame--entering {
+    height: auto;
+    max-height: 20000px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.kikx-frame--ToolCall,
+.kikx-frame--ToolResult,
+.kikx-frame--CompactionFrame,
+.kikx-frame[data-frame-type$="ToolFrame"],
+.kikx-frame[data-frame-type="OcrFrame"] {
+  border-color: #36434d;
+  background: #14191d;
+}
+
+/* Compact status/tool frames: one line, icon pinned right, details on demand.
+   The native <details>/<summary> pair owns expansion and keyboard support. */
+.kikx-frame--compact {
+  width: 100%;
+  max-width: min(100%, 960px);
+  justify-self: stretch;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+.kikx-frame--compact .kikx-frame__meta {
+  padding: 6px 8px 0;
+}
+
+/* A compact end-turn report is still a message: keep the normal message card
+   shell and padding while only collapsing its long body. */
+.kikx-frame--compact.kikx-frame--AgentMessage {
+  width: fit-content;
+  max-width: min(78%, 960px);
+  justify-self: start;
+  padding: 12px;
+  border-color: var(--kikx-frame-border-color);
+  background: var(--kikx-frame-solid-color);
+}
+
+.kikx-frame--AgentMessage.kikx-frame--compact .kikx-frame__compact-description {
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: pre-line;
+}
+
+.kikx-frame__compact-markdown {
+  line-height: 1.55;
+  white-space: normal;
+}
+
+.kikx-frame__compact-markdown p,
+.kikx-frame__compact-markdown ul,
+.kikx-frame__compact-markdown ol {
+  margin: 0;
+}
+
+.kikx-frame__compact-markdown ul,
+.kikx-frame__compact-markdown ol {
+  padding-left: 1.1em;
+}
+
+.kikx-frame__compact-markdown li {
+  margin: 0;
+}
+
+.kikx-frame__compact {
+  min-width: 0;
+}
+
+.kikx-frame__compact > summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "icon description"
+    "command command";
+  align-items: center;
+  gap: 4px 8px;
+  min-height: 26px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: #aeb8c2;
+  cursor: pointer;
+  font-size: calc(12px * 1.25);
+  line-height: 1.4;
+  list-style: none;
+}
+
+.kikx-frame__compact > summary::-webkit-details-marker {
+  display: none;
+}
+
+.kikx-frame__compact > summary:hover,
+.kikx-frame__compact > summary:focus-visible {
+  background: #1b2126;
+}
+
+.kikx-frame__compact > summary:focus-visible {
+  outline: 2px solid #3d6cff;
+  outline-offset: 1px;
+}
+
+.kikx-frame__compact-description {
+  grid-area: description;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kikx-frame__compact-description :not(pre) > code {
+  padding: 1px 4px;
+  border: 1px solid rgba(255, 183, 102, 0.24);
+  border-radius: 4px;
+  background: rgba(255, 159, 64, 0.12);
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  /* Shared inline-token rule: inheriting the full summary size makes the
+     pill taller than its line box and adjacent lines collide. */
+  font-size: 0.85em;
+}
+
+/* Progress notes are prose, not a one-line status. Wrapping keeps the whole
+   update visible instead of reducing it to an unreadable ellipsis. */
+.kikx-frame--AgentProgress .kikx-frame__compact-description {
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.kikx-frame__compact-icon {
+  grid-area: icon;
+  margin-right: 2px;
+  color: #87929d;
+  font-size: calc(19px * 1.25);
+  line-height: 1;
+}
+
+/* A collapsed shell command is deliberately one line. It is common, noisy
+   execution detail; the full command is available only after expanding. */
+.kikx-frame__compact-command {
+  grid-area: command;
+  max-width: 100%;
+  margin: 2px 0 0;
+  padding: 8px 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 183, 102, 0.28);
+  border-radius: 6px;
+  background: #16120d;
+}
+
+.kikx-frame__compact-command-code {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  color: #ffd8a8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: calc(12px * 1.25);
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Expanded frames reveal the full command and may scroll it internally; the
+   collapsed state must never steal the session scroll. */
+.kikx-frame__compact[open] .kikx-frame__compact-command {
+  max-height: 320px;
+  overflow: auto;
+}
+
+.kikx-frame__compact[open] .kikx-frame__compact-command-code {
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: pre-wrap;
+}
+
+.kikx-frame--status-success .kikx-frame__compact > summary,
+.kikx-frame--status-success .kikx-frame__compact-icon {
+  color: #7bd88f;
+}
+
+.kikx-frame--status-error .kikx-frame__compact > summary,
+.kikx-frame--status-error .kikx-frame__compact-icon {
+  color: #e06c75;
+}
+
+.kikx-frame--status-running .kikx-frame__compact > summary {
+  color: #aeb8c2;
+}
+
+.kikx-frame--status-running .kikx-frame__compact-icon {
+  color: #87929d;
+}
+
+.kikx-frame__compact-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 8px 10px;
+}

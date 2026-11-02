@@ -33,6 +33,7 @@ import { dirname, join, extname, normalize, resolve } from 'node:path';
 import { chromium } from 'playwright';
 
 import { findChromeExecutable } from '../stagehand/stagehand-test-utils.mjs';
+import { readCssBundleSync } from '../../client/support/css-bundle.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..', '..');
@@ -146,8 +147,10 @@ function styleTags() {
     blocks.push(`<style data-vendor="${rel}">${text}</style>`);
   }
 
-  for (let rel of APP_STYLES)
-    blocks.push(`<style data-app="${rel}">${readIfPresent(join(REPO, 'src', rel)) ?? ''}</style>`);
+  for (let rel of APP_STYLES) {
+    let stylePath = join(REPO, 'src', rel);
+    blocks.push(`<style data-app="${rel}">${readCssBundleSync(stylePath)}</style>`);
+  }
 
   return { html: blocks.join('\n'), missingVendor };
 }

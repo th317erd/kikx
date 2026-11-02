@@ -31,6 +31,7 @@ import test from 'node:test';
 import { register } from 'node:module';
 
 import { installDom } from './support/mini-dom.mjs';
+import { readCssBundle } from './support/css-bundle.mjs';
 
 register(new URL('./support/frame-item-loader.mjs', import.meta.url).href, import.meta.url);
 
@@ -203,11 +204,10 @@ test('selecting a view row calls its own action, once', () => {
 // the two would drift the first time someone tweaked Inbox.
 
 test('Inbox, Agents and Teams are styled by ONE shared rule', async () => {
-  const { readFile } = await import('node:fs/promises');
   const { fileURLToPath } = await import('node:url');
 
-  let css = await readFile(
-    fileURLToPath(new URL('../../src/client/styles/questions.css', import.meta.url)), 'utf8');
+  let css = await readCssBundle(
+    fileURLToPath(new URL('../../src/client/styles/questions.css', import.meta.url)));
   let stripped = css.replace(/\/\*[\s\S]*?\*\//g, '');
 
   // Find the rule whose selector list contains all four view classes. That is
@@ -255,11 +255,10 @@ test('Inbox, Agents and Teams are styled by ONE shared rule', async () => {
 });
 
 test('the shared view rule also covers the label wrapper', async () => {
-  const { readFile } = await import('node:fs/promises');
   const { fileURLToPath } = await import('node:url');
 
-  let css = await readFile(
-    fileURLToPath(new URL('../../src/client/styles/questions.css', import.meta.url)), 'utf8');
+  let css = await readCssBundle(
+    fileURLToPath(new URL('../../src/client/styles/questions.css', import.meta.url)));
   let stripped = css.replace(/\/\*[\s\S]*?\*\//g, '');
 
   // The label span exists so Agents/Teams ellipsise like Inbox/Activities do.

@@ -35,6 +35,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
+import { readCssBundleSync } from './support/css-bundle.mjs';
 
 import {
   FRAME_ROOT_CLASS,
@@ -43,7 +44,7 @@ import {
   INBOX_ROOT_CLASS,
 } from '../../src/client/components/kikx-question-surface.mjs';
 
-const CSS = readFileSync(new URL('../../src/client/styles/questions.css', import.meta.url), 'utf8');
+const CSS = readCssBundleSync(new URL('../../src/client/styles/questions.css', import.meta.url));
 
 // Names that live in FRAME_VOCAB but are only ever reachable when the frame is
 // told `inboxChrome: true`. The frame object is shared by both surfaces, so the

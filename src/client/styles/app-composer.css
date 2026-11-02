@@ -1,0 +1,470 @@
+
+.kikx-composer__input-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.kikx-composer-history-button {
+  display: grid;
+  width: 26px;
+  min-height: 80px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid #3b434b;
+  border-radius: 6px;
+  background: #242a30;
+  color: #88939e;
+  cursor: pointer;
+}
+
+.kikx-composer-history-button:hover,
+.kikx-composer-history-button:focus-visible {
+  border-color: #57636e;
+  color: #dce3ea;
+  outline: none;
+}
+
+.kikx-composer-history-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.kikx-composer-history-button__chevron {
+  width: 1.15em;
+  height: 1.15em;
+  transform: rotate(90deg);
+}
+
+.kikx-composer__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.kikx-icon-button,
+.kikx-send-button,
+.kikx-inline-action {
+  min-height: 34px;
+  border: 1px solid #3c444d;
+  border-radius: 6px;
+  background: #242a30;
+  color: #f5f7fa;
+  cursor: pointer;
+}
+
+.kikx-icon-button {
+  display: grid;
+  width: 34px;
+  padding: 0;
+  place-items: center;
+  font-size: calc(22px * 1.25);
+  line-height: 1;
+}
+
+.kikx-send-button,
+.kikx-sign-out-button,
+.kikx-inline-action {
+  padding: 0 16px;
+}
+
+.kikx-sign-out-button {
+  min-height: 34px;
+  border: 1px solid #3c444d;
+  border-radius: 6px;
+  background: transparent;
+  color: #cdd6df;
+  cursor: pointer;
+}
+
+.kikx-send-button:disabled,
+.kikx-composer textarea:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.kikx-composer__actions .kikx-send-button,
+.kikx-stop-button {
+  min-width: 88px;
+}
+
+.kikx-composer__actions .kikx-send-button {
+  border-color: #3d6cff;
+  background: #3d6cff;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .kikx-composer__actions .kikx-send-button {
+    transition: background 160ms ease, border-color 160ms ease;
+  }
+}
+
+.kikx-composer__actions .kikx-send-button:hover,
+.kikx-composer__actions .kikx-send-button:focus-visible {
+  border-color: #5b84ff;
+  background: #5b84ff;
+  outline: none;
+}
+
+.kikx-composer__actions .kikx-send-button:active {
+  border-color: #2b4aad;
+  background: #2b4aad;
+}
+
+.kikx-composer__actions .kikx-send-button:disabled {
+  border-color: #2b4aad;
+  background: #2b4aad;
+  color: #c9d4ff;
+}
+
+.kikx-stop-button {
+  min-height: 44px;
+  border: 2px solid #7f1d1d;
+  border-radius: 6px;
+  background: #b91c1c;
+  color: #fff;
+  font: inherit;
+  font-size: calc(14px * 1.25);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.kikx-stop-button:hover,
+.kikx-stop-button:focus-visible {
+  border-color: #ff6b6b;
+  background: #dc2626;
+  outline: none;
+}
+
+.kikx-stop-button:active {
+  background: #991b1b;
+}
+
+.kikx-thread__empty {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  min-height: 240px;
+  overflow: auto;
+  border: 1px dashed #37414a;
+  border-radius: 6px;
+  color: #9ca7b1;
+}
+
+.kikx-thread-scrollview {
+  display: block;
+  height: 100%;
+  min-height: 0;
+}
+
+.kikx-frame-list {
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* The client owns scroll placement (anchor/pin). Browser scroll anchoring
+     reacting to frame reconciliation is the source of the random jumps. */
+  overflow-anchor: none;
+  /* Reserve the scrollbar track even while the thumb is hidden, so hovering
+     or scrolling cannot change the content width and shift every frame. */
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.kikx-frame-list:hover {
+  scrollbar-color: #52606c transparent;
+}
+
+.kikx-frame-list::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.kikx-frame-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.kikx-frame-list::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  background-clip: padding-box;
+}
+
+.kikx-frame-list:hover::-webkit-scrollbar-thumb {
+  background: #52606c;
+  background-clip: padding-box;
+}
+
+.kikx-frame-stream {
+  /* Normal block flow lets minimized headers participate inline and wrap. */
+  position: relative;
+  display: block;
+  min-height: 100%;
+  margin: 0;
+  /* One pixel of breathing room below the last card. ScrollTop is clamped to an
+     integer while layout can end on a fractional pixel; without this the last
+     card's bottom border can be shaved by the scroll container. The right gutter
+     leaves comfortable clearance beyond the quick-action rail so right-aligned
+     UserMessages cannot push the opaque rail under the scrollbar/clip edge. */
+  padding: 0 72px 1px 0;
+  list-style: none;
+}
+
+.kikx-frame {
+  margin: 0 auto 10px 0;
+}
+
+.kikx-frame--UserMessage {
+  margin: 0 0 10px auto;
+}
+
+.kikx-frame__content--user-message {
+  min-width: 0;
+}
+
+.kikx-user-message {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kikx-user-message__text {
+  min-width: 0;
+}
+
+.kikx-user-message__prompt {
+  min-width: 0;
+  padding-top: 6px;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.kikx-user-message__prompt-summary {
+  width: fit-content;
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: #8b9aa5;
+  cursor: pointer;
+  font-size: calc(11px * 1.25);
+  line-height: 1.4;
+  opacity: 0.65;
+  transition: opacity 120ms ease, color 120ms ease;
+}
+
+.kikx-user-message__prompt-summary:hover,
+.kikx-user-message__prompt-summary:focus-visible,
+.kikx-user-message__prompt[open] .kikx-user-message__prompt-summary {
+  color: #c2d0da;
+  opacity: 1;
+}
+
+.kikx-user-message__prompt-body {
+  display: grid;
+  gap: 10px;
+  max-height: min(65vh, 900px);
+  margin-top: 6px;
+  padding: 10px;
+  overflow: auto;
+  border: 1px solid #2b343c;
+  border-radius: 6px;
+  background: #0f1316;
+  color: #c8d0d8;
+}
+
+.kikx-user-message__prompt-meta {
+  color: #82919a;
+  font-size: calc(11px * 1.25);
+  font-variant-numeric: tabular-nums;
+}
+
+.kikx-user-message__prompt-message {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding-left: 8px;
+  border-left: 2px solid #38434c;
+}
+
+.kikx-user-message__prompt-message--system {
+  border-left-color: #69757f;
+}
+
+.kikx-user-message__prompt-message--user {
+  border-left-color: #587483;
+}
+
+.kikx-user-message__prompt-message--assistant {
+  border-left-color: #7d68a8;
+}
+
+.kikx-user-message__prompt-message--tool {
+  border-left-color: #9b7436;
+}
+
+.kikx-user-message__prompt-role {
+  color: #8b98a2;
+  font-size: calc(10px * 1.25);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.kikx-user-message__prompt-content {
+  min-width: 0;
+  color: #b8c4ce;
+  font-size: calc(12px * 1.25);
+  line-height: 1.5;
+}
+
+.kikx-user-message__prompt-content--user-fallback {
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: rgba(148, 163, 184, 0.08);
+  box-shadow: inset 2px 0 #7d8f9c;
+}
+
+.kikx-user-message__prompt-user-text {
+  padding: 0 0.15em;
+  border-radius: 3px;
+  background: rgba(148, 163, 184, 0.16);
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.28);
+  color: #e3ebf1;
+}
+
+.kikx-user-message__prompt-empty {
+  margin: 0;
+  color: #84919a;
+  font-size: calc(12px * 1.25);
+}
+
+.kikx-frame__hover-target {
+  position: absolute;
+  inset: -6px -52px -6px -6px;
+  z-index: -1;
+  border-radius: calc(var(--kikx-frame-radius) + 6px);
+  pointer-events: auto;
+}
+
+/* Quick actions float just outside the frame surface; the invisible hover
+   target above extends the frame's hover region so moving toward the actions
+   does not close them. */
+.kikx-frame__quick-actions {
+  position: absolute;
+  top: 8px;
+  right: -44px;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  opacity: 0;
+  /* Keep the rail hit-testable while it is visually hidden. The rail sits in
+   * the gutter just outside the frame; if it became pointer-events:none when
+   * the pointer crossed the frame edge, the user could never reach the quote
+   * button. Hovering the rail itself reveals it. */
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateX(-4px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.kikx-frame:hover .kikx-frame__quick-actions,
+.kikx-frame:focus-within .kikx-frame__quick-actions,
+.kikx-frame__quick-actions:hover,
+.kikx-frame__quick-actions:focus-within {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.kikx-frame--minimized .kikx-frame__quick-actions {
+  display: none;
+}
+
+.kikx-frame__quick-action {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid #33404a;
+  border-radius: 7px;
+  background: #151b20;
+  color: #a9b7c3;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.32);
+}
+
+.kikx-frame__quick-action:hover,
+.kikx-frame__quick-action:focus-visible {
+  border-color: #587183;
+  background: #1c2630;
+  color: #e4f3ff;
+  outline: none;
+}
+
+.kikx-frame__quick-action svg {
+  width: 17px;
+  height: 17px;
+}
+
+/* Keep full messages visually separated from surrounding minimized headers. */
+.kikx-frame:not(.kikx-frame--minimized) {
+  margin-block: 1em;
+}
+
+/* Fundamental frame shell: outer radius, border width, header hatch, type/status
+   surfaces and body text colour live in frame-colors.css and apply to every
+   full message frame. Rules below are placement or content-specific only. */
+
+.kikx-frame {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  /* Participants (agents, tools, etc.) sit on the left; the operator sits on the right. */
+  justify-self: start;
+  width: fit-content;
+  max-width: min(78%, 960px);
+  max-height: 20000px;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 12px;
+  border: 1px solid #303941;
+  border-radius: 6px;
+  background: #171b1f;
+  opacity: 1;
+  transform: translateY(0);
+  /* Chromium can animate to/from `height: auto` when keyword interpolation is
+     enabled. That makes the frame-entry animation depend on the card's real
+     height instead of racing a 0 -> 20000px max-height transition. */
+  interpolate-size: allow-keywords;
+  transition:
+    width 180ms ease,
+    inline-size 180ms ease,
+    min-width 180ms ease,
+    max-width 180ms ease,
+    height 220ms ease,
+    max-height 220ms ease,
+    padding 220ms ease,
+    margin 220ms ease,
+    gap 180ms ease,
+    border-color 180ms ease,
+    border-radius 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease,
+    filter 180ms ease,
+    opacity 180ms ease,
+    transform 220ms ease;
+}

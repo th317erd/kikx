@@ -1,0 +1,451 @@
+
+.kikx-agent-list__crown--rank-3 {
+  color: #c9803f;
+  background: rgba(201, 128, 63, 0.08);
+  opacity: 0.7;
+}
+
+.kikx-agent-list__row-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.kikx-agent-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.kikx-agent-filter {
+  padding: 4px 12px;
+  border: 1px solid #3c444d;
+  border-radius: 999px;
+  background: transparent;
+  color: #b9c2cc;
+  font: inherit;
+  font-size: calc(12px * 1.25);
+  cursor: pointer;
+}
+
+.kikx-agent-filter:hover,
+.kikx-agent-filter:focus-visible {
+  border-color: #6b7684;
+  color: #f5f7fa;
+  outline: none;
+}
+
+.kikx-agent-filter.is-active {
+  border-color: #3d6cff;
+  background: rgba(61, 108, 255, 0.15);
+  color: #f5f7fa;
+}
+
+.kikx-agent-list__crown.is-busy {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+/* Compaction-bot toggle: the parallel list to the crown, with a compact glyph.
+   Rank 1-3 use a teal/blue palette so it reads as distinct from the crown's
+   gold/silver/copper. */
+.kikx-agent-list__compaction-bot {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid #3c444d;
+  border-radius: 6px;
+  background: transparent;
+  color: #5c6672;
+  font-size: calc(15px * 1.25);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.kikx-agent-list__compaction-bot:hover,
+.kikx-agent-list__compaction-bot:focus-visible {
+  border-color: #6b7684;
+  color: #cdd6df;
+  outline: none;
+}
+
+.kikx-agent-list__compaction-bot.is-compaction-bot {
+  border-color: currentColor;
+}
+
+.kikx-agent-list__compaction-bot--rank-1 {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.10);
+  opacity: 1;
+}
+
+.kikx-agent-list__compaction-bot--rank-2 {
+  color: #5eead4;
+  background: rgba(94, 234, 212, 0.08);
+  opacity: 0.82;
+}
+
+.kikx-agent-list__compaction-bot--rank-3 {
+  color: #818cf8;
+  background: rgba(129, 140, 248, 0.08);
+  opacity: 0.7;
+}
+
+.kikx-agent-list__compaction-bot.is-busy {
+  opacity: 0.5;
+  cursor: progress;
+}
+/* OCR and plugin-registered agent-tag actions share the same compact button
+   shape. Tag definitions supply the icon and labels. */
+.kikx-agent-list__ocr-bot,
+.kikx-agent-list__tag-action {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid #3c444d;
+  border-radius: 6px;
+  background: transparent;
+  color: #5c6672;
+  font-size: calc(15px * 1.25);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.kikx-agent-list__ocr-bot:hover,
+.kikx-agent-list__ocr-bot:focus-visible,
+.kikx-agent-list__tag-action:hover,
+.kikx-agent-list__tag-action:focus-visible {
+  border-color: #6b7684;
+  color: #cdd6df;
+  outline: none;
+}
+
+.kikx-agent-list__ocr-bot.is-ocr-bot,
+.kikx-agent-list__tag-action.is-active {
+  border-color: currentColor;
+  color: #c084fc;
+  background: rgba(192, 132, 252, 0.10);
+}
+.kikx-agent-list__ocr-bot--rank-1 {
+  color: #e879f9;
+  background: rgba(232, 121, 249, 0.12);
+  opacity: 1;
+}
+
+.kikx-agent-list__ocr-bot--rank-2 {
+  color: #c084fc;
+  background: rgba(192, 132, 252, 0.09);
+  opacity: 0.84;
+}
+
+.kikx-agent-list__ocr-bot--rank-3 {
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.08);
+  opacity: 0.72;
+}
+
+
+.kikx-agent-list__ocr-bot.is-busy,
+.kikx-agent-list__tag-action.is-busy {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+
+.kikx-agent-form__status {
+  display: grid;
+  gap: 4px;
+}
+
+.kikx-agent-form__error {
+  margin: 0;
+  color: #fca5a5;
+  font-size: calc(12px * 1.25);
+}
+
+.kikx-default-config {
+  display: grid;
+  gap: 10px;
+}
+
+.kikx-default-config__label {
+  color: #aeb8c2;
+  font-size: calc(12px * 1.25);
+  font-weight: 600;
+}
+
+.kikx-default-config aeor-input,
+.kikx-default-config aeor-select {
+  min-height: 36px;
+}
+
+.kikx-agent-form__tags-heading {
+  margin-top: 6px;
+  color: #dce3ea;
+  font-size: calc(13px * 1.25);
+  font-weight: 700;
+}
+
+.kikx-agent-tags {
+  padding-top: 2px;
+}
+
+.kikx-agent-tags__help {
+  color: #8c98a4;
+  font-size: calc(11px * 1.25);
+  line-height: 1.35;
+}
+
+.kikx-agent-tags__checkbox {
+  width: 20px;
+  min-height: 20px;
+  justify-self: start;
+}
+
+.kikx-default-config__empty {
+  margin: 0;
+  color: #97a3ae;
+  font-size: calc(12px * 1.25);
+}
+
+.kog-config {
+  display: grid;
+  gap: 10px;
+}
+
+.kog-config__field {
+  display: grid;
+  gap: 4px;
+}
+
+.kog-config__label {
+  color: #aeb8c2;
+  font-size: calc(12px * 1.25);
+  font-weight: 600;
+}
+
+.kog-config__model-wrap {
+  display: grid;
+  gap: 4px;
+}
+
+.kog-config aeor-input,
+.kog-config aeor-select {
+  min-height: 36px;
+}
+
+.kog-config__status {
+  min-height: 16px;
+  color: #97a3ae;
+  font-size: calc(12px * 1.25);
+}
+
+.kog-config__status--error {
+  color: #fca5a5;
+}
+
+/* S1: bounded, dismissible error surface. It is mounted as a direct child of
+   `kikx-app` (outside the rebuilt `.kikx-shell`), so fixed positioning keeps it
+   visible even when the shell itself failed to build. */
+.kikx-error-surface {
+  position: fixed;
+  top: 76px;
+  right: 20px;
+  z-index: 50;
+  display: grid;
+  gap: 6px;
+  max-width: min(360px, calc(100vw - 40px));
+  padding: 6px;
+  border: 1px solid #7f1d1d;
+  border-radius: 8px;
+  background: #1d1416;
+  color: #fca5a5;
+  font-size: calc(13px * 1.25);
+  box-shadow: 0 10px 24px rgb(0 0 0 / 45%);
+}
+
+.kikx-error-surface--empty {
+  display: none;
+}
+
+.kikx-error-surface__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.kikx-error-surface__chip,
+.kikx-error-surface__dismiss {
+  padding: 6px 10px;
+  border: 1px solid #7f1d1d;
+  border-radius: 999px;
+  background: #2a1a1c;
+  color: #fecaca;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.kikx-error-surface__chip {
+  font-weight: 600;
+}
+
+.kikx-error-surface__dismiss {
+  padding: 5px 9px;
+}
+
+.kikx-error-surface__chip:hover,
+.kikx-error-surface__dismiss:hover {
+  background: #3a2225;
+}
+
+.kikx-error-surface__chip:focus-visible,
+.kikx-error-surface__dismiss:focus-visible {
+  outline: 2px solid #fca5a5;
+  outline-offset: 2px;
+}
+
+.kikx-error-surface__list {
+  max-height: 40vh;
+  margin: 0;
+  padding: 6px 8px;
+  overflow: auto;
+  border-radius: 6px;
+  background: #160f10;
+  list-style: none;
+}
+
+.kikx-error-surface__item {
+  padding: 3px 0;
+  color: #fecaca;
+  font-size: calc(12px * 1.25);
+  overflow-wrap: anywhere;
+}
+
+.kikx-error-surface__item + .kikx-error-surface__item {
+  border-top: 1px solid #3f2427;
+}
+
+/* --- Pinned per-agent thinking rack (lower-left participant space) ---
+   Replaces the old inline thinking/streaming bubble: a brain icon per thinking
+   agent that giggles while it thinks and reveals the live thinking text on hover. */
+/* Permanent thinking dock: its height is reserved even when no agent is
+   thinking, so a brain appearing/disappearing never resizes the thread. */
+.kikx-thinking-dock {
+  display: flex;
+  min-height: 54px;
+  padding: 0 18px 8px;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.kikx-thinking-dock kikx-thinking-rack {
+  padding: 0;
+}
+
+kikx-thinking-rack {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 0 18px 10px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+kikx-thinking-rack[hidden] {
+  display: none;
+}
+
+kikx-thinking-panel {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+}
+
+/* The brain "thinking" icon: giggles and bounces subtly while the agent is thinking. */
+.kikx-thinking-brain {
+  display: grid;
+  place-items: center;
+  appearance: none;
+  margin: 0;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #f48fb1;
+  font-size: 1.7rem;
+  line-height: 1;
+  cursor: pointer;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
+}
+
+/* A tight wrapper owns the breathing scale; the SVG owns the rapid shiver.
+   This keeps the two transforms independent and centred on the icon itself. */
+.kikx-thinking-brain__art {
+  display: inline-grid;
+  place-items: center;
+  transform-origin: 50% 50%;
+  animation: kikx-thinking-breathe 3.6s ease-in-out infinite;
+  will-change: transform;
+}
+
+.kikx-thinking-brain svg {
+  display: block;
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+  animation: kikx-thinking-shiver 0.6s linear infinite;
+  will-change: transform;
+}
+
+.kikx-thinking-brain:focus-visible {
+  outline: 2px solid #5a7fa8;
+  outline-offset: 2px;
+}
+
+@keyframes kikx-thinking-breathe {
+  0%, 100% { transform: scale(0.92); }
+  45% { transform: scale(1.16); }
+  62% { transform: scale(1.1); }
+}
+
+@keyframes kikx-thinking-shiver {
+  0%, 100% { transform: rotate(0deg); }
+  10% { transform: rotate(3.5deg); }
+  20% { transform: rotate(-4.2deg); }
+  30% { transform: rotate(2.8deg); }
+  40% { transform: rotate(-3.6deg); }
+  50% { transform: rotate(4.5deg); }
+  60% { transform: rotate(-4.2deg); }
+  70% { transform: rotate(3.1deg); }
+  80% { transform: rotate(-2.8deg); }
+  90% { transform: rotate(1.8deg); }
+}
+
+/* The hover tooltip: a cursor-following bubble with the live, scrolling thinking
+   text. Portaled to <body> so no ancestor's overflow/transform can clip it. */
+.kikx-thinking-tip {
+  position: fixed;
+  z-index: 60;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  width: 22rem;
+  max-width: min(22rem, 60vw);
+  height: 6rem;
+  border: 1px solid #2a3138;
+  border-radius: 8px;
+  background: #0f1317;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.kikx-thinking-tip[hidden] {
+  display: none;
+}
