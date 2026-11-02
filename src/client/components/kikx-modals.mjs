@@ -22,6 +22,7 @@ import {
 import { findAgentConfigFormElement, resolveAgentConfigFormTag } from './agent-config-form-registry.mjs';
 import { buildAgentTagSection } from './agent-tag-form.mjs';
 import './kikx-default-agent-config-form.mjs';
+import { buildSettingsEmptyState, buildSettingsPanelNodes } from './kikx-settings-panel.mjs';
 
 const { div, p, span, button, form, label, ul, li, strong, option } = elements;
 const aeorInput = elements['aeor-input'];
@@ -56,6 +57,25 @@ export function buildAccountEditor(app) {
       p.class.bindState((state) => `kikx-auth-status kikx-auth-status--${state.accountStatusKind}`, ['accountStatusKind'])(
         span.textContent.bindState((state) => state.accountStatus, ['accountStatus'])(),
       ),
+    ),
+  );
+}
+
+// The Settings dialog: the mount point for the 'settings-panel' client
+// component kind. See kikx-settings-panel.mjs for why the kind had nowhere to
+// paint and why this is the generic half of the contract rather than a plugin's.
+//
+// Every contributed panel renders here, and the empty state is said out loud
+// instead of leaving a blank dialog -- a blank screen reads as a bug.
+export function buildSettingsDialog(app) {
+  let panels = buildSettingsPanelNodes(app?._state || {}, app);
+
+  return aeorModal.title('Settings').onClose(app._closeSettings)(
+    div.class('kikx-settings')(
+      panels.length > 0 ? panels : buildSettingsEmptyState(),
+    ),
+    div.class('modal-footer-actions')(
+      button.type('button').class('kikx-send-button').onClick(app._closeSettings)('Done'),
     ),
   );
 }

@@ -12,6 +12,7 @@ import {
   clientComponentKeyField,
 } from '../../shared/client-component-kinds.mjs';
 import { pruneViewSurfaceElements } from './view-surface-elements.mjs';
+import { pruneSettingsPanelElements } from './settings-panel-elements.mjs';
 import {
   defaultConfigForProvider,
   defaultTagValues,
@@ -105,6 +106,12 @@ export const kikxState = new ReactiveState({
   // 'view' or 'sidebar-item' descriptor could not reach the shell at all.
   clientViewSurfaces: {},
   clientSidebarItems: {},
+  // Derived view of byKind['settings-panel'], written by setClientComponents.
+  clientSettingsPanels: {},
+  // Whether the Settings dialog is open. The dialog is the mount point for the
+  // 'settings-panel' kind: it exists so a plugin has somewhere to paint, rather
+  // than being a feature someone forgot to build.
+  settingsOpen: false,
   connectionStatus: 'Disconnected',
   connectionStatusKind: 'error',
   // The "show deleted sessions" eye and the title filter. deletedSessionIDs /
@@ -510,9 +517,17 @@ export function setAgentTagDefinitions(definitions, state = kikxState) {
 // so a kind claimed here after its consumer is deleted fails the suite instead of
 // making a dead surface look mounted.
 //
-// 'settings-panel' is NOT listed. The registry accepts it and the client now keeps
-// the descriptor, but there is no settings area to paint it into yet. Reporting it
-// is the honest state; silently discarding it, as the old if/else chain did, is not.
+// 'settings-panel' IS listed, as of the Settings dialog mount
+// (src/client/components/kikx-settings-panel.mjs). Before it this list was a strict
+// subset of the kind vocabulary: the registry accepted a panel, the store kept it,
+// and nothing painted it. That is the owner's requirement -- "any area of the app,
+// always" -- being false by exactly one kind.
+//
+// THE LIST IS NOW AN INVARIANT, NOT A CONVENIENCE. Every kind in the vocabulary
+// must appear here; spec/client/plugin-component-any-area-spec.mjs asserts
+// EQUALITY in both directions and that each listed kind is referenced by a real
+// consumer module. Adding a ninth kind without a mount point fails the suite,
+// which is the only thing that stops this drifting back into a silent no-op.
 export const CLIENT_COMPONENT_KINDS_WITH_MOUNT_POINTS = Object.freeze([
   'frame',
   'tool',
@@ -521,6 +536,7 @@ export const CLIENT_COMPONENT_KINDS_WITH_MOUNT_POINTS = Object.freeze([
   'view',
   'sidebar-item',
   'toolbar-action',
+  'settings-panel',
 ]);
 
 // The kinds a plugin contributed that have no mount point, so nothing paints them.
@@ -599,6 +615,10 @@ export function setClientComponents(components, state = kikxState) {
   state.clientAgentConfigFormsByPluginID = agentConfigForms;
   state.clientViewSurfaces = viewSurfaces;
   state.clientSidebarItems = sidebarItems;
+  // A DERIVED view of byKind['settings-panel'], not a second store -- the same
+  // treatment the five original homes get, so no consumer learns a new shape and a
+  // kind can never be in one and missing from the other.
+  state.clientSettingsPanels = byKind['settings-panel'] || {};
 
   // The single writer for the addressable view vocabulary. Derived from the
   // descriptors just filed, so uninstalling a plugin shrinks the set again instead
@@ -614,6 +634,12 @@ export function setClientComponents(components, state = kikxState) {
   // input is the ids it should keep. Calling it with nothing prunes every surface,
   // including the ones still installed.
   pruneViewSurfaceElements(getRegisteredViewNames());
+
+  // The same moment for panels: a settings panel that was uninstalled must not
+  // keep its element -- and whatever the user typed into it -- alive behind a
+  // surfaceID nothing renders any more. Derived from the store just written, so
+  // the two cannot disagree about what is still installed.
+  pruneSettingsPanelElements(Object.keys(state.clientSettingsPanels));
 
   state.clientComponentStatus = 'ready';
 }

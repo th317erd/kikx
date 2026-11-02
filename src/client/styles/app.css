@@ -4206,3 +4206,49 @@ kikx-frame-filter-popup:not(.is-all-on) .kikx-frame-filter__button {
     animation: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Settings dialog: the mount point for 'settings-panel' plugin components
+   ---------------------------------------------------------------------------
+   These rules exist because the stylesheet-links gate fails the build for any
+   kikx-* class a component assigns with no rule in a linked sheet, and because a
+   plugin panel rendered with no layout at all is the "advertised but ugly" half
+   of the same problem the kind vocabulary fixed.
+
+   Nothing here styles a plugin's own internals: a panel decides its own look. This
+   only gives it a labelled, separated slot so several panels from several plugins
+   read as sections of one dialog rather than as one undifferentiated column. */
+.kikx-settings {
+  display: flex;
+  flex-direction: column;
+  gap: calc(16px * 1.25);
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: calc(4px * 1.25) 0;
+}
+
+.kikx-settings__panel {
+  display: flex;
+  flex-direction: column;
+  gap: calc(8px * 1.25);
+  padding: calc(12px * 1.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: calc(8px * 1.25);
+}
+
+.kikx-settings__panel-heading h3 {
+  margin: 0;
+  font-size: inherit;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.kikx-settings__empty {
+  margin: 0;
+  opacity: 0.72;
+  line-height: 1.5;
+}
+
+.kikx-settings-open {
+  white-space: nowrap;
+}

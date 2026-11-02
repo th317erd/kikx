@@ -339,6 +339,15 @@ export function buildTopbarActions(app, sessionID = null) {
       .ariaPressed(raw ? 'true' : 'false')
       .onClick(app._toggleRawMarkdown)('Raw'),
     sessionID ? participants : null,
+    // Opens the Settings dialog, which is the mount point for plugin
+    // 'settings-panel' descriptors. Deliberately in the bar and NOT the sidebar:
+    // the sidebar cluster is pinned at five items by two specs, and Settings is an
+    // application-level surface rather than a view into the session tree.
+    button
+      .type('button')
+      .class('kikx-settings-open')
+      .title('Settings — including panels contributed by plugins')
+      .onClick(app._openSettings)('Settings'),
     // Label from the same scope noun the inline Add card uses, so the two can
     // never disagree about what this level creates.
     button

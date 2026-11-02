@@ -101,6 +101,12 @@ export function renderAppShell(app) {
     if (app._state.accountEditorOpen)
       shellChildren.push(app._buildAccountEditor());
 
+    // The mount point for 'settings-panel' descriptors. Mounted the same way the
+    // Account editor is, so it is part of the shell's own tree and a plugin panel
+    // inside it inherits the dialog's layout rather than needing its own chrome.
+    if (app._state.settingsOpen)
+      shellChildren.push(app._buildSettingsDialog());
+
     shellChildren.push(createErrorSurfaceElement());
 
     let tree = div.class('kikx-shell').context(app)(shellChildren).build(document);

@@ -80,6 +80,16 @@ export async function onAccountSubmit(app, event) {
   }
 }
 
+export function openSettings(app) {
+  app._state.settingsOpen = true;
+  app._render();
+}
+
+export function closeSettings(app) {
+  app._state.settingsOpen = false;
+  app._render();
+}
+
 export function openTeamManager(app) {
   app._state.managingTeams = false;
   app._state.managingAgents = false;

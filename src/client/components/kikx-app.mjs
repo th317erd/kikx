@@ -49,6 +49,7 @@ import {
   buildAgentEditor,
   buildAgentManager,
   buildAgentManagerBody,
+  buildSettingsDialog,
   buildSessionEditor,
   buildTeamEditor,
   buildTeamManager,
@@ -166,6 +167,8 @@ import {
   onTeamFormSubmit,
   openAccountEditor,
   openSessionEditor,
+  openSettings,
+  closeSettings,
   openTeamManager,
   selectSession,
   signOut,
@@ -274,6 +277,7 @@ export class KikxApp extends HTMLElement {
     this._buildStatusBar = () => buildStatusBar(this);
     this._buildAccountEditor = () => buildAccountEditor(this);
     this._buildAgentManager = () => buildAgentManager(this);
+    this._buildSettingsDialog = () => buildSettingsDialog(this);
     this._buildAgentManagerBody = () => buildAgentManagerBody(this);
     this._repaintAgentManagerBody = () => repaintAgentManagerBody(this);
     this._buildAgentEditor = () => buildAgentEditor(this);
@@ -362,6 +366,8 @@ export class KikxApp extends HTMLElement {
     this._createAgent = () => createAgent(this);
     this._assignAgentToSession = (agent) => assignAgentToCurrentSession(this, agent);
     this._editAgent = (agent) => editAgent(this, agent);
+    this._openSettings = () => openSettings(this);
+    this._closeSettings = () => closeSettings(this);
     this._openTeamManager = () => openTeamManager(this);
     this._closeTeamManager = () => closeTeamManager(this);
     this._closeTeamEditor = () => closeTeamEditor(this);
