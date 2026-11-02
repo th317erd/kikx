@@ -6,6 +6,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { AgentInterface } from './agent-interface.mjs';
+import { invalidatePluginModules, registerReloadablePluginRoot } from './plugin-module-cache.mjs';
 import { PluginInterface } from './plugin-interface.mjs';
 
 const SETUP_TIMEOUT_MS = Number(globalThis.__KIKX_PLUGIN_SETUP_TIMEOUT_MS) || 15000;
@@ -93,6 +94,24 @@ export async function loadPlugins(options = {}) {
         // HARD BOUNDARY: nothing a plugin does may escape this iteration.
         // Not a throw, not a rejection, not a timer that never fires.
         let modulePath = await resolvePluginModule(pluginPath);
+
+        // RELOAD MEANS RELOAD THE WHOLE PLUGIN, NOT JUST ITS ENTRY FILE.
+        // The entry import below is cache-busted with ?t=, which re-parses
+        // index.mjs and NOTHING ELSE: every `import ... from './other.mjs'`
+        // inside it resolves to a plain URL that Node caches for the life of the
+        // process. A reload therefore re-ran the entry against the OLD submodules
+        // and returned 200 with no failures, so a plugin author's change to any
+        // file but the entry silently never ran. Measured live: an image-only
+        // Discord message was still dropped after reloading the fix that delivers
+        // it. See plugin-module-cache.mjs for the reproduction.
+        //
+        // The plugin root is registered so the hook can recognise this plugin's
+        // files, then invalidated so the next import of anything under it (entry
+        // included, via static imports) is re-read from disk. Only URLs under a
+        // registered plugin root are rewritten -- core and other plugins are
+        // untouched.
+        registerReloadablePluginRoot(pluginPath);
+        invalidatePluginModules(pluginPath);
         let pluginModule = await import(`${pathToFileURL(modulePath).href}?t=${Date.now()}`);
 
         if (typeof pluginModule.setup !== 'function')
