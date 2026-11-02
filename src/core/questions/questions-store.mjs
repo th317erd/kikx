@@ -40,6 +40,13 @@ import {
   listSessionsForTree,
   tryListSessionsForTree,
 } from './question-session-tree.mjs';
+import {
+  agentIndexPathFor,
+  indexPathFor,
+  listAgentIndexAgentIDs,
+  questionPathFor,
+} from './questions-store-paths.mjs';
+import { readOpenQuestionIndex, withQuestionLock } from './questions-store-index.mjs';
 
 const DEFAULT_ROOT_PATH = '/kikx';
 
@@ -672,41 +679,12 @@ export class QuestionsStore {
     return matches.map((question) => question.id);
   }
 
-  /**
-   * Serialise a read-modify-write on one key. Waiters queue on a gate that is
-   * released in `finally`, so a throwing critical section cannot wedge the queue.
-   */
   async withLock(key, fn) {
-    let previous = this.locks.get(key) || Promise.resolve();
-    let release = null;
-    let gate = new Promise((resolve) => { release = resolve; });
-    let chained = previous.then(() => gate);
-    this.locks.set(key, chained);
-
-    await previous;
-    try {
-      return await fn();
-    } finally {
-      release();
-      if (this.locks.get(key) === chained)
-        this.locks.delete(key);
-    }
+    return withQuestionLock(this, key, fn);
   }
 
   async readOpenIndex() {
-    try {
-      let index = await this.aeordb.getFile(this.indexPath());
-      return {
-        ids: Array.isArray(index?.ids) ? index.ids.filter((id) => typeof id === 'string') : [],
-        summaries: Array.isArray(index?.summaries) ? index.summaries : [],
-        updatedAt: index?.updatedAt || null,
-      };
-    } catch (error) {
-      if (error.status !== 404)
-        throw error;
-
-      return { ids: [], summaries: [], updatedAt: null };
-    }
+    return readOpenQuestionIndex(this);
   }
 
   /**
@@ -796,29 +774,21 @@ export class QuestionsStore {
   }
 
   async listAgentIndexAgentIDs() {
-    let { items } = await this.aeordb.list(`${this.rootPath}/agents`, { recursive: true, glob: 'questions.json' });
-    let agentIDs = [];
-
-    for (let item of items) {
-      let match = /\/([^/]+)\/questions\.json$/.exec(item.path);
-      if (match)
-        agentIDs.push(decodeURIComponent(match[1]));
-    }
-
-    return agentIDs;
+    return listAgentIndexAgentIDs(this);
   }
 
   questionPath(questionID) {
-    return `${this.rootPath}/questions/${encodeURIComponent(normalizeRequiredString(questionID, 'questionID'))}.json`;
+    return questionPathFor(this.rootPath, questionID);
   }
 
   indexPath() {
-    return `${this.rootPath}/questions/index/open.json`;
+    return indexPathFor(this.rootPath);
   }
 
   agentIndexPath(agentID) {
-    return `${this.rootPath}/agents/${encodeURIComponent(normalizeRequiredString(agentID, 'agentID'))}/questions.json`;
+    return agentIndexPathFor(this.rootPath, agentID);
   }
+
 }
 
 // AeorDB offers no conditional write, so the open index is a read-modify-write

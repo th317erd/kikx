@@ -15,6 +15,18 @@ import {
   clientComponentKindError,
   isClientComponentKind,
 } from '../../shared/client-component-kinds.mjs';
+import {
+  isSubclassOf,
+  normalizeComponentDescriptor,
+  normalizeRequiredString,
+  optionArgs,
+} from './plugin-registry-helpers.mjs';
+import {
+  initializePluginServices,
+  listPluginServices,
+  registerPluginService,
+  releasePluginServices,
+} from './plugin-registry-services.mjs';
 
 // The retention vocabulary for plugin-owned index declarations. See
 // registerFrameIndex for what each policy promises on unload. Exported so the
@@ -77,91 +89,22 @@ export class PluginRegistry extends ClassRegistry {
     return this._pluginPaths.get(pluginID) || null;
   }
 
-  // Plugin-owned services. Factories run after the core services exist, in
-  // dependency order; a service may replace a context service, and unload restores
-  // whatever was there before it.
+  // Plugin-owned services. Implementations live in plugin-registry-services.mjs
+  // so this orchestration class stays under the source cap.
   registerService(name, definition = {}, options = {}) {
-    let serviceName = normalizeRequiredString(name, 'service name');
-    let factory = typeof definition === 'function' ? definition : definition.factory;
-    if (typeof factory !== 'function')
-      throw new TypeError(`Service "${serviceName}" requires a factory function`);
-    let pluginName = options.pluginName || null;
-    let previous = this._pluginServices.get(serviceName);
-    let entry = {
-      name: serviceName,
-      pluginName,
-      factory,
-      dependsOn: Array.isArray(definition.dependsOn) ? [ ...definition.dependsOn ] : [],
-      shutdown: typeof definition.shutdown === 'function' ? definition.shutdown : null,
-    };
-    this._pluginServices.set(serviceName, entry);
-    this._recordOwnership(pluginName, 'service', serviceName, () => {
-      if (previous === undefined)
-        this._pluginServices.delete(serviceName);
-      else
-        this._pluginServices.set(serviceName, previous);
-    });
-    return entry;
+    return registerPluginService(this, name, definition, options);
   }
 
   listPluginServices() {
-    return [ ...this._pluginServices.values() ].map(({ name, pluginName, dependsOn }) => ({ name, pluginName, dependsOn: [ ...dependsOn ] }));
+    return listPluginServices(this);
   }
 
   async initializePluginServices(context) {
-    this._pluginServiceContext = context;
-    let pending = new Map(this._pluginServices);
-    while (pending.size > 0) {
-      let progressed = false;
-      for (let [name, entry] of pending) {
-        if (entry.dependsOn.some((dependency) => pending.has(dependency)))
-          continue;
-        let missing = entry.dependsOn.filter((dependency) => !context.has?.(dependency));
-        if (missing.length > 0)
-          throw new Error(`Service "${name}" requires missing service(s): ${missing.join(', ')}`);
-        let instance = await entry.factory(context);
-        let previous = context.has?.(name) ? context.require(name) : undefined;
-        context.set(name, instance);
-        this._pluginServiceInstances.set(name, { ...entry, instance, previous });
-        pending.delete(name);
-        progressed = true;
-      }
-      if (!progressed) {
-        let names = [ ...pending.keys() ].join(', ');
-        throw new Error(`Plugin service dependency cycle or unresolved dependency: ${names}`);
-      }
-    }
-    return this.listPluginServices();
+    return initializePluginServices(this, context);
   }
 
   async releasePluginServices(pluginName) {
-    let context = this._pluginServiceContext;
-    let entries = [ ...this._pluginServiceInstances.entries() ]
-      .filter(([, entry]) => entry.pluginName === pluginName)
-      .reverse();
-    for (let [name, entry] of entries) {
-      this._pluginServiceInstances.delete(name);
-      try {
-        await entry.shutdown?.(entry.instance, context);
-      } catch (error) {
-        this.logger?.warn?.(`releasePluginServices("${pluginName}"): shutdown for "${name}" failed: ${error?.message || error}`);
-      }
-      // Only restore when the instance in the context is still ours. A later load may
-      // have replaced it, and stomping that would break the plugin that now owns it.
-      //
-      // The lookup must go through a reader that tolerates a partial context: this line
-      // previously guarded `has` with optional chaining but called `require` unguarded,
-      // so any context without `require` threw out of releasePluginServices - aborting
-      // unloadPlugin() after its subscriptions were already dropped, and breaking the
-      // "never throws" contract releasePlugin() promises.
-      if (context?.has?.(name) && readContextEntry(context, name) === entry.instance) {
-        if (entry.previous === undefined)
-          context.delete?.(name);
-        else
-          context.set?.(name, entry.previous);
-      }
-    }
-    return entries.length;
+    return releasePluginServices(this, pluginName);
   }
 
   // Schema migrations. The directory is relative to the plugin, resolved by the caller.
@@ -855,86 +798,3 @@ export class PluginRegistry extends ClassRegistry {
 // positional arguments before it. registerClass takes either (Class, options) or
 // (key, Class, options), so the slot differs and passing undefined is not the same as
 // omitting for some callers.
-function optionArgs(args, index, options) {
-  let next = args.slice();
-  while (next.length < index) next.push(undefined);
-  next[index] = options;
-  return next;
-}
-
-// Read a service from a context that may implement any of require/get/has or be a plain
-// Map. Used by the release path, where throwing would abort an unload.
-function readContextEntry(context, name) {
-  if (!context)
-    return undefined;
-  if (typeof context.require === 'function')
-    return context.require(name);
-  if (typeof context.get === 'function')
-    return context.get(name);
-  return undefined;
-}
-
-function isSubclassOf(candidate, BaseClass) {
-  return typeof candidate === 'function'
-    && candidate !== BaseClass
-    && candidate.prototype instanceof BaseClass;
-}
-
-function normalizeComponentDescriptor(descriptor, defaults = {}) {
-  let input = normalizeDescriptorInput(descriptor);
-  let kind = normalizeRequiredString(input.kind || defaults.kind, 'component kind');
-  // The kind vocabulary lives in ONE place (src/shared/client-component-kinds.mjs)
-  // and is imported by both this registry and the browser. It used to be a local
-  // allowlist here and two DIFFERENT hardcoded lists on the client, which is how
-  // 'toolbar-action' and 'settings-panel' came to be accepted-and-advertised here
-  // while being discarded on arrival. See that module for the full measurement.
-  if (!isClientComponentKind(kind))
-    throw new TypeError(clientComponentKindError(kind));
-
-  let output = {
-    ...input,
-    kind,
-    tagName: normalizeCustomElementName(input.tagName || input.tag || input.elementName),
-    moduleURL: normalizeRequiredString(input.moduleURL || input.module || input.url, 'component moduleURL'),
-  };
-
-  if (kind === 'frame')
-    output.frameType = normalizeRequiredString(input.frameType || defaults.frameType, 'frameType');
-  else if (kind === 'tool')
-    output.toolName = normalizeRequiredString(input.toolName || defaults.toolName, 'toolName');
-  else if (kind === 'agent-config-form')
-    output.pluginID = normalizeRequiredString(input.pluginID || defaults.pluginID, 'pluginID');
-  else
-    output.surfaceID = normalizeRequiredString(input.surfaceID || input.id || defaults.surfaceID, 'surface id');
-
-  delete output.tag;
-  delete output.elementName;
-  delete output.module;
-  delete output.url;
-  return output;
-}
-
-function normalizeDescriptorInput(descriptor) {
-  if (typeof descriptor === 'string')
-    return { tagName: descriptor };
-
-  if (!descriptor || typeof descriptor !== 'object' || Array.isArray(descriptor))
-    throw new TypeError('Component descriptor must be an object');
-
-  return { ...descriptor };
-}
-
-function normalizeRequiredString(value, fieldName) {
-  if (typeof value !== 'string' || value.trim() === '')
-    throw new TypeError(`${fieldName} must be a non-empty string`);
-
-  return value.trim();
-}
-
-function normalizeCustomElementName(value) {
-  let name = normalizeRequiredString(value, 'component tagName');
-  if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$/.test(name))
-    throw new TypeError(`Invalid custom element tagName: ${name}`);
-
-  return name;
-}
