@@ -1,3 +1,13 @@
+---
+title: 3003 labelled restart and live proof
+doc_type: report
+status: completed
+audience: [developers, operators, qa]
+applies_to: development-v3
+last_verified: 2026-11-02
+keywords: [restart, plugin, reload, proof, discord, client-components]
+---
+
 # 3003 labelled restart + live proof — 2026-11-02T16:24Z
 
 Owner instruction this turn: *"Default should be to _restart the service_... 'plugins should work

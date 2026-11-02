@@ -162,6 +162,7 @@ These dated plans and reports are implementation evidence, not general
 architecture. Their own authority banners govern how they may be used.
 
 - [Deploy 3098 runbook, 2026-10-31](./deploy-3098-runbook-20261031.md)
+- [3003 labelled restart and live proof, 2026-11-02](./3003-labelled-restart-proof-20261102.md)
 - [Client targeted-update audit, 2026-10-30](./reports/client-targeted-update-audit-2026-10-30.md)
 - [Client state coverage audit, 2026-10-30](./reports/client-state-coverage-audit-2026-10-30.md)
 - [Plugin-way gap analysis, 2026-10-29](./reports/plugin-way-gap-analysis-2026-10-29.md)
