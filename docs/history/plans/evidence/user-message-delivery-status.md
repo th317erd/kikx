@@ -13,7 +13,7 @@ A message the operator types carries a two-valued delivery state.
 | State | Stored as | Visible |
 |---|---|---|
 | neutral (default) | `content.delivery: 'neutral'` | nothing added — the shipped grey bubble is byte-identical |
-| received (agent fed) | `content.delivery: 'received'`, `content.deliveryAt: <ms>` | accent left inset + "RECEIVED" caption + `data-delivery` + `aria-label` |
+| received (agent fed) | `content.delivery: 'received'`, `content.deliveryAt: <ms>` | shared success treatment (`kikx-frame--status-success`) + `data-delivery` + `aria-label` — no inset, no caption |
 
 ## Why the stored word is `received`, not `success`
 
@@ -142,8 +142,10 @@ repeat run — see §The lane red, below. That is written down because the red w
 5. **The composer spec asserted a literal Chromium never returns.** It compared the
    computed `::after` content to `'normal'`; with no matching rule Chromium reports
    `'none'`, so the assertion was red on **any** tree, feature or not. Both caption rules
-   are scoped to `.kikx-frame--UserMessage.kikx-frame--delivery-received` (`app.css:697`,
-   `:701`), and the three assertions before it (neutral, no modifier, `box-shadow: none`)
+   were then scoped to `.kikx-frame--UserMessage.kikx-frame--delivery-received`
+   (`app.css:697`, `:701` as the file stood at the time — those rules were deleted by
+   `086a75fb`; see "Visual treatment" below), and the three assertions before it
+   (neutral, no modifier, `box-shadow: none`)
    all passed — which is how the defect was localised to the assertion rather than the
    product. Fixed by porting the shipped spec's `captionText()` normaliser
    (`user-message-delivery-puppeteer.mjs:133-137`), which maps both `'none'` and `'normal'`
@@ -175,13 +177,73 @@ file is `5b73abd5`, because the merge `1bf5a74c` brought in main-side edits to i
 control's identity is commit-scoped — compare it against the commit it was run on, not
 against today's tip.
 
+## Visual treatment: the inset/caption contract was replaced
+
+Upstream `086a75fb` (*fix(delivery): render received messages with the success frame
+treatment*) retired the bespoke visual this record originally described — an accent left
+inset plus a `"RECEIVED"` caption — and replaced it with the **shared success treatment**
+every other successful frame already uses. This is a shipped behaviour change made by
+someone else after this record was written; the present-tense descriptions above have been
+corrected to match it, and the paragraphs that describe measurements taken *before* it are
+left as measured, with the superseded test title called out where it appears.
+
+What ships now:
+
+- `frameDeliveryModifier()` emits ` kikx-frame--delivery-received kikx-frame--status-success`
+  for a received `UserMessage` (`src/client/components/frame-delivery-status.mjs`), so the
+  item reports `data-frame-status="success"` like any other successful frame.
+- The colour lives in `src/client/styles/frame-colors.css:133-140`, which recolours the
+  shared type/status/border/author tokens on
+  `.kikx-frame--UserMessage.kikx-frame--delivery-received`. The body and the header both
+  change; there is no edge accent and no `::after` caption rule anywhere.
+- `src/client/styles/app.css` now contains **zero** `delivery` references — the 25 deleted
+  lines were the inset and caption rules. Anything citing `app.css:697`/`:701` for the
+  caption is describing the retired visual (that region is now `.kikx-user-message__text`
+  and `.kikx-user-message__prompt`).
+- The stored word is unchanged: `content.delivery: 'received'`, never `success`, never
+  `content.status`. The client *renders* with the success vocabulary while *storing* on its
+  own axis — the separation this record exists to protect is intact.
+
+Re-measured on the shipping bytes (`495e161b`), quiet box:
+
+- Unit half, 5 delivery specs (`frame-delivery-status`, `user-message-delivery-dom`,
+  `user-message-delivery-wiring`, `user-message-delivery`, `user-message-delivery-route`):
+  `DELIV_UNIT_EXIT=0`, **31 / 31, 0 fail, 0 skipped** (`.gate/sync3/deliv-unit.{log,exit}`,
+  pre-state and spec md5s in `.gate/sync3/deliv-unit-pre.txt`).
+- Browser half, 3 delivery Puppeteer specs: `DELIV_BROWSER_EXIT=0`, **3 / 3, 0 fail**
+  (`.gate/sync3/deliv-browser.{log,exit}`), titles as emitted:
+  `a message typed into the real composer renders neutral, not received` (1 737 ms),
+  `a typed message flips from neutral to received in the browser when the agent is fed`
+  (2 166 ms), `Puppeteer renders received user messages with the shared success treatment`
+  (3 071 ms).
+- `:3001` serves the new bytes, not a stale process: `frame-delivery-status.mjs`
+  200 / 4 522 B / `50fd9d79`, `frame-colors.css` 200 / 15 960 B / `8382adfa`, `app.css`
+  200 / 87 083 B / `3299b297` — each equal to its disk md5.
+
+Two record defects this section closes. First, the table row and two prose blocks claimed
+the inset/caption visual as current, which stopped being true at `086a75fb`; a record that
+describes a retired visual as shipped is the same defect class as the falsified counts
+already corrected here. Second, the paragraph describing the transition spec claimed the
+accent transition "is waited out" so a mid-flight sample could not pass. The current spec
+has no settle wait and asserts colour by inequality, which a mid-flight sample *does*
+satisfy — so that reassurance was describing machinery that no longer exists. It is now
+stated as the bound it is rather than as a guarantee it is not.
+
+Lane size has also grown: the Puppeteer glob is **27** files at `495e161b` (27/27 call
+`fixture.close()`), not the 24 measured in the earlier verdicts below. Those counts are
+left as recorded — they were true of the lane as it stood then — but they no longer
+describe the lane's current size.
+
 ## Known limits (stated, not laundered)
 
 - **Browser rendering is now measured; end-to-end is NOT.** The earlier version of this
   record said the CSS had never been rendered in a browser. That is no longer true:
-  `user-message-delivery-puppeteer.mjs` asserts the computed inset, that it resolves to the
-  delivery token, the `::after` caption text, the announced label, and that the accent
-  settles back to `none` on revert — in real Chromium.
+  `user-message-delivery-puppeteer.mjs` asserts the shared success class, that the status
+  token resolves to the delivery token, that body **and** header backgrounds change, that
+  the announced label is present, that there is **no** caption, and that a revert clears
+  both the modifier and the success class — in real Chromium. (The inset/caption wording
+  this paragraph used before the shared-success treatment landed is superseded; see
+  "Visual treatment: the inset/caption contract was replaced" below.)
   It seeds frames and emits `frame.updated` directly, so it exercises the rendering and the
   live event path, not the composer.
 
@@ -233,15 +295,24 @@ against today's tip.
   reach `received`.
 
   What it asserts, on the DOM rather than on an exit code: the typed bubble renders
-  `data-delivery="neutral"` with no received modifier, `box-shadow: none`, no `::after`
-  caption, no bubble `data-delivery` and no `aria-label`; the same DOM node (`data-frame-id`
-  identical, `isConnected` true) then becomes `received` with the modifier applied, the
-  `"Received"` caption, `data-delivery="received"` and `aria-label="Received by the agent"`;
-  the settled inset equals a probe's resolved `var(--kikx-frame-delivery-color)` so a
-  hardcoded grey cannot pass; `providerRuns` equals exactly that frame id; and the stored frame
-  carries `received` plus a finite `deliveryAt`, so the picture agrees with the server state.
-  The accent transition is waited out - sampling on the class flip reads mid-flight
-  (`... / 0.084) 0.252px inset`) and is indistinguishable from a broken token.
+  `data-delivery="neutral"` with no received modifier, no success class, `data-frame-status`
+  absent, `box-shadow: none`, no `::after` caption, no bubble `data-delivery` and no
+  `aria-label`; the same DOM node (`data-frame-id` identical, `isConnected` true) then
+  becomes `received` with the modifier **and** `kikx-frame--status-success` applied,
+  `data-frame-status="success"`, `aria-label="Received by the agent"`, still no caption;
+  `--kikx-frame-status-color` equals the delivered `--kikx-frame-delivery-color` so a
+  hardcoded grey cannot pass; `providerRuns` equals exactly that frame id; and the stored
+  frame carries `received` plus a finite `deliveryAt`, so the picture agrees with the server
+  state.
+
+  Honest bound on the colour half: the body/header assertions are **inequalities**
+  (`after.background !== before.background`, same for the header) sampled after the spec
+  waits for `data-delivery` to become `received`. There is no explicit settle wait in the
+  current spec, and a mid-transition sample satisfies an inequality. The token assertion
+  (`statusColor === deliveryColor`) is a custom-property read, which CSS transitions do not
+  animate, so it is exact. What this cannot claim: that the colour has fully settled at
+  assertion time — only that it differs and that the token resolves. The earlier version of
+  this record described a settle wait; that machinery is gone with the inset.
 
   *What a composer spec can honestly prove, and does.*
   `spec/ui/puppeteer/composer-delivery-neutral-puppeteer.mjs` types into the real composer,
