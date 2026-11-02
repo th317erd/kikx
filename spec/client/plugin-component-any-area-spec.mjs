@@ -107,13 +107,13 @@ test('the kind vocabulary is a single module that both server and client import'
   // a tidier costume.
   let registrySource = await source('src/core/plugins/plugin-registry.mjs');
   let clientRegistrySource = await source('src/client/components/frame-component-registry.mjs');
-  let stateSource = await source('src/client/state/kikx-state.mjs');
+  let stateSource = await source('src/client/state/client-component-state.mjs');
   let topbarSource = await source('src/client/components/kikx-topbar.mjs');
 
   for (let [name, text] of [
     [ 'plugin-registry.mjs', registrySource ],
     [ 'frame-component-registry.mjs', clientRegistrySource ],
-    [ 'kikx-state.mjs', stateSource ],
+    [ 'client-component-state.mjs', stateSource ],
   ]) {
     assert.match(
       text,

@@ -1,0 +1,170 @@
+'use strict';
+
+// Pure frame-item helpers: identity, content descriptors, header status, and
+// search-highlight visibility. Kept separate so the custom-element controller
+// stays under the hard source cap.
+
+import { isCoordinationWakeFrame } from '../../shared/coordination-visibility.mjs';
+import { elements } from '../lib/aeor-ui.mjs';
+import { setIcon } from '../lib/icons.mjs';
+import { resolveFrameComponentDescriptor } from './frame-component-registry.mjs';
+import { sessionReferenceFromFrame } from './kikx-sub-session-frame.mjs';
+import { compactFrameHeader } from './tool-frame-summary.mjs';
+
+const { div, span } = elements;
+
+export const MINIMIZED_EXCEPTIONS = new Set([
+  'read-file',
+  'write-file',
+  'web-search',
+  'web-fetch',
+]);
+
+export function isToolFrame(frame) {
+  if (!frame?.type)
+    return false;
+  return frame.type === 'ToolCall'
+    || frame.type === 'ToolResult'
+    || /ToolFrame$/.test(frame.type);
+}
+
+// Browsers expose element.tagName in UPPERCASE and element.localName in
+// lowercase, while descriptors/specs use lowercase names. Normalize once so
+// the reuse checks cannot drift apart.
+export function normalizeTagName(name) {
+  return String(name ?? '').toLowerCase();
+}
+
+export function hasTagName(element, expected) {
+  if (!element)
+    return false;
+  return normalizeTagName(element.localName || element.tagName) === normalizeTagName(expected);
+}
+
+export function visibleSearchHighlightCount(root) {
+  let count = 0;
+  for (let mark of root?.querySelectorAll?.('mark.kikx-search-highlight') || []) {
+    // A summary is visible even when its parent <details> is closed. Any other
+    // mark inside a closed disclosure is hidden and must not suppress the
+    // "Match inside" explanation.
+    if (!mark.closest?.('summary') && mark.closest?.('details:not([open])'))
+      continue;
+    count++;
+  }
+  return count;
+}
+
+// The runtime replaces frame objects on every event, so object identity is not
+// a stable key. Type + id identifies the logical frame and decides whether the
+// item may be reconciled in place.
+export function frameKey(frame) {
+  if (!frame)
+    return null;
+  return `${frame.type ?? ''}\u0000${frame.id ?? ''}`;
+}
+
+export function streamText(frame) {
+  return frame.content?.text || frame.content?.delta || '';
+}
+
+export function thinkingText(frame) {
+  return frame.content?.text || '';
+}
+
+export function plainText(frame) {
+  return frame.content?.text || frame.contentText || '';
+}
+
+export function markdownText(frame) {
+  return frame.content?.text || frame.contentText || '';
+}
+
+export function typingAgentName(frame) {
+  return frame.content?.agentName || frame.authorDisplayName || frame.authorID || 'Agent';
+}
+
+export function typingThinkingText(frame) {
+  return frame.content?.thinkingText || frame.content?.text || '';
+}
+
+// Describes the content subtree so reconciliation can tell when it may be
+// reused (same kind + tag) versus replaced.
+export function frameContentDescriptor(frame, appState) {
+  if (sessionReferenceFromFrame(frame))
+    return { kind: 'sub-session', tagName: 'kikx-sub-session-frame' };
+
+  let descriptor = resolveFrameComponentDescriptor(frame, appState);
+  if (descriptor?.tagName)
+    return { kind: 'custom', tagName: descriptor.tagName };
+
+  if (frame.type === 'AgentMessageDelta')
+    return { kind: 'stream', tagName: null };
+
+  if (frame.type === 'AgentThinking')
+    return { kind: 'thinking', tagName: null };
+
+  // A coordination wake is persisted as a UserMessage but is not chat: it is the
+  // system telling one bot what to do. It gets its own card so a person can tell
+  // "the system woke this bot" apart from "a human said this".
+  if (isCoordinationWakeFrame(frame))
+    return { kind: 'coordination', tagName: 'kikx-coordination-frame' };
+
+  if (frame.type === 'UserMessage')
+    return { kind: 'user-message', tagName: 'kikx-user-message-frame' };
+
+  if (frame.type === 'AgentMessage' || frame.type === 'AgentProgress')
+    return { kind: frame.content?.status === 'streaming' ? 'stream' : 'markdown', tagName: null };
+
+  return { kind: 'text', tagName: null };
+}
+
+export function setTextIfChanged(node, next) {
+  let value = next ?? '';
+  if (node.textContent !== value)
+    node.textContent = value;
+}
+
+export function frameDebugClass(frame) {
+  return frame?.type ? `kikx-frame--${frame.type}` : '';
+}
+
+export function frameHeaderStatus(frame, compact) {
+  if (compact)
+    return compactFrameHeader(frame);
+
+  let isMessage = frame?.type === 'AgentMessage'
+    || frame?.type === 'AgentMessageDelta'
+    || frame?.type === 'AgentProgress'
+    || frame?.type === 'UserMessage';
+  if (!isMessage)
+    return null;
+
+  let moodWord = typeof frame?.content?.moodWord === 'string' ? frame.content.moodWord.trim() : '';
+  return { label: moodWord || 'Message', icon: 'chat' };
+}
+
+export function renderHeaderStatusLabel(label, data = {}) {
+  label.textContent = '';
+  if (data.code === true) {
+    let code = document.createElement('code');
+    code.textContent = data.label || '';
+    label.appendChild(code);
+    return;
+  }
+
+  label.textContent = data.label || '';
+}
+
+export function buildHeaderStatus(frame, compact) {
+  let data = frameHeaderStatus(frame, compact);
+  if (!data)
+    return null;
+
+  let label = span.class('kikx-frame__meta-status-label').build(document);
+  renderHeaderStatusLabel(label, data);
+  let icon = span.class('kikx-frame__compact-icon').build(document);
+  icon.setAttribute('aria-hidden', 'true');
+  setIcon(icon, data.icon, { ownerDocument: document });
+
+  return div.class('kikx-frame__meta-status')(label, icon).build(document);
+}

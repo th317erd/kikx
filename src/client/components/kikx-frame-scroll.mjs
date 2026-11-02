@@ -32,11 +32,21 @@ import {
 } from './kikx-frame-scroll-lock.mjs';
 import { createKikxPageContext } from './kikx-chat-scrollview.mjs';
 import { syncComposerDraft } from './composer-drafts.mjs';
+import { captureFormFocus, restoreFormFocus } from './frame-form-focus.mjs';
+import { captureViewSurfaceFocus, restoreViewSurfaceFocus, viewSurfaceHost } from './frame-view-focus.mjs';
+import {
+  isFrameListNearBottom,
+  isFrameListScrollable,
+  restoreFrameListScroll,
+  scrollFramesToBottom,
+  scrollFramesToBottomImmediate,
+} from './kikx-frame-scroll-bottom.mjs';
 
 export { ANCHOR_THRESHOLD };
 export { lockScrollToLatest, scrollToLatestMessageTop, toggleScrollLock } from './kikx-frame-scroll-lock.mjs';
 
 export const LOAD_OLDER_THRESHOLD = 150;
+export { isFrameListNearBottom, restoreFrameListScroll, scrollFramesToBottom, scrollFramesToBottomImmediate } from './kikx-frame-scroll-bottom.mjs';
 
 export function captureRenderSnapshot(app) {
   let frameList = app.querySelector('.kikx-frame-list');
@@ -250,80 +260,6 @@ export function afterRender(app, snapshot = {}) {
 // in the plugin's own render, not the shell's: the attribute travels with the
 // content the plugin recomputes, so the lookup after the rebuild finds what the
 // plugin rendered this time rather than a node that is no longer in the tree.
-function viewSurfaceHost(app) {
-  return app?.querySelector?.("[data-kikx-view-surface]") || null;
-}
-
-function captureViewSurfaceFocus(app) {
-  let active = document.activeElement;
-  if (!active || active === document.body)
-    return null;
-
-  let host = viewSurfaceHost(app);
-  if (!host || !host.contains(active))
-    return null;
-
-  let key = active.getAttribute?.("data-kikx-focus-key") || "";
-  if (!key)
-    return null;
-
-  let snapshot = { surfaceID: host.getAttribute("data-kikx-view-surface") || null, key };
-
-  // A caret exists only on controls that model selection. Reading it off anything
-  // else yields undefined, and restoring a caret onto a non-text control is a no-op
-  // at best, so the presence of the fields is recorded rather than assumed.
-  if (typeof active.selectionStart === "number") {
-    snapshot.selectionStart = active.selectionStart;
-    snapshot.selectionEnd = typeof active.selectionEnd === "number" ? active.selectionEnd : active.selectionStart;
-    snapshot.selectionDirection = active.selectionDirection || "none";
-  }
-
-  return snapshot;
-}
-
-function restoreViewSurfaceFocus(app, snapshot) {
-  if (!snapshot || !snapshot.key)
-    return false;
-
-  let host = viewSurfaceHost(app);
-  if (!host)
-    return false;
-
-  // The plugin replaced its surface on reload: restoring a key into a different view
-  // would put the caret somewhere the user never was.
-  if (snapshot.surfaceID && host.getAttribute("data-kikx-view-surface") !== snapshot.surfaceID)
-    return false;
-
-  // Attribute comparison, not a selector built from the key: the key is arbitrary
-  // plugin-authored text, and interpolating it into a selector would make the plugin
-  // able to choose what the shell queries -- including a throwing selector.
-  let target = null;
-  for (let candidate of host.querySelectorAll("[data-kikx-focus-key]")) {
-    if (candidate.getAttribute("data-kikx-focus-key") === snapshot.key) {
-      target = candidate;
-      break;
-    }
-  }
-  if (!target || typeof target.focus !== "function")
-    return false;
-
-  // preventScroll: the frame-list placement above already decided where the page
-  // sits; a browser scroll-into-view here would silently override it.
-  target.focus({ preventScroll: true });
-
-  if (typeof target.setSelectionRange === "function"
-    && Number.isInteger(snapshot.selectionStart)
-    && Number.isInteger(snapshot.selectionEnd)) {
-    let max = typeof target.value === "string" ? target.value.length : null;
-    let clamp = (index) => (max === null ? index : Math.min(index, max));
-    target.setSelectionRange(clamp(snapshot.selectionStart), clamp(snapshot.selectionEnd), snapshot.selectionDirection || "none");
-  }
-
-  return document.activeElement === target;
-}
-
-// Repaint the pinned thinking rack from the session's live frames. Cheap: it
-// only updates the per-agent panels, never the thread or the whole shell.
 export function syncThinkingRack(app) {
   let rack = app.querySelector('kikx-thinking-rack');
   if (!rack)
@@ -668,95 +604,6 @@ export function disconnectFrameListObserver(app) {
   }
 }
 
-function isFrameListScrollable(frameList) {
-  return Boolean(frameList && frameList.scrollHeight > frameList.clientHeight + 1);
-}
-
-export function isFrameListNearBottom(app, frameList = app.querySelector('.kikx-frame-list')) {
-  if (!frameList)
-    return true;
-
-  return frameList.scrollHeight - frameList.scrollTop - frameList.clientHeight <= ANCHOR_THRESHOLD;
-}
-
-export function scrollFramesToBottom(app) {
-  app._frameListAnchoredToBottom = true;
-  let frameList = app.querySelector('.kikx-frame-list');
-  if (!frameList)
-    return;
-
-  followFrameListToBottom(app, frameList);
-}
-
-// A bottom-follow loop rather than a fixed-duration animation. Content can keep
-// growing (markdown streaming, tool cards expanding), so the target is
-// recomputed every frame and the viewport eases toward it instead of jumping.
-function followFrameListToBottom(app, frameList) {
-  cancelFrameListScrollAnimation(app);
-  let token = Symbol('frame-bottom-follow');
-  let lastTimestamp = null;
-  app._frameListScrollAnimation = token;
-  app._ignoreFrameScrollUntil = Date.now() + 220;
-
-  let step = (timestamp) => {
-    if (app._frameListScrollAnimation !== token)
-      return;
-
-    let now = Number.isFinite(timestamp)
-      ? timestamp
-      : (globalThis.performance?.now?.() ?? Date.now());
-    let elapsed = lastTimestamp == null ? 16 : Math.min(48, Math.max(1, now - lastTimestamp));
-    lastTimestamp = now;
-
-    let target = Math.max(0, frameList.scrollHeight - frameList.clientHeight);
-    let current = frameList.scrollTop;
-    let distance = target - current;
-    if (Math.abs(distance) <= 0.5) {
-      frameList.scrollTop = target;
-      app._frameListScrollAnimation = null;
-      updateMessageHash(app, lastFrameID(frameList), { atBottom: true });
-      captureScrollFocus(app, frameList, { bottom: true });
-      return;
-    }
-
-    // Time-based exponential easing: independent of frame rate, and still
-    // stable when a ResizeObserver restarts the follow loop mid-flight.
-    let factor = 1 - Math.exp(-elapsed / 95);
-    let delta = distance * factor;
-    if (Math.abs(delta) < 0.5)
-      delta = Math.sign(distance) * 0.5;
-    frameList.scrollTop = current + delta;
-    app._ignoreFrameScrollUntil = Date.now() + 220;
-    scheduleAnimationFrame(step);
-  };
-
-  scheduleAnimationFrame(step);
-}
-
-export function scrollFramesToBottomImmediate(app, frameList = app.querySelector('.kikx-frame-list')) {
-  if (!frameList)
-    return;
-
-  cancelFrameListScrollAnimation(app);
-  app._ignoreFrameScrollUntil = Date.now() + 200;
-  frameList.scrollTop = Math.max(0, frameList.scrollHeight - frameList.clientHeight);
-  updateMessageHash(app, lastFrameID(frameList), { atBottom: true });
-  captureScrollFocus(app, frameList, { bottom: true });
-}
-
-export function restoreFrameListScroll(app, snapshot = {}) {
-  let frameList = app.querySelector('.kikx-frame-list');
-  if (!frameList)
-    return;
-
-  app._ignoreFrameScrollUntil = Date.now() + 200;
-  if (restoreFrameListAnchor(frameList, snapshot.frameListAnchor))
-    return;
-
-  let maxScrollTop = Math.max(0, frameList.scrollHeight - frameList.clientHeight);
-  frameList.scrollTop = Math.min(Math.max(0, snapshot.frameListScrollTop || 0), maxScrollTop);
-}
-
 export function onFrameContentResize(app) {
   let frameList = app.querySelector('.kikx-frame-list');
   if (!frameList)
@@ -920,131 +767,4 @@ export function maybeLoadNewerFrames(app, frameList = app.querySelector('.kikx-f
     return;
 
   app._loadNewerFrames?.(sessionID);
-}
-
-
-function captureFormFocus(app) {
-  let active = globalThis.document?.activeElement;
-  if (!active || active === globalThis.document?.body)
-    return null;
-  if (!isFormControl(active))
-    return null;
-  if (active.matches?.('textarea[name="message"], .kikx-session-search__input'))
-    return null;
-
-  let name = active.getAttribute?.('name') || '';
-  let id = active.getAttribute?.('id') || '';
-  let type = active.getAttribute?.('type') || '';
-  let selector = active.localName || active.tagName?.toLowerCase?.() || 'input';
-  let candidates = matchingFormControls(app, { tag: selector, name, id, type });
-  let index = Math.max(0, candidates.indexOf(active));
-  return {
-    tag: selector,
-    name,
-    id,
-    type,
-    index,
-    value: typeof active.value === 'string' ? active.value : undefined,
-    checked: typeof active.checked === 'boolean' ? active.checked : undefined,
-    selectionStart: supportsSelection(active) ? active.selectionStart : null,
-    selectionEnd: supportsSelection(active) ? active.selectionEnd : null,
-    selectionDirection: supportsSelection(active) ? active.selectionDirection : 'none',
-  };
-}
-
-function restoreFormFocus(app, snapshot) {
-  if (!snapshot || typeof app?.querySelectorAll !== 'function')
-    return false;
-
-  let candidates = matchingFormControls(app, snapshot);
-  if (candidates.length === 0 && globalThis.document?.querySelectorAll)
-    candidates = matchingFormControls(globalThis.document, snapshot);
-  let control = candidates[Math.min(snapshot.index || 0, Math.max(0, candidates.length - 1))];
-  if (!control)
-    return false;
-
-  if (snapshot.value !== undefined && typeof control.value === 'string' && control.value !== snapshot.value) {
-    try {
-      control.value = snapshot.value;
-    } catch (_error) {}
-  }
-  if (snapshot.checked !== undefined && typeof control.checked === 'boolean')
-    control.checked = snapshot.checked;
-
-  // Modal components focus their first control in a requestAnimationFrame
-  // during connect. Restore this field after that frame so a rebuilt account or
-  // agent editor does not steal focus back to its close button.
-  let focus = () => {
-    if (!control.isConnected)
-      return;
-    let active = globalThis.document?.activeElement;
-    let modal = control.closest?.('aeor-modal');
-    // Do not steal focus from a control the user clicked after the render. A
-    // modal's own close-button autofocus is inside the same modal, so the
-    // captured field can still reclaim it.
-    if (active && active !== globalThis.document?.body && active !== control && !modal?.contains?.(active))
-      return;
-    control.focus?.({ preventScroll: true });
-    if (supportsSelection(control)
-      && Number.isInteger(snapshot.selectionStart)
-      && Number.isInteger(snapshot.selectionEnd)) {
-      try {
-        let max = control.value.length;
-        control.setSelectionRange(
-          Math.min(snapshot.selectionStart, max),
-          Math.min(snapshot.selectionEnd, max),
-          snapshot.selectionDirection || 'none',
-        );
-      } catch (_error) {}
-    }
-  };
-  if (typeof globalThis.setTimeout === 'function') {
-    // A rebuilt modal runs its own first-focus callback in requestAnimationFrame.
-    // Restore after that callback; a short timer is more reliable than racing
-    // modal lifecycle scheduling and does not steal focus after the next click.
-    globalThis.setTimeout(focus, 40);
-  } else {
-    queueMicrotask(focus);
-  }
-  return true;
-}
-
-function matchingFormControls(app, snapshot) {
-  let tag = snapshot.tag || 'input';
-  let selector = tag;
-  if (snapshot.id)
-    selector += `#${escapeSelector(snapshot.id)}`;
-  else if (snapshot.name)
-    selector += `[name="${escapeSelectorValue(snapshot.name)}"]`;
-
-  try {
-    return [ ...app.querySelectorAll(selector) ].filter((control) => (
-      control.isConnected
-      && (control.getClientRects?.().length ?? 1) > 0
-      && control.localName === tag
-      && (!snapshot.name || control.getAttribute('name') === snapshot.name)
-      && (!snapshot.type || control.getAttribute('type') === snapshot.type)
-    ));
-  } catch (_error) {
-    return [];
-  }
-}
-
-function isFormControl(element) {
-  return element?.matches?.('input, textarea, select');
-}
-
-function supportsSelection(element) {
-  return typeof element?.setSelectionRange === 'function'
-    && typeof element?.selectionStart === 'number';
-}
-
-function escapeSelector(value) {
-  return globalThis.CSS?.escape
-    ? globalThis.CSS.escape(String(value))
-    : String(value).replace(/["\\]/g, '\\$&');
-}
-
-function escapeSelectorValue(value) {
-  return String(value).replace(/["\\]/g, '\\$&');
 }

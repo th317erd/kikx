@@ -30,164 +30,36 @@ import { countRebuild } from './render-stats.mjs';
 import { isFrameExpanded, isFrameRevealed, revealFrame, setFrameExpanded, setFrameRevealed } from '../state/frame-expansion.mjs';
 import './kikx-typing-indicator.mjs';
 import './kikx-sub-session-frame.mjs';
+import {
+  MINIMIZED_EXCEPTIONS,
+  buildHeaderStatus,
+  frameContentDescriptor,
+  frameDebugClass,
+  frameHeaderStatus,
+  frameKey,
+  hasTagName,
+  isToolFrame,
+  markdownText,
+  normalizeTagName,
+  plainText,
+  renderHeaderStatusLabel,
+  setTextIfChanged,
+  streamText,
+  thinkingText,
+  typingAgentName,
+  typingThinkingText,
+} from './kikx-frame-item-helpers.mjs';
+import {
+  bindFrameSearchObserver,
+  frameSearchQuery,
+  frameSearchRoot,
+  highlightFrameSearch,
+  onFrameContentToggle,
+  onFrameSearchMutation,
+  syncFrameSearchHint,
+} from './frame-item-search.mjs';
 
 const { div, p, span, strong, time } = elements;
-
-const MINIMIZED_EXCEPTIONS = new Set([
-  'read-file',
-  'write-file',
-  'web-search',
-  'web-fetch',
-]);
-
-function isToolFrame(frame) {
-  if (!frame?.type)
-    return false;
-  return frame.type === 'ToolCall'
-    || frame.type === 'ToolResult'
-    || /ToolFrame$/.test(frame.type);
-}
-
-// Browsers expose element.tagName in UPPERCASE and element.localName in
-// lowercase, while descriptors/specs use lowercase names. Normalize once so
-// the reuse checks cannot drift apart.
-function normalizeTagName(name) {
-  return String(name ?? '').toLowerCase();
-}
-
-function hasTagName(element, expected) {
-  if (!element)
-    return false;
-  return normalizeTagName(element.localName || element.tagName) === normalizeTagName(expected);
-}
-
-function visibleSearchHighlightCount(root) {
-  let count = 0;
-  for (let mark of root?.querySelectorAll?.('mark.kikx-search-highlight') || []) {
-    // A summary is visible even when its parent <details> is closed. Any other
-    // mark inside a closed disclosure is hidden and must not suppress the
-    // "Match inside" explanation.
-    if (!mark.closest?.('summary') && mark.closest?.('details:not([open])'))
-      continue;
-    count++;
-  }
-  return count;
-}
-
-// The runtime replaces frame objects on every event, so object identity is not
-// a stable key. Type + id identifies the logical frame and decides whether the
-// item may be reconciled in place.
-function frameKey(frame) {
-  if (!frame)
-    return null;
-  return `${frame.type ?? ''}\u0000${frame.id ?? ''}`;
-}
-
-function streamText(frame) {
-  return frame.content?.text || frame.content?.delta || '';
-}
-
-function thinkingText(frame) {
-  return frame.content?.text || '';
-}
-
-function plainText(frame) {
-  return frame.content?.text || frame.contentText || '';
-}
-
-function markdownText(frame) {
-  return frame.content?.text || frame.contentText || '';
-}
-
-function typingAgentName(frame) {
-  return frame.content?.agentName || frame.authorDisplayName || frame.authorID || 'Agent';
-}
-
-function typingThinkingText(frame) {
-  return frame.content?.thinkingText || frame.content?.text || '';
-}
-
-// Describes the content subtree so reconciliation can tell when it may be
-// reused (same kind + tag) versus replaced.
-function frameContentDescriptor(frame, appState) {
-  if (sessionReferenceFromFrame(frame))
-    return { kind: 'sub-session', tagName: 'kikx-sub-session-frame' };
-
-  let descriptor = resolveFrameComponentDescriptor(frame, appState);
-  if (descriptor?.tagName)
-    return { kind: 'custom', tagName: descriptor.tagName };
-
-  if (frame.type === 'AgentMessageDelta')
-    return { kind: 'stream', tagName: null };
-
-  if (frame.type === 'AgentThinking')
-    return { kind: 'thinking', tagName: null };
-
-  // A coordination wake is persisted as a UserMessage but is not chat: it is the
-  // system telling one bot what to do. It gets its own card so a person can tell
-  // "the system woke this bot" apart from "a human said this".
-  if (isCoordinationWakeFrame(frame))
-    return { kind: 'coordination', tagName: 'kikx-coordination-frame' };
-
-  if (frame.type === 'UserMessage')
-    return { kind: 'user-message', tagName: 'kikx-user-message-frame' };
-
-  if (frame.type === 'AgentMessage' || frame.type === 'AgentProgress')
-    return { kind: frame.content?.status === 'streaming' ? 'stream' : 'markdown', tagName: null };
-
-  return { kind: 'text', tagName: null };
-}
-
-function setTextIfChanged(node, next) {
-  let value = next ?? '';
-  if (node.textContent !== value)
-    node.textContent = value;
-}
-
-function frameDebugClass(frame) {
-  return frame?.type ? `kikx-frame--${frame.type}` : '';
-}
-
-function frameHeaderStatus(frame, compact) {
-  if (compact)
-    return compactFrameHeader(frame);
-
-  let isMessage = frame?.type === 'AgentMessage'
-    || frame?.type === 'AgentMessageDelta'
-    || frame?.type === 'AgentProgress'
-    || frame?.type === 'UserMessage';
-  if (!isMessage)
-    return null;
-
-  let moodWord = typeof frame?.content?.moodWord === 'string' ? frame.content.moodWord.trim() : '';
-  return { label: moodWord || 'Message', icon: 'chat' };
-}
-
-function renderHeaderStatusLabel(label, data = {}) {
-  label.textContent = '';
-  if (data.code === true) {
-    let code = document.createElement('code');
-    code.textContent = data.label || '';
-    label.appendChild(code);
-    return;
-  }
-
-  label.textContent = data.label || '';
-}
-
-function buildHeaderStatus(frame, compact) {
-  let data = frameHeaderStatus(frame, compact);
-  if (!data)
-    return null;
-
-  let label = span.class('kikx-frame__meta-status-label').build(document);
-  renderHeaderStatusLabel(label, data);
-  let icon = span.class('kikx-frame__compact-icon').build(document);
-  icon.setAttribute('aria-hidden', 'true');
-  setIcon(icon, data.icon, { ownerDocument: document });
-
-  return div.class('kikx-frame__meta-status')(label, icon).build(document);
-}
 
 export class KikxFrameItem extends HTMLElement {
   constructor() {
@@ -574,16 +446,7 @@ export class KikxFrameItem extends HTMLElement {
   }
 
   _onContentToggle(event) {
-    if (!event.target?.open || !this._searchQuery())
-      return;
-    // A nested Arguments/Output disclosure builds its body in its own toggle
-    // listener. Re-run the highlight after that listener has populated it.
-    queueMicrotask(() => {
-      if (!this.isConnected)
-        return;
-      this._highlightSearch();
-      this._bindSearchObserver();
-    });
+    return onFrameContentToggle(this, event);
   }
 
   _minimizeFrame() {
@@ -773,95 +636,27 @@ export class KikxFrameItem extends HTMLElement {
   }
 
   _searchQuery() {
-    return String(this._appState?.sessionSearch || '');
+    return frameSearchQuery(this);
   }
 
   _searchRoot() {
-    return this._compact ? this._compactView?.element : this._contentElement;
+    return frameSearchRoot(this);
   }
 
   _highlightSearch(root = this._searchRoot()) {
-    if (!root)
-      return 0;
-
-    let query = this._searchQuery();
-    if (query === '') {
-      this._searchObserver?.disconnect();
-      this._searchObserver = null;
-      this._searchObserverRoot = null;
-    }
-    this._searchHighlighting = true;
-    let count = 0;
-    try {
-      count = highlightSearchMatches(root, query);
-      this._syncSearchHint(visibleSearchHighlightCount(root));
-    } finally {
-      this._searchHighlighting = false;
-    }
-    return count;
+    return highlightFrameSearch(this, root);
   }
 
   _syncSearchHint(visibleCount = 0) {
-    let summary = this._compactView?.summary;
-    if (!summary)
-      return;
-
-    let query = this._searchQuery();
-    let hint = summary.querySelector?.('.kikx-search-match-hint') || null;
-    let hiddenMatch = query !== '' && visibleCount === 0 && frameMatchesQuery(this._frame, query);
-    if (!hiddenMatch) {
-      hint?.remove();
-      summary.classList.remove('has-search-match-hint');
-      return;
-    }
-
-    if (!hint) {
-      hint = document.createElement('span');
-      hint.className = 'kikx-search-match-hint';
-      hint.title = 'The search match is inside this frame';
-      summary.appendChild(hint);
-    }
-    summary.classList.add('has-search-match-hint');
-    hint.textContent = this._compactView.element.open ? 'Match' : 'Match inside';
+    return syncFrameSearchHint(this, visibleCount);
   }
 
   _bindSearchObserver() {
-    let root = this._searchRoot();
-    if (!root)
-      return;
-    if (this._searchObserver && this._searchObserverRoot === root)
-      return;
-
-    this._searchObserver?.disconnect();
-    this._searchObserver = null;
-    this._searchObserverRoot = null;
-    if (!this._searchQuery() || typeof MutationObserver === 'undefined')
-      return;
-
-    this._searchObserverRoot = root;
-    this._searchObserver = new MutationObserver(() => this._onSearchMutation());
-    this._searchObserver.observe(root, { childList: true, subtree: true, characterData: true });
+    return bindFrameSearchObserver(this);
   }
 
   _onSearchMutation() {
-    if (this._searchHighlighting || this._searchHighlightScheduled || !this._searchQuery())
-      return;
-
-    this._searchHighlightScheduled = true;
-    queueMicrotask(() => {
-      this._searchHighlightScheduled = false;
-      if (!this.isConnected || !this._searchQuery())
-        return;
-      let root = this._searchRoot();
-      if (!root)
-        return;
-      // Highlighting itself mutates the subtree. Disconnect the observer for
-      // that write so its own marks cannot schedule an endless pass.
-      this._searchObserver?.disconnect();
-      this._highlightSearch(root);
-      if (this._searchObserver && this._searchObserverRoot === root)
-        this._searchObserver.observe(root, { childList: true, subtree: true, characterData: true });
-    });
+    return onFrameSearchMutation(this);
   }
 
   _discardContentElement() {
