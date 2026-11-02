@@ -62,7 +62,8 @@ Production (6):
 - `src/core/runtime/frame-runtime-prompts.mjs` — `markFrameDelivered()` (uncommitted from the
   earlier interrupted attempt; verified working by spec, not assumed)
 - `src/core/agents/agent-route-frame-plugin.mjs` — the hook
-- `src/client/components/frame-delivery-status.mjs` — **new**, 81 lines
+- `src/client/components/frame-delivery-status.mjs` — **new**, 81 lines at landing, 101 now
+  (the success-treatment change in `086a75fb` added the status modifier)
 - `src/client/components/kikx-frame-item.mjs` — `applyFrameDelivery(this, frame)`
 - `src/client/components/kikx-user-message-frame.mjs` — `_updateDelivery()` (aria/title)
 - `src/client/styles/app.css`, `src/client/styles/frame-colors.css` — modifier + token
@@ -78,8 +79,9 @@ Specs (5, all new):
 Specs (2, new — the V7 seam, added after the review that found V7 unproven):
 - `spec/server/user-message-delivery-route-spec.mjs` (2 tests) — real HTTP POST through
   `createServer` against the real runtime and store. Deliberately a sibling file rather than
-  an extension of `spec/server/create-server-spec.mjs`: that file is already 2218 lines
-  against an 800-line hard guideline, and the unit lane glob `spec/**/*-spec.mjs`
+  an extension of `spec/server/create-server-spec.mjs`: that file is 2218 lines against the
+  800-line hard cap (which `spec/architecture/source-file-size-spec.mjs` enforces over `src/`
+  only, so specs like this one are not scanned), and the unit lane glob `spec/**/*-spec.mjs`
   (`scripts/test-lanes.mjs:14`) picks a sibling up with no registration step. Inclusion was
   verified rather than assumed: the full unit-lane run
   (`.gate/route/unitlane.exit` `UNITLANE_EXIT=0`, 3188 tests / 3158 pass / 0 fail / 30
@@ -92,8 +94,8 @@ Specs (2, new — the V7 seam, added after the review that found V7 unproven):
   asserted on the DOM. Builds the production stack (in-memory AeorDB under the real
   `FrameStore`) and hands it to the fixture, which is why it can reach a state the default
   stagehand fixture cannot. Registered with no registration step, like every sibling: the
-  Puppeteer glob (`scripts/test-lanes.mjs:42`) is now **24** files and all 24 call
-  `fixture.close()`.
+  Puppeteer glob (`scripts/test-lanes.mjs:42`) was **24** files when this was measured and is
+  **28** at `e329297f`, all calling `fixture.close()`.
 
 ## Results (exit codes captured to files, never read through a pipe)
 
@@ -196,10 +198,13 @@ What ships now:
   shared type/status/border/author tokens on
   `.kikx-frame--UserMessage.kikx-frame--delivery-received`. The body and the header both
   change; there is no edge accent and no `::after` caption rule anywhere.
-- `src/client/styles/app.css` now contains **zero** `delivery` references — the 25 deleted
-  lines were the inset and caption rules. Anything citing `app.css:697`/`:701` for the
+- `src/client/styles/app.css` contains **zero** `delivery` references — the 25 deleted
+  lines were the inset and caption rules, and since `8be6c75d` it is a pure `@import` entry,
+  so the whole sheet is checked by the `stylesheet-links-spec` gate (15 / 15 green) rather
+  than by reading one file. Anything citing `app.css:697`/`:701` for the
   caption is describing the retired visual (that region is now `.kikx-user-message__text`
-  and `.kikx-user-message__prompt`).
+  and `.kikx-user-message__prompt`, which `8be6c75d` moved into
+  `src/client/styles/app-composer.css:242`/`:246`).
 - The stored word is unchanged: `content.delivery: 'received'`, never `success`, never
   `content.status`. The client *renders* with the success vocabulary while *storing* on its
   own axis — the separation this record exists to protect is intact.
@@ -217,8 +222,11 @@ Re-measured on the shipping bytes (`495e161b`), quiet box:
   (2 166 ms), `Puppeteer renders received user messages with the shared success treatment`
   (3 071 ms).
 - `:3001` serves the new bytes, not a stale process: `frame-delivery-status.mjs`
-  200 / 4 522 B / `50fd9d79`, `frame-colors.css` 200 / 15 960 B / `8382adfa`, `app.css`
-  200 / 87 083 B / `3299b297` — each equal to its disk md5.
+  200 / 4 522 B / `50fd9d79`, `frame-colors.css` 200 / 15 960 B / `8382adfa` — each equal
+  to its disk md5. `app.css` was 200 / 87 083 B / `3299b297` when this was measured;
+  `8be6c75d` has since split it into a 15-line `@import` entry (601 B / `5b76a13e`) over ten
+  part-files, so that figure is now historical. Re-measured after the split, still equal to
+  disk: `app.css` 200 / 601 B / `5b76a13e`, `app-composer.css` 200 / 10 467 B / `2467be61`.
 
 Two record defects this section closes. First, the table row and two prose blocks claimed
 the inset/caption visual as current, which stopped being true at `086a75fb`; a record that
@@ -229,10 +237,10 @@ has no settle wait and asserts colour by inequality, which a mid-flight sample *
 satisfy — so that reassurance was describing machinery that no longer exists. It is now
 stated as the bound it is rather than as a guarantee it is not.
 
-Lane size has also grown: the Puppeteer glob is **27** files at `495e161b` (27/27 call
-`fixture.close()`), not the 24 measured in the earlier verdicts below. Those counts are
-left as recorded — they were true of the lane as it stood then — but they no longer
-describe the lane's current size.
+Lane size has also grown twice since: the Puppeteer glob was **27** files at `495e161b` and
+is **28** files at `e329297f` (28/28 call `fixture.close()`), not the 24 measured in the
+earlier verdicts below. Those counts are left as recorded — they were true of the lane as it
+stood then — but they no longer describe the lane's current size.
 
 ## Known limits (stated, not laundered)
 
@@ -361,9 +369,9 @@ consistent with a load-sensitive race rather than a spec that only passes alone.
 still contains reds, so the spec stays recorded as intermittent and out of scope. The quiet
 green is one sample, not a fixed flake.
 
-Lane size note: the Puppeteer glob is now **24** files, not 22 — the composer spec and the
-V7 transition spec below joined it. All 24 are collected with no registration step
-(`scripts/test-lanes.mjs:42`).
+Lane size note: the Puppeteer glob was **24** files at the time of these verdicts, not 22 —
+the composer spec and the V7 transition spec below had joined it. All 24 were collected with
+no registration step (`scripts/test-lanes.mjs:42`). It is **28** at `e329297f`.
 
 How the 24-file verdict binds to the shipped bytes: two measurements, each hash-bound.
 
@@ -404,10 +412,14 @@ not on that stale number.
 
 Corollary worth keeping: a single lane run cannot certify a green for a suite that contains
 a known race. One green after one red is evidence of intermittency, not of a clean suite.
-- **`kikx-frame-item.mjs` is 822 lines**, over the 800 hard guideline before this change
-  (816 at baseline; the feature commit is +6, measured with `git show --numstat`). Splitting
-  it is a separate, unauthorized refactor. No gate enforces the line cap — `spec/architecture/`
-  and `spec/scripts/` contain no such check — so this is recorded debt, not a failing gate.
+- **`kikx-frame-item.mjs` was 822 lines** at the time of this feature, over the 800 hard
+  guideline (816 at baseline; the feature commit is +6, measured with `git show --numstat`).
+  It is **764 lines now**: `d497ce06` split it, which closes the debt this record carried.
+  The line cap **is** gated as of `425a3700` — `spec/architecture/source-file-size-spec.mjs`,
+  `HARD_CAP = 800`, currently 1 / 1 green. That gate scans `src/` JavaScript and CSS only, so
+  `spec/` files such as the 2218-line `spec/server/create-server-spec.mjs` are not covered by
+  it. The earlier wording here ("no gate enforces the line cap") was true when written and is
+  no longer true.
 - Retry ladder: marking is idempotent (asserted — second call writes no new commit), so a
   retry cannot produce a second `frame.updated`. Not tested against a real retrying
   provider.
