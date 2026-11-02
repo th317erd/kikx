@@ -159,15 +159,27 @@ function declaredFrameHeaderStatus(frame, state) {
 }
 
 export function frameHeaderStatus(frame, compact, state = {}) {
-  if (compact)
-    return compactFrameHeader(frame);
-
-  // Built-ins first: a plugin must not be able to relabel the owner's own turn
-  // or an agent's reply, because the mood word there is different information.
+  // Built-ins first, in BOTH modes: a plugin must not be able to relabel the
+  // owner's own turn or an agent's reply, because the mood word there is
+  // different information. This check has to run before the descriptor lookup in
+  // the compact path too -- hoisting the lookup above it was a real regression,
+  // caught by the negative-control spec rather than reasoned about.
   let isMessage = frame?.type === 'AgentMessage'
     || frame?.type === 'AgentMessageDelta'
     || frame?.type === 'AgentProgress'
     || frame?.type === 'UserMessage';
+
+  if (compact) {
+    // Compact mode has deliberately more specific wording for tool frames (a
+    // shell command's focus word, todo verbs, file names). A descriptor may only
+    // step in where that path would otherwise fall back to a raw type name --
+    // which is the exact failure the descriptor path exists to prevent, and it
+    // used to apply to compact mode as well.
+    if (isMessage || isToolFrame(frame))
+      return compactFrameHeader(frame);
+    return declaredFrameHeaderStatus(frame, state) ?? compactFrameHeader(frame);
+  }
+
   if (!isMessage)
     return declaredFrameHeaderStatus(frame, state);
 
