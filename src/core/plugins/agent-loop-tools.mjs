@@ -147,18 +147,48 @@ export function shouldExposeLoopTool(toolName, context = {}) {
   return true;
 }
 
+// A tool only reaches an agent if its name matches AGENT_TOOL_NAME_PATTERN.
+// Several plugins register namespaced tools ('discord:send',
+// 'puppeteer:render_page'), and the colon makes such a tool unexposable: it
+// installs, it registers, and then it is silently dropped from every agent's
+// toolset - so no agent can ever call it and nothing raises an error. The
+// registry keeps the registered name, because that name is also the execution
+// and authority key; only the name shown to the model is rewritten. ':' becomes
+// '__', the escaping the google plugin already uses to carry tool names through
+// a wire protocol that rejects colons.
+export const MODEL_TOOL_NAME_SEPARATOR = '__';
+
+export function toModelToolName(toolName) {
+  if (typeof toolName !== 'string')
+    return toolName;
+  return toolName.replace(/:/g, MODEL_TOOL_NAME_SEPARATOR);
+}
+
 export function createRegisteredToolDefinitions(context = {}) {
   let pluginRegistry = resolvePluginRegistry(context);
   if (!pluginRegistry?.getTools)
     return [];
 
   let definitions = [];
+  let seenNames = new Set();
   for (let [toolName, ToolClass] of pluginRegistry.getTools()) {
     if (!shouldExposeRegisteredTool(toolName, ToolClass, context))
       continue;
 
+    let exposedToolName = toModelToolName(toolName);
+    if (seenNames.has(exposedToolName)) {
+      // Two registered tools collapse onto one model-facing name. Exposing both
+      // would make the model's choice ambiguous and could dispatch the wrong
+      // tool, so refuse the later one loudly rather than guess.
+      context?.logger?.warn?.(
+        '[agent-tools] model-facing tool name collision: "' + toolName + '" '
+        + 'exposes as "' + exposedToolName + '", which is already taken; skipping it');
+      continue;
+    }
+    seenNames.add(exposedToolName);
+
     definitions.push({
-      name: toolName,
+      name: exposedToolName,
       description: ToolClass.description || ToolClass.displayName || toolName,
       help: ToolClass.help || ToolClass.description || '',
       parameters: withCrossSessionToolParameter(cloneJSON(ToolClass.inputSchema || {
@@ -220,7 +250,13 @@ export function createRegisteredToolHandlers(context = {}) {
       || !shouldExposeRegisteredTool(toolName, ToolClass, context))
       continue;
 
-    handlers[toolName] = async (input = {}) => {
+    // Keyed by the model-facing name so a provider's tool call resolves, while
+    // the closure keeps the registered name for execution and authority.
+    let exposedToolName = toModelToolName(toolName);
+    if (Object.prototype.hasOwnProperty.call(handlers, exposedToolName))
+      continue;
+
+    handlers[exposedToolName] = async (input = {}) => {
       return await toolExecutor.executeTool({
         toolName,
         ToolClass,
@@ -241,9 +277,13 @@ export function resolveToolExecutor(context = {}) {
 }
 
 export function shouldExposeRegisteredTool(toolName, ToolClass, context = {}) {
+  // The pattern gates the name the MODEL sees, not the registered name. A plugin may
+  // legitimately register 'discord:send'; toModelToolName() rewrites it to a legal
+  // wire name for exposure, so testing the raw registered name here would discard
+  // the tool before that rewrite could happen - the exact defect this guards.
   return typeof toolName === 'string'
     && toolName.trim() !== ''
-    && AGENT_TOOL_NAME_PATTERN.test(toolName)
+    && AGENT_TOOL_NAME_PATTERN.test(toModelToolName(toolName))
     && ToolClass?.exposeToAgents !== false
     && shouldExposeDelegationTool(toolName, context)
     && shouldExposeRoleTool(toolName, context);
