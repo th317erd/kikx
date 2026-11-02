@@ -23,6 +23,9 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { register } from 'node:module';
+
+register(new URL('./support/frame-item-loader.mjs', import.meta.url).href, import.meta.url);
 
 // The helpers module imports the client element library, which touches
 // HTMLElement at import time. These two stubs are enough; no DOM is required for
