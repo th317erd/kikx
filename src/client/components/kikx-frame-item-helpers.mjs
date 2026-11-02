@@ -128,16 +128,48 @@ export function frameDebugClass(frame) {
   return frame?.type ? `kikx-frame--${frame.type}` : '';
 }
 
-export function frameHeaderStatus(frame, compact) {
+// A plugin that registers a frame component may also declare how its frame type
+// should be labelled in the header: `{ label, icon }` on the descriptor that
+// registerFrameComponent() accepted. normalizeComponentDescriptor() spreads the
+// input, so those fields survive registration -- but nothing read them for
+// frames, even though the same fields are honoured for sidebar, settings-panel
+// and topbar surfaces. A transport plugin could therefore ship a working
+// renderer and still have its collapsed frame call itself by its raw type name
+// ("DiscordFrame") in a chip with no author and no body.
+function declaredFrameHeaderStatus(frame, state) {
+  let type = frame?.type;
+  if (typeof type !== 'string' || type === '')
+    return null;
+
+  let descriptor = state?.clientFrameComponentsByType?.[type];
+  if (!descriptor)
+    return null;
+
+  let label = typeof descriptor.label === 'string' ? descriptor.label.trim() : '';
+  if (label === '')
+    return null;
+
+  // Only the icon is allowed to be decorative. A missing label means the plugin
+  // did not declare one, and a guess would be worse than the type name.
+  let icon = typeof descriptor.icon === 'string' && descriptor.icon.trim() !== ''
+    ? descriptor.icon.trim()
+    : 'diamond';
+
+  return { label, icon };
+}
+
+export function frameHeaderStatus(frame, compact, state = {}) {
   if (compact)
     return compactFrameHeader(frame);
 
+  // Built-ins first: a plugin must not be able to relabel the owner's own turn
+  // or an agent's reply, because the mood word there is different information.
   let isMessage = frame?.type === 'AgentMessage'
     || frame?.type === 'AgentMessageDelta'
     || frame?.type === 'AgentProgress'
     || frame?.type === 'UserMessage';
   if (!isMessage)
-    return null;
+    return declaredFrameHeaderStatus(frame, state);
 
   let moodWord = typeof frame?.content?.moodWord === 'string' ? frame.content.moodWord.trim() : '';
   return { label: moodWord || 'Message', icon: 'chat' };
@@ -155,8 +187,8 @@ export function renderHeaderStatusLabel(label, data = {}) {
   label.textContent = data.label || '';
 }
 
-export function buildHeaderStatus(frame, compact) {
-  let data = frameHeaderStatus(frame, compact);
+export function buildHeaderStatus(frame, compact, state = {}) {
+  let data = frameHeaderStatus(frame, compact, state);
   if (!data)
     return null;
 

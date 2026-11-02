@@ -498,7 +498,7 @@ export class KikxFrameItem extends HTMLElement {
       setTextIfChanged(label, frameDisplayLabel(frame, this._appState));
 
     let status = this._metaElement.querySelector('.kikx-frame__meta-status');
-    let statusData = frameHeaderStatus(frame, this._compact);
+    let statusData = frameHeaderStatus(frame, this._compact, this._appState);
     if (status && statusData) {
       let statusLabel = status.querySelector('.kikx-frame__meta-status-label');
       if (statusLabel)
@@ -693,7 +693,7 @@ export class KikxFrameItem extends HTMLElement {
 
     return div.class('kikx-frame__meta')(
       main,
-      buildHeaderStatus(frame, compact),
+      buildHeaderStatus(frame, compact, this._appState),
     ).build(document);
   }
 
