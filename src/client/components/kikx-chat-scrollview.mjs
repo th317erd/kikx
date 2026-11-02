@@ -409,14 +409,31 @@ export class KikxChatScrollView {
       this.pageSource.totalPages = Math.ceil(total / this.pageSource.pageSize);
     }
     let insertedNew = false;
-    if (next.length > previous.length) {
-      for (let index = previous.length; index < next.length; index++) {
-        let frame = next[index];
-        if (frame?.id)
+    // Detect NEW tail frames by identity, not by length. The bounded state
+    // window trims its oldest frame and appends the newest one on every live
+    // update, so at the cap `next.length === previous.length` even though a new
+    // message just arrived. Length-only detection silently stopped appends.
+    let previousIDs = new Set(previous.map((frame) => frame?.id).filter(Boolean));
+    let previousLastID = previous.at(-1)?.id || null;
+    let previousLastIndex = previousLastID ? next.findIndex((frame) => frame?.id === previousLastID) : -1;
+    let tailStart = previousLastIndex >= 0
+      ? previousLastIndex + 1
+      : (next.length > previous.length ? previous.length : 0);
+    for (let index = tailStart; index < next.length; index++) {
+      let frame = next[index];
+      if (frame?.id && !previousIDs.has(frame.id))
+        this._pendingLiveFrames.set(frame.id, frame);
+    }
+    // If the previous tail id disappeared (a reorder or a full tail swap),
+    // queue every frame the previous window did not already know.
+    if (previousLastIndex < 0) {
+      for (let frame of next) {
+        if (frame?.id && !previousIDs.has(frame.id))
           this._pendingLiveFrames.set(frame.id, frame);
       }
-      insertedNew = this._flushPendingLiveFrames();
     }
+    if (this._pendingLiveFrames.size > 0)
+      insertedNew = this._flushPendingLiveFrames();
     this._updateMountedItems(next, appState, options);
     this.windowEnd = next.length;
     // Follow mode is a stronger contract than "preserve the old anchor": a
@@ -443,13 +460,21 @@ export class KikxChatScrollView {
       return false;
     let pageIndex = Math.max(0, (this.element.pages?.length || 1) - 1);
     let page = this.element.pages?.[pageIndex];
-    if (!page?.loaded)
+    if (!page?.loaded) {
+      // A live frame can arrive while the tail page is unloaded (after a filter
+      // re-scope, or during startup). Queue it and start the page load now;
+      // waiting for a scroll event would strand the message until the user
+      // happened to move the viewport.
+      this._pendingLiveFrames.set(frame.id, frame);
+      this.element.preloadPage(pageIndex);
       return false;
+    }
     let index = pageIndex * this.pageSize + (page.items?.length || 0);
     let added = this.element.appendItem({ key: frame.id, index, frame });
     if (added) {
       this.pageSource.totalRawFrames = Math.max(this.pageSource.totalRawFrames, index + 1);
       this.pageSource.totalPages = Math.max(this.pageSource.totalPages, pageIndex + 1);
+      this._pendingLiveFrames.delete(frame.id);
     }
     return added;
   }
@@ -474,9 +499,13 @@ export class KikxChatScrollView {
     let lastPage = Math.max(0, this.pageSource.totalPages - 1);
     let page = this.element.pages?.[lastPage];
     // Appending into an unloaded page would mark it loaded with only the live
-    // item and prevent its real page request. Wait for the page load instead.
-    if (!page?.loaded)
+    // item and prevent its real page request. Start the real load now; the
+    // page-loaded event will flush the queue. Without this, new frames wait
+    // for a user scroll that may never come while the viewport is at bottom.
+    if (!page?.loaded) {
+      this.element.preloadPage(lastPage);
       return false;
+    }
 
     let inserted = false;
     let index = lastPage * this.pageSize + page.items.length;
