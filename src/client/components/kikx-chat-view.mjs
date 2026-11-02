@@ -352,6 +352,10 @@ export class KikxChatView extends HTMLElement {
 
   // Return to the newest window after the user has finished reading older
   // frames. Returns true when the window changed.
+  pinToLatestAfterContext() {
+    return this._scrollview?.pinToLatestAfterContext?.() || false;
+  }
+
   showLatestFrames() {
     if (this._canUseShared() && this._scrollview)
       return this._scrollview.showLatestFrames();

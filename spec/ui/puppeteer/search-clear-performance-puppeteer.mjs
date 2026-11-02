@@ -49,47 +49,35 @@ test('Puppeteer clearing search does not re-render every previously loaded page'
     });
     assert.ok(searched.mountedItems < before.mountedItems, 'search did not reduce the mounted frame set');
 
-    let firstVisibleBeforeClear = await page.evaluate(() => {
-      let scrollview = document.querySelector('kikx-chat-view')._scrollview;
-      let viewport = scrollview.frameList.getBoundingClientRect();
-      return [ ...document.querySelectorAll('kikx-frame-item') ].find((node) => {
-        let rect = node.getBoundingClientRect();
-        return rect.bottom >= viewport.top && rect.top <= viewport.bottom;
-      })?.getAttribute('data-frame-id') || null;
-    });
-
-    await page.evaluate(() => {
-      let input = document.querySelector('.kikx-session-search input');
-      input.value = '';
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await page.click('.kikx-session-search__clear');
+    await new Promise((resolve) => setTimeout(resolve, 1600));
 
     let cleared = await page.evaluate(() => {
       let scrollview = document.querySelector('kikx-chat-view')._scrollview;
-      let viewport = scrollview.frameList.getBoundingClientRect();
-      let firstVisible = [ ...document.querySelectorAll('kikx-frame-item') ].find((node) => {
-        let rect = node.getBoundingClientRect();
-        return rect.bottom >= viewport.top && rect.top <= viewport.bottom;
-      })?.getAttribute('data-frame-id') || null;
+      let metrics = scrollview.element.metrics();
+      let input = document.querySelector('.kikx-session-search input');
+      let clear = document.querySelector('.kikx-session-search__clear');
       return {
         search: document.querySelector('kikx-app')?._state?.sessionSearch || '',
-        loadedPages: scrollview.element.metrics().loadedPages,
-        mountedItems: scrollview.element.metrics().mountedItems,
-        firstVisible,
+        inputValue: input?.value ?? null,
+        clearHidden: clear?.hidden === true,
+        loadedPages: metrics.loadedPages,
+        mountedItems: metrics.mountedItems,
+        nearBottom: metrics.maxScrollTop - metrics.scrollTop,
+        follow: scrollview.element.follow === true,
+        lastVisible: [ ...document.querySelectorAll('kikx-frame-item') ].at(-1)?.getAttribute('data-frame-id') || null,
       };
     });
 
     assert.equal(cleared.search, '', 'search state did not clear');
+    assert.equal(cleared.inputValue, '', 'clear button did not clear the search input');
+    assert.equal(cleared.clearHidden, true, 'clear button stayed visible after clearing');
     assert.ok(cleared.mountedItems >= 120, 'clearing search did not restore the visible page content');
     assert.ok(cleared.mountedItems < 1800, `clearing search mounted too many offscreen frames: ${cleared.mountedItems}`);
     assert.ok(cleared.loadedPages <= 6, `clearing search kept too many offscreen pages loaded: ${cleared.loadedPages}`);
-    assert.ok(cleared.firstVisible, 'clearing search left no visible frame');
-    if (firstVisibleBeforeClear && cleared.firstVisible) {
-      let beforeOrder = Number(firstVisibleBeforeClear.replace(/\D/g, ''));
-      let afterOrder = Number(cleared.firstVisible.replace(/\D/g, ''));
-      assert.ok(Math.abs(afterOrder - beforeOrder) <= 120, `clearing search moved the viewport from ${firstVisibleBeforeClear} to ${cleared.firstVisible}`);
-    }
+    assert.ok(cleared.follow, 'clearing search did not restore bottom follow');
+    assert.ok(cleared.nearBottom <= 2, `clearing search did not pin to the bottom: ${cleared.nearBottom}px away`);
+    assert.equal(cleared.lastVisible, 'f5000', 'clearing search did not land on the newest frame');
   } finally {
     await browser?.close();
     await fixture.close();

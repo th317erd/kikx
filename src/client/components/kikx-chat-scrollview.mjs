@@ -57,6 +57,7 @@ export class KikxChatScrollView {
     this._visiblePageAnchors = new Map();
     this._userPageAnchor = null;
     this._userPageAnchorTimer = null;
+    this._pinAfterContext = false;
   }
 
   get frameList() {
@@ -131,12 +132,16 @@ export class KikxChatScrollView {
   updatePageContext(pageContext) {
     if (!this.pageSource || !this.element || !pageContext)
       return false;
+    let pinBottom = this._pinAfterContext === true;
+    this._pinAfterContext = false;
     if (this.pageContext?.sessionID && pageContext.sessionID && this.pageContext.sessionID !== pageContext.sessionID)
       return false;
 
     let key = pageContext.key || '';
     if (key === this._pageSourceKey) {
       this.pageContext = pageContext;
+      if (pinBottom)
+        this.pinToEnd();
       return true;
     }
 
@@ -177,9 +182,28 @@ export class KikxChatScrollView {
       if (epoch !== this._pageContextEpoch || this._pageSourceKey !== key)
         return;
       this._promoteTailResponse();
-      if (!restoreFrameListAnchor(this.frameList, anchor))
+      if (pinBottom) {
+        this.pinToEnd();
+      } else if (!restoreFrameListAnchor(this.frameList, anchor)) {
         restoreFilterAnchor(this.frameList, filterAnchor);
+      }
     });
+    return true;
+  }
+
+  pinToLatestAfterContext() {
+    this._pinAfterContext = true;
+  }
+
+  pinToEnd() {
+    if (!this.element)
+      return false;
+    let last = Math.max(0, (this.pageSource?.totalPages || pageCount(this.frames, this.pageSize)) - 1);
+    this.windowStart = last * this.pageSize;
+    this.windowEnd = this.frames.length;
+    this._pendingAnchor = null;
+    this._pendingPage = last;
+    this.element.scrollToEnd({ follow: true, animate: false, immediate: true });
     return true;
   }
 

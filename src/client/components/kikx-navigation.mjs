@@ -359,7 +359,7 @@ export function toggleShowDeleted(app) {
 // The signature guard keeps an off/on round trip from doing nothing twice, and
 // stops a redundant refetch when a click cannot have changed anything (for
 // example Ctrl+Click on an already-isolated row).
-export function setFrameFilters(app, filters) {
+export function setFrameFilters(app, filters, options = {}) {
   let next = normalizeFrameFilters(filters);
   // The signature must include the query, and must be compared against the
   // last *applied* signature rather than against itself. Comparing
@@ -399,9 +399,9 @@ export function setFrameFilters(app, filters) {
   // immediately; the potentially expensive paged re-scope waits for the user
   // to settle on a filter set.
   if (paged)
-    scheduleWindowQuery(app, () => reloadVisibleWindow(app));
+    scheduleWindowQuery(app, () => reloadVisibleWindow(app, { pinBottom: options.pinBottom === true }));
   else
-    reloadVisibleWindow(app);
+    reloadVisibleWindow(app, { pinBottom: options.pinBottom === true });
 }
 
 // Typing produces one input event per keystroke, and each one that survives the
@@ -441,7 +441,7 @@ function scheduleWindowQuery(app, run) {
 // Shared by the popup's rows and the header search box, because both are the
 // same concern: the server does the filtering, so any change to what is visible
 // has to come back over the wire.
-function reloadVisibleWindow(app) {
+function reloadVisibleWindow(app, options = {}) {
   let sessionID = app._state.selectedSessionID;
   // A whole-session page source already holds the raw pages and runs the same
   // predicate as the server. Re-scoping it is synchronous and local; asking
@@ -455,6 +455,8 @@ function reloadVisibleWindow(app) {
     let restoreSearch = search && document.activeElement === search
       ? { start: search.selectionStart, end: search.selectionEnd, direction: search.selectionDirection }
       : null;
+    if (options.pinBottom === true)
+      view.pinToLatestAfterContext?.();
     app._syncFrameThread?.(sessionID, { force: true, preserveScroll: true });
     // Re-scoping a page source normally leaves the header untouched, but a
     // mounted shell may repaint around the thread. Do not let a query change
@@ -476,16 +478,14 @@ function reloadVisibleWindow(app) {
     // Keep the existing thread mounted while the filtered window is fetched.
     // A full _render() rebuilds the header search input and destroys its
     // selection, which is what stole the caret on every debounced query.
-    app._loadFrames(sessionID, { render: false }).then(
-      () => {
-        if (app._state.selectedSessionID === sessionID)
-          app._syncFrameThread?.(sessionID, { force: true, preserveScroll: true });
-      },
-      () => {
-        if (app._state.selectedSessionID === sessionID)
-          app._syncFrameThread?.(sessionID, { force: true, preserveScroll: true });
-      },
-    );
+    let finish = () => {
+      if (app._state.selectedSessionID !== sessionID)
+        return;
+      app._syncFrameThread?.(sessionID, { force: true, preserveScroll: true });
+      if (options.pinBottom === true)
+        app._scrollFramesToBottom?.();
+    };
+    app._loadFrames(sessionID, { render: false }).then(finish, finish);
     return;
   }
 
@@ -509,7 +509,16 @@ export function clearFrameFilters(app) {
   let next = allFilters(normalizeFrameFilters(app._state.frameFilters), true);
   next[DELETED_ROW.key] = false;
   app._state.sessionSearch = '';
-  setFrameFilters(app, next);
+  syncSessionSearchField(app, '');
+  paintSearchClear(app);
+  setFrameFilters(app, next, { pinBottom: true });
+}
+
+function syncSessionSearchField(app, value) {
+  for (let input of app.querySelectorAll?.('.kikx-session-search input') || []) {
+    if (input.value !== value)
+      input.value = value;
+  }
 }
 
 // The header search is one box with two meanings, decided by where the user is:
