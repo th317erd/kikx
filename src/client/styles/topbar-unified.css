@@ -431,3 +431,21 @@
   color: #c9e8fb;
   outline: none;
 }
+
+/* Plugin toolbar actions (kind 'toolbar-action').
+   A plugin-contributed control in the trailing cluster. It sits after the core
+   actions because it is an extension, and it inherits the bar's vertical rhythm
+   rather than inventing its own, so a plugin element looks like it belongs in
+   the header instead of bolted onto it. Empty by default: the element only has
+   whatever content the plugin's own module puts inside it. */
+.kikx-topbar__plugin-action {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(4px * 1.25);
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+}

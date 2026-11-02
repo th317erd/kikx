@@ -10,6 +10,11 @@ import {
   CORE_LOOP_CONTROL_ACTIONS,
   LOOP_CONTROL_TERMINALS,
 } from './agent-loop-state.mjs';
+import {
+  CLIENT_COMPONENT_KIND_NAMES,
+  clientComponentKindError,
+  isClientComponentKind,
+} from '../../shared/client-component-kinds.mjs';
 
 // The retention vocabulary for plugin-owned index declarations. See
 // registerFrameIndex for what each policy promises on unload. Exported so the
@@ -549,7 +554,15 @@ export class PluginRegistry extends ClassRegistry {
     return [ ...this._frameIndexes.values() ].map((index) => ({ ...index }));
   }
 
+  // Dispatch is split by WHAT the kind is keyed by, not by an enumeration of
+  // names: the three kinds with their own map get their own registrar, and every
+  // other kind is a client surface keyed by surface id. A new surface kind added
+  // to the shared vocabulary is therefore registrable with no edit here -- which
+  // is what "any area of the app, always" has to mean in practice.
   registerComponent(kind, key, descriptor = {}, options = {}) {
+    if (!isClientComponentKind(kind))
+      throw new TypeError(clientComponentKindError(kind));
+
     switch (kind) {
       case 'frame':
         return this.registerFrameComponent(key, descriptor, options);
@@ -557,14 +570,8 @@ export class PluginRegistry extends ClassRegistry {
         return this.registerToolComponent(key, descriptor, options);
       case 'agent-config-form':
         return this.registerAgentConfigForm(key, descriptor, options);
-      case 'main-app':
-      case 'view':
-      case 'sidebar-item':
-      case 'toolbar-action':
-      case 'settings-panel':
-        return this.registerClientSurface(kind, key, descriptor, options);
       default:
-        throw new TypeError(`Unknown client component kind: ${kind}`);
+        return this.registerClientSurface(kind, key, descriptor, options);
     }
   }
 
@@ -876,9 +883,13 @@ function isSubclassOf(candidate, BaseClass) {
 function normalizeComponentDescriptor(descriptor, defaults = {}) {
   let input = normalizeDescriptorInput(descriptor);
   let kind = normalizeRequiredString(input.kind || defaults.kind, 'component kind');
-  let surfaceKinds = new Set(['main-app', 'view', 'sidebar-item', 'toolbar-action', 'settings-panel']);
-  if (kind !== 'frame' && kind !== 'tool' && kind !== 'agent-config-form' && !surfaceKinds.has(kind))
-    throw new TypeError('Component kind must be frame, tool, agent-config-form, main-app, view, sidebar-item, toolbar-action or settings-panel');
+  // The kind vocabulary lives in ONE place (src/shared/client-component-kinds.mjs)
+  // and is imported by both this registry and the browser. It used to be a local
+  // allowlist here and two DIFFERENT hardcoded lists on the client, which is how
+  // 'toolbar-action' and 'settings-panel' came to be accepted-and-advertised here
+  // while being discarded on arrival. See that module for the full measurement.
+  if (!isClientComponentKind(kind))
+    throw new TypeError(clientComponentKindError(kind));
 
   let output = {
     ...input,

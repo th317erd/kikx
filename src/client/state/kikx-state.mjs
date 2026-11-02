@@ -7,6 +7,10 @@ import {
   syncViewNames,
   viewNamesFromComponents,
 } from './view-name-registry.mjs';
+import {
+  CLIENT_COMPONENT_KIND_NAMES,
+  clientComponentKeyField,
+} from '../../shared/client-component-kinds.mjs';
 import { pruneViewSurfaceElements } from './view-surface-elements.mjs';
 import {
   defaultConfigForProvider,
@@ -497,36 +501,98 @@ export function setAgentTagDefinitions(definitions, state = kikxState) {
   };
 }
 
+// Which kinds currently have somewhere in the shell to paint. This is a CLIENT
+// fact and cannot be derived from the kind vocabulary, so it is maintained here
+// deliberately -- and reported when a kind is missing rather than left implicit.
+//
+// Drift is detectable, not invisible: spec/client/plugin-component-any-area-spec.mjs
+// asserts that every kind named below is actually referenced by a consumer file,
+// so a kind claimed here after its consumer is deleted fails the suite instead of
+// making a dead surface look mounted.
+//
+// 'settings-panel' is NOT listed. The registry accepts it and the client now keeps
+// the descriptor, but there is no settings area to paint it into yet. Reporting it
+// is the honest state; silently discarding it, as the old if/else chain did, is not.
+export const CLIENT_COMPONENT_KINDS_WITH_MOUNT_POINTS = Object.freeze([
+  'frame',
+  'tool',
+  'agent-config-form',
+  'main-app',
+  'view',
+  'sidebar-item',
+  'toolbar-action',
+]);
+
+// The kinds a plugin contributed that have no mount point, so nothing paints them.
+// An empty array means every contribution is renderable. A non-empty one is a
+// missing feature -- visible and actionable -- instead of a component that
+// vanished between the server and the screen.
+export function listUnmountedComponentKinds(state = kikxState) {
+  let byKind = state?.clientComponentsByKind || {};
+  let mounted = new Set(CLIENT_COMPONENT_KINDS_WITH_MOUNT_POINTS);
+  return Object.keys(byKind)
+    .filter((kind) => Object.keys(byKind[kind] || {}).length > 0)
+    .filter((kind) => !mounted.has(kind))
+    .sort();
+}
+
 export function setClientComponents(components, state = kikxState) {
   let list = Array.isArray(components) ? components : [];
-  let frameComponents = {};
-  let toolComponents = {};
-  let agentConfigForms = {};
-  let viewSurfaces = {};
-  let sidebarItems = {};
 
+  // THE ONE STORE. Every descriptor the server advertised lands here, keyed by
+  // kind and then by that kind's own key field.
+  //
+  // This replaced an if/else-if chain that filed five kinds and had NO else
+  // branch: 'toolbar-action' and 'settings-panel' were accepted by the registry,
+  // advertised over /api/v1/client-components, and then discarded here without a
+  // log line. The chain is why the owner's "components for any area of the app,
+  // always" was not true, and a chain cannot be extended by a plugin -- only by
+  // editing core. A map keyed by kind can.
+  //
+  // A descriptor whose kind is unknown is REFUSED and reported, not filed:
+  // 'always' must not decay into 'anything'. It cannot normally happen, because
+  // the server refuses an unknown kind at registration.
+  let byKind = {};
+  let unknownKinds = [];
   for (let component of list) {
-    if (component?.kind === 'frame' && component.frameType)
-      frameComponents[component.frameType] = component;
-    else if (component?.kind === 'tool' && component.toolName)
-      toolComponents[component.toolName] = component;
-    else if (component?.kind === 'agent-config-form' && component.pluginID)
-      agentConfigForms[component.pluginID] = component;
-    else if (component?.kind === 'view' && component.surfaceID) {
-      // Campaign P4: a plugin view has to reach the shell. Before this branch the
-      // descriptor was dropped here, so the server advertised a surface the client
-      // discarded and the work-area dispatch could only ever be a core ternary.
-      //
-      // A core surface id is reserved: a plugin must not take over the Inbox (or
-      // Agents/Teams) by registering a colliding id, so it is refused rather than
-      // stored, and it stays out of the addressable name set too.
-      if (!isReservedViewSurfaceID(component.surfaceID))
-        viewSurfaces[component.surfaceID] = component;
+    let kind = component?.kind;
+    let keyField = clientComponentKeyField(kind);
+    if (!keyField) {
+      unknownKinds.push(String(kind));
+      continue;
     }
-    else if (component?.kind === 'sidebar-item' && component.surfaceID) {
-      sidebarItems[component.surfaceID] = component;
-    }
+    let key = component[keyField];
+    if (typeof key !== 'string' || key === '')
+      continue;
+    (byKind[kind] ||= {})[key] = component;
   }
+
+  // The five specific homes are kept as views DERIVED from byKind, so every
+  // existing consumer keeps working untouched. They are not a second store: a
+  // kind can never be present in one and missing from the other.
+  let frameComponents = byKind.frame || {};
+  let toolComponents = byKind.tool || {};
+  let agentConfigForms = byKind['agent-config-form'] || {};
+  let viewSurfaces = {};
+  let sidebarItems = byKind['sidebar-item'] || {};
+
+  for (let [ surfaceID, component ] of Object.entries(byKind.view || {})) {
+    // Campaign P4: a plugin view has to reach the shell. Before that fix the
+    // descriptor was dropped here, so the server advertised a surface the client
+    // discarded and the work-area dispatch could only ever be a core ternary.
+    //
+    // A core surface id is reserved: a plugin must not take over the Inbox (or
+    // Agents/Teams) by registering a colliding id, so it is refused as a ROUTE.
+    // It is still kept in byKind.view -- the navigable view table and the
+    // descriptor store answer different questions, and collapsing them is how a
+    // reserved-id collision would silently lose a plugin's component instead of
+    // merely its route.
+    if (!isReservedViewSurfaceID(surfaceID))
+      viewSurfaces[surfaceID] = component;
+  }
+
+  state.clientComponentsByKind = byKind;
+  state.clientComponentUnknownKinds = unknownKinds;
 
   state.clientFrameComponentsByType = frameComponents;
   state.clientToolComponentsByName = toolComponents;

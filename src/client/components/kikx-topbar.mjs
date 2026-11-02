@@ -62,6 +62,7 @@ import { previewStatusStore } from '../state/preview-status-store.mjs';
 // forms an import cycle with the file that imports it.
 import './kikx-participants-popup.mjs';
 import './kikx-frame-filter-popup.mjs';
+import { clientComponentKeyField } from '../../shared/client-component-kinds.mjs';
 
 const { div, nav, header, h1, p, span, button, input } = elements;
 
@@ -352,6 +353,62 @@ export function buildTopbarActions(app, sessionID = null) {
   );
 }
 
+// Plugin toolbar actions (kind 'toolbar-action').
+//
+// THE FIRST REAL MOUNT POINT for this kind. The registry has accepted
+// 'toolbar-action' descriptors since the client-surface registry landed, and not
+// one line of client code referenced it: the descriptor was filtered out by
+// frame-component-registry.mjs, then dropped again by setClientComponents'
+// if/else chain with no else branch. Two independent silent discards, so the
+// platform advertised an extension point that could never paint. See
+// src/shared/client-component-kinds.mjs for the full measurement.
+//
+// SCOPING. A descriptor may carry `sessionID`; when it does, it renders only
+// while that session is selected, so an action is not offered on a thread it
+// cannot act on. A descriptor without one is global and renders at every level,
+// including the root Projects grid -- deliberately, because the root header is
+// where several controls already have to stay reachable; see buildTopbarActions.
+//
+// Returns plain descriptors rather than built nodes so the caller decides where
+// they sit and the contract stays testable without a live DOM.
+export function buildPluginToolbarActions(app, sessionID = null) {
+  let byKind = app?._state?.clientComponentsByKind || {};
+  let keyField = clientComponentKeyField('toolbar-action');
+  if (!keyField)
+    return [];
+
+  return Object.values(byKind['toolbar-action'] || {})
+    .filter((descriptor) => descriptor && typeof descriptor === 'object')
+    .filter((descriptor) => typeof descriptor[keyField] === 'string' && descriptor[keyField] !== '')
+    .filter((descriptor) => descriptor.sessionID === undefined
+      || descriptor.sessionID === null
+      || descriptor.sessionID === sessionID)
+    .map((descriptor) => ({
+      surfaceID: descriptor[keyField],
+      tagName: descriptor.tagName,
+      label: typeof descriptor.label === 'string' && descriptor.label.trim() !== ''
+        ? descriptor.label.trim()
+        : descriptor[keyField],
+      sessionID: descriptor.sessionID ?? null,
+    }))
+    .sort((left, right) => left.surfaceID.localeCompare(right.surfaceID));
+}
+
+// Builds the nodes for the trailing action cluster. The custom element is created
+// from the tagName the plugin registered, so the module it served is what renders;
+// an undefined element degrades to an empty node rather than breaking the bar.
+function buildPluginToolbarActionNodes(app, sessionID) {
+  return buildPluginToolbarActions(app, sessionID).map((action) => {
+    let element = document.createElement(action.tagName);
+    element.className = 'kikx-topbar__plugin-action';
+    element.setAttribute('data-plugin-toolbar-action', action.surfaceID);
+    element.setAttribute('aria-label', action.label);
+    if (action.sessionID)
+      element.setAttribute('data-session-id', action.sessionID);
+    return element;
+  });
+}
+
 // The merged bar: ONE <header> for the whole app - brand, merged back+crumbs,
 // centred search, trailing actions - replacing the stacked pair. It carries both
 // `kikx-topbar` and `kikx-window__header` so the existing layout rules for each
@@ -362,6 +419,9 @@ export function buildUnifiedTopbar(app) {
   let authed = Boolean(app._state.authToken);
   let entry = getCurrentEntry(app._state);
   let sessionID = authed ? (entry?.sessionID || null) : null;
+
+  // Computed once, here, so the mount cannot disagree with itself about scope.
+  let pluginActions = authed ? buildPluginToolbarActionNodes(app, sessionID) : [];
 
   return header.class('kikx-topbar kikx-window__header')(
     div.class('kikx-brand')(
@@ -378,6 +438,7 @@ export function buildUnifiedTopbar(app) {
       authed ? buildTopbarBreadcrumb(app) : null,
       authed ? buildTopbarSearch(app, sessionID) : null,
       authed ? buildTopbarActions(app, sessionID) : span.class('kikx-topbar__spacer')(),
+      ...pluginActions,
     ),
   );
 }
