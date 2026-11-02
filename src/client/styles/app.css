@@ -2703,6 +2703,31 @@ kikx-typing-indicator {
   height: 1.575em;
 }
 
+.kikx-scroll-lock-floating__glyph {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+}
+
+.kikx-scroll-lock-floating__primary {
+  display: inline-grid;
+  place-items: center;
+}
+
+.kikx-scroll-lock-floating__badge {
+  position: absolute;
+  top: -0.05em;
+  right: -0.1em;
+  display: inline-grid;
+  place-items: center;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+}
+
+.kikx-scroll-lock-floating__badge svg {
+  width: 0.66em;
+  height: 0.66em;
+}
+
 /* --- Session workspace: centered search + eye, relocated name --- */
 
 /* The header is a 3-slot row: name/close on the left, the centered search in

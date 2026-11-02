@@ -76,10 +76,18 @@ test('the floating lock button reflects and toggles the session state', () => {
   assert.ok(button);
   assert.equal(button.getAttribute('aria-pressed'), 'true');
   assert.equal(button.dataset.icon, 'lock-locked');
+  let primary = button.querySelector('.kikx-scroll-lock-floating__primary');
+  let badge = button.querySelector('.kikx-scroll-lock-floating__badge');
+  assert.equal(primary?.dataset.icon, 'arrow-down-to-line', 'the underlined down arrow is the primary icon');
+  assert.equal(badge?.dataset.icon, 'lock-locked', 'the superscript overlay carries the lock state');
 
   setScrollLockedForSession(app, false, 's1');
   assert.equal(button.getAttribute('aria-pressed'), 'false');
   assert.equal(button.dataset.icon, 'lock-unlocked');
+  assert.equal(button.querySelector('.kikx-scroll-lock-floating__primary')?.dataset.icon, 'arrow-down-to-line',
+    'the primary arrow never changes');
+  assert.equal(button.querySelector('.kikx-scroll-lock-floating__badge')?.dataset.icon, 'lock-unlocked',
+    'only the superscript lock overlay repaints');
 
   button.dispatchEvent({ type: 'click' });
   assert.equal(app._toggleCalls, 1);

@@ -96,7 +96,18 @@ export function buildScrollLockFloatingButton(app, sessionID) {
   button.setAttribute('aria-pressed', locked ? 'true' : 'false');
   button.title = scrollLockTitle(locked, mode);
   button.setAttribute('aria-label', button.title);
-  setIcon(button, locked ? 'lock-locked' : 'lock-unlocked');
+  let glyph = document.createElement('span');
+  glyph.className = 'kikx-scroll-lock-floating__glyph';
+  let primary = document.createElement('span');
+  primary.className = 'kikx-scroll-lock-floating__primary';
+  let badge = document.createElement('span');
+  badge.className = 'kikx-scroll-lock-floating__badge';
+  glyph.appendChild(primary);
+  glyph.appendChild(badge);
+  button.appendChild(glyph);
+  setIcon(primary, 'arrow-down-to-line');
+  setIcon(badge, locked ? 'lock-locked' : 'lock-unlocked');
+  button.dataset.icon = locked ? 'lock-locked' : 'lock-unlocked';
   button.addEventListener('click', (event) => {
     event.stopPropagation();
     app._toggleScrollLock?.();
@@ -125,7 +136,9 @@ export function paintScrollLockButton(app, sessionID = app?._state?.selectedSess
   button.setAttribute('aria-pressed', pressed);
   button.title = title;
   button.setAttribute('aria-label', title);
-  setIcon(button, icon);
+  let badge = button.querySelector?.('.kikx-scroll-lock-floating__badge');
+  setIcon(badge || button, icon);
+  button.dataset.icon = icon;
 }
 
 function scrollLockTitle(locked, mode) {
