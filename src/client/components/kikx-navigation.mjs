@@ -369,11 +369,14 @@ export function setFrameFilters(app, filters, options = {}) {
 
   let query = app._state.sessionSearch || '';
   let signature = frameFiltersSignature(next, query);
-  if (app._frameLoadSignature === signature)
+  if (app._frameLoadSignature === signature) {
+    paintSearchClear(app);
     return;
+  }
 
   app._frameLoadSignature = signature;
   app._state.frameFilters = next;
+  paintSearchClear(app);
   // A filter change can originate outside the popup (the header clear button).
   // Repaint its checkboxes without rebuilding the shell or moving focus.
   app.querySelector?.('kikx-frame-filter-popup')?.refresh?.();

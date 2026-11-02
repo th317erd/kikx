@@ -58,6 +58,7 @@ export class KikxChatScrollView {
     this._userPageAnchor = null;
     this._userPageAnchorTimer = null;
     this._pinAfterContext = false;
+    this._pinHoldUntil = 0;
   }
 
   get frameList() {
@@ -193,6 +194,7 @@ export class KikxChatScrollView {
 
   pinToLatestAfterContext() {
     this._pinAfterContext = true;
+    this._pinHoldUntil = performance.now() + 2000;
   }
 
   pinToEnd() {
@@ -233,6 +235,11 @@ export class KikxChatScrollView {
   }
 
   _installEvents() {
+    this.element.addEventListener('scrollview-follow-change', (event) => {
+      // A deliberate user scroll releases the temporary clear-filter pin.
+      if (event.detail?.follow === false)
+        this._pinHoldUntil = 0;
+    });
     this.element.addEventListener('scrollview-page-load', (event) => {
       let pageIndex = event.detail?.pageIndex;
       if (!Number.isInteger(pageIndex) || this.element.follow !== false)
@@ -271,6 +278,11 @@ export class KikxChatScrollView {
           this._userPageAnchorTimer = null;
         }, 220);
       }
+      // Pages can finish loading after the clear-filter pin was applied and
+      // change every segment height. Keep the pin alive briefly so those late
+      // page loads cannot leave the user above the newest frame.
+      if (this._pinHoldUntil !== 0 && performance.now() <= this._pinHoldUntil && this.element.follow === true)
+        this.pinToEnd();
     });
   }
 
@@ -407,7 +419,14 @@ export class KikxChatScrollView {
     }
     this._updateMountedItems(next, appState, options);
     this.windowEnd = next.length;
-    restoreFrameListAnchor(this.frameList, anchor);
+    // Follow mode is a stronger contract than "preserve the old anchor": a
+    // runtime sync that lands after a filter clear must not leave the viewport
+    // a few hundred pixels above the newest frame. Only unlocked readers get
+    // anchor restoration.
+    if (this.element.follow === true)
+      this.pinToEnd();
+    else
+      restoreFrameListAnchor(this.frameList, anchor);
     return { insertedNew };
   }
 

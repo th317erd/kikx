@@ -111,6 +111,11 @@ test('Puppeteer drives the frame-filter popup by its label, keeps badges absolut
     // Shift+Click again turns them all off.
     await clickRow(page, 'user', { shift: true });
     await waitForRows(page, (rows) => allCategoriesOff(rows), 'Shift+Click again turns every category off');
+    await waitForCondition(
+      page,
+      () => document.querySelector('.kikx-session-search__clear')?.hidden === false,
+      'the clear control appears as soon as a category is filtered',
+    );
 
     // A plain click still toggles exactly one row, so the modifiers are additive
     // rather than the row's only behaviour.
@@ -134,6 +139,8 @@ test('Puppeteer drives the frame-filter popup by its label, keeps badges absolut
 
     let afterClear = await readPopup(page);
     assert.equal(afterClear.query, '', 'clearing drops the search text');
+    assert.equal(await page.$eval('.kikx-session-search__input', (input) => input.value), '', 'clearing empties the visible search field');
+    assert.equal(await page.$eval('.kikx-session-search__clear', (button) => button.hidden), true, 'the clear control hides once everything is cleared');
     assert.equal(afterClear.rows.find((row) => row.key === 'deleted')?.checked, false, 'clearing also hides deleted content again');
     assert.equal(badgeSignature(afterClear), badges, 'badges survived the whole session unchanged');
   } finally {

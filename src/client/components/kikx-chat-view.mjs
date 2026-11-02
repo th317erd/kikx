@@ -33,6 +33,7 @@ export class KikxChatView extends HTMLElement {
     this._windowStart = 0;
     this._windowEnd = 0;
     this._windowStartFrameID = null;
+    this._pinLatestAfterContext = false;
   }
 
   get mode() {
@@ -190,6 +191,7 @@ export class KikxChatView extends HTMLElement {
       this._windowStart = this.windowStart;
       this._windowEnd = this.windowEnd;
       this._windowStartFrameID = this.windowStartFrameID;
+      this._applyDeferredLatestPin();
       return result;
     }
 
@@ -353,7 +355,20 @@ export class KikxChatView extends HTMLElement {
   // Return to the newest window after the user has finished reading older
   // frames. Returns true when the window changed.
   pinToLatestAfterContext() {
-    return this._scrollview?.pinToLatestAfterContext?.() || false;
+    this._pinLatestAfterContext = true;
+    this._scrollview?.pinToLatestAfterContext?.();
+    return true;
+  }
+
+  _applyDeferredLatestPin() {
+    if (!this._pinLatestAfterContext)
+      return false;
+    let scrollview = this._scrollview;
+    if (!scrollview?.element?.isConnected)
+      return false;
+    this._pinLatestAfterContext = false;
+    scrollview.pinToEnd?.();
+    return true;
   }
 
   showLatestFrames() {
@@ -502,6 +517,7 @@ export class KikxChatView extends HTMLElement {
     this._windowStart = this._scrollview.windowStart;
     this._windowEnd = this._scrollview.windowEnd;
     this._windowStartFrameID = this._frames[this._windowStart]?.id || null;
+    this._applyDeferredLatestPin();
   }
 
   _syncMiniFrames() {

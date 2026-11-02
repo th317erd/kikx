@@ -78,6 +78,26 @@ test('Puppeteer clearing search does not re-render every previously loaded page'
     assert.ok(cleared.follow, 'clearing search did not restore bottom follow');
     assert.ok(cleared.nearBottom <= 2, `clearing search did not pin to the bottom: ${cleared.nearBottom}px away`);
     assert.equal(cleared.lastVisible, 'f5000', 'clearing search did not land on the newest frame');
+
+    // A live/runtime sync may arrive immediately after the clear. The bottom
+    // pin must survive that sync, not just the first projection pass.
+    await page.evaluate(() => document.querySelector('kikx-app')._syncFrameThread('session_clear', { force: true, preserveScroll: true }));
+    // The sync may prefetch pages that finish measuring over the next few frames.
+    // Wait for the hold pin to settle rather than sampling one transient frame.
+    await page.waitForFunction(() => {
+      let scrollview = document.querySelector('kikx-chat-view')._scrollview;
+      if (!scrollview?.element)
+        return false;
+      let metrics = scrollview.element.metrics();
+      return metrics.maxScrollTop - metrics.scrollTop <= 2;
+    }, { timeout: 2500 });
+    let afterSync = await page.evaluate(() => {
+      let scrollview = document.querySelector('kikx-chat-view')._scrollview;
+      let metrics = scrollview.element.metrics();
+      return { nearBottom: metrics.maxScrollTop - metrics.scrollTop, follow: scrollview.element.follow === true };
+    });
+    assert.ok(afterSync.follow, 'a sync after clearing dropped bottom follow');
+    assert.ok(afterSync.nearBottom <= 2, `a sync after clearing left the viewport ${afterSync.nearBottom}px above the bottom`);
   } finally {
     await browser?.close();
     await fixture.close();
