@@ -171,16 +171,16 @@ export function quoteFrameIntoComposer(app, detail = {}) {
     return Promise.resolve(false);
 
   // Serialize quote operations. A second click can arrive while the first
-  // draft flush is in flight; by the time it runs, the dedupe check sees the
-  // marker already in the composer and leaves the text alone.
+  // draft edit is in flight; each queued task re-reads the caret so every
+  // quote lands at the cursor of the text as it exists at that moment.
   let previous = app._quoteFrameQueue || Promise.resolve(true);
   app._quoteFrameQueue = previous
     .catch(() => false)
-    .then(() => prefixQuoteBlock(app, frameID, detail.text));
+    .then(() => insertQuoteBlock(app, frameID, detail.text));
   return app._quoteFrameQueue;
 }
 
-async function prefixQuoteBlock(app, frameID, frameText) {
+async function insertQuoteBlock(app, frameID, frameText) {
   let sessionID = app?._state?.selectedSessionID;
   if (!sessionID)
     return false;
@@ -191,14 +191,15 @@ async function prefixQuoteBlock(app, frameID, frameText) {
   if (composer && typeof composer.value === 'string')
     current = composer.value;
 
-  if (current.includes(marker)) {
-    composer?.focus?.();
-    return false;
-  }
+  let insertAt = current.length;
+  if (composer && Number.isInteger(composer.selectionStart))
+    insertAt = Math.min(Math.max(composer.selectionStart, 0), current.length);
 
   let quotedText = typeof frameText === 'string' ? frameText.trim() : '';
   let block = quotedText ? `${marker}\n${quotedText}` : marker;
-  let next = current.trim() !== '' ? `${block}\n\n${current}` : block;
+  let prefix = insertAt > 0 && !current.slice(0, insertAt).endsWith('\n') ? '\n' : '';
+  let insertion = `${prefix}${block}\n\n`;
+  let next = current.slice(0, insertAt) + insertion + current.slice(insertAt);
   // A quote is an immediate user edit, not a server transaction. Do not wait
   // for a previous draft save to settle (or fail); the local controller already
   // holds the current text, and the new draft is queued after the edit.
@@ -206,6 +207,10 @@ async function prefixQuoteBlock(app, frameID, frameText) {
   if (replaced) {
     composer = app.querySelector?.('textarea[name="message"]');
     composer?.focus?.();
+    let caret = insertAt + insertion.length;
+    try {
+      composer?.setSelectionRange?.(caret, caret);
+    } catch (_error) {}
   }
   return replaced;
 }

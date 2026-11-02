@@ -62,15 +62,22 @@ test('turn reports quote their short visible summary, not the long details', () 
   })), '- Short result.');
 });
 
-test('quoting prefixes the composer and dedupes repeated clicks', async () => {
-  let textarea = document.createElement('textarea');
-  textarea.name = 'message';
-  textarea.value = 'What the hell is this?!? You sent that picture to my mom?!?!';
+function installCaret(textarea, start) {
+  let position = Number.isInteger(start) ? start : textarea.value.length;
+  textarea.selectionStart = position;
+  textarea.selectionEnd = position;
+  textarea.setSelectionRange = (nextStart, nextEnd = nextStart) => {
+    textarea.selectionStart = nextStart;
+    textarea.selectionEnd = nextEnd;
+  };
+  textarea.focused = false;
+  textarea.focus = () => { textarea.focused = true; };
+  return textarea;
+}
+
+function createComposerApp(textarea, draftText = textarea.value) {
   let app = {
-    _state: {
-      selectedSessionID: 'ses_1',
-      draft: textarea.value,
-    },
+    _state: { selectedSessionID: 'ses_1', draft: draftText },
     querySelector(selector) {
       return selector === 'textarea[name="message"]' ? textarea : null;
     },
@@ -81,26 +88,91 @@ test('quoting prefixes the composer and dedupes repeated clicks', async () => {
   let controller = getComposerDraftController(app, 'ses_1');
   controller.text = textarea.value;
   controller.savedText = textarea.value;
+  return app;
+}
 
-  let quote = {
-    frameID: 'frame_1',
-    text: 'What the hell is this?!? You sent that picture to my mom?!?!',
-  };
-  await Promise.all([
-    quoteFrameIntoComposer(app, quote),
-    quoteFrameIntoComposer(app, quote),
-  ]);
-  let once = textarea.value;
-  assert.equal((once.match(/User is asking about and referring to frame id\[frame_1\]:/g) || []).length, 1);
-  assert.equal(once, [
-    'User is asking about and referring to frame id[frame_1]:',
-    'What the hell is this?!? You sent that picture to my mom?!?!',
+function typeInto(app, textarea, text) {
+  textarea.value += text;
+  app._state.draft = textarea.value;
+  textarea.selectionStart = textarea.value.length;
+  textarea.selectionEnd = textarea.value.length;
+}
+
+test('quoting inserts at the caret without moving surrounding text', async () => {
+  let textarea = document.createElement('textarea');
+  textarea.name = 'message';
+  textarea.value = 'before text after';
+  installCaret(textarea, 7);
+  let app = createComposerApp(textarea);
+  let marker = 'User is asking about and referring to frame id[frame_1]:';
+
+  let replaced = await quoteFrameIntoComposer(app, { frameID: 'frame_1', text: 'the quoted text' });
+
+  assert.equal(replaced, true);
+  assert.equal(textarea.value, [
+    'before ',
+    marker,
+    'the quoted text',
     '',
-    'What the hell is this?!? You sent that picture to my mom?!?!',
+    'text after',
   ].join('\n'));
+  let insertion = `\n${marker}\nthe quoted text\n\n`;
+  assert.equal(textarea.selectionStart, 7 + insertion.length, 'caret lands after the inserted block');
+  assert.equal(textarea.selectionEnd, 7 + insertion.length);
+  assert.equal(textarea.focused, true);
+  assert.equal(app._state.draft, textarea.value);
+  let controller = getComposerDraftController(app, 'ses_1');
+  assert.equal(controller.text, textarea.value, 'the draft controller mirrors the insert');
+});
 
-  await quoteFrameIntoComposer(app, quote);
-  assert.equal(textarea.value, once, 'the same frame is not quoted twice');
+test('every quote insert lands: quote, comment, quote, same frame again', async () => {
+  let textarea = document.createElement('textarea');
+  textarea.name = 'message';
+  textarea.value = '';
+  installCaret(textarea, 0);
+  let app = createComposerApp(textarea);
+  let marker = (id) => `User is asking about and referring to frame id[${id}]:`;
+
+  await quoteFrameIntoComposer(app, { frameID: 'frame_1', text: 'first quote' });
+  typeInto(app, textarea, 'my comment');
+  await quoteFrameIntoComposer(app, { frameID: 'frame_2', text: 'second quote' });
+  await quoteFrameIntoComposer(app, { frameID: 'frame_1', text: 'first quote' });
+
+  let value = textarea.value;
+  assert.equal(value, [
+    marker('frame_1'),
+    'first quote',
+    '',
+    'my comment',
+    marker('frame_2'),
+    'second quote',
+    '',
+    marker('frame_1'),
+    'first quote',
+    '',
+    '',
+  ].join('\n'));
+  assert.equal((value.match(/frame id\[frame_1\]:/g) || []).length, 2, 'the same frame can be quoted again');
+  assert.equal((value.match(/frame id\[frame_2\]:/g) || []).length, 1);
+  assert.ok(value.indexOf('my comment') < value.indexOf(marker('frame_2')), 'typed text stays put between quotes');
+});
+
+test('parallel double-clicks serialize; both inserts land at the caret', async () => {
+  let textarea = document.createElement('textarea');
+  textarea.name = 'message';
+  textarea.value = 'draft line';
+  installCaret(textarea, 10);
+  let app = createComposerApp(textarea);
+
+  await Promise.all([
+    quoteFrameIntoComposer(app, { frameID: 'frame_1', text: 'the quote' }),
+    quoteFrameIntoComposer(app, { frameID: 'frame_1', text: 'the quote' }),
+  ]);
+
+  assert.equal((textarea.value.match(/frame id\[frame_1\]:/g) || []).length, 2);
+  assert.ok(textarea.value.startsWith('draft line\n'), 'pre-existing text is not disturbed');
+  assert.equal(app._state.draft, textarea.value);
+  assert.equal(textarea.selectionStart, textarea.value.length, 'caret rests after the second insert');
 });
 
 test('a pending draft save cannot block a second quote', async () => {
