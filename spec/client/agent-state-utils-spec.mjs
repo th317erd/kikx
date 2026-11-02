@@ -9,6 +9,36 @@ import {
   mergeAgentConfigWithProviderDefaults,
 } from '../../src/client/state/agent-state-utils.mjs';
 
+test('defaultConfigForProvider defaults the context window from the selected model', () => {
+  let provider = {
+    configFields: [
+      { name: 'model', type: 'select', defaultValue: 'mimo-cloud', options: [
+        { value: 'mimo-cloud', label: 'Mimo Cloud', contextWindow: 1_048_576 },
+      ] },
+      { name: 'contextWindowTokens', type: 'number' },
+    ],
+  };
+
+  assert.deepEqual(defaultConfigForProvider(provider), {
+    model: 'mimo-cloud',
+    contextWindowTokens: 1_048_576,
+  });
+});
+
+test('mergeAgentConfigWithProviderDefaults fills a blank context window but keeps an override', () => {
+  let provider = {
+    configFields: [
+      { name: 'model', type: 'select', defaultValue: 'mimo-cloud', options: [
+        { value: 'mimo-cloud', label: 'Mimo Cloud', contextWindow: 1_048_576 },
+      ] },
+      { name: 'contextWindowTokens', type: 'number' },
+    ],
+  };
+
+  assert.equal(mergeAgentConfigWithProviderDefaults(provider, { contextWindowTokens: null }).contextWindowTokens, 1_048_576);
+  assert.equal(mergeAgentConfigWithProviderDefaults(provider, { contextWindowTokens: 65_536 }).contextWindowTokens, 65_536);
+});
+
 test('defaultConfigForProvider seeds non-secret plugin-declared defaults only', () => {
   let provider = {
     configFields: [

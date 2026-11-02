@@ -1,5 +1,7 @@
 'use strict';
 
+import { seedContextWindowForModel } from './agent-model-context.mjs';
+
 export function defaultConfigForProvider(provider) {
   let config = {};
 
@@ -11,14 +13,15 @@ export function defaultConfigForProvider(provider) {
       config[field.name] = field.defaultValue;
   }
 
-  return config;
+  return seedContextWindowForModel(provider, config, { onlyAuto: false });
 }
 
 export function mergeAgentConfigWithProviderDefaults(provider, config) {
-  return {
+  let merged = {
     ...defaultConfigForProvider(provider),
     ...(config || {}),
   };
+  return seedContextWindowForModel(provider, merged);
 }
 
 // Mirror the live agent-config guts values into app state so a full shell

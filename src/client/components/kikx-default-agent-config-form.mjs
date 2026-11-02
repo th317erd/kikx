@@ -2,6 +2,7 @@
 
 import { elements } from '../lib/aeor-ui.mjs';
 import { coerceAgentFieldValue, normalizeFieldOptions } from './agent-form-helpers.mjs';
+import { seedContextWindowForModel } from '../state/agent-model-context.mjs';
 
 const { div, label } = elements;
 const aeorInput = elements['aeor-input'];
@@ -157,6 +158,11 @@ export class KikxDefaultAgentConfigForm extends HTMLElement {
   }
 
   _applyValuesToFields() {
+    // Seed a blank context window from the selected model's catalog value
+    // before painting controls, so create/edit never starts with a confusing
+    // empty token field when the provider knows the model's window.
+    this._config = seedContextWindowForModel(this._provider, this._config);
+
     for (let field of this._fields) {
       let control = this._controls.get(field.name);
       if (!control)
@@ -176,6 +182,19 @@ export class KikxDefaultAgentConfigForm extends HTMLElement {
       this._secrets = { ...this._secrets, [field.name]: value };
     else
       this._config = { ...this._config, [field.name]: coerceAgentFieldValue(field, value) };
+
+    if (field.name === 'model') {
+      // Mirror the select's new value into our snapshot too: the browser select
+      // already changed its own property, but a programmatic update (or a shim)
+      // may not have.
+      let modelControl = this._controls.get(field.name);
+      if (modelControl)
+        modelControl.value = value;
+      this._config = seedContextWindowForModel(this._provider, this._config);
+      let contextControl = this._controls.get('contextWindowTokens');
+      if (contextControl)
+        contextControl.value = this._config.contextWindowTokens ?? '';
+    }
 
     this._notifyChanged();
   }
