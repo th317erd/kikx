@@ -8,6 +8,7 @@ import { elements, $, cleanupBindings } from '../lib/aeor-ui.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { renderMarkdownToElement } from '../lib/markdown-renderer.mjs';
 import { highlightSearchMatches } from '../lib/search-highlight.mjs';
+import { frameMatchesQuery } from '../../shared/frame-window-filters.mjs';
 import {
   frameDisplayLabel,
   frameTimestamp,
@@ -58,6 +59,19 @@ function hasTagName(element, expected) {
   if (!element)
     return false;
   return normalizeTagName(element.localName || element.tagName) === normalizeTagName(expected);
+}
+
+function visibleSearchHighlightCount(root) {
+  let count = 0;
+  for (let mark of root?.querySelectorAll?.('mark.kikx-search-highlight') || []) {
+    // A summary is visible even when its parent <details> is closed. Any other
+    // mark inside a closed disclosure is hidden and must not suppress the
+    // "Match inside" explanation.
+    if (!mark.closest?.('summary') && mark.closest?.('details:not([open])'))
+      continue;
+    count++;
+  }
+  return count;
 }
 
 // The runtime replaces frame objects on every event, so object identity is not
@@ -192,6 +206,10 @@ export class KikxFrameItem extends HTMLElement {
     this._contentParent = null;
     this._quickActions = null;
     this._renderEpoch = 0;
+    this._searchObserver = null;
+    this._searchObserverRoot = null;
+    this._searchHighlightScheduled = false;
+    this._searchHighlighting = false;
   }
 
   updateFrame(frame, appState = {}, options = {}) {
@@ -234,6 +252,7 @@ export class KikxFrameItem extends HTMLElement {
       this._compactClickBound = true;
       this.addEventListener('click', this._onCompactClick);
       this.addEventListener('keydown', this._onCompactKeydown);
+      this.addEventListener('toggle', this._onContentToggle, true);
     }
 
     if (this._frame && this.childNodes.length === 0)
@@ -321,6 +340,9 @@ export class KikxFrameItem extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this._searchObserver?.disconnect();
+    this._searchObserver = null;
+    this._searchObserverRoot = null;
     cleanupBindings(this);
   }
 
@@ -390,7 +412,7 @@ export class KikxFrameItem extends HTMLElement {
         let renderEpoch = ++this._renderEpoch;
         detailsElement.addEventListener('toggle', () => this._onCompactToggle(renderEpoch, detailsElement));
         this.appendChild(this._compactView.element);
-        highlightSearchMatches(this._compactView.element, this._appState?.sessionSearch || '');
+        this._highlightSearch(this._compactView.element);
         if (this._compactView.element.open)
           this._ensureCompactContent();
       } else {
@@ -401,7 +423,8 @@ export class KikxFrameItem extends HTMLElement {
       }
 
       if (content)
-        highlightSearchMatches(content, this._appState?.sessionSearch || '');
+        this._highlightSearch(content);
+      this._bindSearchObserver();
       this._quickActions = buildFrameQuickActions(frame, document);
       this.appendChild(this._quickActions);
       syncExpandCollapseButton(this._quickActions);
@@ -502,6 +525,8 @@ export class KikxFrameItem extends HTMLElement {
 
       if (compact) {
         updateCompactSummary(this._compactView, frame);
+        this._highlightSearch(this._compactView.element);
+        this._bindSearchObserver();
         this._reconcileFrameMeta(frame);
         if (this._compactView.element.open) {
           this._ensureCompactContent();
@@ -542,6 +567,20 @@ export class KikxFrameItem extends HTMLElement {
     }
 
     this._ensureCompactContent();
+    this._highlightSearch(this._compactView?.element);
+  }
+
+  _onContentToggle(event) {
+    if (!event.target?.open || !this._searchQuery())
+      return;
+    // A nested Arguments/Output disclosure builds its body in its own toggle
+    // listener. Re-run the highlight after that listener has populated it.
+    queueMicrotask(() => {
+      if (!this.isConnected)
+        return;
+      this._highlightSearch();
+      this._bindSearchObserver();
+    });
   }
 
   _minimizeFrame() {
@@ -569,6 +608,8 @@ export class KikxFrameItem extends HTMLElement {
     this._contentElement = content;
     this._contentParent = this._compactView.body;
     this._contentParent.appendChild(content);
+    this._highlightSearch(content);
+    this._bindSearchObserver();
   }
 
   _reconcileTypingIndicator(frame) {
@@ -694,8 +735,10 @@ export class KikxFrameItem extends HTMLElement {
 
     if (descriptor.kind === 'markdown')
       this._reconcileMarkdown(frame);
-    if (this._contentElement)
-      highlightSearchMatches(this._contentElement, this._appState?.sessionSearch || '');
+    if (this._contentElement) {
+      this._highlightSearch(this._contentElement);
+      this._bindSearchObserver();
+    }
   }
 
   _reconcileMarkdown(frame) {
@@ -715,13 +758,107 @@ export class KikxFrameItem extends HTMLElement {
       this._contentElement.appendChild(child);
 
     this._lastMarkdownText = text;
-    highlightSearchMatches(this._contentElement, this._appState?.sessionSearch || '');
+    this._highlightSearch(this._contentElement);
   }
 
   _replaceContentElement(frame) {
     this._discardContentElement();
     this._contentElement = this._buildFrameContent(frame);
     this._contentParent.appendChild(this._contentElement);
+    this._highlightSearch(this._contentElement);
+    this._bindSearchObserver();
+  }
+
+  _searchQuery() {
+    return String(this._appState?.sessionSearch || '');
+  }
+
+  _searchRoot() {
+    return this._compact ? this._compactView?.element : this._contentElement;
+  }
+
+  _highlightSearch(root = this._searchRoot()) {
+    if (!root)
+      return 0;
+
+    let query = this._searchQuery();
+    if (query === '') {
+      this._searchObserver?.disconnect();
+      this._searchObserver = null;
+      this._searchObserverRoot = null;
+    }
+    this._searchHighlighting = true;
+    let count = 0;
+    try {
+      count = highlightSearchMatches(root, query);
+      this._syncSearchHint(visibleSearchHighlightCount(root));
+    } finally {
+      this._searchHighlighting = false;
+    }
+    return count;
+  }
+
+  _syncSearchHint(visibleCount = 0) {
+    let summary = this._compactView?.summary;
+    if (!summary)
+      return;
+
+    let query = this._searchQuery();
+    let hint = summary.querySelector?.('.kikx-search-match-hint') || null;
+    let hiddenMatch = query !== '' && visibleCount === 0 && frameMatchesQuery(this._frame, query);
+    if (!hiddenMatch) {
+      hint?.remove();
+      summary.classList.remove('has-search-match-hint');
+      return;
+    }
+
+    if (!hint) {
+      hint = document.createElement('span');
+      hint.className = 'kikx-search-match-hint';
+      hint.title = 'The search match is inside this frame';
+      summary.appendChild(hint);
+    }
+    summary.classList.add('has-search-match-hint');
+    hint.textContent = this._compactView.element.open ? 'Match' : 'Match inside';
+  }
+
+  _bindSearchObserver() {
+    let root = this._searchRoot();
+    if (!root)
+      return;
+    if (this._searchObserver && this._searchObserverRoot === root)
+      return;
+
+    this._searchObserver?.disconnect();
+    this._searchObserver = null;
+    this._searchObserverRoot = null;
+    if (!this._searchQuery() || typeof MutationObserver === 'undefined')
+      return;
+
+    this._searchObserverRoot = root;
+    this._searchObserver = new MutationObserver(() => this._onSearchMutation());
+    this._searchObserver.observe(root, { childList: true, subtree: true, characterData: true });
+  }
+
+  _onSearchMutation() {
+    if (this._searchHighlighting || this._searchHighlightScheduled || !this._searchQuery())
+      return;
+
+    this._searchHighlightScheduled = true;
+    queueMicrotask(() => {
+      this._searchHighlightScheduled = false;
+      if (!this.isConnected || !this._searchQuery())
+        return;
+      let root = this._searchRoot();
+      if (!root)
+        return;
+      // Highlighting itself mutates the subtree. Disconnect the observer for
+      // that write so its own marks cannot schedule an endless pass.
+      this._searchObserver?.disconnect();
+      this._highlightSearch(root);
+      if (this._searchObserver && this._searchObserverRoot === root)
+        this._searchObserver.observe(root, { childList: true, subtree: true, characterData: true });
+    });
   }
 
   _discardContentElement() {

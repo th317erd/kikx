@@ -4167,4 +4167,42 @@ kikx-frame-filter-popup:not(.is-all-on) .kikx-frame-filter__button {
   background: #f0c95a;
   color: #17130a;
   box-shadow: 0 0 0 1px rgba(240, 201, 90, 0.45);
+  animation: kikx-search-highlight-pulse 1.6s ease-in-out infinite;
+}
+
+.kikx-search-match-hint {
+  grid-area: description;
+  z-index: 1;
+  align-self: center;
+  justify-self: end;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(240, 201, 90, 0.92);
+  color: #17130a;
+  font-size: 0.75em;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.kikx-frame__compact > summary.has-search-match-hint .kikx-frame__compact-description {
+  padding-right: 76px;
+}
+
+@keyframes kikx-search-highlight-pulse {
+  0%, 100% {
+    background: #f0c95a;
+    box-shadow: 0 0 0 1px rgba(240, 201, 90, 0.45);
+  }
+  50% {
+    background: #ffe49a;
+    box-shadow: 0 0 0 3px rgba(240, 201, 90, 0.18);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kikx-search-highlight {
+    animation: none;
+  }
 }
