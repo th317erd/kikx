@@ -1,3 +1,12 @@
+---
+title: Moving the Discord gateway from 3003 to 3098
+doc_type: report
+status: completed
+audience: [developers, operators]
+applies_to: development-v3
+last_verified: 2026-11-02
+keywords: [discord, gateway, cutover, 3098, 3003, migration]
+---
 # Moving the Discord gateway from 3003 to 3098 — measured plan
 
 Date: 2026-11-02. Author: Miri. Status: **EXECUTED — 3098 now holds the only live gateway socket (see "Executed" below).**
