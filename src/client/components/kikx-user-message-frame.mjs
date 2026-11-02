@@ -35,8 +35,9 @@ export class KikxUserMessageFrame extends HTMLElement {
   }
 
   // Accessible half of the delivery state. The visual signal lives on the frame
-  // item (`kikx-frame--delivery-received`, styles/app.css); a CSS-only marker is
-  // invisible to assistive technology, so the bubble states it in text too.
+  // item (`kikx-frame--delivery-received` plus the shared success class); a
+  // CSS-only marker is invisible to assistive technology, so the bubble also
+  // carries the state in its accessible label.
   // Toggled in place: `_ensureStructure` has already run, so this never rebuilds
   // the text node and cannot wipe a rendered message.
   _updateDelivery() {
@@ -44,11 +45,9 @@ export class KikxUserMessageFrame extends HTMLElement {
     if (received) {
       this.dataset.delivery = 'received';
       this.setAttribute('aria-label', DELIVERY_RECEIVED_LABEL);
-      this.setAttribute('title', DELIVERY_RECEIVED_LABEL);
     } else {
       this.removeAttribute('data-delivery');
       this.removeAttribute('aria-label');
-      this.removeAttribute('title');
     }
   }
 

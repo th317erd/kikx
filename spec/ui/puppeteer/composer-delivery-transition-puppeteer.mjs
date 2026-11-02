@@ -37,12 +37,12 @@
 // standing in for ordering.
 //
 // WHAT IS PINNED
-//   1. the typed bubble renders neutral, with no accent, caption or label,
+//   1. the typed bubble renders neutral, with no success styling or label,
 //      while `providerRuns` is still empty - neutral means "not fed yet", not
 //      "unstyled".
 //   2. the same DOM node becomes received after the gate opens.
-//   3. the accent equals the delivery token (not merely "some 3px inset"), and
-//      only once the 180ms shell transition has settled.
+//   3. received uses the shared success class/token: body and header turn green,
+//      with no Received caption, once the shell colour transition has settled.
 //   4. the stored frame carries `received` + a finite `deliveryAt`, so the
 //      picture the browser shows is the state the server actually holds.
 
@@ -225,13 +225,19 @@ function readBubble(page, needle) {
 
     let bubble = item.querySelector('kikx-user-message-frame');
     let content = item.querySelector('.kikx-frame__content--user-message');
+    let meta = item.querySelector('.kikx-frame__meta');
+    let itemStyle = getComputedStyle(item);
     return {
       present: true,
       frameID: item.getAttribute('data-frame-id'),
       dataDelivery: item.getAttribute('data-delivery'),
       hasModifierClass: item.classList.contains('kikx-frame--delivery-received'),
-      boxShadow: getComputedStyle(item).boxShadow,
-      animating: item.getAnimations().some((animation) => animation.playState === 'running'),
+      hasSuccessClass: item.classList.contains('kikx-frame--status-success'),
+      dataFrameStatus: item.getAttribute('data-frame-status'),
+      background: itemStyle.backgroundColor,
+      headerBackground: meta ? getComputedStyle(meta).backgroundImage : null,
+      statusColor: itemStyle.getPropertyValue('--kikx-frame-status-color').trim(),
+      deliveryColor: itemStyle.getPropertyValue('--kikx-frame-delivery-color').trim(),
       afterContent: content ? getComputedStyle(content, '::after').content : null,
       bubbleDelivery: bubble ? bubble.getAttribute('data-delivery') : null,
       ariaLabel: bubble ? bubble.getAttribute('aria-label') : null,
@@ -240,49 +246,10 @@ function readBubble(page, needle) {
   }, needle);
 }
 
-// No generated content computes as `normal` or `none`; real content is a quoted
-// string such as `"Received"`. Normalising both absences to '' keeps "exactly no
-// caption" honest instead of asserting a literal Chrome never returns.
 function captionText(value) {
   if (!value || value === 'none' || value === 'normal')
     return '';
   return String(value).replace(/^['"]|['"]$/g, '');
-}
-
-// The accent fades in over the shell's `box-shadow 180ms ease`
-// (styles/app.css:941), so a single sample after the class lands is mid-flight
-// and would be indistinguishable from a broken colour token. Wait for a
-// non-animating sample that actually satisfies the predicate.
-async function waitForSettledShadow(page, needle, isSettled) {
-  let deadline = Date.now() + 5000;
-  let last = null;
-  while (Date.now() < deadline) {
-    let sample = await readBubble(page, needle);
-    last = sample;
-    if (sample.present && !sample.animating && sample.boxShadow && isSettled(sample.boxShadow))
-      return sample.boxShadow;
-    await new Promise((resolve) => setTimeout(resolve, 40));
-  }
-  throw new Error(`delivery accent never settled within 5000ms, last=${JSON.stringify(last)}`);
-}
-
-// Pin the COLOUR, not merely the presence of an inset. A hardcoded grey 3px
-// inset would satisfy "a 3px opaque inset exists", which is exactly the defect a
-// prior negative control caught. The probe carries the token inside the item, so
-// both values come from the same serialisation path.
-function resolveTokenShadow(page, frameID) {
-  return page.evaluate((id) => {
-    let item = document.querySelector(`kikx-frame-item[data-frame-id="${id}"]`);
-    let probe = document.createElement('div');
-    probe.style.position = 'absolute';
-    probe.style.width = '0';
-    probe.style.height = '0';
-    probe.style.boxShadow = 'inset 3px 0 0 var(--kikx-frame-delivery-color)';
-    item.appendChild(probe);
-    let tokenShadow = getComputedStyle(probe).boxShadow;
-    probe.remove();
-    return tokenShadow;
-  }, frameID);
 }
 
 test('a typed message flips from neutral to received in the browser when the agent is fed', async (t) => {
@@ -331,8 +298,8 @@ test('a typed message flips from neutral to received in the browser when the age
     assert.deepEqual(services.providerRuns, [], 'the provider must not have been fed yet');
     assert.equal(before.dataDelivery, 'neutral', 'a typed message must render with an explicit neutral delivery');
     assert.equal(before.hasModifierClass, false, 'a neutral message must not carry the received modifier');
-    assert.equal(before.boxShadow, 'none', 'a neutral message must not paint the delivery accent');
-    assert.equal(captionText(before.afterContent), '', 'a neutral message must not show the Received caption');
+    assert.equal(before.hasSuccessClass, false, 'a neutral message must not claim success');
+    assert.equal(before.dataFrameStatus, null, 'a neutral message must not expose success status');
     assert.equal(before.bubbleDelivery, null, 'the bubble must not claim a delivery state while neutral');
     assert.equal(before.ariaLabel, null, 'a neutral message must not announce itself as received');
     assert.equal(before.connected, true, 'the item must be a live node, not a detached copy');
@@ -350,12 +317,6 @@ test('a typed message flips from neutral to received in the browser when the age
       return item?.getAttribute('data-delivery') === 'received';
     }, { timeout: 20000 }, TYPED_TEXT);
 
-    let settledShadow = await waitForSettledShadow(
-      page,
-      TYPED_TEXT,
-      (shadow) => shadow.includes('inset') && !shadow.startsWith('none') && !shadow.includes('/ 0.'),
-    );
-
     let after = await readBubble(page, TYPED_TEXT);
     assert.equal(after.present, true);
     // Same node, not a re-rendered replacement: the existing bubble is updated in
@@ -365,17 +326,14 @@ test('a typed message flips from neutral to received in the browser when the age
 
     assert.equal(after.dataDelivery, 'received');
     assert.equal(after.hasModifierClass, true, 'the received modifier must be applied');
-    assert.equal(captionText(after.afterContent), 'Received', 'the Received caption must be shown');
+    assert.equal(after.hasSuccessClass, true, 'delivery must use the shared success status');
+    assert.equal(after.dataFrameStatus, 'success', 'the frame must report success status');
+    assert.equal(captionText(after.afterContent), '', 'there must be no Received caption');
     assert.equal(after.bubbleDelivery, 'received', 'the bubble must carry the delivery state');
     assert.equal(after.ariaLabel, RECEIVED_LABEL, 'the bubble must announce that the agent received it');
-
-    // The inset must BE the delivery token, not any inset.
-    let tokenShadow = await resolveTokenShadow(page, after.frameID);
-    assert.equal(
-      settledShadow,
-      tokenShadow,
-      `the settled inset must use the delivery token, painted=${settledShadow} token=${tokenShadow}`,
-    );
+    assert.equal(after.statusColor, after.deliveryColor, 'the success colour token must be applied');
+    assert.notEqual(after.background, before.background, 'received must turn the frame body green');
+    assert.notEqual(after.headerBackground, before.headerBackground, 'received must turn the header green');
 
     // ---- the picture matches the state the server actually holds ------------
     assert.deepEqual(services.providerRuns, [ before.frameID ], 'the provider must have been fed this exact frame');

@@ -24,6 +24,10 @@ export const DELIVERY_RECEIVED = 'received';
 // says what actually happened.
 export const DELIVERY_RECEIVED_LABEL = 'Received by the agent';
 
+// Delivery is rendered with the same success treatment as every other frame,
+// not a bespoke caption or edge accent.
+export const DELIVERY_SUCCESS_CLASS = 'kikx-frame--status-success';
+
 // Absent means neutral: legacy rows carry no `delivery` key and need no
 // migration, and the client must never treat an unknown value as received.
 export function frameDeliveryStatus(frame) {
@@ -49,7 +53,9 @@ export function frameDeliveryModifier(frame) {
   if (!supportsFrameDelivery(frame))
     return '';
   let status = frameDeliveryStatus(frame);
-  return status === DELIVERY_RECEIVED ? ' kikx-frame--delivery-received' : '';
+  return status === DELIVERY_RECEIVED
+    ? ` kikx-frame--delivery-received ${DELIVERY_SUCCESS_CLASS}`
+    : '';
 }
 
 // Apply the delivery state to a mounted frame item in place. One call site
@@ -62,9 +68,20 @@ export function applyFrameDelivery(element, frame) {
     return;
 
   if (!supportsFrameDelivery(frame)) {
+    let wasReceived = element.getAttribute('data-delivery') === DELIVERY_RECEIVED;
     element.removeAttribute('data-delivery');
     if (element.classList)
       element.classList.remove(`kikx-frame--delivery-${DELIVERY_RECEIVED}`);
+
+    // A hidden/deleted UserMessage may previously have been promoted to
+    // delivery success, so clear that too. A non-user frame's own generic
+    // status class/dataset must be left alone; this function must never erase
+    // a tool's success/error state unless the element still carried the
+    // delivery marker we are removing.
+    if (frame?.type === 'UserMessage' || wasReceived) {
+      element.removeAttribute('data-frame-status');
+      element.classList?.remove(DELIVERY_SUCCESS_CLASS);
+    }
     return;
   }
 
@@ -74,8 +91,11 @@ export function applyFrameDelivery(element, frame) {
     return;
 
   let modifier = `kikx-frame--delivery-${DELIVERY_RECEIVED}`;
-  if (status === DELIVERY_RECEIVED)
-    element.classList.add(modifier);
-  else
-    element.classList.remove(modifier);
+  if (status === DELIVERY_RECEIVED) {
+    element.classList.add(modifier, DELIVERY_SUCCESS_CLASS);
+    element.dataset.frameStatus = 'success';
+  } else {
+    element.classList.remove(modifier, DELIVERY_SUCCESS_CLASS);
+    element.removeAttribute('data-frame-status');
+  }
 }

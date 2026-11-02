@@ -468,11 +468,6 @@ export class KikxFrameItem extends HTMLElement {
     this.dataset.frameId = frame.id || '';
     this.dataset.frameType = frame.type || '';
     this.dataset.toolName = frame.content?.toolName || '';
-    // A user message is never `tinted` (BOT_COMMUNICATION_TYPES excludes it),
-    // so delivery needs its own code path or the state would be stored, reach
-    // `frame.updated`, and never appear. No-op for every other frame type.
-    applyFrameDelivery(this, frame);
-
     let moodBand = frameMoodBand(frame);
     if (moodBand)
       this.dataset.moodBand = moodBand;
@@ -483,6 +478,14 @@ export class KikxFrameItem extends HTMLElement {
       this.dataset.frameStatus = status;
     else
       this.removeAttribute('data-frame-status');
+
+    // A user message is never `tinted` (BOT_COMMUNICATION_TYPES excludes it),
+    // so delivery needs its own code path or the state would be stored, reach
+    // `frame.updated`, and never appear. No-op for every other frame type.
+    // Apply it last: delivery intentionally promotes a UserMessage to the
+    // shared success status, which the generic tinted/status branch above would
+    // otherwise clear again.
+    applyFrameDelivery(this, frame);
   }
 
   _shouldCompact(frame) {

@@ -47,10 +47,10 @@ test('neutral adds no class at all, so the shipped grey bubble is unchanged', ()
   assert.equal(frameDeliveryModifier(userFrame({ delivery: 'neutral' })), '');
 });
 
-test('received contributes its modifier class exactly once', () => {
+test('received contributes its modifier and the shared success class', () => {
   assert.equal(
     frameDeliveryModifier(userFrame({ delivery: 'received' })),
-    ' kikx-frame--delivery-received',
+    ' kikx-frame--delivery-received kikx-frame--status-success',
   );
 });
 
@@ -84,7 +84,9 @@ test('applying delivery adds the modifier class and the dataset value', async ()
   applyFrameDelivery(element, userFrame({ delivery: 'received' }));
 
   assert.equal(element.dataset.delivery, 'received');
+  assert.equal(element.dataset.frameStatus, 'success');
   assert.equal(element.classList.contains('kikx-frame--delivery-received'), true);
+  assert.equal(element.classList.contains('kikx-frame--status-success'), true);
 });
 
 test('applying neutral adds the dataset value but no modifier class', async () => {
@@ -92,7 +94,9 @@ test('applying neutral adds the dataset value but no modifier class', async () =
   applyFrameDelivery(element, userFrame({ delivery: 'neutral' }));
 
   assert.equal(element.dataset.delivery, 'neutral');
+  assert.equal(element.hasAttribute('data-frame-status'), false);
   assert.equal(element.classList.contains('kikx-frame--delivery-received'), false);
+  assert.equal(element.classList.contains('kikx-frame--status-success'), false);
 });
 
 test('a later neutral update removes a previously applied modifier', async () => {
@@ -101,9 +105,11 @@ test('a later neutral update removes a previously applied modifier', async () =>
   let element = await fakeElement();
   applyFrameDelivery(element, userFrame({ delivery: 'received' }));
   assert.equal(element.classList.contains('kikx-frame--delivery-received'), true);
+  assert.equal(element.classList.contains('kikx-frame--status-success'), true);
 
   applyFrameDelivery(element, userFrame({ delivery: 'neutral' }));
   assert.equal(element.classList.contains('kikx-frame--delivery-received'), false);
+  assert.equal(element.classList.contains('kikx-frame--status-success'), false);
   assert.equal(element.dataset.delivery, 'neutral');
 });
 
@@ -114,7 +120,9 @@ test('applying to a non-user frame leaves no delivery marker behind', async () =
 
   // `data-delivery` is removed outright, not set to the string 'undefined'.
   assert.equal(element.hasAttribute('data-delivery'), false);
+  assert.equal(element.hasAttribute('data-frame-status'), false);
   assert.equal(element.classList.contains('kikx-frame--delivery-received'), false);
+  assert.equal(element.classList.contains('kikx-frame--status-success'), false);
 });
 
 test('applying to a null element is a no-op, not a throw', () => {

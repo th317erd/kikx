@@ -683,31 +683,6 @@ kikx-app {
   min-width: 0;
 }
 
-/* Delivery: a message a person typed has reached the agent. The grey fill is
-   deliberately unchanged - the owner said grey is fine - so the signal is a
-   quiet accent inset on the leading edge rather than a recolour. `received` is
-   one-way (there is no failure state yet).
-   The inset still animates, and not from anything declared here: the shared
-   `.kikx-frame` shell transitions `box-shadow 180ms ease` (see the multiline
-   transition list below, at :941), so the accent fades in and out over ~180ms. That is
-   observable - a computed-style sample taken on the class flip reads a fraction
-   of 3px with proportionally reduced alpha (measured 0.25px at alpha 0.084) and
-   is indistinguishable from a broken colour token. Anything asserting this
-   accent must wait for the settled value. */
-.kikx-frame--UserMessage.kikx-frame--delivery-received {
-  box-shadow: inset 3px 0 0 var(--kikx-frame-delivery-color);
-}
-
-.kikx-frame--UserMessage.kikx-frame--delivery-received .kikx-frame__content--user-message::after {
-  content: 'Received';
-  display: block;
-  margin-top: 4px;
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  opacity: 0.55;
-}
-
 .kikx-user-message {
   display: grid;
   gap: 8px;
