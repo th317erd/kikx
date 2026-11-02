@@ -162,3 +162,29 @@ with the command or log line that produced it.
 - Outbound mirroring is still a product decision: an agent reply reaches Discord only when the
   model calls `discord:send`. The cutover did not change that.
 - The 3003 rows were not deleted; reclaiming them is a separate decision.
+
+## Post-cutover stability re-check (2026-11-02T21:51–21:54Z, after the Kikx restart)
+
+The agent session hosting this work was restarted mid-verification. The cutover was re-measured
+from scratch rather than assumed, because "the script was launched" is not "the script finished".
+
+| Assertion | Result |
+|---|---|
+| The lost verify run had in fact completed | `/tmp/3098-discord-proof.txt` survived with the full 21:47:14–21:47:32Z run; `/tmp/verify-3098.out` is 0 bytes |
+| 3098 container is the post-cutover one | `kikx/kikx:270e0143`, id `e700bc3c…`, recreated 21:47:14Z, healthy |
+| Discord env is present in the **running** container | 4 keys; `token_len=72` |
+| Gateway is stable, not flapping | since 21:47:00Z: **`gateway ready as Miri` ×1, `gateway reconnecting` ×0, errors ×0** |
+| The socket belongs to 3098, not 3003 | single host socket to `162.159.135.234:443` owned by pid `2744473`, the node child of container `kikx` (entrypoint pid `2744240`) |
+| 3003 carries no token | pid `2714560`; zero Discord sockets; log `gateway not started: no bot token configured` |
+| 3003's only remaining `KIKX_DISCORD_` match is not a credential | `KIKX_ENV_FILE_OWNED_KEYS` — a variable whose *value* is the list of key **names**. The earlier "0 keys" phrasing was wrong; the accurate statement is "0 Discord **values**: token, public key, channel and session are all absent" |
+| Outbound confirmed independently at the API, not just in our own frames | `GET /channels/1471361561955143773/messages` → `1566932647853428937` at `21:50:55.449Z`, `author Miri` (`1471348366305923102`, `bot:true`), i.e. posted after the 21:47 cutover |
+| Deny-by-default holds against a non-Discord actor | `discord:send` called directly as actor `miri` → `sent:false denied:true "no grant for discord.send"`. The only grants are `discord:255524600249581568` on `discord.inbound`/`discord.send`, scoped `{"channel":"1471361561955143773"}`. So this call *should* refuse: the leg is authorised for the Discord user's turns, not for the coordinator at large |
+
+Repos after the re-check: `kikx` `main` = `b915f2c2`, divergence `0 0`;
+`kikx-plugin-discord` `master` = `c0eabb3`, divergence `0 0`. Deployed image `270e0143` is one
+commit behind `main`, and that commit is docs-only (`docs/discord-gateway-migration-3098.md`),
+so no redeploy is warranted for it.
+
+Not verified: the 3003-side `discord_*` rows were never re-read after the move to confirm they
+are merely inert rather than actively conflicting, and no image-only message has been posted
+through 3098's gateway yet (the media fix `d2fb5a7` is proven on 3003 only).
