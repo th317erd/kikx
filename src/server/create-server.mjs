@@ -59,6 +59,7 @@ import { OcrService } from '../core/ocr/index.mjs';
 import { QuestionAnswerService, QuestionsStore } from '../core/questions/index.mjs';
 import { repairQuestionIndex } from '../core/questions/question-index-repair.mjs';
 import { registerQuestionScheduleRouting } from '../core/questions/question-schedule-plugin.mjs';
+import { registerRecurringTimerRouting } from '../core/scheduling/recurring-timer-frame-plugin.mjs';
 import { CommandRegistry, registerInternalCommands } from '../core/commands/index.mjs';
 import { PluginRegistry } from '../core/plugins/index.mjs';
 import { getPluginRouter } from '../core/plugins/plugin-router.mjs';
@@ -283,6 +284,12 @@ export async function createServer(options = {}) {
       // without next(), and the chain only stops before an agent turn if this
       // plugin ran first.
       registerQuestionScheduleRouting(context.require('frameRouter'));
+      // Recurring timers also MUST come before agent routing, but the OPPOSITE
+      // completion contract: the question plugin stops the chain (done) when its
+      // work replaces the wake; a recurring timer re-arms next and then CONTINUES
+      // (next), because the fired frame itself is the reminder wake agent routing
+      // must deliver.
+      registerRecurringTimerRouting(context.require('frameRouter'));
       registerAgentRouting(context.require('frameRouter'));
     })());
   }

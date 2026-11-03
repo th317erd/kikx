@@ -71,6 +71,11 @@ import {
   TodoGetTool,
   TodoUpdateTool,
 } from './todo-tools.mjs';
+import {
+  ScheduleCancelTool,
+  ScheduleListTool,
+  ScheduleRecurringTool,
+} from '../scheduling/schedule-tools.mjs';
 import { WebFetchTool } from './web-fetch-tool.mjs';
 import { WebSearchTool } from './web-search-tool.mjs';
 import { WriteFileTool } from './write-file-tool.mjs';
@@ -139,6 +144,9 @@ export const BUILT_IN_TOOLS = [
   [ 'todo-clear', TodoClearTool ],
   [ 'todo-focus-set', TodoFocusSetTool ],
   [ 'todo-focus-clear', TodoFocusClearTool ],
+  [ 'schedule_recurring', ScheduleRecurringTool ],
+  [ 'schedule_list', ScheduleListTool ],
+  [ 'schedule_cancel', ScheduleCancelTool ],
 ];
 
 const BUILT_IN_FRAME_COMPONENTS = [
