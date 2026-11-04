@@ -188,15 +188,24 @@ export function frameHeaderStatus(frame, compact, state = {}) {
 }
 
 export function renderHeaderStatusLabel(label, data = {}) {
-  label.textContent = '';
+  let next = data.label || '';
+  let hasCode = typeof label.querySelector === 'function' && Boolean(label.querySelector('code'));
+
   if (data.code === true) {
+    let existing = typeof label.querySelector === 'function' ? label.querySelector('code') : null;
+    if (existing && existing.textContent === next)
+      return;
+    label.textContent = '';
     let code = document.createElement('code');
-    code.textContent = data.label || '';
+    code.textContent = next;
     label.appendChild(code);
     return;
   }
 
-  label.textContent = data.label || '';
+  // Busy agents emit frame.updated for the same header label many times a
+  // second. Clearing/reassigning it every time is a needless DOM mutation.
+  if (label.textContent !== next || hasCode)
+    label.textContent = next;
 }
 
 export function buildHeaderStatus(frame, compact, state = {}) {

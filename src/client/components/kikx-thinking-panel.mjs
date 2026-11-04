@@ -24,6 +24,12 @@ const TIP_HTML = `
   </div>
 `;
 
+function sameLines(previous = [], next = []) {
+  if (previous.length !== next.length)
+    return false;
+  return previous.every((line, index) => line === next[index]);
+}
+
 export class KikxThinkingPanel extends HTMLElement {
   constructor() {
     super();
@@ -61,7 +67,15 @@ export class KikxThinkingPanel extends HTMLElement {
   }
 
   setEntry(entry = {}) {
-    this._entry = entry;
+    let next = entry || {};
+    let name = next.name || 'Agent';
+    let text = next.text || '';
+    if (this._entry && this._entryName === name && this._entryText === text)
+      return;
+
+    this._entry = next;
+    this._entryName = name;
+    this._entryText = text;
     if (this.isConnected)
       this._applyEntry();
   }
@@ -95,6 +109,9 @@ export class KikxThinkingPanel extends HTMLElement {
   }
 
   _applyLines(next) {
+    if (sameLines(this._lines, next))
+      return;
+
     this._ensureTip();
     let container = this._tipLines;
     if (!container)
@@ -150,7 +167,9 @@ export class KikxThinkingPanel extends HTMLElement {
 
   _scrollTipToBottom() {
     let windowElement = this._tipWindow;
-    if (!windowElement)
+    // Reading scrollHeight and writing scrollTop forces layout. The hidden tip
+    // does not need to be pinned; _positionTip() pins it when it is shown.
+    if (!windowElement || this._tip?.hidden)
       return;
 
     windowElement.scrollTop = windowElement.scrollHeight;

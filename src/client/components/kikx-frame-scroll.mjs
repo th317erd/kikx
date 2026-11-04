@@ -297,7 +297,12 @@ export function syncSessionShell(app) {
   let editingTitle = app.querySelector('.kikx-breadcrumb__title-input, .kikx-breadcrumb__crumb--editing, .kikx-window__header .kikx-window__title-input');
   if (threadTitle && !editingTitle) {
     let selectedSession = app._selectedSession();
-    threadTitle.textContent = selectedSession?.title || 'No session';
+    let nextTitle = selectedSession?.title || 'No session';
+    // session.saved fires repeatedly while an agent is busy. Rewriting the same
+    // title on every event mutates (and relayouts) the breadcrumb under the
+    // composer for no visual change.
+    if (threadTitle.textContent !== nextTitle)
+      threadTitle.textContent = nextTitle;
   }
 
   let grid = app.querySelector('kikx-session-grid');
