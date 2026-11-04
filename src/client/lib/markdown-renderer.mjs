@@ -336,12 +336,16 @@ function replaceLinks(text, tokens) {
 function renderInlineTextChunk(text, tokens) {
   let output = '';
   let cursor = 0;
-  let pattern = /\bhttps?:\/\/[^\s<>"']+/gi;
+  let pattern = /https?:\/\/[^\s<>"']+/gi;
 
   for (let match; (match = pattern.exec(text));) {
     let rawURL = match[0];
+    // GFM-style boundary: a URL preceded by a letter or digit is part of a
+    // larger word (foohttps://…) and must not linkify. `_` IS allowed so
+    // `__https://…__` (bold via underscores) still becomes a link.
+    let validStart = match.index === 0 || !/[\p{L}\p{N}]/u.test(text[match.index - 1]);
     let { url, suffix } = splitTrailingURLPunctuation(rawURL);
-    let href = normalizeSafeURL(url);
+    let href = validStart ? normalizeSafeURL(url) : '';
 
     if (!href || !url) {
       output += escapeHTML(text.slice(cursor, pattern.lastIndex));
@@ -363,7 +367,10 @@ function splitTrailingURLPunctuation(rawURL) {
   let url = String(rawURL || '');
   let suffix = '';
 
-  while (url.length > 0 && /[.,!?;:]/.test(url[url.length - 1])) {
+  // GFM excludes trailing emphasis punctuation from an autolink so the
+  // surrounding `**bold**` / `__bold__` / `~~strike~~` markers stay outside
+  // the link (and out of its href) and can pair up afterwards.
+  while (url.length > 0 && /[.,!?;:*_~]/.test(url[url.length - 1])) {
     suffix = url[url.length - 1] + suffix;
     url = url.slice(0, -1);
   }

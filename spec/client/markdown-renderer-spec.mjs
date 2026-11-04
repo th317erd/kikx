@@ -59,6 +59,22 @@ test('markdownToHTML renders links, inline code, tables, and safe inline html', 
   assert.equal(html.includes('javascript:'), false);
 });
 
+test('markdownToHTML keeps emphasis markers outside bolded and struck bare links', () => {
+  let html = markdownToHTML([
+    '**https://example.test/?code=ab0db6d7.xyz**',
+    '__https://example.test/u__',
+    '~~https://example.test/d~~',
+    '**[docs](https://example.test/docs)**',
+  ].join('\n'));
+
+  assert.match(html, /<strong><a href="https:\/\/example\.test\/\?code=ab0db6d7\.xyz" target="_blank" rel="noopener noreferrer">https:\/\/example\.test\/\?code=ab0db6d7\.xyz<\/a><\/strong>/);
+  assert.match(html, /<strong><a href="https:\/\/example\.test\/u" target="_blank" rel="noopener noreferrer">https:\/\/example\.test\/u<\/a><\/strong>/);
+  assert.match(html, /<del><a href="https:\/\/example\.test\/d" target="_blank" rel="noopener noreferrer">https:\/\/example\.test\/d<\/a><\/del>/);
+  assert.match(html, /<strong><a href="https:\/\/example\.test\/docs" target="_blank" rel="noopener noreferrer">docs<\/a><\/strong>/);
+  assert.equal(html.includes('*'), false, 'no literal asterisks may leak');
+  assert.equal(html.includes('&amp;amp;') || html.includes('code=ab0db6d7.xyz*'), false, 'the query string must not carry emphasis markers into the href');
+});
+
 test('markdownToHTML autolinks bare safe URLs outside code and existing anchors', () => {
   let html = markdownToHTML([
     'Visit https://example.test/docs?x=1.',
