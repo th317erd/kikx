@@ -3,7 +3,7 @@
 import './kikx-user-message-frame.mjs';
 import './kikx-coordination-frame.mjs';
 import { isCoordinationWakeFrame } from '../../shared/coordination-visibility.mjs';
-import { buildFrameQuickActions, syncExpandCollapseButton } from './kikx-frame-quick-actions.mjs';
+import { buildFrameQuickActions, quickActionSpecForFrame, syncExpandCollapseButton } from './kikx-frame-quick-actions.mjs';
 import { elements, $, cleanupBindings } from '../lib/aeor-ui.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { renderMarkdownToElement } from '../lib/markdown-renderer.mjs';
@@ -33,19 +33,13 @@ import './kikx-sub-session-frame.mjs';
 import {
   MINIMIZED_EXCEPTIONS,
   buildHeaderStatus,
-  frameContentDescriptor,
   frameDebugClass,
   frameHeaderStatus,
   frameKey,
   hasTagName,
   isToolFrame,
-  markdownText,
-  normalizeTagName,
-  plainText,
   renderHeaderStatusLabel,
   setTextIfChanged,
-  streamText,
-  thinkingText,
   typingAgentName,
   typingThinkingText,
 } from './kikx-frame-item-helpers.mjs';
@@ -58,8 +52,9 @@ import {
   onFrameSearchMutation,
   syncFrameSearchHint,
 } from './frame-item-search.mjs';
+import { buildFrameContent, reconcileFrameContent } from './kikx-frame-item-content.mjs';
 
-const { div, p, span, strong, time } = elements;
+const { div, span, strong, time } = elements;
 
 export class KikxFrameItem extends HTMLElement {
   constructor() {
@@ -246,7 +241,7 @@ export class KikxFrameItem extends HTMLElement {
         // Compact frames keep only their summary and command preview in the DOM.
         // The tool card/output subtree is built on first expansion, not eagerly.
         if (!compact)
-          content = this._buildFrameContent(frame);
+          content = buildFrameContent(this, frame);
       }
 
       cleanupBindings(this);
@@ -297,7 +292,14 @@ export class KikxFrameItem extends HTMLElement {
       if (content)
         this._highlightSearch(content);
       this._bindSearchObserver();
-      this._quickActions = buildFrameQuickActions(frame, document);
+      // Only frames whose subtree carries disclosures get the expand button —
+      // see quickActionSpecForFrame. A button with no <details> to toggle is
+      // a dead affordance: its handler iterates an empty list forever.
+      this._quickActions = buildFrameQuickActions(
+        frame,
+        document,
+        quickActionSpecForFrame(frame, this._frameTreeHasDetails()),
+      );
       this.appendChild(this._quickActions);
       syncExpandCollapseButton(this._quickActions);
 
@@ -309,6 +311,23 @@ export class KikxFrameItem extends HTMLElement {
       this._contentTag = previous.contentTag;
       this._lastMarkdownText = previous.lastMarkdownText;
     }
+  }
+
+  // Does this frame's rendered subtree carry disclosures? Called while the
+  // subtree is detached (mid-_render) or already attached (reconcile) — never
+  // mid-`$(this).empty()` mutation.
+  _frameTreeHasDetails() {
+    let probe = this._compactView
+      ? this._compactView.element
+      : this._contentElement;
+    if (!probe)
+      return this.querySelectorAll('details').length > 0;
+    // The compact view root IS a <details>, and querySelectorAll never matches
+    // the root itself — count it explicitly or every compact frame would look
+    // disclosure-free.
+    if (probe.localName === 'details')
+      return true;
+    return probe.querySelectorAll('details').length > 0;
   }
 
   _appendHoverTarget() {
@@ -398,6 +417,11 @@ export class KikxFrameItem extends HTMLElement {
         return;
       }
 
+      // A frame whose class or content gained disclosures (or lost them) gets
+      // the expand button added or removed with it — a toolbar built while the
+      // subtree was empty must not keep a button that toggles nothing.
+      this._syncQuickActionsToTree();
+
       if (compact) {
         updateCompactSummary(this._compactView, frame);
         this._highlightSearch(this._compactView.element);
@@ -406,7 +430,7 @@ export class KikxFrameItem extends HTMLElement {
         if (this._compactView.element.open) {
           this._ensureCompactContent();
           if (this._contentElement)
-            this._reconcileFrameContent(frame);
+            reconcileFrameContent(this, frame);
         } else {
           this._discardContentElement();
         }
@@ -414,8 +438,27 @@ export class KikxFrameItem extends HTMLElement {
       }
 
       this._reconcileFrameMeta(frame);
-      this._reconcileFrameContent(frame);
+      reconcileFrameContent(this, frame);
     }, { frameID: frame.id, frameType: frame.type });
+  }
+
+  // Rebuild only the quick-action bar when the measured spec changed. The bar
+  // is cheap (two buttons), so rebuilding on spec change keeps `_frame` wiring
+  // correct without a partial-button sync.
+  _syncQuickActionsToTree() {
+    if (!this._quickActions)
+      return;
+    let spec = quickActionSpecForFrame(this._frame, this._frameTreeHasDetails());
+    let hasQuote = !!this._quickActions.querySelector('.kikx-frame__quick-action--quote');
+    let hasExpand = !!this._quickActions.querySelector('.kikx-frame__quick-action--expand-collapse');
+    if (hasQuote === spec.quote && hasExpand === spec.expand) {
+      this._quickActions._frame = this._frame;
+      return;
+    }
+
+    this._quickActions = buildFrameQuickActions(this._frame, document, spec);
+    this.appendChild(this._quickActions);
+    syncExpandCollapseButton(this._quickActions);
   }
 
   _onCompactToggle(renderEpoch = this._renderEpoch, detailsElement = this._compactView?.element) {
@@ -467,7 +510,7 @@ export class KikxFrameItem extends HTMLElement {
     if (this._contentElement || !this._compactView)
       return;
 
-    let content = this._buildFrameContent(this._frame);
+    let content = buildFrameContent(this, this._frame);
     if (!content)
       return;
 
@@ -476,6 +519,10 @@ export class KikxFrameItem extends HTMLElement {
     this._contentParent.appendChild(content);
     this._highlightSearch(content);
     this._bindSearchObserver();
+    // The lazy-built tool card may carry disclosures (nested output/argument
+    // folds). The toolbar was built before this content existed, so a frame
+    // that starts disclosure-free can become expandable here.
+    this._syncQuickActionsToTree();
   }
 
   _reconcileTypingIndicator(frame) {
@@ -536,103 +583,6 @@ export class KikxFrameItem extends HTMLElement {
     } else if (debugClass) {
       setTextIfChanged(debugClass, debugLabel);
     }
-  }
-
-  _reconcileFrameContent(frame) {
-    let descriptor = frameContentDescriptor(frame, this._appState);
-    if (
-      !this._contentElement
-      || this._contentKind !== descriptor.kind
-      || normalizeTagName(this._contentTag) !== normalizeTagName(descriptor.tagName)
-    ) {
-      this._replaceContentElement(frame);
-      return;
-    }
-
-    if (descriptor.kind === 'user-message') {
-      let child = this._contentElement.firstElementChild;
-      if (hasTagName(child, descriptor.tagName)) {
-        child.updateFrame(frame, this._appState);
-        return;
-      }
-      this._replaceContentElement(frame);
-      return;
-    }
-
-    if (descriptor.kind === 'sub-session') {
-      let child = this._contentElement.firstElementChild;
-      if (hasTagName(child, descriptor.tagName)) {
-        child.appState = this._appState;
-        child.updateFrame(frame, this._appState);
-        return;
-      }
-      this._replaceContentElement(frame);
-      return;
-    }
-
-    if (descriptor.kind === 'custom') {
-      let child = this._contentElement.firstElementChild;
-      if (hasTagName(child, descriptor.tagName)) {
-        child.appState = this._appState;
-        if (typeof child.updateFrame === 'function')
-          child.updateFrame(frame, this._appState);
-        else
-          child.frame = frame;
-        return;
-      }
-      this._replaceContentElement(frame);
-      return;
-    }
-
-    if (descriptor.kind === 'stream') {
-      setTextIfChanged(this._contentElement, streamText(frame));
-      return;
-    }
-
-    if (descriptor.kind === 'thinking') {
-      setTextIfChanged(this._contentElement, thinkingText(frame));
-      return;
-    }
-
-    if (descriptor.kind === 'text') {
-      setTextIfChanged(this._contentElement, plainText(frame) || frame.id || '');
-      return;
-    }
-
-    if (descriptor.kind === 'markdown')
-      this._reconcileMarkdown(frame);
-    if (this._contentElement) {
-      this._highlightSearch(this._contentElement);
-      this._bindSearchObserver();
-    }
-  }
-
-  _reconcileMarkdown(frame) {
-    let text = markdownText(frame);
-    if (this._lastMarkdownText === text)
-      return;
-
-    let rendered = renderMarkdownToElement(document, text, {
-      className: this._contentElement.className,
-    });
-
-    cleanupBindings(this._contentElement);
-    while (this._contentElement.firstChild)
-      this._contentElement.removeChild(this._contentElement.firstChild);
-
-    for (let child of [ ...rendered.childNodes ])
-      this._contentElement.appendChild(child);
-
-    this._lastMarkdownText = text;
-    this._highlightSearch(this._contentElement);
-  }
-
-  _replaceContentElement(frame) {
-    this._discardContentElement();
-    this._contentElement = this._buildFrameContent(frame);
-    this._contentParent.appendChild(this._contentElement);
-    this._highlightSearch(this._contentElement);
-    this._bindSearchObserver();
   }
 
   _searchQuery() {
@@ -697,66 +647,6 @@ export class KikxFrameItem extends HTMLElement {
     ).build(document);
   }
 
-  _buildFrameContent(frame) {
-    let descriptor = frameContentDescriptor(frame, this._appState);
-    this._contentKind = descriptor.kind;
-    this._contentTag = descriptor.tagName;
-
-    if (descriptor.kind === 'coordination') {
-      let element = document.createElement('kikx-coordination-frame');
-      element.updateFrame(frame, this._appState);
-      return div.class('kikx-frame__content kikx-frame__content--coordination')(element).build(document);
-    }
-
-    if (descriptor.kind === 'user-message') {
-      let element = document.createElement('kikx-user-message-frame');
-      element.updateFrame(frame, this._appState);
-      return div.class('kikx-frame__content kikx-frame__content--user-message')(element).build(document);
-    }
-
-    if (descriptor.kind === 'sub-session')
-      return this._buildSubSessionCard(frame);
-
-    if (descriptor.kind === 'custom')
-      return this._buildCustomFrameContent(frame);
-
-    if (descriptor.kind === 'stream')
-      return div.class('kikx-frame__content kikx-frame__stream')(streamText(frame)).build(document);
-
-    if (descriptor.kind === 'thinking')
-      return p.class('kikx-frame__thinking')(thinkingText(frame)).build(document);
-
-    if (descriptor.kind === 'markdown') {
-      this._lastMarkdownText = markdownText(frame);
-      return renderMarkdownToElement(document, markdownText(frame), {
-        className: 'kikx-frame__content kikx-markdown',
-      });
-    }
-
-    return p(plainText(frame) || frame.id || '').build(document);
-  }
-
-  _buildSubSessionCard(frame) {
-    let element = document.createElement('kikx-sub-session-frame');
-    element.appState = this._appState;
-    element.updateFrame(frame, this._appState);
-    return div.class('kikx-frame__content kikx-frame__content--sub-session')(element).build(document);
-  }
-
-  _buildCustomFrameContent(frame) {
-    let descriptor = resolveFrameComponentDescriptor(frame, this._appState);
-    if (!descriptor?.tagName)
-      return null;
-
-    let element = document.createElement(descriptor.tagName);
-    element.appState = this._appState;
-    if (typeof element.updateFrame === 'function')
-      element.updateFrame(frame, this._appState);
-    else
-      element.frame = frame;
-
-    return div.class('kikx-frame__content kikx-frame__content--custom')(element).build(document);
-  }
 
 }
 

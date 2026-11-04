@@ -60,52 +60,84 @@ function toggleAll(root, button) {
   syncExpandCollapseIcon(button, root);
 }
 
+// Buttons are declared by frame classes, never assumed. A frame gets ONLY the
+// buttons whose backing exists: every frame quotes (it always has visible
+// text), but expand/collapse is offered only when the frame actually carries
+// disclosures to toggle. `canExpand` is the frame class's own claim about the
+// tree it renders — the toolbar is built while the subtree is detached, so the
+// builder cannot probe the DOM itself.
+//
+// This is the fix for dead affordances: the unconditional expand button used
+// to ship on every frame, and on a frame with zero <details> its click handler
+// iterated an empty list and changed nothing — a control that could be clicked
+// forever without effect.
+export function quickActionSpecForFrame(frame, canExpand = false) {
+  let spec = typeof frame?.getQuickActionButtons === 'function'
+    ? frame.getQuickActionButtons()
+    : null;
+  if (!spec || typeof spec !== 'object')
+    spec = {};
+  return {
+    quote: spec.quote !== false,
+    expand: spec.expand === true || (spec.expand !== false && canExpand),
+  };
+}
+
 // A frame's quick actions live just outside the frame surface. The frame item
 // keeps one bar alive across in-place updates and swaps its `_frame` reference,
 // so quoting always uses the current content rather than a stale render.
-export function buildFrameQuickActions(frame, ownerDocument = document) {
+// `spec` carries only the buttons to build; frames that can expand opt in via
+// getQuickActionButtons(), and the frame item passes canExpand when it has
+// measured disclosures in the frame's own (detached) subtree.
+export function buildFrameQuickActions(frame, ownerDocument = document, spec = quickActionSpecForFrame(frame)) {
   let toolbar = ownerDocument.createElement('div');
   toolbar.className = 'kikx-frame__quick-actions';
   toolbar._frame = frame;
 
-  let quote = ownerDocument.createElement('button');
-  quote.type = 'button';
-  quote.className = 'kikx-frame__quick-action kikx-frame__quick-action--quote';
-  quote.title = 'Quote frame';
-  quote.setAttribute('aria-label', 'Quote frame');
-  quote.appendChild(createIcon('reply', { ownerDocument }));
-  quote.addEventListener('click', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    let current = toolbar._frame;
-    if (!current?.id)
-      return;
+  if (spec.quote !== false) {
+    let quote = ownerDocument.createElement('button');
+    quote.type = 'button';
+    quote.className = 'kikx-frame__quick-action kikx-frame__quick-action--quote';
+    quote.title = 'Quote frame';
+    quote.setAttribute('aria-label', 'Quote frame');
+    quote.appendChild(createIcon('reply', { ownerDocument }));
+    quote.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      let current = toolbar._frame;
+      if (!current?.id)
+        return;
 
-    toolbar.dispatchEvent(new CustomEvent(QUOTE_FRAME_EVENT, {
-      bubbles: true,
-      composed: true,
-      detail: {
-        frameID: current.id,
-        text: quoteTextForFrame(current),
-      },
-    }));
-  });
+      toolbar.dispatchEvent(new CustomEvent(QUOTE_FRAME_EVENT, {
+        bubbles: true,
+        composed: true,
+        detail: {
+          frameID: current.id,
+          text: quoteTextForFrame(current),
+        },
+      }));
+    });
 
-  toolbar.appendChild(quote);
+    toolbar.appendChild(quote);
+  }
 
-  let expandCollapse = ownerDocument.createElement('button');
-  expandCollapse.type = 'button';
-  expandCollapse.className = 'kikx-frame__quick-action kikx-frame__quick-action--expand-collapse';
-  expandCollapse.title = 'Expand/collapse';
-  expandCollapse.setAttribute('aria-label', 'Expand/collapse');
-  expandCollapse.appendChild(createIcon('unfold-more', { ownerDocument }));
-  expandCollapse.addEventListener('click', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    toggleAll(toolbar.parentNode, expandCollapse);
-  });
+  // Built only when the frame declares it can toggle disclosures. A button
+  // with nothing to expand must not be offered — see quickActionSpecForFrame.
+  if (spec.expand === true) {
+    let expandCollapse = ownerDocument.createElement('button');
+    expandCollapse.type = 'button';
+    expandCollapse.className = 'kikx-frame__quick-action kikx-frame__quick-action--expand-collapse';
+    expandCollapse.title = 'Expand/collapse';
+    expandCollapse.setAttribute('aria-label', 'Expand/collapse');
+    expandCollapse.appendChild(createIcon('unfold-more', { ownerDocument }));
+    expandCollapse.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleAll(toolbar.parentNode, expandCollapse);
+    });
 
-  toolbar.appendChild(expandCollapse);
+    toolbar.appendChild(expandCollapse);
+  }
 
   return toolbar;
 }
