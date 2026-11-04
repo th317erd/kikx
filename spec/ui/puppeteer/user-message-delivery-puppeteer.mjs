@@ -3,9 +3,10 @@
 // Rendered proof for user-message delivery, in a real browser.
 //
 // Delivery is a success state, not a bespoke caption. A received UserMessage
-// must carry the same success class/tokens as every other successful frame:
-// the frame body and its header turn green. There is no "Received" text and no
-// separate inset accent. Neutral must remain the untouched grey bubble.
+// must carry the same success class/tokens as every other successful frame,
+// but only the status/striped header corner changes colour: the message body
+// stays blue. There is no "Received" text and no separate inset accent. Neutral
+// must remain the untouched blue bubble.
 //
 // This lane reads computed style, not just attributes: a class that no selector
 // matches, or a token that fails to resolve, must not pass.
@@ -77,6 +78,7 @@ function readDelivery(page) {
       background: itemStyle.backgroundColor,
       headerBackground: metaStyle ? metaStyle.backgroundImage : null,
       statusColor: itemStyle.getPropertyValue('--kikx-frame-status-color').trim(),
+      typeColor: itemStyle.getPropertyValue('--kikx-frame-type-color').trim(),
       deliveryColor: itemStyle.getPropertyValue('--kikx-frame-delivery-color').trim(),
       afterContent: content ? getComputedStyle(content, '::after').content : null,
       hasModifierClass: item.classList.contains('kikx-frame--delivery-received'),
@@ -164,12 +166,15 @@ test('Puppeteer renders received user messages with the shared success treatment
     assert.equal(received.ariaLabel, RECEIVED_LABEL, 'delivery must remain accessible');
     assert.equal(captionText(received.afterContent), '', 'there must be no Received caption');
 
-    // The success token must actually paint. A class that no selector matches
-    // would leave the old blue frame in place while every attribute still passed.
+    // The success token must actually paint, but ONLY on the status/header
+    // treatment. A class that no selector matches would leave the old grey
+    // status in place, while a type-hue override would turn the whole message
+    // green -- the exact confusion the owner corrected.
     assert.equal(received.statusColor, received.deliveryColor, 'delivery must use the shared success colour token');
-    assert.equal(received.statusColor !== '', true, 'the success token must resolve');
-    assert.notEqual(received.background, neutral.background, 'received must turn the frame body green');
-    assert.notEqual(received.headerBackground, neutral.headerBackground, 'received must turn the header green');
+    assert.notEqual(received.statusColor, neutral.statusColor, 'the status corner must turn green');
+    assert.equal(received.typeColor, neutral.typeColor, 'the message body/type hue must remain blue');
+    assert.equal(received.background, neutral.background, 'received must keep the blue message body');
+    assert.notEqual(received.headerBackground, neutral.headerBackground, 'received must turn the striped header/status corner green');
 
     // ---- in place; only the person's message is affected -----------------------
     let identity = await page.evaluate(() => ({

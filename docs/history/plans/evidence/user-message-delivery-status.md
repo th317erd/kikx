@@ -194,10 +194,11 @@ What ships now:
 - `frameDeliveryModifier()` emits ` kikx-frame--delivery-received kikx-frame--status-success`
   for a received `UserMessage` (`src/client/components/frame-delivery-status.mjs`), so the
   item reports `data-frame-status="success"` like any other successful frame.
-- The colour lives in `src/client/styles/frame-colors.css:133-140`, which recolours the
-  shared type/status/border/author tokens on
-  `.kikx-frame--UserMessage.kikx-frame--delivery-received`. The body and the header both
-  change; there is no edge accent and no `::after` caption rule anywhere.
+- The colour lives in the shared `.kikx-frame--status-success` tokens
+  (`src/client/styles/frame-colors.css`), while `.kikx-frame--UserMessage`
+  deliberately keeps its blue type/border/body hue. The message body therefore stays
+  blue and only the status/striped header corner turns green; there is no edge accent
+  and no `::after` caption rule anywhere.
 - `src/client/styles/app.css` contains **zero** `delivery` references — the 25 deleted
   lines were the inset and caption rules, and since `8be6c75d` it is a pure `@import` entry,
   so the whole sheet is checked by the `stylesheet-links-spec` gate (15 / 15 green) rather
@@ -247,8 +248,8 @@ stood then — but they no longer describe the lane's current size.
 - **Browser rendering is now measured; end-to-end is NOT.** The earlier version of this
   record said the CSS had never been rendered in a browser. That is no longer true:
   `user-message-delivery-puppeteer.mjs` asserts the shared success class, that the status
-  token resolves to the delivery token, that body **and** header backgrounds change, that
-  the announced label is present, that there is **no** caption, and that a revert clears
+  token resolves to the delivery token, that the body/type hue stays blue while the striped
+  header changes, that the announced label is present, that there is **no** caption, and that a revert clears
   both the modifier and the success class — in real Chromium. (The inset/caption wording
   this paragraph used before the shared-success treatment landed is superseded; see
   "Visual treatment: the inset/caption contract was replaced" below.)
@@ -313,8 +314,9 @@ stood then — but they no longer describe the lane's current size.
   frame carries `received` plus a finite `deliveryAt`, so the picture agrees with the server
   state.
 
-  Honest bound on the colour half: the body/header assertions are **inequalities**
-  (`after.background !== before.background`, same for the header) sampled after the spec
+  Honest bound on the colour half: the header assertion is an **inequality**
+  (`after.headerBackground !== before.headerBackground`) and the body/type assertion is an
+  **equality** (`after.background === before.background`) sampled after the spec
   waits for `data-delivery` to become `received`. There is no explicit settle wait in the
   current spec, and a mid-transition sample satisfies an inequality. The token assertion
   (`statusColor === deliveryColor`) is a custom-property read, which CSS transitions do not

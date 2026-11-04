@@ -128,15 +128,11 @@
   --kikx-frame-delivery-color: oklch(from #3ddc84 calc(l - 0.06) c h);
 }
 
-/* A received user message uses the shared success treatment: the whole frame
-   and its header take the success hue, rather than a separate accent/caption. */
-.kikx-frame--UserMessage.kikx-frame--delivery-received {
-  --kikx-frame-type-color: oklch(from #3ddc84 calc(l * 0.672) calc(c * 0.4928) h);
-  --kikx-frame-status-color: oklch(from #3ddc84 calc(l - 0.06) c h);
-  --kikx-frame-status-foreground-color: oklch(from #2ff58a calc(l - 0.06) c h);
-  --kikx-frame-border-color: oklch(from #3ddc84 calc(l - 0.12) c h);
-  --kikx-frame-author-color: #e8fff2;
-}
+/* A received user message keeps the blue body/type hue and only adopts the
+   shared success STATUS treatment: the status chip/striped header corner turns
+   green while the message itself stays blue. `.kikx-frame--status-success`
+   supplies the green status tokens; `.kikx-frame--UserMessage` keeps the type
+   hue, border and body surface unchanged. */
 
 /* Questions are a first-class frame type, not a detached embedded card. */
 .kikx-frame--Question {

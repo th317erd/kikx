@@ -41,8 +41,9 @@
 //      while `providerRuns` is still empty - neutral means "not fed yet", not
 //      "unstyled".
 //   2. the same DOM node becomes received after the gate opens.
-//   3. received uses the shared success class/token: body and header turn green,
-//      with no Received caption, once the shell colour transition has settled.
+//   3. received uses the shared success class/token: the status/striped header
+//      corner turns green while the message body stays blue, with no Received
+//      caption, once the shell colour transition has settled.
 //   4. the stored frame carries `received` + a finite `deliveryAt`, so the
 //      picture the browser shows is the state the server actually holds.
 
@@ -237,6 +238,7 @@ function readBubble(page, needle) {
       background: itemStyle.backgroundColor,
       headerBackground: meta ? getComputedStyle(meta).backgroundImage : null,
       statusColor: itemStyle.getPropertyValue('--kikx-frame-status-color').trim(),
+      typeColor: itemStyle.getPropertyValue('--kikx-frame-type-color').trim(),
       deliveryColor: itemStyle.getPropertyValue('--kikx-frame-delivery-color').trim(),
       afterContent: content ? getComputedStyle(content, '::after').content : null,
       bubbleDelivery: bubble ? bubble.getAttribute('data-delivery') : null,
@@ -332,8 +334,10 @@ test('a typed message flips from neutral to received in the browser when the age
     assert.equal(after.bubbleDelivery, 'received', 'the bubble must carry the delivery state');
     assert.equal(after.ariaLabel, RECEIVED_LABEL, 'the bubble must announce that the agent received it');
     assert.equal(after.statusColor, after.deliveryColor, 'the success colour token must be applied');
-    assert.notEqual(after.background, before.background, 'received must turn the frame body green');
-    assert.notEqual(after.headerBackground, before.headerBackground, 'received must turn the header green');
+    assert.notEqual(after.statusColor, before.statusColor, 'the status corner must turn green');
+    assert.equal(after.typeColor, before.typeColor, 'the message body/type hue must remain blue');
+    assert.equal(after.background, before.background, 'received must keep the blue message body');
+    assert.notEqual(after.headerBackground, before.headerBackground, 'received must turn the striped header/status corner green');
 
     // ---- the picture matches the state the server actually holds ------------
     assert.deepEqual(services.providerRuns, [ before.frameID ], 'the provider must have been fed this exact frame');
