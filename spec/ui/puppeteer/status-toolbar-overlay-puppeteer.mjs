@@ -88,6 +88,12 @@ function rectProbe(page) {
       stop: rect('.kikx-stop-button'),
       stopTag: document.querySelector('.kikx-stop-button')?.localName || null,
       stopDuration: document.querySelector('.kikx-stop-button')?.getAttribute('duration') || null,
+      stopCaption: (() => {
+        const caption = document.querySelector('.kikx-stop-button__text');
+        if (!caption) return null;
+        const box = caption.getBoundingClientRect();
+        return { text: caption.textContent, x: box.x, right: box.right };
+      })(),
       textareaRight: (() => {
         const node = document.querySelector('textarea[name="message"]');
         return node ? node.getBoundingClientRect().right : null;
@@ -130,6 +136,10 @@ function assertShared(bar) {
   // with a 0.5s hold (owner change, 2026-11-05 — the floating pill is gone).
   assert.equal(bar.stopTag, 'aeor-progress-button', 'STOP is a hold-to-confirm progress button');
   assert.equal(bar.stopDuration, '500', 'the hold duration is 0.5s');
+  assert.ok(bar.stopCaption && bar.stopCaption.text === 'STOP',
+    `the ring must SAY STOP, got ${JSON.stringify(bar.stopCaption)}`);
+  assert.ok(bar.stopCaption.x >= bar.stop.x - 1 && bar.stopCaption.right <= bar.stop.right + 1,
+    'the STOP caption fits inside the ring');
   assert.ok(bar.stop.y >= bar.send.bottom - 1,
     `STOP must sit under Send (send.bottom=${bar.send.bottom}, stop.y=${bar.stop.y})`);
   assert.ok(bar.stop.x >= bar.textareaRight - 1,

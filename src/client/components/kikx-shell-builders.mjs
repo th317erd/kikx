@@ -604,7 +604,14 @@ function buildStopControl(app) {
 
   if (typeof customElements !== 'undefined' && customElements.get('aeor-progress-button')) {
     let control = document.createElement('aeor-progress-button');
-    control.setAttribute('icon', 'close');
+    // No `icon` attribute: with a child element present the component uses it
+    // as the centre glyph (aeor-progress-button.js `_captureIconNodes`), so
+    // the ring fills around a real "STOP" caption — the owner still wants the
+    // button to SAY STOP, not show a bare ✕.
+    let caption = document.createElement('span');
+    caption.className = 'kikx-stop-button__text';
+    caption.textContent = 'STOP';
+    control.appendChild(caption);
     control.setAttribute('label', 'Stop all active agents');
     control.setAttribute('title', 'Hold for half a second to stop all active agents');
     control.setAttribute('duration', '500');

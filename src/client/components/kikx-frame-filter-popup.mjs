@@ -251,17 +251,43 @@ export class KikxFrameFilterPopup extends HTMLElement {
     this._countsRequestedFor = signature;
     Promise.resolve(app._loadFrameCounts(sessionID))
       .then(() => {
-        // The counts arrive after the panel may have been rebuilt (or closed).
-        // Painting is safe either way; a detached instance just does nothing
-        // visible.
-        if (this._panel)
-          this._renderPanel();
+        // Repaint the badges IN PLACE. This used to call _renderPanel(), which
+        // replaces every row — a row a user is mid-click on disappears and the
+        // click lands on a detached node (observed as "Node is detached from
+        // document" under the mobile ⋮ menu). A badge number never needs a
+        // structural rebuild.
+        this._repaintCounts();
       })
       .catch(() => {
         // A failed count request must not break the popup: the rows still work
         // and simply have no badges.
         this._countsRequestedFor = null;
       });
+  }
+
+  // Update (or add/remove) each row's count badge without touching the rows
+  // themselves. `null` means "not known" and renders no badge, same as at
+  // build time.
+  _repaintCounts() {
+    if (!this._panel)
+      return;
+
+    let counts = this._serverCounts();
+    for (let [ key, control ] of this._rows) {
+      let value = counts ? counts[key] : null;
+      let badge = control.row.querySelector('.kikx-frame-filter__count');
+      if (typeof value === 'number') {
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'kikx-frame-filter__count';
+          control.row.appendChild(badge);
+        }
+        if (badge.textContent !== String(value))
+          badge.textContent = String(value);
+      } else if (badge) {
+        badge.remove();
+      }
+    }
   }
 
   _countSignature() {

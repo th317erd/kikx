@@ -156,7 +156,25 @@
   --apb-fill: #b91c1c;
   --apb-track: rgba(248, 113, 113, 0.35);
   --apb-icon: #ffd9d9;
+  /* Big enough for the STOP caption inside the ring: the component's icon box
+     is 58% of the box, widened to 80% below so four letters fit. */
+  --apb-size: 3rem;
   align-self: flex-end;
+}
+
+.kikx-stop-button .aeor-progress-btn__icon {
+  width: 80%;
+  height: 80%;
+}
+
+/* The caption IS the icon: sized off --apb-size so it scales with the ring. */
+.kikx-stop-button__text {
+  color: var(--apb-icon, #ffd9d9);
+  font-size: calc(var(--apb-size, 2rem) * 0.22);
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 /* Vendor-less fallback (Node spec harnesses load no /vendor components): the
