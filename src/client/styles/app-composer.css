@@ -146,41 +146,32 @@
   color: #c9d4ff;
 }
 
-/* STOP under Send as a hold-to-confirm radial (owner change, 2026-11-05 —
-   the floating pill is gone): an <aeor-progress-button> whose ring fills over
-   a 0.5s hold before the stop lands, so cancelling the agents is deliberate.
-   The host only carries the theme vars; the component draws its own circle
-   and hover state from --apb-fill. align-self pulls it to the right edge of
-   the actions column, directly under Send. */
+/* STOP under Send as a NORMAL hold button (owner correction, 2026-11-05):
+   the label-first <aeor-confirm-button> — rectangular, says STOP, its bar
+   fills left-to-right over a 0.5s hold before the agents are cancelled. The
+   round radial ring (<aeor-progress-button>) was explicitly not wanted. The
+   solid-red pill identity comes from the component's --lpb-* theme vars, and
+   the inner button matches the Send button's 88px minimum underneath it. */
 .kikx-stop-button {
-  --apb-fill: #b91c1c;
-  --apb-track: rgba(248, 113, 113, 0.35);
-  --apb-icon: #ffd9d9;
-  /* Big enough for the STOP caption inside the ring: the component's icon box
-     is 58% of the box, widened to 80% below so four letters fit. */
-  --apb-size: 3rem;
+  --lpb-bg: #b91c1c;
+  --lpb-border: #7f1d1d;
+  --lpb-text: #ffffff;
+  --lpb-fill: #ef4444;
+  --lpb-radius: 6px;
   align-self: flex-end;
 }
 
-.kikx-stop-button .aeor-progress-btn__icon {
-  width: 80%;
-  height: 80%;
-}
-
-/* The caption IS the icon: sized off --apb-size so it scales with the ring. */
-.kikx-stop-button__text {
-  color: var(--apb-icon, #ffd9d9);
-  font-size: calc(var(--apb-size, 2rem) * 0.22);
-  font-weight: 800;
-  letter-spacing: 0.05em;
-  line-height: 1;
-  white-space: nowrap;
+.kikx-stop-button .aeor-confirm-btn {
+  min-width: 88px;
+  justify-content: center;
+  font-weight: 700;
+  letter-spacing: 0.06em;
 }
 
 /* Vendor-less fallback (Node spec harnesses load no /vendor components): the
    old single-click pill, same class, same action — same dance as the session
    card's delete control. */
-.kikx-stop-button:not(aeor-progress-button) {
+.kikx-stop-button:not(aeor-confirm-button) {
   min-width: 88px;
   min-height: 34px;
   padding: 0 14px;
@@ -195,14 +186,14 @@
   cursor: pointer;
 }
 
-.kikx-stop-button:not(aeor-progress-button):hover,
-.kikx-stop-button:not(aeor-progress-button):focus-visible {
+.kikx-stop-button:not(aeor-confirm-button):hover,
+.kikx-stop-button:not(aeor-confirm-button):focus-visible {
   border-color: #ff6b6b;
   background: #dc2626;
   outline: none;
 }
 
-.kikx-stop-button:not(aeor-progress-button):active {
+.kikx-stop-button:not(aeor-confirm-button):active {
   background: #991b1b;
 }
 

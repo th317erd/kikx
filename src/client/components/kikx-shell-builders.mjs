@@ -589,31 +589,22 @@ export function buildThreadSection(app, sessionID) {
   );
 }
 
-// STOP under Send in the actions column (owner change, 2026-11-05 — the
-// floating pill is gone): "turn it into an aeor-progress-button, with a 0.5s
-// duration". A half-second HOLD before the stop lands makes cancelling
-// deliberate — the original complaint was one fat press away from killing the
-// agents.
+// STOP under Send as a NORMAL hold button (owner correction, 2026-11-05):
+// the label-first <aeor-confirm-button> — a rectangular button that SAYS
+// "STOP" and fills left-to-right over a 0.5s hold before the agents are
+// cancelled. The round radial ring is <aeor-progress-button>, deliberately
+// NOT used here: "I do not want it round." Same family, same duration/confirm
+// contract (kikx-modals.mjs buildAgentDeleteButton is the in-repo precedent).
 //
-// The vendored ring fires `confirm` when the hold completes; the vendor-less
-// fallback (the Node spec harnesses load no /vendor components) keeps the old
-// single-click button with the same class and the same handler — the same dance
-// kikx-session-card.mjs makes for its delete control.
+// The vendor-less fallback (the Node spec harnesses load no /vendor
+// components) keeps the old single-click pill with the same class and the
+// same handler.
 function buildStopControl(app) {
   let activate = () => app._cancelAgents?.();
 
-  if (typeof customElements !== 'undefined' && customElements.get('aeor-progress-button')) {
-    let control = document.createElement('aeor-progress-button');
-    // No `icon` attribute: with a child element present the component uses it
-    // as the centre glyph (aeor-progress-button.js `_captureIconNodes`), so
-    // the ring fills around a real "STOP" caption — the owner still wants the
-    // button to SAY STOP, not show a bare ✕.
-    let caption = document.createElement('span');
-    caption.className = 'kikx-stop-button__text';
-    caption.textContent = 'STOP';
-    control.appendChild(caption);
-    control.setAttribute('label', 'Stop all active agents');
-    control.setAttribute('title', 'Hold for half a second to stop all active agents');
+  if (typeof customElements !== 'undefined' && customElements.get('aeor-confirm-button')) {
+    let control = document.createElement('aeor-confirm-button');
+    control.setAttribute('label', 'STOP');
     control.setAttribute('duration', '500');
     control.classList.add('kikx-stop-button');
     control.addEventListener('confirm', activate);

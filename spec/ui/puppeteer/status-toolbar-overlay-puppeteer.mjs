@@ -89,10 +89,15 @@ function rectProbe(page) {
       stopTag: document.querySelector('.kikx-stop-button')?.localName || null,
       stopDuration: document.querySelector('.kikx-stop-button')?.getAttribute('duration') || null,
       stopCaption: (() => {
-        const caption = document.querySelector('.kikx-stop-button__text');
-        if (!caption) return null;
-        const box = caption.getBoundingClientRect();
-        return { text: caption.textContent, x: box.x, right: box.right };
+        const inner = document.querySelector('.kikx-stop-button .aeor-confirm-btn');
+        if (!inner) return null;
+        const box = inner.getBoundingClientRect();
+        return {
+          text: inner.textContent.trim(),
+          x: box.x,
+          right: box.right,
+          radius: parseFloat(getComputedStyle(inner).borderRadius) || 0,
+        };
       })(),
       textareaRight: (() => {
         const node = document.querySelector('textarea[name="message"]');
@@ -132,14 +137,17 @@ function assertShared(bar) {
   assert.ok(bar.actionsDebug, 'Debug lives in the toolbar actions');
   assert.ok(bar.rawNextIsDebug, 'Debug sits immediately after Raw');
 
-  // STOP sits UNDER Send in the actions column as an aeor-progress-button
-  // with a 0.5s hold (owner change, 2026-11-05 — the floating pill is gone).
-  assert.equal(bar.stopTag, 'aeor-progress-button', 'STOP is a hold-to-confirm progress button');
+  // STOP sits UNDER Send in the actions column as a NORMAL rectangular
+  // hold button — <aeor-confirm-button>, label-first, left-to-right fill —
+  // with a 0.5s hold (owner correction, 2026-11-05: "I do not want it round").
+  assert.equal(bar.stopTag, 'aeor-confirm-button', 'STOP is the normal label-first hold button');
   assert.equal(bar.stopDuration, '500', 'the hold duration is 0.5s');
   assert.ok(bar.stopCaption && bar.stopCaption.text === 'STOP',
-    `the ring must SAY STOP, got ${JSON.stringify(bar.stopCaption)}`);
+    `the button must SAY STOP, got ${JSON.stringify(bar.stopCaption)}`);
   assert.ok(bar.stopCaption.x >= bar.stop.x - 1 && bar.stopCaption.right <= bar.stop.right + 1,
-    'the STOP caption fits inside the ring');
+    'the STOP label sits inside the button');
+  assert.ok(bar.stopCaption.radius <= 8,
+    `the button must be a normal rounded-rectangle, not a circle (radius=${bar.stopCaption.radius})`);
   assert.ok(bar.stop.y >= bar.send.bottom - 1,
     `STOP must sit under Send (send.bottom=${bar.send.bottom}, stop.y=${bar.stop.y})`);
   assert.ok(bar.stop.x >= bar.textareaRight - 1,
