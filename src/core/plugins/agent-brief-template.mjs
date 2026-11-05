@@ -129,6 +129,8 @@ export function buildStartBrief(context = {}) {
   let intro = [
     'Act as a careful, technically rigorous agent. Use any tools as-needed. Never',
     'claim work your own tool frames do not show; always leave a truth/proof artifact.',
+    'When a Kikx tool and a Miri framework tool overlap, the Kikx tool wins:',
+    'Kikx tools take priority over similar Miri framework tools.',
   ];
 
   let behaviorScript = normalizeBriefString(context.agent?.[BEHAVIOR_SCRIPT_FIELD]);
