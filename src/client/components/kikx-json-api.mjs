@@ -166,6 +166,14 @@ export function persistAuthSession(auth) {
   if (!auth?.token)
     return;
   let serialized = JSON.stringify(auth);
+  // Durable home (owner, 2026-11-05: tokens must not die with the browser
+  // session): localStorage[kikx.auth.session] is what a cold start reads. The
+  // sessionStorage mirror keeps single-tab immediacy and every legacy reader
+  // coherent until it migrates on read; the shared key keeps its job of
+  // syncing rotations across tabs.
+  try {
+    globalThis.localStorage?.setItem(AUTH_STORAGE_KEY, serialized);
+  } catch (_error) {}
   try {
     globalThis.sessionStorage?.setItem(AUTH_STORAGE_KEY, serialized);
   } catch (_error) {}
@@ -175,7 +183,10 @@ export function persistAuthSession(auth) {
 }
 
 export function clearAuthSession() {
+  // Clear every home the token was ever written to — a logout must not leave a
+  // durable copy behind that would log the next cold start straight back in.
   try { globalThis.sessionStorage?.removeItem(AUTH_STORAGE_KEY); } catch (_error) {}
+  try { globalThis.localStorage?.removeItem(AUTH_STORAGE_KEY); } catch (_error) {}
   try { globalThis.localStorage?.removeItem(AUTH_SHARED_STORAGE_KEY); } catch (_error) {}
 }
 
