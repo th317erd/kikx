@@ -58,9 +58,9 @@
 }
 
 @media (max-width: 640px) {
-  .kikx-main {
-    grid-template-rows: minmax(88px, 16dvh) minmax(0, 1fr);
-  }
+  /* The sidebar row (minmax(88px, 16dvh)) is gone: below the stacking width
+     the sidebar is the hamburger drawer declared at the end of this file, so
+     the work area is the only .kikx-main row. */
 
   /* The empty thinking dock reserves 54px even when the rack is hidden. On a
      phone that space belongs to the conversation. */
@@ -155,8 +155,8 @@
 
 
 /* Short landscape (or a phone landscape after the address bar consumes
- * height): the stacked sidebar and full bar leave no thread. Prioritize the
- * conversation; the portrait layout retains full navigation. */
+ * height): the full bar would leave no thread. Prioritize the conversation;
+ * navigation is the hamburger drawer below, reachable at any height. */
 @media (max-height: 520px) {
   .kikx-shell {
     grid-template-columns: minmax(0, 1fr);
@@ -164,10 +164,6 @@
 
   .kikx-main {
     grid-template-rows: minmax(0, 1fr);
-  }
-
-  .kikx-sessions {
-    display: none;
   }
 
   .kikx-topbar.kikx-window__header {
@@ -214,6 +210,41 @@
     flex-wrap: nowrap;
   }
 
+  /* The trailing cluster wrapped onto a SECOND bar row here, and that row is
+     paid for directly out of the thread (frame list measured 93px on a 390px-
+     tall landscape phone, below the 100px floor). Keep the bar exactly one
+     row: drop the transient preview status (the status bar still reports
+     state), shrink the search basis, and let the breadcrumb truncate instead
+     of holding its full title width. */
+  .kikx-topbar.kikx-window__header .kikx-workspace__status {
+    display: none;
+  }
+
+  .kikx-topbar.kikx-window__header .kikx-topbar__search-group {
+    /* Basis small enough that lead + search + actions fit ONE row (824px);
+       min-width:0 lets the field actually shrink to that basis instead of
+       clamping to its intrinsic input width and forcing the wrap back. */
+    flex: 1 1 100px;
+    min-width: 0;
+  }
+
+  .kikx-topbar.kikx-window__header .kikx-session-search,
+  .kikx-topbar.kikx-window__header .kikx-session-search__input {
+    min-width: 0;
+  }
+
+  .kikx-topbar.kikx-window__header .kikx-window__lead {
+    min-width: 0;
+  }
+
+  .kikx-topbar.kikx-window__header .kikx-breadcrumb,
+  .kikx-topbar.kikx-window__header .kikx-breadcrumb__crumb {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .kikx-thread {
     padding: 8px;
   }
@@ -224,5 +255,94 @@
 
   .kikx-thinking-dock:has(> kikx-thinking-rack[hidden]) {
     display: none;
+  }
+}
+
+/* ==========================================================================
+ * Hamburger + floating workspace drawer (owner change, 2026-11-04).
+ *
+ * The old mobile experience stacked the sidebar as a scrolling band above the
+ * session view -- visually a second top bar, separate from the conversation.
+ * The classic pattern replaces it: a hamburger in the bar's lead cluster and
+ * the sidebar sliding in from the left over a dimming scrim.
+ *
+ * The breakpoint mirrors the stacking breakpoint (960px, app-workspace.css)
+ * plus the short-landscape height where the sidebar used to be hidden
+ * outright, so every layout that is not the desktop two-column shell gets the
+ * same drawer instead of three different half-nav behaviors.
+ * ========================================================================== */
+
+/* Desktop: the sidebar is a real grid column, so no hamburger and no
+   backdrop. These base rules also make a stale open state harmless at wide
+   widths: outside the media query below, neither control can paint. */
+.kikx-menu-toggle {
+  display: none;
+}
+
+.kikx-sessions-scrim {
+  display: none;
+}
+
+@media (max-width: 960px), (max-height: 520px) {
+  .kikx-menu-toggle {
+    display: grid;
+    flex: 0 0 auto;
+  }
+
+  /* The work area is the only flow row; the drawer is out of flow, so it can
+     overlay the session without stealing a grid track. position:relative here
+     (and only here) makes .kikx-main the drawer's containing block without
+     changing any desktop rule. */
+  .kikx-main {
+    position: relative;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .kikx-sessions {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    /* Above the fixed scrim (z 40); .kikx-main itself creates no stacking
+       context, so this competes at the shell level and wins. */
+    z-index: 50;
+    width: min(84vw, 300px);
+    padding: 14px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 0;
+    border-right: 1px solid #2f3439;
+    background: #131619;
+    box-shadow: 16px 0 38px rgba(0, 0, 0, 0.5);
+    /* Parked off-screen (and clipped by .kikx-main's overflow) while closed;
+       visibility removes it from focus/hit-testing, and the delayed step keeps
+       the slide-out visible instead of snapping shut. */
+    transform: translateX(-103%);
+    visibility: hidden;
+    transition: transform 220ms ease, visibility 0s linear 220ms;
+  }
+
+  .kikx-shell--menu-open .kikx-sessions {
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform 220ms ease, visibility 0s;
+  }
+
+  /* Only painted while open: a fixed sheet over the whole shell, so a tap
+     anywhere outside the drawer dismisses the menu. */
+  .kikx-shell--menu-open .kikx-sessions-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: rgba(8, 10, 12, 0.6);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kikx-sessions {
+    transition: none;
   }
 }

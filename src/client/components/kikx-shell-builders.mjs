@@ -45,6 +45,10 @@ import { buildSidebarSessionObjects, sidebarScopePredicateFor } from './kikx-sid
 import { buildInboxSidebarEntry } from './kikx-inbox-view.mjs';
 import { resolveViewSurface } from './client-view-surfaces.mjs';
 import { STATUSBAR_STAT_LABELS, buildStatusBarStats } from '../state/statusbar-stats.mjs';
+import {
+  SIDEBAR_MENU_ELEMENT_ID,
+  closeSidebarMenu,
+} from './sidebar-menu.mjs';
 
 const { div, main, nav, section, header, h2, p, span, button, form, input, label, textarea } = elements;
 const aeorInput = elements['aeor-input'];
@@ -92,8 +96,14 @@ export function renderAppShell(app) {
         : app._buildAuthShell(),
     ];
 
-    if (app._state.authToken)
+    if (app._state.authToken) {
       shellChildren.push(app._buildStatusBar());
+      // The mobile menu's dimming backdrop (mobile.css paints it only while
+      // `kikx-shell--menu-open` is on the shell root). A sibling of the bar and
+      // work area, not a child of either, so it dims the whole shell and taps
+      // anywhere outside the drawer close the menu.
+      shellChildren.push(buildSidebarMenuScrim(app));
+    }
 
     if (app._state.editingSessionID)
       shellChildren.push(app._buildSessionEditor());
@@ -109,7 +119,15 @@ export function renderAppShell(app) {
 
     shellChildren.push(createErrorSurfaceElement());
 
-    let tree = div.class('kikx-shell').context(app)(shellChildren).build(document);
+    // The open/closed class is BOUND, not written here: a menu flip repaints
+    // through the state subscription without a broad shell rebuild, and a
+    // rebuild re-applies the class from state instead of losing it.
+    let tree = div.class
+      .bindState(
+        (state) => state.sidebarMenuOpen === true ? 'kikx-shell kikx-shell--menu-open' : 'kikx-shell',
+        [ 'sidebarMenuOpen' ],
+      )
+      .context(app)(shellChildren).build(document);
 
     // Only touch the live DOM once the whole new shell built successfully; a
     // throwing builder must leave the previous DOM and its bindings untouched.
@@ -145,6 +163,19 @@ export function renderAppShell(app) {
     if (!app.querySelector('kikx-error-surface'))
       app.appendChild(createErrorSurfaceElement());
   }
+}
+
+// The mobile menu's dimming backdrop: a fixed sheet over the whole shell that
+// only paints while `kikx-shell--menu-open` is on the shell root (mobile.css).
+// Tapping anywhere outside the drawer closes the menu -- the standard popout
+// escape hatch alongside Escape and the hamburger itself. aria-hidden: it
+// carries no content; the hamburger (aria-expanded) and Escape are the
+// accessible paths.
+export function buildSidebarMenuScrim(app) {
+  return div
+    .class('kikx-sessions-scrim')
+    .ariaHidden('true')
+    .onClick(() => closeSidebarMenu(app))();
 }
 
 export function buildStartupLoading() {
@@ -284,7 +315,13 @@ export function buildRunnerShell(app) {
 
   return [
     main.class('kikx-main')(
-      section.class('kikx-sessions')(
+      section
+        .class('kikx-sessions')
+        // The drawer's aria-controls target, and the delegated close: any click
+        // inside the sidebar (navigate or not) shuts the mobile menu, so it can
+        // never stay open over the view the click just revealed.
+        .id(SIDEBAR_MENU_ELEMENT_ID)
+        .onClick(() => closeSidebarMenu(app))(
         div.class('kikx-sessions__header')(
           h2('Workspace'),
         ),

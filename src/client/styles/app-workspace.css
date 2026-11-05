@@ -47,17 +47,15 @@
 }
 
 @media (max-width: 960px) {
+  /* Below the stacking width the sidebar is no longer a grid column and no
+     longer a scrolling band above the session: it is a floating drawer opened
+     from the hamburger (geometry in mobile.css, loaded last). The work area is
+     the only flow row. */
   .kikx-main {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(88px, 20dvh) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
   }
 
-  .kikx-sessions {
-    border: 0;
-    border-bottom: 1px solid #2f3439;
-  }
-
-  .kikx-sessions,
   .kikx-thread {
     padding: 12px;
   }

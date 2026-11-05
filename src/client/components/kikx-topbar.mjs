@@ -55,6 +55,7 @@ import {
   holdSessionNameFieldFocus,
 } from './kikx-navigation.mjs';
 import { getCurrentEntry, getScopeNoun, getSessions, getStackDepth } from '../state/kikx-state.mjs';
+import { SIDEBAR_MENU_STATE_KEY, SIDEBAR_MENU_ELEMENT_ID, toggleSidebarMenu } from './sidebar-menu.mjs';
 import { previewStatusStore } from '../state/preview-status-store.mjs';
 
 // Registration side effects for the popup custom elements hosted by the bar.
@@ -216,6 +217,27 @@ export function buildTopbarBreadcrumb(app) {
   });
 
   let children = [];
+
+  // Classic hamburger: the entry to the mobile workspace drawer. Visible only
+  // at the mobile breakpoints where the sidebar is a drawer
+  // (.kikx-menu-toggle is display:none on the desktop layout), and only built
+  // on the authed bar (the auth shell has no sidebar). It leads the bar so it
+  // is the first thing under a thumb, before the session-close chevron. Its
+  // expanded state binds directly to `sidebarMenuOpen`, so toggling the menu
+  // never rebuilds the shell.
+  children.push(
+    button
+      .type('button')
+      .class('kikx-menu-toggle kikx-icon-button')
+      .title('Workspace menu')
+      .ariaLabel('Workspace menu')
+      .ariaControls(SIDEBAR_MENU_ELEMENT_ID)
+      .onClick(() => toggleSidebarMenu(app))
+      ['aria-expanded'].bindState(
+        (state) => state[SIDEBAR_MENU_STATE_KEY] === true ? 'true' : 'false',
+        [ SIDEBAR_MENU_STATE_KEY ],
+      )(createIcon('menu')),
+  );
 
   if (nested)
     children.push(

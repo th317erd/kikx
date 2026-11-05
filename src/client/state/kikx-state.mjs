@@ -129,6 +129,9 @@ export const kikxState = new ReactiveState({
   frameLoadErrorsBySessionID: {},
   magicCode: params.get('code') || '',
   rawMarkdown: readRawMarkdown(),
+  // Mobile workspace menu (hamburger popout). Ephemeral UI state, but it lives
+  // in app state (not a DOM class alone) so a shell rebuild re-applies it.
+  sidebarMenuOpen: false,
   managingAgents: false,
   agentFilter: 'all',
   managingTeams: false,

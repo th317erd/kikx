@@ -47,6 +47,24 @@ function buildElement(tagName, attributes, children, ownerDocument, events = [],
   // given, which is enough to assert *which* state a control reads. The
   // teardown callback is registered on the element so cleanupBindings() finds
   // it exactly as it does in the browser.
+  //
+  // Values are written THROUGH TO THE ELEMENT here (not just back into the
+  // `attributes` map): the static attribute loop above has already run by this
+  // point, so a binding that only mutates the map would leave the built node
+  // unstyled/unclassed -- which is exactly how a bound root class
+  // (kikx-shell--menu-open) once rendered as class="".
+  let assignAttribute = (name, value) => {
+    if (name === 'class') {
+      element.className = (value == null || value === false) ? '' : '' + value;
+      return;
+    }
+    if (value === null || value === undefined || value === false) {
+      element.removeAttribute(domAttributeName(name));
+      return;
+    }
+    element.setAttribute(domAttributeName(name), '' + value);
+  };
+
   for (let binding of bindings) {
     let state = providedState;
     if (state === undefined)
@@ -60,20 +78,27 @@ function buildElement(tagName, attributes, children, ownerDocument, events = [],
 
         if (typeof value === 'object' && !Array.isArray(value)) {
           for (let [ name, attributeValue ] of Object.entries(value)) {
-            if (attributeValue === null || attributeValue === undefined || attributeValue === false)
+            if (attributeValue === null || attributeValue === undefined || attributeValue === false) {
               delete attributes[name];
-            else
-              attributes[name] = attributeValue;
+              assignAttribute(name, null);
+              continue;
+            }
+            attributes[name] = attributeValue;
+            assignAttribute(name, attributeValue);
           }
         }
 
         return;
       }
 
-      if (value === null || value === undefined || value === false)
+      if (value === null || value === undefined || value === false) {
         delete attributes[binding.attribute];
-      else
-        attributes[binding.attribute] = value;
+        assignAttribute(binding.attribute, null);
+        return;
+      }
+
+      attributes[binding.attribute] = value;
+      assignAttribute(binding.attribute, value);
     };
 
     apply();
@@ -102,6 +127,12 @@ function createBuilder(tagName) {
   // them with addEventListener (elements.js:189-194), so the stand-in must too
   // or a click-based spec silently never fires its handler.
   let events = [];
+  // `.context(owner)` — the real module stores this on the definition and uses
+  // it as the binding state source (`context._state`, elements.js:198-206).
+  // Without this the stand-in treated `.context(app)` as a plain attribute,
+  // left every binding state-less, and a bound root class (the shell's
+  // kikx-shell--menu-open) rendered with no class at all.
+  let ownerContext = null;
 
   function finalize(...values) {
     for (let value of values.flat(Infinity)) {
@@ -118,7 +149,24 @@ function createBuilder(tagName) {
         return undefined;
 
       if (property === 'build')
-        return (ownerDocument, state) => buildElement(tagName, attributes, children, ownerDocument, events, bindings, state);
+        return (ownerDocument, state) => buildElement(
+          tagName,
+          attributes,
+          children,
+          ownerDocument,
+          events,
+          bindings,
+          state !== undefined ? state : (ownerContext && ownerContext._state) || undefined,
+        );
+
+      // The owner passed to `.context()`; its `_state` feeds the bindings at
+      // build time, exactly as in elements.js. Returns the builder so the
+      // chain continues.
+      if (property === 'context')
+        return (owner) => {
+          ownerContext = owner;
+          return proxy;
+        };
 
       // `bindState` is read off the builder root for a whole-element binding, and
       // off an attribute accessor for a per-attribute one. Both return the

@@ -207,6 +207,7 @@ import {
 } from './kikx-agent-controller.mjs';
 import { onMagicLinkSubmit, verifyMagicLink } from './kikx-auth.mjs';
 import { renderOutcomes, renderStats } from './render-stats.mjs';
+import { closeSidebarMenu } from './sidebar-menu.mjs';
 
 export class KikxApp extends HTMLElement {
   constructor() {
@@ -570,6 +571,15 @@ export class KikxApp extends HTMLElement {
     this._onPopState = () => this._syncFromURL();
     (globalThis.window || globalThis).addEventListener?.('popstate', this._onPopState);
     this._onAppKeydown = (event) => {
+      // Escape closes the mobile workspace drawer before anything else. This
+      // handler is capture-phase, so while the menu is open Escape gets one
+      // unambiguous job: shut the menu. (It still propagates; a second open
+      // surface may also react, which is harmless next to swallowing Escape.)
+      if (event.key === 'Escape' && !event.ctrlKey && !event.metaKey && !event.altKey && this._state.sidebarMenuOpen === true) {
+        closeSidebarMenu(this);
+        return;
+      }
+
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'l') {
         event.preventDefault();
         globalThis.kikxScrollLog?.enable?.();
