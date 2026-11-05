@@ -1,0 +1,200 @@
+/* Mobile toolbar overflow menu (⋮) — owner change, 2026-11-05.
+ *
+ * "The toolbar is annoying on mobile. Turn the 'eye' icon into a vertical
+ *  triple-dot icon on mobile, and have it be a popup menu. This popup menu will
+ *  have all the current toolbar actions, and it will have the filter selection
+ *  checkboxes at the bottom of the popup items."
+ *
+ * The ⋮ lives in the SAME slot as the eye — a sibling of the search field
+ * inside `.kikx-topbar__search-group` (kikx-topbar.mjs buildTopbarSearch) — and
+ * the two swap at the same breakpoint where the sidebar becomes the hamburger
+ * drawer: desktop shows eye + actions cluster and hides this; the mobile
+ * layout hides eye + cluster and shows this.
+ *
+ * Linked AFTER topbar-unified.css so the mobile hide rules below outrank that
+ * sheet's `.kikx-topbar.kikx-window__header .kikx-window__actions` (equal
+ * specificity, later file wins).
+ */
+
+/* Desktop: no overflow menu. The rule also makes a stale open state harmless
+   at wide widths — outside the media query at the bottom, neither the button
+   nor its panel can paint. */
+kikx-overflow-popup {
+  display: none;
+  position: relative;
+}
+
+.kikx-overflow__button {
+  display: grid;
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid #3c444d;
+  border-radius: 6px;
+  background: #242a30;
+  color: #f5f7fa;
+  cursor: pointer;
+  font: inherit;
+}
+
+.kikx-overflow__button .kikx-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.kikx-overflow__button:hover,
+.kikx-overflow__button:focus-visible {
+  border-color: #8fc7e8;
+  color: #c9e8fb;
+  outline: none;
+}
+
+.kikx-overflow__panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 80;
+  display: grid;
+  gap: 2px;
+  min-width: 240px;
+  max-width: min(92vw, 360px);
+  max-height: min(72vh, 560px);
+  padding: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid #2f3439;
+  border-radius: 10px;
+  background: #171a1d;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+}
+
+.kikx-overflow__panel[hidden] {
+  display: none;
+}
+
+/* One row per action. The action nodes are the SAME factories the desktop
+   cluster uses (kikx-topbar.mjs), so here they are restyled from bar chips to
+   full-width menu rows without ever redefining what they do. */
+.kikx-overflow__panel .kikx-raw-toggle,
+.kikx-overflow__panel .kikx-debug-toggle,
+.kikx-overflow__panel .kikx-settings-open,
+.kikx-overflow__panel .kikx-window__add,
+.kikx-overflow__panel .kikx-participants__button {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #cdd6df;
+  cursor: pointer;
+  font: inherit;
+  font-size: calc(13px * 1.25);
+  letter-spacing: normal;
+  opacity: 1;
+  text-align: left;
+  text-transform: none;
+}
+
+.kikx-overflow__panel .kikx-raw-toggle:hover,
+.kikx-overflow__panel .kikx-raw-toggle:focus-visible,
+.kikx-overflow__panel .kikx-debug-toggle:hover,
+.kikx-overflow__panel .kikx-debug-toggle:focus-visible,
+.kikx-overflow__panel .kikx-settings-open:hover,
+.kikx-overflow__panel .kikx-settings-open:focus-visible,
+.kikx-overflow__panel .kikx-window__add:hover,
+.kikx-overflow__panel .kikx-window__add:focus-visible,
+.kikx-overflow__panel .kikx-participants__button:hover,
+.kikx-overflow__panel .kikx-participants__button:focus-visible {
+  background: #242a30;
+  color: #f5f7fa;
+  outline: none;
+}
+
+.kikx-overflow__panel .kikx-raw-toggle.is-on {
+  color: #8fc7e8;
+}
+
+.kikx-overflow__panel .kikx-debug-toggle.is-on {
+  color: #f1d58a;
+}
+
+.kikx-overflow__item {
+  display: block;
+}
+
+/* The participants popup opens INSIDE the menu (its trigger is a menu item),
+   so its panel becomes an inline section under the row instead of a floating
+   card that would outgrow the menu. */
+.kikx-overflow__panel kikx-participants-popup {
+  display: block;
+}
+
+.kikx-overflow__panel .kikx-participants__panel {
+  position: static;
+  width: auto;
+  margin: 2px 4px 6px;
+  border-color: #2f3439;
+  box-shadow: none;
+}
+
+.kikx-overflow__divider {
+  height: 1px;
+  margin: 6px 4px;
+  background: #2f3439;
+}
+
+/* The filter checkboxes, at the bottom of the popup items: the eye's panel in
+   embedded mode (kikx-frame-filter-popup.mjs `embedded:true`) — rendered inline
+   and always open, with the host menu owning open/close. */
+.kikx-overflow__filters {
+  padding: 2px 6px 6px;
+}
+
+.kikx-overflow__filters kikx-frame-filter-popup {
+  display: block;
+}
+
+.kikx-overflow__filters .kikx-frame-filter__button {
+  display: none;
+}
+
+.kikx-overflow__filters .kikx-frame-filter__panel {
+  position: static;
+  width: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* ---- the breakpoint swap -------------------------------------------------
+   Same "mobile" definition as the hamburger drawer: the width where
+   .kikx-main stops being two columns, plus the short landscape height where
+   the sidebar used to vanish outright. */
+@media (max-width: 960px), (max-height: 520px) {
+  /* The eye gives its slot to the ⋮ ... DIRECT-child only: the embedded copy
+     inside the ⋮ menu is also a descendant of this group and must keep its
+     display:block (the two rules would otherwise tie and this one, later in
+     the sheet, would blank the menu's filter rows). */
+  .kikx-topbar__search-group > kikx-frame-filter-popup {
+    display: none;
+  }
+
+  /* ... and the actions cluster moves INTO the menu (kikx-overflow-popup.mjs).
+     Specificity matches topbar-unified's compound selector; this sheet loads
+     after it. The transient preview status goes with it — it is status, not an
+     action, and it is one line the compact bar does not need. */
+  .kikx-topbar.kikx-window__header .kikx-window__actions {
+    display: none;
+  }
+
+  .kikx-topbar__search-group kikx-overflow-popup {
+    display: block;
+  }
+}

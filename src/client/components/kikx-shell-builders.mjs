@@ -553,6 +553,17 @@ export function buildThreadSection(app, sessionID) {
       // It must NOT be a .kikx-thread child: that grid is a pinned 3-track
       // layout (thread-dock-grid-spec:222) and a 4th child mis-assigns the rows.
       emojiPicker,
+      // Owner change (2026-11-05): STOP floats horizontally centered ABOVE the
+      // input row (absolute in the composer's padding box, app-composer.css),
+      // out of the actions column — "it is difficult to press Send without
+      // accidentally pressing STOP". A direct child of the form is safe: the
+      // composer is a grid, but an absolutely-positioned child takes no track.
+      button
+        .type('button')
+        .class('kikx-stop-button')
+        .title('Cancel all active agents in this session')
+        .ariaLabel('Stop all active agents')
+        .onClick(() => app._cancelAgents?.())( 'STOP'),
       div.class('kikx-composer__input-row')(
         button
           .type('button')
@@ -569,12 +580,6 @@ export function buildThreadSection(app, sessionID) {
           .onValuechange(app._onComposerValueChange)
           .onInput(app._syncDraft)(app._activeComposerDraftSessionID === sessionID ? app._state.draft : ''),
         div.class('kikx-composer__actions')(
-          button
-            .type('button')
-            .class('kikx-stop-button')
-            .title('Cancel all active agents in this session')
-            .ariaLabel('Stop all active agents')
-            .onClick(() => app._cancelAgents?.())( 'STOP'),
           button
             .type('submit')
             .class('kikx-send-button')
@@ -614,29 +619,38 @@ export function buildStatusBar(app) {
     currentSessionID: getCurrentSessionID(app._state),
   });
 
+  // Owner change (2026-11-05): the bar collapses to bare numbers joined by
+  // slashes -- `2 / 0 / 1234 / 234` -- on BOTH desktop and mobile. The labels
+  // the cards used are not rendered; each value keeps its label as a hover
+  // title, and the group title spells out the order, so nothing is lost for a
+  // pointer. The connection TEXT is likewise dropped on mobile only (the dot
+  // keeps the state), and the Debug toggle moved to the toolbar next to Raw.
+  let statsTitle = `Counts for ${stats.scopeLabel}: sessions / open questions / messages / agents`;
+
   return div.class.bindState((state) => `kikx-statusbar kikx-statusbar--${state.connectionStatusKind}`, ['connectionStatusKind'])(
     span.class('kikx-statusbar__dot')(),
-    span.textContent.bindState((state) => state.connectionStatus, ['connectionStatus'])(),
+    span.class('kikx-statusbar__connection')
+      .textContent.bindState((state) => state.connectionStatus, ['connectionStatus'])(),
     span.class('kikx-statusbar__spacer')(),
     // The counts sit AFTER the spacer, so the connection/dot cluster stays left and
-    // the tallies read as a right-aligned group next to Debug and the token total.
-    div.class('kikx-statusbar__stats').title(`Counts for ${stats.scopeLabel}`)(
-      stats.cells.map((cell) => span.class('kikx-statusbar__stat')(
-        span.class('kikx-statusbar__stat-value')(String(cell.value)),
-        span.class('kikx-statusbar__stat-label')(cell.label),
-      )),
+    // the tallies read as a right-aligned group beside the token total.
+    div.class('kikx-statusbar__stats').title(statsTitle)(
+      stats.cells.flatMap((cell, index) => [
+        index > 0 ? span.class('kikx-statusbar__stat-sep')('/') : null,
+        span.class('kikx-statusbar__stat')(
+          span.class('kikx-statusbar__stat-value').title(cell.label)(String(cell.value)),
+        ),
+      ]),
     ),
     span.class('kikx-statusbar__spacer')(),
-    button
-      .type('button')
-      .class(`kikx-debug-toggle${app._state.debugMode === true ? ' is-on' : ''}`)
-      .ariaPressed(app._state.debugMode === true ? 'true' : 'false')
-      .title('Toggle client debug mode')
-      .onClick(app._toggleDebugMode)('Debug'),
     span
       .class('kikx-statusbar__tokens')
-      .title('Total tracked tokens')
-      .textContent.bindState((state) => formatTokenUsageTotal(state.totalTokensUsed), ['totalTokensUsed'])(),
+      .title('Total tracked tokens')(
+        createIcon('tokens'),
+        span
+          .class('kikx-statusbar__tokens-value')
+          .textContent.bindState((state) => formatTokenUsageTotal(state.totalTokensUsed), ['totalTokensUsed'])(),
+      ),
   );
 }
 

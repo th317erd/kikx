@@ -63,6 +63,7 @@ import { previewStatusStore } from '../state/preview-status-store.mjs';
 // forms an import cycle with the file that imports it.
 import './kikx-participants-popup.mjs';
 import './kikx-frame-filter-popup.mjs';
+import './kikx-overflow-popup.mjs';
 import { clientComponentKeyField } from '../../shared/client-component-kinds.mjs';
 
 const { div, nav, header, h1, p, span, button, input } = elements;
@@ -291,10 +292,6 @@ export function buildTopbarSearch(app, sessionID = null) {
   clear.addEventListener('click', () => app._clearFrameFilters?.());
   clear.hidden = !stateHasFilters(app._state);
 
-  let container = document.createElement('div');
-  container.className = 'kikx-session-search';
-  container.append(searchInput, clear);
-
   // Owner item 3 (2026-10-27): "I would like the 'eye' filter to be hugged up next
   // to the 'Search' field, to the right, just next to it (group 'search' items
   // together on the UI)."
@@ -316,7 +313,28 @@ export function buildTopbarSearch(app, sessionID = null) {
   let frameFilter = document.createElement('kikx-frame-filter-popup');
   frameFilter.configure({ app, appState: app._state, sessionID });
 
-  return div.class('kikx-topbar__search-group')(container, frameFilter);
+  // Owner change (2026-11-05): "turn the eye icon into a vertical triple-dot
+  // icon on mobile, and have it be a popup menu" -- the same slot, the opposite
+  // breakpoint. Below the stacking width the eye and the whole actions cluster
+  // hide (overflow-popup.css) and this ⋮ carries every toolbar action with the
+  // filter checkboxes underneath them. On desktop it is display:none and the
+  // eye + cluster stay exactly where they were.
+  let overflow = document.createElement('kikx-overflow-popup');
+  overflow.configure({
+    app,
+    appState: app._state,
+    sessionID,
+    actions: buildTopbarOverflowActionNodes(app, sessionID),
+  });
+
+  return div.class('kikx-topbar__search-group')(searchFieldContainer(searchInput, clear), frameFilter, overflow);
+}
+
+function searchFieldContainer(searchInput, clear) {
+  let container = document.createElement('div');
+  container.className = 'kikx-session-search';
+  container.append(searchInput, clear);
+  return container;
 }
 
 // The session-object cluster (User / Account / Agents / Teams / Sign out) USED to
@@ -330,6 +348,10 @@ export function buildTopbarSearch(app, sessionID = null) {
 // Trailing cluster. This is the legacy `kikx-window__actions` content
 // (kikx-shell-builders.mjs:314-338) lifted in one piece, so the merge cannot
 // silently drop a control that lives only in the second bar.
+//
+// The individual controls are FACTORIES (owner change, 2026-11-05) because the
+// mobile overflow menu (⋮, ./kikx-overflow-popup.mjs) shows the same actions
+// in one popup: one definition per control, two mount points, no drift.
 export function buildTopbarActions(app, sessionID = null) {
   // NOTE: there is deliberately NO `if (!sessionID) return ...` shortcut here.
   // The legacy second bar rendered preview status, the frame-filter eyeball and
@@ -338,6 +360,72 @@ export function buildTopbarActions(app, sessionID = null) {
   // there: the Projects grid is exactly where soft-deleted sessions are listed,
   // so a root header without it strands "show deleted" on the one screen that
   // needs it. Only the participants popup is genuinely session-scoped.
+  return div.class('kikx-window__actions')(
+    previewStatusNode(),
+    rawToggleButton(app),
+    // Moved out of the status bar (owner change, 2026-11-05): "Remove the
+    // Debug button from the statusbar... Move it next to the raw view button".
+    // Same control, same handler, new home -- immediately after Raw.
+    debugToggleButton(app),
+    sessionID ? participantsNode(app, sessionID) : null,
+    // Opens the Settings dialog, which is the mount point for plugin
+    // 'settings-panel' descriptors. Deliberately in the bar and NOT the sidebar:
+    // the sidebar cluster is pinned at five items by two specs, and Settings is an
+    // application-level surface rather than a view into the session tree.
+    settingsOpenButton(app),
+    // Label from the same scope noun the inline Add card uses, so the two can
+    // never disagree about what this level creates.
+    addButton(app, sessionID),
+    // Owner point 2: no session-object cluster here -- it lives in the sidebar
+    // (./kikx-sidebar-session-objects.mjs). The spacer keeps `justify-content`
+    // honest so the trailing actions stay right-aligned when the sidebar owns them.
+    span.class('kikx-topbar__spacer')(),
+  );
+}
+
+function rawToggleButton(app) {
+  let raw = app._state.rawMarkdown === true;
+  return button
+    .type('button')
+    .class(`kikx-raw-toggle${raw ? ' is-on' : ''}`)
+    .title('Show Markdown source with inline formatting (Raw mode)')
+    .ariaPressed(raw ? 'true' : 'false')
+    .onClick(app._toggleRawMarkdown)('Raw');
+}
+
+function debugToggleButton(app) {
+  let on = app._state.debugMode === true;
+  return button
+    .type('button')
+    .class(`kikx-debug-toggle${on ? ' is-on' : ''}`)
+    .ariaPressed(on ? 'true' : 'false')
+    .title('Toggle client debug mode')
+    .onClick(app._toggleDebugMode)('Debug');
+}
+
+function participantsNode(app, sessionID) {
+  let participants = document.createElement('kikx-participants-popup');
+  participants.configure({ app, appState: app._state, sessionID });
+  return participants;
+}
+
+function settingsOpenButton(app) {
+  return button
+    .type('button')
+    .class('kikx-settings-open')
+    .title('Settings — including panels contributed by plugins')
+    .onClick(app._openSettings)('Settings');
+}
+
+function addButton(app, sessionID) {
+  return button
+    .type('button')
+    .class('kikx-window__add')
+    .title(sessionID ? 'Add a session inside this one' : 'Add a project')
+    .onClick(() => app._createSession())(`+ Add ${sessionID ? scopeNounForTopbar(app) : 'Project'}`);
+}
+
+function previewStatusNode() {
   let previewSpan = span.class('kikx-workspace__status')(span()).build(document);
   let previewText = previewSpan.firstElementChild;
   let paintPreview = () => {
@@ -347,41 +435,21 @@ export function buildTopbarActions(app, sessionID = null) {
   };
   paintPreview();
   previewSpan.__bindings = [ previewStatusStore.observeAll(paintPreview) ];
+  return previewSpan;
+}
 
-  let participants = document.createElement('kikx-participants-popup');
-  participants.configure({ app, appState: app._state, sessionID });
-  let raw = app._state.rawMarkdown === true;
-
-  return div.class('kikx-window__actions')(
-    previewSpan,
-    button
-      .type('button')
-      .class(`kikx-raw-toggle${raw ? ' is-on' : ''}`)
-      .title('Show Markdown source with inline formatting (Raw mode)')
-      .ariaPressed(raw ? 'true' : 'false')
-      .onClick(app._toggleRawMarkdown)('Raw'),
-    sessionID ? participants : null,
-    // Opens the Settings dialog, which is the mount point for plugin
-    // 'settings-panel' descriptors. Deliberately in the bar and NOT the sidebar:
-    // the sidebar cluster is pinned at five items by two specs, and Settings is an
-    // application-level surface rather than a view into the session tree.
-    button
-      .type('button')
-      .class('kikx-settings-open')
-      .title('Settings — including panels contributed by plugins')
-      .onClick(app._openSettings)('Settings'),
-    // Label from the same scope noun the inline Add card uses, so the two can
-    // never disagree about what this level creates.
-    button
-      .type('button')
-      .class('kikx-window__add')
-      .title(sessionID ? 'Add a session inside this one' : 'Add a project')
-      .onClick(() => app._createSession())(`+ Add ${sessionID ? scopeNounForTopbar(app) : 'Project'}`),
-    // Owner point 2: no session-object cluster here -- it lives in the sidebar
-    // (./kikx-sidebar-session-objects.mjs). The spacer keeps `justify-content`
-    // honest so the trailing actions stay right-aligned when the sidebar owns them.
-    span.class('kikx-topbar__spacer')(),
-  );
+// The same controls, already BUILT, for the mobile overflow menu. The cluster
+// above is hidden by CSS below the stacking width; these nodes render inside
+// the ⋮ popup instead. Desktop never shows them and mobile never shows the
+// cluster, so there is exactly one VISIBLE copy of each action.
+export function buildTopbarOverflowActionNodes(app, sessionID = null) {
+  return [
+    rawToggleButton(app).build(document),
+    debugToggleButton(app).build(document),
+    sessionID ? participantsNode(app, sessionID) : null,
+    settingsOpenButton(app).build(document),
+    addButton(app, sessionID).build(document),
+  ].filter(Boolean);
 }
 
 // Plugin toolbar actions (kind 'toolbar-action').

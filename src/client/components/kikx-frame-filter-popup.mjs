@@ -46,10 +46,15 @@ export class KikxFrameFilterPopup extends HTMLElement {
     this._keyHandler = null;
   }
 
-  configure({ app, appState = null, sessionID = null } = {}) {
+  configure({ app, appState = null, sessionID = null, embedded = false } = {}) {
     this._app = app || null;
     this._appState = appState || app?._state || null;
     this._sessionID = sessionID || null;
+    // Embedded mode (owner change, 2026-11-05): the panel renders INLINE and
+    // always-open inside the mobile ⋮ overflow menu (kikx-overflow-popup.mjs),
+    // which supplies the trigger and the outside/Escape close itself. Nothing
+    // else about the rows changes — same state, same click semantics.
+    this._embedded = embedded === true;
     if (this.isConnected)
       this._render();
   }
@@ -75,32 +80,49 @@ export class KikxFrameFilterPopup extends HTMLElement {
       return;
 
     let root = document.createElement('div');
-    root.className = 'kikx-frame-filter';
+    root.className = this._embedded
+      ? 'kikx-frame-filter kikx-frame-filter--embedded'
+      : 'kikx-frame-filter';
 
-    let button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'kikx-frame-filter__button';
-    button.title = 'Filter frames';
-    button.setAttribute('aria-label', 'Filter frames');
-    button.setAttribute('aria-haspopup', 'dialog');
-    button.setAttribute('aria-expanded', 'false');
-    button.appendChild(createIcon('eyeball', { ownerDocument: document }));
-    button.addEventListener('click', (event) => {
-      event.stopPropagation();
-      this._toggle();
-    });
+    let button = null;
+    if (!this._embedded) {
+      button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'kikx-frame-filter__button';
+      button.title = 'Filter frames';
+      button.setAttribute('aria-label', 'Filter frames');
+      button.setAttribute('aria-haspopup', 'dialog');
+      button.setAttribute('aria-expanded', 'false');
+      button.appendChild(createIcon('eyeball', { ownerDocument: document }));
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        this._toggle();
+      });
+    }
 
     let panel = document.createElement('div');
     panel.className = 'kikx-frame-filter__panel';
     panel.setAttribute('role', 'dialog');
     panel.setAttribute('aria-label', 'Filter frames');
-    panel.hidden = true;
+    // Embedded: visible from birth — the host menu is the only open/close it
+    // needs, and `hidden` here would also swallow its outside-close contract.
+    panel.hidden = !this._embedded;
 
     this.replaceChildren(root);
-    root.append(button, panel);
+    if (button)
+      root.append(button, panel);
+    else
+      root.append(panel);
     this._button = button;
     this._panel = panel;
     this._renderPanel();
+
+    if (this._embedded) {
+      // No _open() will ever fire for this instance, so ask for the server-side
+      // frame counts right away or the rows would never earn their badges.
+      this._requestCounts();
+      return;
+    }
 
     if (this._app._frameFilterPopupOpen === true)
       this._open({ focus: false });
@@ -311,7 +333,7 @@ export class KikxFrameFilterPopup extends HTMLElement {
   }
 
   _open({ focus = true } = {}) {
-    if (!this._panel || !this._app)
+    if (!this._panel || !this._app || this._embedded)
       return;
     this._app._frameFilterPopupOpen = true;
     this._panel.hidden = false;
@@ -327,7 +349,7 @@ export class KikxFrameFilterPopup extends HTMLElement {
   }
 
   _close() {
-    if (!this._panel)
+    if (!this._panel || this._embedded)
       return;
     this._panel.hidden = true;
     this._button?.setAttribute('aria-expanded', 'false');

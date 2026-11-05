@@ -198,7 +198,7 @@ test('the Inbox question styling survives in a loaded stylesheet', async () => {
     // gone with the view (owner request, 2026-10-28); the status-bar counts took their
     // place in the same stylesheet, so those are what must now be present.
     '.kikx-statusbar__stat',
-    '.kikx-statusbar__stat-label',
+    '.kikx-statusbar__stat-sep',
     '.kikx-inbox__card',
     '.kikx-question-frame__answer',
     '.kikx-question-card',

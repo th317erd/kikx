@@ -27,7 +27,9 @@ export function formatTokenUsageTotal(value) {
   if (!Number.isFinite(total) || total < 0)
     total = 0;
 
-  return `Tokens: ${Math.trunc(total).toLocaleString('en-US')}`;
+  // The word "Tokens" is gone (owner change, 2026-11-05): the status bar
+  // shows the tokens SVG icon beside this number on both desktop and mobile.
+  return Math.trunc(total).toLocaleString('en-US');
 }
 
 // Bound on the payload excerpt carried as diagnostic context. A malformed

@@ -156,9 +156,27 @@ kikx-app {
   outline: none;
 }
 
+/* Owner change (2026-11-05): the tokens WORD is the SVG icon now, so the cell
+   is an icon+number pair (icon from createIcon('tokens')). */
 .kikx-statusbar__tokens {
+  display: inline-flex;
   flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
   color: #aab4bf;
+  white-space: nowrap;
+}
+
+.kikx-statusbar__tokens-value {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The connection TEXT (Connected/Reconnecting/...) — hidden on mobile by
+   statusbar-stats.css so only the dot keeps the state down there. */
+.kikx-statusbar__connection {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

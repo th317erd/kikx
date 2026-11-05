@@ -79,9 +79,11 @@ test('search and the eye share ONE group, with the field first', () => {
   assert.ok(classesOf(group).includes('kikx-topbar__search-group'),
     `the search controls must live in one group; got "${group.className}"`);
 
-  // Exactly the two controls, field container then eye, nothing between them.
-  assert.deepEqual(childNames(group), [ 'div', 'kikx-frame-filter-popup' ],
-    'the group must hold the field container directly followed by the eyeball');
+  // Field container, eye, then the mobile ⋮ overflow (owner change,
+  // 2026-11-05) — still nothing BETWEEN the field and the eye; the overflow
+  // shares the eye's slot at the opposite breakpoint (overflow-popup.css).
+  assert.deepEqual(childNames(group), [ 'div', 'kikx-frame-filter-popup', 'kikx-overflow-popup' ],
+    'the group must hold the field container directly followed by the eyeball, then the mobile overflow');
   assert.ok(classesOf(group.childNodes[0]).includes('kikx-session-search'),
     'the first child must be the search field container');
 });
@@ -161,11 +163,29 @@ test('the eye is no longer in the trailing actions cluster', () => {
     'the trailing actions must not still contain the eyeball');
 });
 
-test('the whole bar contains EXACTLY ONE eyeball', () => {
+test('the whole bar contains EXACTLY ONE eyeball trigger', () => {
+  // The eye is the only trigger. The mobile ⋮ (owner change, 2026-11-05) hosts
+  // the SAME filter rows in EMBEDDED mode, but triggerless — and it builds them
+  // on first open, so at rest the bar holds exactly one popup element outside
+  // the overflow. Two triggers would mean two open/close contracts fighting
+  // over app._frameFilterPopupOpen.
   let app = makeApp();
   let bar = buildUnifiedTopbar(app).build(document);
-  assert.equal(bar.querySelectorAll('kikx-frame-filter-popup').length, 1,
-    'one eyeball, one source of truth for the frame filters');
+  let group = bar.querySelector('.kikx-topbar__search-group');
+  let directPopups = Array.from(group.childNodes)
+    .filter((node) => node.nodeType === 1 && node.localName === 'kikx-frame-filter-popup');
+  assert.equal(directPopups.length, 1,
+    'exactly one eye trigger, directly in the search group');
+
+  let overflow = group.querySelector('kikx-overflow-popup');
+  assert.ok(overflow, 'the mobile overflow shares the slot');
+  let panel = overflow.querySelector('.kikx-overflow__panel');
+  assert.ok(panel, 'the overflow carries its panel');
+  // Content — actions AND the embedded filter rows — builds on first OPEN
+  // (kikx-overflow-popup.mjs _open), so nothing duplicates the eye's rows in
+  // the DOM while the menu sits closed.
+  assert.equal(Array.from(panel.childNodes).filter((node) => node.nodeType === 1).length, 0,
+    'the overflow panel starts empty; content builds on open');
 });
 
 test('the search group is not inside the trailing actions', () => {
@@ -234,4 +254,30 @@ test('preview status is a narrow property-store update in the topbar', async () 
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.match(status.className, /kikx-auth-status--ready/);
   assert.equal(status.textContent, '3 previews ready');
+});
+
+// --- Debug's new home (owner change, 2026-11-05) ---------------------------
+
+test('the Debug toggle lives in the toolbar actions, immediately after Raw', () => {
+  // "Remove the Debug button from the statusbar for both desktop and mobile.
+  //  Move it next to the 'raw' view button in the toolbar."
+  let app = makeApp({ rawMarkdown: false, debugMode: true });
+  app._toggleRawMarkdown = () => {};
+  app._toggleDebugMode = () => {};
+  app._openSettings = () => {};
+  app._createSession = () => {};
+  let actions = buildTopbarActions(app, 's1').build(document);
+
+  let buttons = Array.from(actions.childNodes)
+    .filter((node) => node.nodeType === 1)
+    .map((node) => String(node.className || '').split(/\s+/)[0]);
+  let debugIndex = buttons.indexOf('kikx-debug-toggle');
+  let rawIndex = buttons.indexOf('kikx-raw-toggle');
+
+  assert.ok(rawIndex >= 0, 'the Raw toggle must stay in the cluster');
+  assert.equal(debugIndex, rawIndex + 1,
+    `Debug must sit directly after Raw; got ${JSON.stringify(buttons)}`);
+
+  let debug = actions.querySelector('.kikx-debug-toggle');
+  assert.equal(debug.getAttribute('aria-pressed'), 'true', 'debugMode state follows the toggle');
 });

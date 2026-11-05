@@ -252,15 +252,32 @@ test('buildStatusBar renders the four counts, in the requested order, from state
   let stats = element.querySelector('.kikx-statusbar__stats');
   assert.ok(stats, 'the stats group must be in the bar');
 
-  let labels = Array.from(stats.querySelectorAll('.kikx-statusbar__stat-label')).map((n) => n.textContent);
   let values = Array.from(stats.querySelectorAll('.kikx-statusbar__stat-value')).map((n) => n.textContent);
-  assert.deepEqual(labels, [ 'SESSIONS', 'OPEN QUESTIONS', 'MESSAGES', 'AGENTS' ]);
   assert.deepEqual(values, [ '4', '3', '17', '4' ]);
 
-  // The bar keeps its original children: nothing was traded away for the counts.
+  // Owner change (2026-11-05): "Collapse all text to just be numbers: i.e.
+  // `2 / 0 / 1234 / 234`" — no label spans anywhere, three slash separators
+  // between the four values, and each value keeps its label as a hover title.
+  assert.equal(stats.querySelectorAll('.kikx-statusbar__stat-label').length, 0,
+    'the bar no longer renders label text');
+  assert.equal(stats.querySelectorAll('.kikx-statusbar__stat-sep').length, 3,
+    'the four values are joined by exactly three separators');
+  assert.deepEqual(
+    Array.from(stats.querySelectorAll('.kikx-statusbar__stat-value')).map((n) => n.getAttribute('title')),
+    [ 'SESSIONS', 'OPEN QUESTIONS', 'MESSAGES', 'AGENTS' ],
+    'each bare number keeps its label as a hover title',
+  );
+
+  // The bar keeps its other children: nothing was traded away for the counts.
   assert.equal(element.querySelector('.kikx-statusbar__dot') !== null, true);
-  assert.equal(element.querySelector('.kikx-statusbar__tokens') !== null, true);
-  assert.equal(element.querySelector('.kikx-debug-toggle') !== null, true);
+  assert.equal(element.querySelector('.kikx-statusbar__connection') !== null, true);
+  assert.equal(element.querySelector('.kikx-statusbar__tokens') !== null, true,
+    'the tokens cell stays; only its WORD became an icon');
+  assert.equal(element.querySelector('.kikx-statusbar__tokens-value') !== null, true);
+  // Owner change (2026-11-05): Debug MOVED to the toolbar (next to Raw) and is
+  // gone from the status bar on every width.
+  assert.equal(element.querySelector('.kikx-debug-toggle'), null,
+    'the status bar no longer hosts the Debug toggle');
 });
 
 test('the rendered bar changes when the stack moves into a session', () => {

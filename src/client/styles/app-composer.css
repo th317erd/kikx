@@ -122,16 +122,29 @@
   color: #c9d4ff;
 }
 
+/* Owner change (2026-11-05): STOP floats, horizontally centered, ABOVE the
+   message input — out of the actions column beside Send, where "it is
+   difficult to press Send without accidentally pressing STOP". The composer is
+   position:relative, so bottom:calc(100% + 8px) parks the pill just over the
+   thread edge, and being absolute it never shifts Send. Also trimmed: the old
+   44px/14px pill was "a little too large". Same placement on desktop and
+   mobile — one rule, no breakpoint. */
 .kikx-stop-button {
-  min-height: 44px;
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  z-index: 6;
+  min-height: 34px;
+  padding: 0 14px;
   border: 2px solid #7f1d1d;
   border-radius: 6px;
   background: #b91c1c;
   color: #fff;
   font: inherit;
-  font-size: calc(14px * 1.25);
-  font-weight: 800;
-  letter-spacing: 0.08em;
+  font-size: calc(13px * 1.25);
+  font-weight: 700;
+  letter-spacing: 0.06em;
   cursor: pointer;
 }
 

@@ -42,21 +42,28 @@
   font-variant-numeric: tabular-nums;
 }
 
-.kikx-statusbar__stat-label {
-  color: #6b7684;
-  font-size: calc(10px * 1.25);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+/* Owner change (2026-11-05): labels are gone from the bar on EVERY width —
+   "collapse all text to just be numbers: i.e. `2 / 0 / 1234 / 234`". Each value
+   keeps its label as a hover title (kikx-shell-builders.mjs buildStatusBar), and
+   the slashes are these separator cells. The old `.kikx-statusbar__stat-label`
+   rule was removed with the spans; the pinned stylesheet list followed it. */
+.kikx-statusbar__stat-sep {
+  color: #4b5560;
 }
 
-/* Below the point where the bar would otherwise wrap, drop the labels and keep the
-   numbers: a bare tally is still useful, a wrapped status bar is not. */
+/* Below the point where the bar would otherwise wrap, tighten the gaps: a bare
+   tally is still useful, a wrapped status bar is not. */
 @media (max-width: 760px) {
-  .kikx-statusbar__stat-label {
-    display: none;
-  }
-
   .kikx-statusbar__stats {
     gap: 10px;
+  }
+}
+
+/* Owner change (2026-11-05), item 1: on mobile drop the connection TEXT and
+   keep only the dot — the kind class on the bar already colors it. Same
+   "mobile" definition as the hamburger drawer. */
+@media (max-width: 960px), (max-height: 520px) {
+  .kikx-statusbar__connection {
+    display: none;
   }
 }

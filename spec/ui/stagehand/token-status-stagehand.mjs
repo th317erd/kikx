@@ -62,7 +62,7 @@ test('Stagehand renders token totals in the bottom status bar', async (t) => {
       timeout: 10000,
     });
     await page.waitForSelector('.kikx-statusbar__tokens', { timeout: 10000 });
-    await waitForTokenText(page, 'Tokens: 1,234');
+    await waitForTokenText(page, '1,234');
 
     fixture.tokenUsage.setSnapshot({
       'openai/chatgpt/codex-agent': {
@@ -71,10 +71,10 @@ test('Stagehand renders token totals in the bottom status bar', async (t) => {
         updatedAt: 'later',
       },
     });
-    await waitForTokenText(page, 'Tokens: 5,678');
+    await waitForTokenText(page, '5,678');
 
     let text = await page.locator('.kikx-statusbar__tokens').first().textContent();
-    assert.equal(text, 'Tokens: 5,678');
+    assert.equal(text, '5,678');
   } finally {
     await stagehand.close().catch(() => {});
     await fixture.close().catch(() => {});
