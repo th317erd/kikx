@@ -10,7 +10,7 @@ installDom();
 const { createIcon, iconNames, setIcon } = await import('../../src/client/lib/icons.mjs');
 
 test('the generated icon set exposes every UI icon with a non-empty silhouette', () => {
-  for (let name of [ 'brain', 'chat', 'gear', 'crown', 'compaction', 'terminal', 'file-read', 'file-write', 'eyeball', 'quill', 'check', 'lock-locked', 'lock-unlocked', 'arrow-down-to-line', 'search', 'fetch', 'todo', 'mail', 'menu', 'database', 'output', 'warning', 'info', 'arrow-right', 'dots', 'dots-vertical', 'diamond', 'chevron-left', 'tokens' ]) {
+  for (let name of [ 'brain', 'chat', 'gear', 'crown', 'compaction', 'terminal', 'file-read', 'file-write', 'eyeball', 'quill', 'check', 'lock-locked', 'lock-unlocked', 'arrow-down-to-line', 'search', 'fetch', 'todo', 'mail', 'menu', 'database', 'output', 'warning', 'info', 'arrow-right', 'dots', 'dots-vertical', 'diamond', 'chevron-left', 'tokens', 'copy' ]) {
     assert.ok(iconNames().includes(name), `${name} is part of the icon set`);
     let icon = createIcon(name);
     assert.equal(icon.tagName.toLowerCase(), 'svg');

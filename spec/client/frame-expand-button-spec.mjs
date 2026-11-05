@@ -94,25 +94,25 @@ test('quickActionSpecForFrame resolves declared buttons over the measured fallba
   // A frame class's declaration is authoritative in both directions.
   assert.deepEqual(
     quickActionSpecForFrame({ getQuickActionButtons: () => ({ expand: true }) }, false),
-    { quote: true, expand: true },
+    { quote: true, copy: false, expand: true },
     'declared can-expand wins even when the build-time probe found no details (lazy content)',
   );
   assert.deepEqual(
     quickActionSpecForFrame({ getQuickActionButtons: () => ({ expand: false }) }, true),
-    { quote: true, expand: false },
+    { quote: true, copy: false, expand: false },
     'a frame may decline the button even with disclosures present',
   );
   assert.deepEqual(
     quickActionSpecForFrame({ getQuickActionButtons: () => ({ quote: false }) }, false),
-    { quote: false, expand: false },
+    { quote: false, copy: false, expand: false },
   );
 
   // No declaration: the measured subtree decides.
-  assert.deepEqual(quickActionSpecForFrame({}, false), { quote: true, expand: false });
-  assert.deepEqual(quickActionSpecForFrame({}, true), { quote: true, expand: true });
+  assert.deepEqual(quickActionSpecForFrame({}, false), { quote: true, copy: false, expand: false });
+  assert.deepEqual(quickActionSpecForFrame({}, true), { quote: true, copy: false, expand: true });
   assert.deepEqual(
     quickActionSpecForFrame({ getQuickActionButtons: () => null }, true),
-    { quote: true, expand: true },
+    { quote: true, copy: false, expand: true },
     'a class returning nothing falls back to measurement',
   );
 });

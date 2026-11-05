@@ -450,8 +450,9 @@ export class KikxFrameItem extends HTMLElement {
       return;
     let spec = quickActionSpecForFrame(this._frame, this._frameTreeHasDetails());
     let hasQuote = !!this._quickActions.querySelector('.kikx-frame__quick-action--quote');
+    let hasCopy = !!this._quickActions.querySelector('.kikx-frame__quick-action--copy');
     let hasExpand = !!this._quickActions.querySelector('.kikx-frame__quick-action--expand-collapse');
-    if (hasQuote === spec.quote && hasExpand === spec.expand) {
+    if (hasQuote === spec.quote && hasCopy === spec.copy && hasExpand === spec.expand) {
       this._quickActions._frame = this._frame;
       return;
     }

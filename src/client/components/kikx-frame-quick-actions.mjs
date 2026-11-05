@@ -79,8 +79,83 @@ export function quickActionSpecForFrame(frame, canExpand = false) {
     spec = {};
   return {
     quote: spec.quote !== false,
+    // Copy ships only when there is message markdown to copy (owner,
+    // 2026-11-06: "the important bits, not command output, and all that
+    // nonsense"). A control that would copy nothing is a dead affordance.
+    copy: spec.copy !== false && copyTextForFrame(frame) !== '',
     expand: spec.expand === true || (spec.expand !== false && canExpand),
   };
+}
+
+// Message-shaped frame types: their content.text/delta IS the authored raw
+// markdown. Tool/command frames keep their payloads in input/output/command —
+// exactly the "nonsense" the owner excluded — and are gated out by type even
+// when a test fixture (or a future frame) parks command text under `text`.
+const COPYABLE_FRAME_TYPES = new Set([
+  'AgentMessage',
+  'AgentMessageDelta',
+  'UserMessage',
+  'Question',
+  'CompactionFrame',
+  'AgentThinking',
+]);
+
+// The RAW markdown of the frame's message: what the source shows, nothing
+// derived. Collapsed turn reports copy their visible summary (mirroring
+// quoteTextForFrame); streaming frames fall back to the live delta.
+export function copyTextForFrame(frame) {
+  let content = frame?.content;
+  if (!content)
+    return '';
+  if (frame.type && !COPYABLE_FRAME_TYPES.has(frame.type))
+    return '';
+
+  if (content.turnReport === true && typeof content.summary === 'string' && content.summary.trim() !== '')
+    return content.summary.trim();
+
+  for (let key of [ 'text', 'delta', 'message', 'thinkingText' ]) {
+    let value = content[key];
+    if (typeof value === 'string' && value.trim() !== '')
+      return value.trim();
+  }
+
+  return '';
+}
+
+// Clipboard with a legacy fallback (older/embedded webviews, denied
+// permission). Resolves true only when the text actually landed on the
+// clipboard — the caller paints feedback from this.
+export async function copyTextToClipboard(text) {
+  if (typeof text !== 'string' || text === '')
+    return false;
+
+  try {
+    if (globalThis.navigator?.clipboard?.writeText) {
+      await globalThis.navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (_error) {
+    // fall through to the legacy path
+  }
+
+  try {
+    let doc = globalThis.document;
+    let area = doc?.createElement?.('textarea');
+    if (!area)
+      return false;
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.top = '-1000px';
+    area.style.opacity = '0';
+    doc.body.appendChild(area);
+    area.select();
+    let ok = typeof doc.execCommand === 'function' && doc.execCommand('copy');
+    area.remove();
+    return ok === true;
+  } catch (_error) {
+    return false;
+  }
 }
 
 // A frame's quick actions live just outside the frame surface. The frame item
@@ -119,6 +194,46 @@ export function buildFrameQuickActions(frame, ownerDocument = document, spec = q
     });
 
     toolbar.appendChild(quote);
+  }
+
+  // Copy (owner, 2026-11-06): "the standard double-paper copy icon... copy the
+  // entire frame message... the raw markdown." Placed beside Quote, reading
+  // toolbar._frame at CLICK time so an in-place stream update copies the
+  // current text rather than the render-time snapshot. Feedback: the glyph
+  // flips to a check for a beat, then returns.
+  if (spec.copy) {
+    let copy = ownerDocument.createElement('button');
+    copy.type = 'button';
+    copy.className = 'kikx-frame__quick-action kikx-frame__quick-action--copy';
+    copy.title = 'Copy message';
+    copy.setAttribute('aria-label', 'Copy message');
+    copy.appendChild(createIcon('copy', { ownerDocument }));
+    copy.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      let current = toolbar._frame;
+      let text = copyTextForFrame(current);
+      if (!text)
+        return;
+
+      copyTextToClipboard(text).then((ok) => {
+        if (!ok) {
+          copy.title = 'Copy failed';
+          return;
+        }
+        setIcon(copy, 'check');
+        copy.title = 'Copied!';
+        clearTimeout(copy._copyResetTimer);
+        copy._copyResetTimer = setTimeout(() => {
+          if (!copy.isConnected)
+            return;
+          setIcon(copy, 'copy');
+          copy.title = 'Copy message';
+        }, 1400);
+      });
+    });
+
+    toolbar.appendChild(copy);
   }
 
   // Built only when the frame declares it can toggle disclosures. A button
