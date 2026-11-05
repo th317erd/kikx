@@ -6,6 +6,7 @@
 import { scheduleAnimationFrame } from './kikx-app-helpers.mjs';
 import { ANCHOR_THRESHOLD } from './frame-scroll-constants.mjs';
 import { restoreFrameListAnchor } from './frame-scroll-anchor.mjs';
+import { markFrameListProgrammaticWrite } from './frame-scroll-programmatic.mjs';
 import { captureScrollFocus, lastFrameID } from './scroll-focus.mjs';
 import { cancelFrameListScrollAnimation, updateMessageHash } from './kikx-frame-scroll-lock.mjs';
 
@@ -53,6 +54,7 @@ function followFrameListToBottom(app, frameList) {
     let current = frameList.scrollTop;
     let distance = target - current;
     if (Math.abs(distance) <= 0.5) {
+      markFrameListProgrammaticWrite(frameList, 220);
       frameList.scrollTop = target;
       app._frameListScrollAnimation = null;
       updateMessageHash(app, lastFrameID(frameList), { atBottom: true });
@@ -66,6 +68,7 @@ function followFrameListToBottom(app, frameList) {
     let delta = distance * factor;
     if (Math.abs(delta) < 0.5)
       delta = Math.sign(distance) * 0.5;
+    markFrameListProgrammaticWrite(frameList, 220);
     frameList.scrollTop = current + delta;
     app._ignoreFrameScrollUntil = Date.now() + 220;
     scheduleAnimationFrame(step);
@@ -80,6 +83,7 @@ export function scrollFramesToBottomImmediate(app, frameList = app.querySelector
 
   cancelFrameListScrollAnimation(app);
   app._ignoreFrameScrollUntil = Date.now() + 200;
+  markFrameListProgrammaticWrite(frameList, 220);
   frameList.scrollTop = Math.max(0, frameList.scrollHeight - frameList.clientHeight);
   updateMessageHash(app, lastFrameID(frameList), { atBottom: true });
   captureScrollFocus(app, frameList, { bottom: true });
@@ -95,5 +99,6 @@ export function restoreFrameListScroll(app, snapshot = {}) {
     return;
 
   let maxScrollTop = Math.max(0, frameList.scrollHeight - frameList.clientHeight);
+  markFrameListProgrammaticWrite(frameList, 220);
   frameList.scrollTop = Math.min(Math.max(0, snapshot.frameListScrollTop || 0), maxScrollTop);
 }

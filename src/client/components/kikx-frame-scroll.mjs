@@ -5,6 +5,7 @@ import { thinkingAgents, threadRenderFrames } from '../state/thinking-state.mjs'
 import { guardClientOperation, reportClientError } from '../lib/error-boundary.mjs';
 import { currentViewName } from '../state/navigation-stack.mjs';
 import { scheduleAnimationFrame } from './kikx-app-helpers.mjs';
+import { markFrameListProgrammaticWrite } from './frame-scroll-programmatic.mjs';
 import { buildFrameThread } from './kikx-shell-builders.mjs';
 import { countRebuild } from './render-stats.mjs';
 import { getScrollLockModeForSession, isScrollLockedForSession } from './kikx-scroll-lock.mjs';
@@ -425,6 +426,7 @@ function syncFrameThreadBody(app, sessionID, options) {
       app._ignoreFrameScrollUntil = Date.now() + 200;
       if (!focus || !restoreScrollFocus(app, frameList, focus)) {
         let growth = frameList.scrollHeight - beforeScrollHeight;
+        markFrameListProgrammaticWrite(frameList, 220);
         frameList.scrollTop = Math.max(0, beforeScrollTop + growth);
       }
     }
@@ -648,7 +650,13 @@ export function onFrameContentResize(app) {
 
 export function onFrameListScroll(app, event) {
   let frameList = event.currentTarget;
-  let programmatic = Date.now() < (app._ignoreFrameScrollUntil || 0);
+  // BOTH ignore windows count: ours covers Kikx's raw writes, the shared
+  // component's covers its own _writeScrollTop writes (pin/settle/end-pin).
+  // Without the second check a pin-to-bottom landing inside a still-warm
+  // wheel window read as a user scroll and broke the lock on the app's OWN
+  // pin — the "send breaks the pin" unlock (owner report, 2026-11-05).
+  let programmatic = Date.now() < (app._ignoreFrameScrollUntil || 0)
+    || frameList.closest?.('aeor-scrollview')?.programmaticScrollActive === true;
   let sessionID = app._state.selectedSessionID;
   let nearBottom = isFrameListNearBottom(app, frameList);
 
@@ -662,15 +670,22 @@ export function onFrameListScroll(app, event) {
     // lock had placed it. Wheel momentum at the bottom produces no delta and
     // must not turn the lock straight back off.
     let delta = previousScrollTop == null ? 0 : frameList.scrollTop - previousScrollTop;
+    // Owner rule (2026-11-05): "ANY scroll from me, up or down, should
+    // unpin." Bottom mode used to release only on upward movement, so a
+    // scroll DOWN out of a broken pin left the lock stuck on. The down-move
+    // only counts when it actually LEAVES the bottom region: wheel nudges
+    // while arriving at the bottom must not fight the auto-lock they are
+    // about to engage (that flicker was ending on the unlocked state).
     let lockMode = getScrollLockModeForSession(app, sessionID);
-    let movedAway = lockMode === 'bottom' ? delta < -2 : Math.abs(delta) > 2;
+    let movedAway = lockMode === 'bottom'
+      ? (delta < -2 || (delta > 2 && !nearBottom))
+      : Math.abs(delta) > 2;
     if (userGesture && isScrollLockedForSession(app, sessionID) && movedAway) {
       brokeLock = true;
       app._sentinelSuppressed = false;
       cancelFrameListScrollAnimation(app);
       breakScrollLockFromUser(app);
     }
-    updateMessageHashFromScroll(app, frameList);
     // A user scroll redefines the focus frame. Layout-only scroll events do not:
     // they are exactly what the focus anchor is supposed to suppress.
     if (userGesture) {
@@ -680,6 +695,13 @@ export function onFrameListScroll(app, event) {
     if (!nearBottom)
       app._bottomLockIntent = false;
   }
+
+  // The debounced hash rewrite runs on EVERY event (not just user ones): a
+  // stream's settle writes are programmatic, so gating it to user scrolls
+  // left the hash stuck on the pre-stream frame with no bottom marker until
+  // the next wheel (owner screenshot: "#message=<old>&bottom=1"). The rewrite
+  // itself stays cheap: debounce-to-quiet inside, aria-busy guard inside.
+  updateMessageHashFromScroll(app, frameList);
 
   app._frameListAnchoredToBottom = !isScrollLockedForSession(app, sessionID) && nearBottom;
   maybeLoadOlderFrames(app, frameList);

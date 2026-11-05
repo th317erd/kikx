@@ -1,5 +1,7 @@
 'use strict';
 
+import { markFrameListProgrammaticWrite } from './frame-scroll-programmatic.mjs';
+
 // A viewport anchor is one frame plus the signed distance from the scroll
 // viewport's top edge to that frame's top edge. ScrollTop alone is not an
 // anchor: the same scrollTop names a different message after a prepend, a
@@ -51,6 +53,7 @@ export function restoreFrameListAnchor(frameList, anchor) {
   let itemRect = item.getBoundingClientRect();
   let target = frameList.scrollTop + itemRect.top - listRect.top - anchor.offset;
   let max = Math.max(0, frameList.scrollHeight - frameList.clientHeight);
+  markFrameListProgrammaticWrite(frameList, 220);
   frameList.scrollTop = Math.min(Math.max(0, target), max);
   return true;
 }
@@ -71,6 +74,7 @@ export function restoreFrameListFocus(frameList, focus) {
 
   let target = frameItemTopWithinList(frameList, item) - focus.offset;
   let max = Math.max(0, frameList.scrollHeight - frameList.clientHeight);
+  markFrameListProgrammaticWrite(frameList, 220);
   frameList.scrollTop = Math.min(Math.max(0, target), max);
   return true;
 }

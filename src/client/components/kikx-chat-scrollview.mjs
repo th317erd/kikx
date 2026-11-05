@@ -5,6 +5,7 @@
 // element owns page/gap geometry, page loading and programmatic scrolling.
 
 import { captureFrameListAnchor, frameItemTopWithinList, restoreFrameListAnchor } from './frame-scroll-anchor.mjs';
+import { markFrameListProgrammaticWrite } from './frame-scroll-programmatic.mjs';
 import { KikxThreadPageSource } from './kikx-thread-page-source.mjs';
 import { frameMatchesWindowFilters } from '../../shared/frame-window-filters.mjs';
 import { promoteTailResponse } from './thread-display-order.mjs';
@@ -382,6 +383,7 @@ export class KikxChatScrollView {
       return false;
     let target = frameItemTopWithinList(this.frameList, item) - anchor.offset;
     let max = Math.max(0, this.frameList.scrollHeight - this.frameList.clientHeight);
+    markFrameListProgrammaticWrite(this.frameList, 220);
     this.frameList.scrollTop = Math.min(Math.max(0, target), max);
     return true;
   }
@@ -663,6 +665,7 @@ function restoreFilterAnchor(frameList, anchor) {
   let listTop = frameList.getBoundingClientRect().top;
   let target = frameItemTopWithinList(frameList, candidate.item) - anchor.offset;
   let max = Math.max(0, frameList.scrollHeight - frameList.clientHeight);
+  markFrameListProgrammaticWrite(frameList, 220);
   frameList.scrollTop = Math.min(Math.max(0, target), max);
   return true;
 }

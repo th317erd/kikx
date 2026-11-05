@@ -193,15 +193,28 @@ test('Puppeteer view polish: header span, view-header centering, pointer cursor,
       const list = document.querySelector('.kikx-frame-list');
       list.scrollTop = (list.scrollHeight - list.clientHeight) * f;
     }, fraction);
+    // Prove a page load is actually in flight around the double-click. The
+    // "Loading page" pill alone races the fetch (the fixture resolves fast
+    // enough that the pill can flash between polls), so accept EITHER the
+    // pill being visible or a scrollview-page-load event landing right after
+    // the jump — both mean the rename fired while pages were churning.
+    await desktop.evaluate(() => {
+      window.__pageLoadSeen = false;
+      if (!window.__pageLoadListener) {
+        window.__pageLoadListener = true;
+        addEventListener('scrollview-page-loaded', () => { window.__pageLoadSeen = true; }, { capture: true });
+      }
+    });
     let loading = false;
     for (let attempt = 0; attempt < 8 && !loading; attempt++) {
+      await desktop.evaluate(() => { window.__pageLoadSeen = false; });
       await jump(attempt % 2 === 0 ? 0.1 : 0.7);
       loading = await desktop.waitForFunction(() => {
         const pill = document.querySelector('.aeor-scrollview__status--top');
-        return Boolean(pill && !pill.hidden && pill.textContent);
+        return Boolean((pill && !pill.hidden && pill.textContent) || window.__pageLoadSeen);
       }, { timeout: 2500 }).then(() => true).catch(() => false);
     }
-    assert.ok(loading, 'the Loading page pill must appear so the rename runs under load');
+    assert.ok(loading, 'a page load must be in flight when the rename fires (pill or scrollview-page-load event)');
     const crumbBox = await desktop.evaluate(() => {
       const node = document.querySelector('.kikx-breadcrumb__crumb--active');
       const r = node.getBoundingClientRect();

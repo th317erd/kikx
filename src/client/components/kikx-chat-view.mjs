@@ -1,6 +1,7 @@
 'use strict';
 
 import './kikx-frame-item.mjs';
+import { markFrameListProgrammaticWrite } from './frame-scroll-programmatic.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { miniPreviewFrames, miniScale, MINI_DESIGN_WIDTH, MINI_DESIGN_HEIGHT } from './chat-view-model.mjs';
 import { countRebuild } from './render-stats.mjs';
@@ -311,6 +312,7 @@ export class KikxChatView extends HTMLElement {
       if (!restoreFrameListAnchor(list, anchor)) {
         // Keep the content under the user's eyes stationary when older frames are
         // inserted above it.
+        markFrameListProgrammaticWrite(list, 220);
         list.scrollTop = beforeTop + Math.max(0, list.scrollHeight - beforeHeight);
       }
     }
@@ -423,6 +425,7 @@ export class KikxChatView extends HTMLElement {
     if (!list)
       return;
     this._markProgrammaticScroll();
+    markFrameListProgrammaticWrite(list, 220);
     list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
   }
 

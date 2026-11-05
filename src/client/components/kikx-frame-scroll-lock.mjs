@@ -14,6 +14,7 @@ import {
   setScrollLockModeForSession,
 } from './kikx-scroll-lock.mjs';
 import { frameItemTopWithinList } from './frame-scroll-anchor.mjs';
+import { markFrameListProgrammaticWrite } from './frame-scroll-programmatic.mjs';
 
 export function scrollToLatestMessageTop(app, options = {}) {
   let frameList = app.querySelector('.kikx-frame-list');
@@ -71,8 +72,37 @@ export function lastFrameItemID(app) {
 export function topVisibleFrameID(app, frameList) {
   if (!frameList)
     return '';
+
+  // At the bottom the honest answer is the LAST item (owner screenshot,
+  // 2026-11-05: the hash read "#message=<old>&bottom=1" while the newest frame
+  // was flush with the viewport edge). Rect-walking here picked an upper page's
+  // content-visibility placeholder straddling the viewport top, so a deep-link
+  // or hash restore could later slam back to that stale frame.
+  let max = Math.max(0, frameList.scrollHeight - frameList.clientHeight);
+  if (max - frameList.scrollTop <= 8) {
+    let items = [ ...frameList.querySelectorAll('kikx-frame-item') ];
+    return items.at(-1)?.dataset.frameId || '';
+  }
+
   let listRect = frameList.getBoundingClientRect();
   let items = [ ...frameList.querySelectorAll('kikx-frame-item') ];
+
+  // Mid-list: restrict candidates to the page the viewport STARTS in (segment
+  // metadata, immune to placeholder geometry), then take the first real item
+  // of that page. Without the restriction an offscreen page whose seeded
+  // placeholder overlaps the viewport top can win the walk and poison the hash
+  // with a frame that is nowhere near the visible region.
+  let host = frameList.closest?.('aeor-scrollview');
+  if (host?.pageAtOffset && items.length > 0) {
+    let pageIndex = host.pageAtOffset(frameList.scrollTop);
+    if (Number.isInteger(pageIndex)) {
+      let pageItems = items.filter((item) =>
+        item.closest?.('.aeor-scrollview__page')?.dataset?.page === String(pageIndex));
+      if (pageItems.length > 0)
+        items = pageItems;
+    }
+  }
+
   for (let item of items) {
     let rect = item.getBoundingClientRect();
     if (rect.bottom > listRect.top + 1)
@@ -180,6 +210,12 @@ export async function maybeRestoreMessageHash(app, onPlaced = null) {
   app._hashRestoreInFlight = true;
   try {
     let frameList = app.querySelector('.kikx-frame-list');
+    // A following shared view owns the position: restoring an old message
+    // hash under it un-pins the reader to a stale frame while the lock icon
+    // still claims bottom (owner screenshot, 2026-11-05). The settled scroll
+    // rewrites the hash honestly anyway.
+    if (frameList?.closest?.('aeor-scrollview')?.follow === true)
+      return false;
     let items = [ ...(frameList?.querySelectorAll('kikx-frame-item') || []) ];
     let item = items.find((candidate) => candidate.dataset.frameId === frameID);
 
@@ -389,6 +425,7 @@ export function animateFrameListScroll(app, frameList, resolveTarget, options = 
       ? 4 * progress * progress * progress
       : 1 - Math.pow(-2 * progress + 2, 3) / 2;
     target = clampedScrollTop(frameList, resolveTarget());
+    markFrameListProgrammaticWrite(frameList, 220);
     frameList.scrollTop = startTop + (target - startTop) * eased;
 
     if (progress < 1) {
@@ -426,6 +463,7 @@ function scrollItemTop(app, frameList, item, { animate = false } = {}) {
 function setFrameListScrollTop(app, frameList, top, { programmatic = false } = {}) {
   if (programmatic)
     app._ignoreFrameScrollUntil = Date.now() + 150;
+  markFrameListProgrammaticWrite(frameList, 220);
   frameList.scrollTop = Math.max(0, top);
 }
 

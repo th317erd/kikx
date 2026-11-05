@@ -1,6 +1,7 @@
 'use strict';
 
 import { scheduleAnimationFrame } from './kikx-app-helpers.mjs';
+import { markFrameListProgrammaticWrite } from './frame-scroll-programmatic.mjs';
 import {
   captureFrameListFocus,
   frameItemTopWithinList,
@@ -79,6 +80,7 @@ export function scrollFocusToTop(app, frameList, frameID, options = {}) {
   } else {
     cancelFrameListScrollAnimation(app);
     app._ignoreFrameScrollUntil = Date.now() + 150;
+    markFrameListProgrammaticWrite(frameList, 220);
     frameList.scrollTop = target();
     done();
   }
@@ -149,6 +151,7 @@ export function stepFocusAlignment(app, frameList = app.querySelector?.('.kikx-f
   // cannot fit, min() picks the frame top and aligns that with the viewport top.
   let target = Math.min(Math.max(0, itemTop), max);
   app._ignoreFrameScrollUntil = Date.now() + 150;
+  markFrameListProgrammaticWrite(frameList, 220);
   frameList.scrollTop = target;
 
   if (Math.abs(itemHeight - pending.lastHeight) < 0.5)
@@ -229,7 +232,25 @@ export function alignLastFrameFocus(app, frameList, options = {}) {
   });
 }
 
+// True while the shared scrollview is FOLLOWING the bottom. In that state the
+// component's settle tick owns vertical position, and bottom-align must not
+// compete with it.
+function sharedFollowActive(frameList) {
+  let view = frameList?.closest?.('kikx-chat-view');
+  let element = view?._scrollview?.element;
+  return Boolean(view?.usesSharedScrollview === true && element && element.follow === true);
+}
+
 export function alignBottomFocus(app, frameList, options = {}) {
+  // Owner report (2026-11-05): "I send a message, it breaks (even though the
+  // icon still claims it is pinned)". Bottom-align aims at the last frame's
+  // TOP; for a frame taller than the viewport that is hundreds of pixels away
+  // from the settle tick's document bottom. Alternating the two re-armed every
+  // ignore window (so real user scrolls stopped registering) and could strand
+  // the viewport mid-thread with the lock on. While follow is active, settle
+  // alone places the viewport — send, stream and growth all converge there.
+  if (sharedFollowActive(frameList))
+    return false;
   return alignLastFrameFocus(app, frameList, { ...options, bottom: true });
 }
 
