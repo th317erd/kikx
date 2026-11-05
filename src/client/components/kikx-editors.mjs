@@ -18,6 +18,7 @@ import {
   upsertSession,
   upsertTeam,
 } from '../state/kikx-state.mjs';
+import { syncViewScopeForSelection } from './kikx-navigation.mjs';
 import { clearAuthSession, persistAuthSession } from './kikx-data.mjs';
 export function syncAuthEmail(app, event) {
   app._state.authEmail = event.target.value;
@@ -319,7 +320,11 @@ export async function onSessionEditSubmit(app, event) {
 }
 
 export async function selectSession(app, sessionID) {
+  let previousSessionID = app._state.selectedSessionID || '';
   app._state.selectedSessionID = sessionID;
+  // Synchronously, before _loadFrames below builds its request, so the window
+  // is fetched with this session's filters rather than the previous one's.
+  syncViewScopeForSelection(app, previousSessionID);
   app._state.status = 'Loading session...';
   app._state.statusKind = 'pending';
   app._forceScrollToBottomAfterRender = true;

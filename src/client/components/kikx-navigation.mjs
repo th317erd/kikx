@@ -23,6 +23,12 @@ import {
   toggleFilter,
 } from '../lib/frame-filters.mjs';
 import {
+  applySessionViewScope,
+  captureSessionViewScope,
+  persistAppViewScope,
+  persistAppViewScopeSoon,
+} from '../state/session-view-filters.mjs';
+import {
   HERO_VIEW_TRANSITION_NAME,
   runViewTransition,
   setViewTransitionName,
@@ -108,6 +114,10 @@ export function setFrameFilters(app, filters, options = {}) {
 
   app._frameLoadSignature = signature;
   app._state.frameFilters = next;
+  // A view filter belongs to the session it was set on, so record it there
+  // immediately. Clicks are deliberate and rare, so this does not need the
+  // coalescing the query path uses.
+  persistAppViewScope(app);
   paintSearchClear(app);
   // A filter change can originate outside the popup (the header clear button).
   // Repaint its checkboxes without rebuilding the shell or moving focus.
@@ -249,6 +259,55 @@ export function clearFrameFilters(app) {
   setFrameFilters(app, next, { pinBottom: true });
 }
 
+// Per-session view-filter scoping. See state/session-view-filters.mjs for why
+// this is keyed by session at all: a filter describes how ONE session is being
+// looked at, and a global one made a child session open empty whenever the
+// parent had been isolated to "Child Sessions".
+// Switch the live filter state to the session being entered.
+//
+// THIS MUST RUN SYNCHRONOUSLY AT THE TRANSITION, before anything fetches.
+// Filtering happens on the server, and `loadFrames` reads `state.frameFilters`
+// when it builds its request. A ReactiveState subscription would flush on a
+// microtask -- after the caller has already awaited the load -- so the request
+// would go out carrying the PREVIOUS session's filter. That is not a subtle
+// risk; it is exactly the empty-thread bug this exists to fix.
+//
+export function syncViewScopeForSelection(app, previousSessionID) {
+  if (!app?._state)
+    return;
+
+  // Save the session we are leaving under its own id, while its state is still
+  // the live state. After the assignment below it is unrecoverable.
+  let previous = typeof previousSessionID === 'string' ? previousSessionID : '';
+  if (app._viewScopePersistTimer) {
+    clearTimeout(app._viewScopePersistTimer);
+    app._viewScopePersistTimer = 0;
+  }
+  captureSessionViewScope(app._state, previous);
+
+  applySessionViewScope(app._state, app._state.selectedSessionID);
+
+  // The Deleted gate is per-session now, so the grid's soft-deleted bucket has
+  // to follow it. `showDeletedSessions` used to be driven only by setFrameFilters,
+  // which meant a session saved with the gate on would render its hidden frames
+  // while the grid still believed they were off -- and the eye would show the
+  // wrong state on return. The bucket is fetched below by the caller that needs
+  // it; this only keeps the two flags telling the same story.
+  app._state.showDeletedSessions = app._state.frameFilters?.[DELETED_ROW.key] === true;
+
+  // The signature guard caches "which filter+query produced the frames currently
+  // on screen". A different session is a different request entirely, so a
+  // signature retained from the session we left could suppress the first load
+  // of the one we entered -- the same failure by another route.
+  app._frameLoadSignature = null;
+
+  syncSessionSearchField(app, app._state.sessionSearch || '');
+  paintSearchClear(app);
+  // The popup paints its checkboxes from state, so it must be told. Its refresh
+  // is cheap and does not rebuild the shell, so focus is unaffected.
+  app.querySelector?.('kikx-frame-filter-popup')?.refresh?.();
+}
+
 function syncSessionSearchField(app, value) {
   for (let input of app.querySelectorAll?.('.kikx-session-search input') || []) {
     if (input.value !== value)
@@ -269,6 +328,7 @@ export function applyWindowQuery(app, value) {
   let query = typeof value === 'string' ? value : '';
   app._state.sessionSearch = query;
   paintSearchClear(app);
+  persistAppViewScopeSoon(app);
 
   if (!app._state.selectedSessionID) {
     cancelPendingWindowQuery(app);
@@ -330,8 +390,10 @@ export function minimizeCurrent(app) {
 // Keep state.selectedSessionID aligned with the current stack entry so frames
 // and titles reflect the active window.
 export function syncSelectedSessionToStack(app) {
+  let previousSessionID = app._state.selectedSessionID || '';
   let sessionID = getCurrentSessionID(app._state);
   app._state.selectedSessionID = sessionID || '';
+  syncViewScopeForSelection(app, previousSessionID);
 }
 
 // Drop sessions that no longer exist (soft delete) from the window stack and
@@ -381,7 +443,11 @@ export async function openSessionFromCard(app, sessionID) {
   // Enter the session (push a thread window) and start the morph immediately;
   // load frames after, so the transition never waits on the network.
   await runViewTransition(() => {
+    let previousSessionID = app._state.selectedSessionID || '';
     app._state.selectedSessionID = sessionID;
+    // Before the transition paints and long before _loadFrames runs below, so
+    // the request carries THIS session's filter and not the card grid's.
+    syncViewScopeForSelection(app, previousSessionID);
     app._state.status = 'Loading session...';
     app._state.statusKind = 'pending';
     app._forceScrollToBottomAfterRender = true;
@@ -496,8 +562,10 @@ export async function applySessionDeepLink(app) {
   }
 
   setNavigationStack(stack, app._state);
+  let previousSessionID = app._state.selectedSessionID || '';
   let top = getCurrentSessionID(app._state);
   app._state.selectedSessionID = top;
+  syncViewScopeForSelection(app, previousSessionID);
   app._forceScrollToBottomAfterRender = true;
 
   try {
@@ -537,8 +605,10 @@ export async function syncFromURL(app) {
   let stack = stackFromCurrentURL(app);
 
   setNavigationStack(stack, app._state);
+  let previousSessionID = app._state.selectedSessionID || '';
   let top = getCurrentSessionID(app._state);
   app._state.selectedSessionID = top || '';
+  syncViewScopeForSelection(app, previousSessionID);
 
   try {
     if (top && !isCollapsed(app._state))
