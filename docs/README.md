@@ -148,6 +148,7 @@ roadmap item is shipped.
 - [Plugin extensibility campaign](./roadmap/plugin-extensibility.md)
 - [Plugin platform campaign](./plans/plugin-platform-campaign.md)
 - [Scrollview campaign](./plans/scrollview-campaign.md)
+- [System Settings shell + Xenocept plugin parity](./plans/system-settings-xenocept-plugins-campaign.md)
 - [Client user-state integrity](./plans/client-user-state-integrity.md)
 - [Client targeted-update layer](./plans/client-targeted-update-layer.md)
 - [UserMessage delivery status](./plans/user-message-delivery-status.md)

@@ -1,4 +1,14 @@
-# Kikx handoff memory — 2026-10-30
+# Kikx handoff memory — refreshed 2026-11-05
+
+> **Refresh 2026-11-05 (read this first after compaction).** A full day of work
+> landed since the 2026-10-30 body below: scrollview gesture/perf campaigns,
+> mobile hamburger drawer + compact status bar + STOP/copy/raw-mode UI work,
+> durable auth tokens (localStorage, 30-day refresh), markdown fixes,
+> provider-retry phantom fix, and the source-size gate. The § numbers below are
+> partially stale — trust the commits in §8-refresh and the plans under
+> `docs/plans/` over the 10-30 prose. **Active campaign:
+> `docs/plans/system-settings-xenocept-plugins-campaign.md` (plan written,
+> implementation NOT started — start at its §8 "First action after compaction").**
 
 This is the current continuity file for the `kikx` checkout. It replaces earlier
 stale handoff notes in this file. Read the project `.pi/` and global startup
@@ -8,8 +18,8 @@ history.
 ## 1. Current position
 
 - Checkout: `/home/wyatt/Projects/kikx-workspace/kikx`
-- Branch: `main`; clean and pushed. The latest source commit at handoff is
-  `5c2b2a55`; the handoff file itself is committed after it.
+- Branch: `main`; clean and pushed. Latest at refresh: Kikx `5dfa0c71`, Aeor
+  `0a73ec3` (see §8-refresh for the full recent list).
 - Dev server: `kikx-dev2-run.service` on `127.0.0.1:3002`, PostgreSQL
   `kikx-dev2` on `127.0.0.1:5434`; service active and `/health` ready.
 - **Do not touch `kikx2` or `:3001`.** It is the production-bot clone and is
@@ -18,7 +28,7 @@ history.
 - Latest browser/client changes are static; a hard reload on `:3002` is needed
   to replace cached modules/styles. Restart the dev service only for server-side
   changes.
-- Aeor checkout: `/home/wyatt/Projects/aeor-web-components`, latest `43f0234`.
+- Aeor checkout: `/home/wyatt/Projects/aeor-web-components`, latest `0a73ec3`.
   Its worktree has unrelated **uncommitted documentation migration changes**
   (`docs/`, `README`, `SKILL`, deleted `bot-docs/` files). Do not discard or
   commit that migration as part of Kikx work; only the framework source/test
@@ -193,16 +203,18 @@ Aeor commits:
 
 ## 4. Current test status
 
-At the latest verified tree:
+At the 2026-11-05 refresh tree:
 
-- Kikx full unit/core suite: **3,133 tests, 3,103 pass, 0 fail, 30 skipped**.
-- Kikx browser lane (targeted): **6/6 pass**:
-  - search/filter page re-scope
-  - hidden/deleted frame filter
-  - Raw Markdown paint-only toggle
-  - composer state preservation
-  - frame-filter popup
-  - mobile layout
+- Kikx full unit/core suite: **3,329 tests, 3,299 pass, 0 fail, 30 skipped**
+  (includes `spec/architecture/source-file-size-spec.mjs`, the 800-line hard
+  cap gate, and the docs gates).
+- Kikx browser lanes run green as individual Puppeteer specs (10-wide batch
+  verified): scroll stability (`mobile-bottom-follow-gesture`,
+  `send-pin-and-unpin`, `filtered-lazy-scroll`, `search-clear`, `frame-bottom`,
+  `live-message-tail`), mobile (`mobile-layout`, `mobile-menu`), UI polish
+  (`view-polish`, `status-toolbar-overlay`, `quick-action-copy`,
+  `raw-markdown`), plus `composer-send-seamless`, `typing-under-load`,
+  `auth-persistence`.
 - AEOR browser harness: pass, including property store, keyed list, property
   binding, scrollview `updatePage`.
 - Aeor/Kikx documentation gates pass.
@@ -213,6 +225,15 @@ AeorDB availability; run individual Stagehand/Puppeteer tests instead when
 needed.
 
 ## 5. Remaining campaign phases
+
+- **ACTIVE: `docs/plans/system-settings-xenocept-plugins-campaign.md`** —
+  System Settings shell mode + Xenocept plugin parity (SettingsPage base,
+  plugins section UI, npm install/search, Ed25519 `.kikx-sig` verification +
+  sign script, realtime `plugin.changed` SSE). Plan only; start at its §8.
+  Owner scope note: "A BIG CHUNK OF IT… encrypted signatures, real-time
+  installing and removing, NPM… all of it."
+- Older plugin-platform phases P1/P5/P7 remainder still open (see
+  `docs/plans/plugin-platform-campaign.md`).
 
 Plan phase status:
 
@@ -287,8 +308,51 @@ review.
 
 ## 8. Repository state / commits
 
-Kikx recent commits:
+### 8-refresh — 2026-11-04/05 (newest first)
 
+Kikx:
+
+- `5dfa0c71` Copy button success-green state
+- `23bfe9c1` Copy everywhere (quote-parity with quoteTextForFrame)
+- `d3ec8b8d` provider-retry: phantom previews no longer block the ladder (the
+  kikx3 "Ollama Gateway Timeout killed the turn" incident, session aaa31337)
+- `e2be15b0` Copy quick action (double-paper icon, raw markdown to clipboard)
+- `fa5b339d` owner polish batch: mobile header span fix, view-header centering,
+  pointer cursor, rename-under-load, and the "Loading page locks the mouse"
+  campaign (forced-layout fixes: logger busy-skip, hash debounce, capture
+  gating, per-load input yields — see plan `scrollview-campaign.md` notes in
+  the commit bodies)
+- `0c3cd92a` dark-red STOP as `aeor-confirm-button` (0.5s hold, rectangular)
+- `670761f1` STOP ring says STOP → superseded by confirm-button above
+- `aeb35f40` durable auth: localStorage primary + sessionStorage legacy
+  migration; logout clears all three; server refresh TTL already 30d sliding
+- `034846b7` frame timestamps present on mobile (short time-only label)
+- `3d64e171` bottom pin survives sends; ANY user scroll unpins; honest bottom
+  hash (scrolllog-proven pin/settle/focus fight fix)
+- `506c43d4` same campaign's Kikx half (markFrameListProgrammaticWrite ×12,
+  topVisibleFrameID metadata walk, hash restore guard)
+- `8f1c066f` `c0383833` `d497ce06` `8be6c75d` source-size refactor wave
+  (app.css split, component splits) + `425a3700` the 800-line cap gate
+- `e329297f` agent contextWindowTokens default from model
+- `24d0d452` `61fd81fe` live tail lazy-load fix
+- `1f1d2b9a` mobile hamburger drawer + sidebar drawer (replaces top-band
+  sidebar), `53067364` earlier mobile wave
+- `086a75fb`→`dce21c05` user-message delivery visual (blue body, green corner)
+
+Aeor (repo `/home/wyatt/Projects/aeor-web-components`, commit ONLY source/tests —
+the uncommitted docs migration stays untouched):
+
+- `0a73ec3` reserve page width for overhanging consumer chrome (content-
+  visibility paint containment was clipping the quick-action rail)
+- `54f1578` `programmaticScrollActive` + `pageAtOffset` + `markProgrammaticScroll`
+- `9abb766` content-visibility + input yields + measured pins (the
+  "Loading page freezes the mouse" perf work; probe numbers in the commit body)
+- `677b881` user gesture wins over bottom-yank paths
+- `51d3bde` `39dcdcd` `416e875` earlier scrollview series
+
+### Older (2026-10-30 body below)
+
+Kikx recent commits (10-30 era):
 - `6c923a3f` docs target progress
 - `905e03d7` chat view in-place update
 - `3e863482` progress docs
