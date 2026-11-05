@@ -199,8 +199,8 @@ Client (`src/client`):
   same `loadPlugins + migrations + rollback` pipeline as `{path}`. Same
   operator + config gates.
 - `GET /api/v1/plugins/search?q=` → npm registry `/-/v1/search` with keyword
-  **`kikx-plugin`** (Kikx's mirror of Xenocept's `xenocept-plugin`; confirm the
-  keyword name with the owner before publishing docs), mapped to
+  **`kikx-plugin`** (Kikx's mirror of Xenocept's `xenocept-plugin`; **keyword confirmed by
+  the owner 2026-11-05**), mapped to
   `{name, version, description}`; gated with the INVENTORY action (no local
   disclosure either way).
 - Browse column UI: search input + result cards (name/version/description +
@@ -315,7 +315,8 @@ text in §5.** Every claim below was verified by search in this session.
    no persisted enable/disable exists anywhere. **Action if approved:**
    persist a disabled set (candidate: generic tag store
    `{target_type:'plugin'}` or config), loader honors it at load, toggle
-   disable→unload / enable→reload-path. **Owner decision #2.**
+   disable→unload / enable→reload-path. **Decided: in scope** (owner,
+   2026-11-05).
 3. **"Real-time" needs descriptor refetch, not only inventory.**
    `/api/v1/client-components` is fetched by `loadClientComponents`
    (`kikx-data.mjs:218`) from `app._loadClientComponents` (`kikx-app.mjs:320`,
@@ -350,6 +351,7 @@ text in §5.** Every claim below was verified by search in this session.
    package names — `git+`, `file:` and URL specs silently change the trust
    story (and git specs run lifecycle scripts); (iii) extraction needs
    tarbomb/path-traversal guards (absolute and `..` members rejected).
+   **Decided:** search keyword **`kikx-plugin`** (owner, 2026-11-05).
    **Action:** prefer a direct HTTPS tarball fetch from the fixed registry
    host + sha512 `dist.integrity` verify + safe extract — no npm CLI in the
    loop at all, matching Xenocept's CDN-tarball model — fallback
@@ -430,20 +432,24 @@ text in §5.** Every claim below was verified by search in this session.
   no payload — the client re-pulls inventory + descriptors with its own
   credentials. Single auth path, no privilege in the event, bounded event.
 - **Execution order after the pass:** S1 → S2 → S4 → S3 → uninstall /
-  enable-disable (pending owner decisions) → S5 → S6. Phase IDs keep their
+  enable-disable (both in scope: uninstall contract details pending owner
+  decision #4; enable/disable decided yes) → S5 → S6. Phase IDs keep their
   §5 names; this order governs.
 
 ### 9.6 Open questions for the owner (Peer precept — decisions, not delays)
 
 1. npm search keyword: `kikx-plugin` (Xenocept mirrors with
-   `xenocept-plugin`)?
-2. Enable/disable toggle (9.1.2) in scope for this campaign?
+   `xenocept-plugin`)? — **DECIDED yes, `kikx-plugin` (2026-11-05).**
+2. Enable/disable toggle (9.1.2) in scope for this campaign? — **DECIDED
+   yes, in scope (2026-11-05).**
 3. Signature default: **verify-if-present** (recommended — keeps the trusted-
    code ruling intact) vs required from day one; built-ins signed in-repo or
-   exempt?
+   exempt? — **explained in detail 2026-11-05; awaiting decision.**
 4. Uninstall contract: remove files of path/npm-installed plugins only,
-   retain durable plugin data, never built-ins — confirm?
+   retain durable plugin data, never built-ins — confirm? — **explained in
+   detail 2026-11-05; awaiting decision.**
 5. Statusbar totals on Settings (Inbox-consistent default) and deferring
-   favorites/update badges — confirm?
+   favorites/update badges — confirm? — **explained in detail 2026-11-05;
+   awaiting decision.**
 
 S1 is unblocked regardless of these answers.
