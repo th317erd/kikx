@@ -149,8 +149,16 @@
     flex-wrap: wrap;
   }
 
-  .kikx-frame__timestamp {
+  /* Timestamps stay PRESENT on phones (owner, 2026-11-05) — in the short,
+     time-only form, since the full date+seconds label does not fit the narrow
+     meta row. Both texts live in the same <time>; this is a paint-only swap,
+     so rotating or resizing needs no re-render. */
+  .kikx-frame__timestamp-full {
     display: none;
+  }
+
+  .kikx-frame__timestamp-short {
+    display: inline;
   }
 
   .kikx-main {

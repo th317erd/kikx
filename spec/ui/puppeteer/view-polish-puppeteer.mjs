@@ -99,6 +99,29 @@ test('Puppeteer view polish: header span, view-header centering, pointer cursor,
     assert.ok(headerSpan.rightGap <= 2,
       `the header must reach the frame's right edge (rightGap=${headerSpan.rightGap}px — the old clamp left ~24px)`);
     assert.ok(headerSpan.leftGap <= 2, `header stays full-bleed on the left too (leftGap=${headerSpan.leftGap}px)`);
+
+    // Timestamps are PRESENT on mobile in short form (owner, 2026-11-05:
+    // "There are no frame timestamps on mobile... okay with shortening").
+    const mobileStamp = await mobile.evaluate(() => {
+      const time = document.querySelector('.kikx-frame--AgentMessage .kikx-frame__timestamp');
+      if (!time) return null;
+      const full = time.querySelector('.kikx-frame__timestamp-full');
+      const short = time.querySelector('.kikx-frame__timestamp-short');
+      return {
+        timeVisible: time.getBoundingClientRect().width > 0,
+        fullDisplay: full ? getComputedStyle(full).display : null,
+        shortDisplay: short ? getComputedStyle(short).display : null,
+        visibleText: [...time.children]
+          .filter((child) => getComputedStyle(child).display !== 'none')
+          .map((child) => child.textContent).join(''),
+      };
+    });
+    assert.ok(mobileStamp, 'a message frame must render its timestamp on mobile');
+    assert.equal(mobileStamp.timeVisible, true, 'the <time> element must be visible on mobile');
+    assert.equal(mobileStamp.fullDisplay, 'none', 'the long label stays hidden on a phone');
+    assert.notEqual(mobileStamp.shortDisplay, 'none', 'the short label is the one shown');
+    assert.match(mobileStamp.visibleText, /^\d{1,2}:\d{2}/,
+      `the visible mobile timestamp is time-only, got "${mobileStamp.visibleText}"`);
     await mobile.close();
 
     // ---- 2 + 3 + 4: desktop ------------------------------------------------
@@ -147,6 +170,23 @@ test('Puppeteer view polish: header span, view-header centering, pointer cursor,
       return crumb ? getComputedStyle(crumb).cursor : null;
     });
     assert.equal(cursor, 'pointer', 'the session name advertises a click target, not a text caret');
+
+    // Desktop keeps the FULL label; the short twin stays out of the way.
+    const desktopStamp = await desktop.evaluate(() => {
+      const time = document.querySelector('.kikx-frame--AgentMessage .kikx-frame__timestamp');
+      if (!time) return null;
+      const full = time.querySelector('.kikx-frame__timestamp-full');
+      const short = time.querySelector('.kikx-frame__timestamp-short');
+      return {
+        fullDisplay: full ? getComputedStyle(full).display : null,
+        shortDisplay: short ? getComputedStyle(short).display : null,
+        fullText: full?.textContent || '',
+      };
+    });
+    assert.ok(desktopStamp, 'a message frame renders its timestamp on desktop');
+    assert.notEqual(desktopStamp.fullDisplay, 'none', 'desktop shows the full label');
+    assert.equal(desktopStamp.shortDisplay, 'none', 'desktop hides the short twin');
+    assert.match(desktopStamp.fullText, /\d{4}/, 'the full label carries the date');
 
     // 4. double-click WHILE pages are loading (the frozen-input report).
     const jump = (fraction) => desktop.evaluate((f) => {

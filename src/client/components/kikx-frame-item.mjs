@@ -570,7 +570,20 @@ export class KikxFrameItem extends HTMLElement {
         timeElement.setAttribute('datetime', timestamp.dateTime);
       if (timeElement.getAttribute('title') !== timestamp.title)
         timeElement.setAttribute('title', timestamp.title);
-      setTextIfChanged(timeElement, timestamp.label);
+      // Two texts, one <time>: full label for desktop, time-only for phones
+      // (owner, 2026-11-05 — timestamps were hidden entirely on mobile). CSS
+      // picks the visible one, so a viewport resize needs no re-render.
+      let fullText = timeElement.querySelector('.kikx-frame__timestamp-full');
+      let shortText = timeElement.querySelector('.kikx-frame__timestamp-short');
+      if (!fullText || !shortText) {
+        fullText = document.createElement('span');
+        fullText.className = 'kikx-frame__timestamp-full';
+        shortText = document.createElement('span');
+        shortText.className = 'kikx-frame__timestamp-short';
+        timeElement.replaceChildren(fullText, shortText);
+      }
+      setTextIfChanged(fullText, timestamp.label);
+      setTextIfChanged(shortText, timestamp.shortLabel);
     } else if (timeElement) {
       timeElement.remove();
     }
@@ -636,7 +649,10 @@ export class KikxFrameItem extends HTMLElement {
         ? time
           .class('kikx-frame__timestamp')
           .datetime(timestamp.dateTime)
-          .title(timestamp.title)(timestamp.label)
+          .title(timestamp.title)(
+            span.class('kikx-frame__timestamp-full')(timestamp.label),
+            span.class('kikx-frame__timestamp-short')(timestamp.shortLabel),
+          )
         : null,
       span.class('kikx-frame__debug-class')(frameDebugClass(frame)),
     ).build(document);

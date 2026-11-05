@@ -32,6 +32,7 @@ export function frameTimestamp(frame, options = {}) {
   let label = formatTimestampLabel(source.date, options);
   return {
     label,
+    shortLabel: formatShortTimestampLabel(source.date, options),
     title: source.dateTime,
     dateTime: source.dateTime,
   };
@@ -97,6 +98,7 @@ function microsecondISOString(date, microseconds) {
 }
 
 const timestampFormatters = new Map();
+const shortTimestampFormatters = new Map();
 
 function formatTimestampLabel(date, options = {}) {
   let locale = options.locale || '';
@@ -114,6 +116,27 @@ function formatTimestampLabel(date, options = {}) {
       ...(options.timeZone ? { timeZone: options.timeZone } : {}),
     });
     timestampFormatters.set(key, formatter);
+  }
+
+  return formatter.format(date);
+}
+
+// Time-only label for narrow screens (owner, 2026-11-05: "no frame timestamps
+// on mobile... okay with shortening"): `12:10 PM`-style per locale, no date and
+// no seconds. Cached the same way as the full label — one formatter per
+// locale/timezone, not per frame.
+function formatShortTimestampLabel(date, options = {}) {
+  let locale = options.locale || '';
+  let timeZone = options.timeZone || '';
+  let key = `${locale}\u0000${timeZone}`;
+  let formatter = shortTimestampFormatters.get(key);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(options.locale || undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+      ...(options.timeZone ? { timeZone: options.timeZone } : {}),
+    });
+    shortTimestampFormatters.set(key, formatter);
   }
 
   return formatter.format(date);

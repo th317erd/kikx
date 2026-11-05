@@ -64,6 +64,10 @@ test('frameTimestamp prefers createdAt and preserves microsecond precision in me
   assert.equal(timestamp.title, '2026-06-09T20:01:02.345678Z');
   assert.match(timestamp.label, /2026/);
   assert.match(timestamp.label, /08:01:02 PM|20:01:02/);
+  // Owner (2026-11-05): phones show a SHORT label — time only, no date, no
+  // seconds — while desktop keeps the full one.
+  assert.match(timestamp.shortLabel, /^\d{1,2}:\d{2}/, `short label is time-only, got "${timestamp.shortLabel}"`);
+  assert.doesNotMatch(timestamp.shortLabel, /2026|:\d{2}:\d{2}/, `short label carries no date/seconds, got "${timestamp.shortLabel}"`);
 });
 
 test('a compaction frame displays its completion time, not the old boundary time', () => {

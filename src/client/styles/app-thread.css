@@ -91,6 +91,12 @@
   white-space: nowrap;
 }
 
+/* The <time> carries both texts; by default desktop reads the full label and
+   the short (time-only) form stays out of the way. mobile.css swaps them. */
+.kikx-frame__timestamp-short {
+  display: none;
+}
+
 .kikx-frame:hover .kikx-frame__timestamp,
 .kikx-frame:focus-within .kikx-frame__timestamp {
   opacity: 1;
