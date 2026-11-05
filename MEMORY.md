@@ -7,8 +7,11 @@
 > provider-retry phantom fix, and the source-size gate. The § numbers below are
 > partially stale — trust the commits in §8-refresh and the plans under
 > `docs/plans/` over the 10-30 prose. **Active campaign:
-> `docs/plans/system-settings-xenocept-plugins-campaign.md` (plan written,
-> implementation NOT started — start at its §8 "First action after compaction").**
+> `docs/plans/system-settings-xenocept-plugins-campaign.md` — plan at revision 3
+> with an AGIS critical pass (§9), enterprise posture (§10: signatures required
+> by default, unsafe dev `.env` mode, internal plugins on the same verified
+> `loadPlugins` path), and ALL FIVE owner decisions recorded in §9.6.
+> Implementation NOT started — start at its §8 "First action after compaction".**
 
 This is the current continuity file for the `kikx` checkout. It replaces earlier
 stale handoff notes in this file. Read the project `.pi/` and global startup

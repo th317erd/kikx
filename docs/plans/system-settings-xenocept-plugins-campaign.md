@@ -9,12 +9,15 @@ last_verified: 2026-11-05
 
 # System Settings shell + Xenocept plugin parity
 
-**Status: current, revision 2 — AGIS critical pass incorporated in §9
-(ponder + devil_vs_angel + test_protocol scripts and the map_territory /
-thorough_review reflexes; every finding carries a searched file:line anchor).
-§9 findings amending a phase take precedence over that phase's original text.
-Revision 1 was the bare recon plan. Reconnaissance complete 2026-11-05; no
-implementation code written yet — the owner asked for this plan first, then a context compaction
+**Status: current, revision 3 — all five §9.6 owner decisions are recorded,
+and decision 3 upgrades the whole campaign to an enterprise posture (§10):
+signature verification REQUIRED by default for every plugin including
+internal/built-ins, enforced at the single `loadPlugins` choke point the
+engine itself calls, with an explicit unsafe `.env` mode as the only bypass.
+Revision 2 incorporated the AGIS critical pass (§9 — ponder, devil_vs_angel,
+test_protocol, map_territory, thorough_review; §9/§10 override conflicting §5
+phase text); revision 1 was the bare recon plan. Reconnaissance complete
+2026-11-05; no implementation code written yet — the owner asked for this plan first, then a context compaction
 before any code.** Every file:line anchor below was read live during recon and
 is the starting point after compaction. Companion campaign:
 [Plugin platform campaign](./plugin-platform-campaign.md) (platform
@@ -179,10 +182,12 @@ Client (`src/client`):
 - Plugins section layout mirrors Xenocept: left column **Installed Plugins**
   cards (name, `manifest.version`, description, mounts/subscriptions summary,
   `Internal Plugin — cannot be uninstalled` when the location is a built-in,
-  failures listed from `failures`); card actions: **Unload** (`POST
-  /api/v1/plugins/unload`), **Reload**, **Install from path** (absolute path
-  input → `POST /install`, honoring the 403 config-gate hint). Right column:
-  Browse (S3).
+  failures listed from `failures`); card actions in this phase: **Unload**
+  (`POST /api/v1/plugins/unload`), **Reload**, **Install from path** (absolute
+  path → `POST /install`, honoring the 403 config-gate hint);
+  **Uninstall** (confirm-once, 9.1.1 approved) and the **enable/disable
+  toggle** (9.1.2, decided in scope) land with their own phase after S3 per
+  §9.5 order. Right column: Browse (S3).
 - Realtime-light: every successful action re-fetches the inventory; the view
   refetches on `visibilitychange`→visible. Cross-tab/other-operator realtime is
   S5.
@@ -190,14 +195,18 @@ Client (`src/client`):
 ### S3 — NPM integration (port of Xenocept's)
 
 - `POST /api/v1/plugins/install` accepts `{npm: "<pkg[@version|range]>"}` in
-  addition to `{path}`: validate the spec (strict regex, no flags/spaces —
-  argv-array spawn, never a shell), `npm pack <spec>` into a temp dir, extract
-  with `tar -xzf` (both exist in the node image), land it at
-  `<KIKX_PLUGIN_NPM_DIR>` (new config key, default `<data>/plugins/npm/<pkg>`),
-  append that directory to `KIKX_PLUGIN_PATHS` via the config store so `reload`
-  keeps finding it (the reload route already re-reads config), then run the
-  same `loadPlugins + migrations + rollback` pipeline as `{path}`. Same
-  operator + config gates.
+  addition to `{path}`: validate the package name/version (strict regex —
+  registry names only, never `git+`/`file:`/URLs/flags/spaces), resolve against
+  the **configured registry** (`KIKX_PLUGIN_REGISTRY_URLS`, default public npm
+  — host never hardcoded, §10), fetch the tarball over HTTPS, verify
+  `dist.integrity` sha512, extract with tarbomb/path-traversal guards, land it
+  at `<KIKX_PLUGIN_NPM_DIR>` (new config key, default
+  `<data>/plugins/npm/<pkg>`), append that directory to `KIKX_PLUGIN_PATHS` via
+  the config store so `reload` keeps finding it (the reload route already
+  re-reads config), record provenance `source {type:'npm', ref, registry}` in
+  the inventory (§10), then run the same `loadPlugins + migrations + rollback`
+  pipeline as `{path}` — which, post-S4, performs signature verification too.
+  Same operator + config gates. No npm CLI in the loop (9.2.6).
 - `GET /api/v1/plugins/search?q=` → npm registry `/-/v1/search` with keyword
   **`kikx-plugin`** (Kikx's mirror of Xenocept's `xenocept-plugin`; **keyword confirmed by
   the owner 2026-11-05**), mapped to
@@ -205,38 +214,73 @@ Client (`src/client`):
   disclosure either way).
 - Browse column UI: search input + result cards (name/version/description +
   Install → `POST {npm}` → inventory refresh), notice text mirroring Xenocept's.
+- **Update system (owner kept it; favorites deferred — 9.1.5/9.6.5):** on
+  Plugins view open, batch-check npm-sourced installed plugins against
+  registry metadata (one bounded request; mocked in tests; lookup failure =
+  no chip) → "Update available" chip on the card; **Update** reuses the exact
+  install pipeline with the resolved version. Registry from
+  `KIKX_PLUGIN_REGISTRY_URLS`.
 - Tests: spec-validation unit (rejects `--ignore-scripts`, spaces, paths),
   route spec with mocked spawn/registry, client section spec with fixture
   responses.
 
-### S4 — Ed25519 signatures (Xenocept scheme, ported)
+### S4 — Ed25519 signatures, enterprise default (owner decision 3, rev 3)
 
 - Envelope `.kikx-sig` next to `plugin.json`: `{payload: base64(manifest file
-  bytes), signature: base64(64-byte ed25519 signature over those bytes)}` —
-  verify the payload is byte-identical to the manifest on disk first (tamper/
-  swap defense), then `crypto.verify(null, payloadBytes, publicKey, sig)`.
-- Config: `KIKX_PLUGIN_SIGNING_PUBLIC_KEY` (base64 raw 32-byte key; new
-  config-paths entry + `.env.example`), `KIKX_PLUGIN_SIGNATURES_REQUIRED`
-  (`false` default = verify-if-present; `true` = unsigned refuses to load).
-- Enforcement: `plugin-loader` pre-import gate → a bad/missing-under-required
-  signature becomes a load failure with reason `signature` (visible in
-  inventory `failures`); install route reports verification outcome.
-- `scripts/sign-plugin.mjs`: owner-run signer (private key via env/flag only,
-  never committed) writing `.kikx-sig`; mirrors `emit-manifest.sh` semantics.
-- UI: the `plugin-card-status-unsigned` chip (Xenocept parity) on cards whose
-  plugin lacks a valid signature (inventory needs a `signed: bool` field).
-- Tests: keypair fixture roundtrip; tampered manifest fails; policy
-  `if-present` vs `required`; loader refusal with recorded failure; route
-  response shape.
+  bytes), signature: base64(64-byte ed25519 signature over those bytes),
+  keyID?: ...}` — verify payload byte-identical to the manifest on disk first
+  (tamper/swap defense), then `crypto.verify(null, payloadBytes, publicKey,
+  sig)`. `keyID` is an optional reserved field for multi-publisher selection
+  (§10); absent → try every trust anchor.
+- **Mode knob — one `.env` flag, secure by default:** config key
+  `KIKX_PLUGIN_SIGNATURE_MODE` with values `required` (DEFAULT — also the
+  value for absent/invalid input, so the failure direction is always secure)
+  and `unsafe` (the owner's development-mode bypass: verification skipped
+  entirely). `required` with **zero configured keys fails CLOSED** — every
+  plugin load records reason `signature:no-configured-key`, nothing unsigned
+  runs. Trust anchors: `KIKX_PLUGIN_SIGNING_PUBLIC_KEYS`, comma-separated
+  base64 raw 32-byte keys (rotation overlap; Kikx publisher key + operator
+  keys, §10).
+- **Enforcement = the single choke point.** The gate lives *inside*
+  `loadPlugins` (`core/plugins/plugin-loader.mjs`), which has exactly three
+  callers — engine startup (`create-server.mjs:262`), install
+  (`plugin-routes.mjs:155`), reload (`:266`). Internal/built-in plugins load
+  through the engine's startup call, so they traverse the **same verified
+  path** by construction (owner requirement; searched — no separate built-in
+  loader exists). Verification cannot be routed around by caller shape.
+- **Internal plugins are signed too.** `scripts/sign-plugin.mjs` supports
+  batch-signing the built-in directory at release; `.kikx-sig` files contain
+  no secrets and ship committed with the app. A deployment verifies them the
+  same as any third-party plugin — deployments must hold the Kikx publisher
+  key (plus their own operator keys) in their trust anchors.
+- **`unsafe` is loud, never quiet:** startup warning log, inventory field
+  `signatureMode:'unsafe'`, and a persistent banner in the System Settings →
+  Plugins section ("Signature verification disabled — unsafe mode"). No
+  silent community bypass exists anywhere (§10 tenet 2).
+- **Dev ops step when S4 lands:** the development `.env` (not committed) gets
+  `KIKX_PLUGIN_SIGNATURE_MODE=unsafe`; `.env.example` documents both values
+  with the unsafe warning. Production defaults stay `required`. This
+  implements the owner's "we will use this mode for development" verbatim.
+- UI: `plugin-card-status-unsigned` chip (Xenocept parity) driven by a new
+  inventory `signed: bool` per plugin; failures list reason `signature`
+  (never a crash or silent skip); the `signatureMode` banner as above.
+- Tests (failing-first): real-ed25519 roundtrip; payload-mismatch and
+  sig-mismatch each refuse; `required` + no keys → fail closed;
+  `unsafe` → loads without keys; a fixture built-in directory through the
+  same `loadPlugins` gate as a path plugin (parity proof); route reports
+  verification outcome; sign-script batch mode.
 
 ### S5 — Realtime install/remove across clients
 
-- After successful install/reload/unload the route publishes
-  `plugin.changed {pluginID, action}` to a gateway the SSE stream carries
-  (find the runtime-event gateway seam in `kikx-runtime-events`/gateway and
-  add the type — follow the existing batching rules); client: when the event
-  lands and the settings view is open, refetch inventory (targeted update, no
-  shell repaint). Fallback already in S2 (own-action refresh + visibility).
+- After successful install/reload/unload/uninstall/enable-toggle the route
+  publishes `plugin.changed {pluginID, action, actor}` to a gateway the SSE
+  stream carries (find the runtime-event gateway seam in
+  `kikx-runtime-events`/gateway and add the type — follow the existing
+  batching rules; `actor` now = cheap future audit seam, §10.7); client: when
+  the event lands and the settings view is open, refetch **both** the
+  inventory and the client-component descriptors — `app._loadClientComponents()`
+  + inventory GET (9.1.3) — as a targeted update, no shell repaint. Fallback
+  already in S2 (own-action refresh + visibility).
 - Test: fixture SSE emits `plugin.changed` → settings view list updates in
   place; route spec asserts the publish fires exactly once per action.
 
@@ -247,8 +291,12 @@ Client (`src/client`):
   (`scripts/sign-plugin.mjs`); npm install usage.
 - `docs/reference/plugins.md`: endpoints (search added), signature policy,
   config keys.
-- `.env.example`: the two new keys; `docs/README.md` index if new files land;
-  campaign plan evidence rows updated per phase.
+- `.env.example`: `KIKX_PLUGIN_SIGNATURE_MODE` (with the unsafe/dev warning),
+  `KIKX_PLUGIN_SIGNING_PUBLIC_KEYS`, `KIKX_PLUGIN_REGISTRY_URLS`,
+  `KIKX_PLUGIN_NPM_DIR`, `KIKX_PLUGIN_INSTALL_ENABLED` (already present —
+  cross-check); `docs/README.md` index if new files land; campaign plan
+  evidence rows updated per phase. Dev guidance: mode `unsafe` for
+  development, `required` for every real deployment (§10).
 
 ## 6. Test inventory (planned)
 
@@ -259,7 +307,13 @@ Client (`src/client`):
   internal/uninstallable rules, actions call the right endpoints (stubbed).
 - `spec/plugins/plugin-signature-spec.mjs` — sign/verify/tamper/policy.
 - `spec/plugins/plugin-npm-install-spec.mjs` (or extend the existing plugin
-  route spec) — spec validation + install pipeline with mocked spawn.
+  route spec) — spec validation + install pipeline with mocked fetch (no
+  network, no spawn per 9.4).
+- `spec/plugins/plugin-uninstall-spec.mjs` — managed-dirs-only deletion,
+  config-entry removal, data retained, built-ins unreachable.
+- Enable/disable persistence spec; signature-mode spec (`required` default,
+  fail-closed without keys, `unsafe` bypass, internal-plugin parity);
+  update-check mapping spec (mocked registry metadata).
 - `spec/ui/puppeteer/system-settings-shell-puppeteer.mjs` — gear → shell,
   sections switch, sidebar entry active state, plugins cards render from an
   extended stagehand fixture (`GET/POST /api/v1/plugins*`), unload refresh,
@@ -277,8 +331,9 @@ Client (`src/client`):
 
 ## 8. First action after compaction
 
-Read §9 first — it changes the S3/S4 execution order and amends S1, S2 and S5
-— then read this file end to end, then start **S1** with the failing-first view
+Read §9 and §10 first — §9 changes the S3/S4 execution order and amends S1,
+S2 and S5; §10 is the enterprise posture decision 3 unlocked — then read this
+file end to end, then start **S1** with the failing-first view
 spec (`spec/client/system-settings-view-spec.mjs`) and the core-table entry in
 `state/view-name-registry.mjs`, including the reserved-id conflict behavior
 (9.3.9), the PLUGINS sidebar group heading (9.1.4), and the identity-gate
@@ -307,7 +362,8 @@ text in §5.** Every claim below was verified by search in this session.
    ownership ruling durable plugin *data* is retained (purge stays a separate
    future action); card gains a confirm-once Uninstall next to Unload.
    The policy file's header comment enumerates covered endpoints and must be
-   extended.
+   extended. **APPROVED in full by the owner (2026-11-05): managed dirs only,
+   built-ins never, durable plugin data retained.**
 2. **Enable/disable toggle missing.** Xenocept cards have
    `plugin-card-toggle` → `pluginLoader.setEnabled(directoryID, next)`
    (`xenocept-client.js:3594-3607`). Kikx `inertOverrides`
@@ -340,8 +396,10 @@ text in §5.** Every claim below was verified by search in this session.
 5. **Per-plugin config parity = declare non-goal.** Xenocept's config
    GET/PUT (`:592`) has a Kikx equivalent already: the plugin's own
    `settings-panel` + scoped plugin DB (platform P2 services). No core config
-   endpoint. Favorites/star (`:3550-3567`) and update-available badges
-   (`:3644`) = deferred nice-to-have. **Owner decision #5.**
+   endpoint. Favorites/star (`:3550-3567`) — **DECIDED deferred**
+   (owner 2026-11-05). Update-available badges (`:3644`) — **DECIDED kept**,
+   promoted into S3 as a real deliverable (batch registry version check +
+   chip + Update button reusing the install pipeline).
 
 ### 9.2 Security findings (amend S3/S4; owner decision 3)
 
@@ -352,23 +410,27 @@ text in §5.** Every claim below was verified by search in this session.
    story (and git specs run lifecycle scripts); (iii) extraction needs
    tarbomb/path-traversal guards (absolute and `..` members rejected).
    **Decided:** search keyword **`kikx-plugin`** (owner, 2026-11-05).
-   **Action:** prefer a direct HTTPS tarball fetch from the fixed registry
-   host + sha512 `dist.integrity` verify + safe extract — no npm CLI in the
+   **Action:** prefer a direct HTTPS tarball fetch from the configured
+   registry host(s) (`KIKX_PLUGIN_REGISTRY_URLS`, §10 — never hardcoded) +
+   sha512 `dist.integrity` verify + safe extract — no npm CLI in the
    loop at all, matching Xenocept's CDN-tarball model — fallback
    `npm pack --ignore-scripts` with validated argv; cap and schema-validate
    registry JSON before rendering cards (host fixed ⇒ no SSRF).
-7. **Signature scope must be stated honestly, and it tensions a ruling.**
+7. **Signature scope — stated honestly, then overridden by owner decision 3.**
    `.kikx-sig` signs *manifest bytes*: it proves publisher provenance +
    manifest integrity, **not** plugin-code integrity (an on-disk code swap
-   with an untouched manifest still loads). The platform campaign's owner
-   ruling says plugins are trusted code with *no allowlist/new authority
-   boundary* — `KIKX_PLUGIN_SIGNATURES_REQUIRED=true` is effectively a
-   publication allowlist, so: default **if-present** (every current
-   deployment keeps working, ruling intact), `required` is opt-in hardening,
-   and S6 docs must record this reconciliation. Built-ins are either signed
-   in-repo or exempt under if-present (**owner decision #3**).
-   Verification failure = recorded inventory failure with reason
-   `signature`, never a crash or a silent skip.
+   with an untouched manifest still loads; entry-file hashing stays a
+   reserved hardening follow-up). The original platform ruling ("plugins are
+   trusted code, no allowlist/new authority boundary") and my recommended
+   `if-present` default were both **superseded by the owner's decision on
+   2026-11-05**: Kikx is an enterprise product (hospitals, factories,
+   servers) and must be **most secure by default** — so `required` is the
+   default for ALL plugins including internal/built-ins, the only bypass is
+   the explicit unsafe `.env` mode, and this decision *is* the amended
+   ruling (recorded here rather than papered over). S6 docs must carry both
+   the old ruling's context and this amendment. Verification failure =
+   recorded inventory failure with reason `signature`, never a crash or a
+   silent skip. Full model in §10 and the revised S4.
 8. **Rotation.** One `KIKX_PLUGIN_SIGNING_PUBLIC_KEY` makes rotation
    painful; accept comma-separated `KIKX_PLUGIN_SIGNING_PUBLIC_KEYS` (overlap
    window), failures record which key matched. Private key stays offline
@@ -388,7 +450,8 @@ text in §5.** Every claim below was verified by search in this session.
     (there are no frames to hash).
 11. **Statusbar on sessionless views** already reports workspace totals by
     design (Inbox precedent, `statusbar-stats-spec.mjs:167`) → Settings will
-    too; default to Inbox-consistent (**owner decision #4**).
+    too. **DECIDED: Inbox-consistent option A** (owner 2026-11-05) — no
+    per-view statusbar config.
 12. **Section clamp on live unload:** if a plugin's section is selected and
     that plugin is uninstalled elsewhere, clamp `settingsSection` to
     `General`; selection lives in app state (S1) with a failing-first test.
@@ -431,10 +494,9 @@ text in §5.** Every claim below was verified by search in this session.
 - **Angel's insight kept:** `plugin.changed` carries **invalidation only**,
   no payload — the client re-pulls inventory + descriptors with its own
   credentials. Single auth path, no privilege in the event, bounded event.
-- **Execution order after the pass:** S1 → S2 → S4 → S3 → uninstall /
-  enable-disable (both in scope: uninstall contract details pending owner
-  decision #4; enable/disable decided yes) → S5 → S6. Phase IDs keep their
-  §5 names; this order governs.
+- **Execution order (all five decisions now in):** S1 → S2 → S4 → S3 →
+  uninstall + enable-disable → S5 → S6. Phase IDs keep their §5 names; this
+  order governs.
 
 ### 9.6 Open questions for the owner (Peer precept — decisions, not delays)
 
@@ -442,14 +504,68 @@ text in §5.** Every claim below was verified by search in this session.
    `xenocept-plugin`)? — **DECIDED yes, `kikx-plugin` (2026-11-05).**
 2. Enable/disable toggle (9.1.2) in scope for this campaign? — **DECIDED
    yes, in scope (2026-11-05).**
-3. Signature default: **verify-if-present** (recommended — keeps the trusted-
-   code ruling intact) vs required from day one; built-ins signed in-repo or
-   exempt? — **explained in detail 2026-11-05; awaiting decision.**
-4. Uninstall contract: remove files of path/npm-installed plugins only,
-   retain durable plugin data, never built-ins — confirm? — **explained in
-   detail 2026-11-05; awaiting decision.**
-5. Statusbar totals on Settings (Inbox-consistent default) and deferring
-   favorites/update badges — confirm? — **explained in detail 2026-11-05;
-   awaiting decision.**
+3. Signature default vs unsafe dev mode vs internal-plugin treatment —
+   **DECIDED (2026-11-05): full signatures; `required` by default; explicit
+   unsafe `.env` mode for development; internal/built-ins signed and on the
+   same load path; enterprise posture, most secure by default (§10, revised
+   S4).**
+4. Uninstall contract (managed dirs only / built-ins never / data retained) —
+   **DECIDED: approved in full (2026-11-05).**
+5. Statusbar + favorites/update badges — **DECIDED (2026-11-05): a) yes,
+   Inbox-consistent statusbar; b) favorites deferred, update system kept
+   (now an S3 deliverable).**
 
-S1 is unblocked regardless of these answers.
+All five decisions are in. **S1 is fully unblocked — start on the owner's
+go.**
+
+## 10. Enterprise posture and future seams (owner direction, 2026-11-05)
+
+Owner context, recorded because it re-frames the whole campaign: *Kikx is
+planned as a product for pretty much all and every environment — hospitals,
+factories, software, servers. We need trusted sources, specified plugin
+repositories (coming later — be future-aware), and we must treat this right
+now as an enterprise product with the most secure system by default.* A
+"community version" that bypasses signatures is conceivable but not desired.
+
+Tenets, and what each concretely means for this campaign:
+
+1. **Secure by default, failing closed.** `KIKX_PLUGIN_SIGNATURE_MODE`
+   absent or invalid ⇒ `required`. `required` with no configured trust keys ⇒
+   every load fails with `signature:no-configured-key` — the system refuses
+   to run unsigned code rather than degrading open.
+2. **The unsafe mode is explicit and loud.** `KIKX_PLUGIN_SIGNATURE_MODE=unsafe`
+   is the single bypass, written in the development `.env` with a warning;
+   surfaced at startup log, inventory `signatureMode`, and a persistent
+   Settings → Plugins banner. There is no implicit community mode; if one is
+   ever wanted it is a future owner product decision, never a default.
+3. **One choke point for all loading.** The gate lives inside `loadPlugins`,
+   whose only callers are engine startup (`create-server.mjs:262`), install
+   (`plugin-routes.mjs:155`) and reload (`:266`) — searched. Internal plugins
+   ride the engine startup call, so built-ins and third-party plugins share
+   one verified path by construction; no caller can bypass by shape.
+4. **Trusted sources are recorded provenance, now.** Install records
+   `source {type:'path'|'npm', ref, registry}` and inventory exposes
+   `source`, `signed`, `signatureMode` per plugin — the fields a future
+   "trusted sources" policy UI needs, paid for cheaply today.
+5. **Plugin repositories (future) — parameterized now.** Registry base comes
+   from `KIKX_PLUGIN_REGISTRY_URLS` (config list, default public npm), never
+   a hardcoded host; the install body shape is `{path}`/`{npm}` today with
+   `{repo: ...}` reserved; a repository type, signed catalog indexes, and
+   per-source trust then slot in without redesigning the pipeline.
+6. **Publisher trust anchors.** `KIKX_PLUGIN_SIGNING_PUBLIC_KEYS` is a list:
+   the Kikx publisher key (signs internal plugins) plus operator keys, with
+   overlap windows for rotation; envelope `keyID` reserved so multiple
+   publishers can be told apart later.
+7. **Audit seam, not an audit log — yet.** Xenocept's hardening plan carries
+   revocation + audit; we don't build the log this campaign, but S5's
+   `plugin.changed` events already carry `actor` + `action`, so a durable
+   audit trail later subscribes to the same bus instead of instrumenting
+   every call site again.
+8. **Enforcement is observable.** Inventory `signatureMode` means an operator
+   (or a deploy verifier script, like the Miri plugin health check) can assert
+   a production deployment is actually enforcing — enterprise readiness
+   checks need truth, not assumptions.
+9. **Signing is authenticity, not secrecy,** and manifest signing is not code
+   integrity; entry-file hashes (`manifest.files` map) are the reserved
+   hardening follow-up if on-disk code tampering becomes a concern — likely
+   exactly the kind of thing hospitals/factories will eventually ask for.
