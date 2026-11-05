@@ -9,8 +9,12 @@ last_verified: 2026-11-05
 
 # System Settings shell + Xenocept plugin parity
 
-**Status: current. Reconnaissance complete 2026-11-05; no implementation code
-written yet — the owner asked for this plan first, then a context compaction
+**Status: current, revision 2 — AGIS critical pass incorporated in §9
+(ponder + devil_vs_angel + test_protocol scripts and the map_territory /
+thorough_review reflexes; every finding carries a searched file:line anchor).
+§9 findings amending a phase take precedence over that phase's original text.
+Revision 1 was the bare recon plan. Reconnaissance complete 2026-11-05; no
+implementation code written yet — the owner asked for this plan first, then a context compaction
 before any code.** Every file:line anchor below was read live during recon and
 is the starting point after compaction. Companion campaign:
 [Plugin platform campaign](./plugin-platform-campaign.md) (platform
@@ -273,8 +277,173 @@ Client (`src/client`):
 
 ## 8. First action after compaction
 
-Read this file end to end, then start **S1** with the failing-first view spec
-(`spec/client/system-settings-view-spec.mjs`) and the core-table entry in
-`state/view-name-registry.mjs`. Re-run the recon anchors in §2/§3 if any file
+Read §9 first — it changes the S3/S4 execution order and amends S1, S2 and S5
+— then read this file end to end, then start **S1** with the failing-first view
+spec (`spec/client/system-settings-view-spec.mjs`) and the core-table entry in
+`state/view-name-registry.mjs`, including the reserved-id conflict behavior
+(9.3.9), the PLUGINS sidebar group heading (9.1.4), and the identity-gate
+assertion (9.3.13). Re-run the recon anchors in §2/§3 if any file
 has moved. Latest baseline at writing: Kikx suite **3,329 tests / 3,299 pass /
-0 fail / 30 skipped** on main `5dfa0c71`; Aeor main `0a73ec3` harness 2/2.
+0 fail / 30 skipped** on main `72068f7f`; Aeor main `0a73ec3` harness 2/2.
+
+## 9. Critical pass (AGIS, 2026-11-05, revision 2)
+
+Executed `::agis.ponder`, `::agis.devil_vs_angel`, `::agis.test_protocol`
+plus the `map_territory` and `thorough_review` reflexes against §1–§7.
+Findings are grouped by what they change. **§9 overrides conflicting phase
+text in §5.** Every claim below was verified by search in this session.
+
+### 9.1 Scope gaps vs "all of it" (amend S2/S5; owner decisions 2 and 5)
+
+1. **Uninstall does not exist — "real-time removing" is half-built.**
+   `plugin-routes.mjs` has zero delete/uninstall/purge routes (searched);
+   Xenocept has `/plugins/uninstall` (`xenocept-client.js:202`,
+   `uninstallPlugin` `:3537`, disabled edit button `:2674`). The plan only
+   offered Unload, which deliberately keeps files. **Action:** new
+   `POST /api/v1/plugins/uninstall` (sibling of install/reload/unload) — same operator +
+   config gates, new `PLUGIN_ADMIN_ACTIONS.UNINSTALL`; unloads runtime then
+   removes files **only** under managed dirs (`KIKX_PLUGIN_NPM_DIR` /
+   explicit install paths), never built-ins; per the platform-campaign
+   ownership ruling durable plugin *data* is retained (purge stays a separate
+   future action); card gains a confirm-once Uninstall next to Unload.
+   The policy file's header comment enumerates covered endpoints and must be
+   extended.
+2. **Enable/disable toggle missing.** Xenocept cards have
+   `plugin-card-toggle` → `pluginLoader.setEnabled(directoryID, next)`
+   (`xenocept-client.js:3594-3607`). Kikx `inertOverrides`
+   (`class-registry.mjs:180`) is class-consumption reporting — unrelated;
+   no persisted enable/disable exists anywhere. **Action if approved:**
+   persist a disabled set (candidate: generic tag store
+   `{target_type:'plugin'}` or config), loader honors it at load, toggle
+   disable→unload / enable→reload-path. **Owner decision #2.**
+3. **"Real-time" needs descriptor refetch, not only inventory.**
+   `/api/v1/client-components` is fetched by `loadClientComponents`
+   (`kikx-data.mjs:218`) from `app._loadClientComponents` (`kikx-app.mjs:320`,
+   called `:527` boot and `kikx-editors.mjs:370`) — never after plugin
+   changes. A live install's `settings-panel`/`sidebar-item`/`view`
+   descriptors therefore never appear until a full reload, so S5's claim
+   would be half-true. **Action:** on `plugin.changed` run **both**
+   `app._loadClientComponents()` (the seam already exists) and the inventory
+   refetch. The element caches are already built for this —
+   `settings-panel-elements.mjs:10` documents `setClientComponents` as the
+   single writer that learns of uninstall, `view-name-registry.mjs:38`
+   defines clear semantics. Xenocept parity for the pattern:
+   keyed re-render when the installed set changes (`:2121-2130`, Install ↔
+   Uninstall buttons flip in lockstep between columns).
+4. **PLUGINS sidebar group never entered the plan.** Xenocept groups plugin
+   rows under a `PLUGINS` sidebar heading; Kikx `sidebar-item` rows mix into
+   the `view` group with Inbox/Agents/Teams
+   (`kikx-sidebar-session-objects.mjs:128-143`). **Action (S1):** render a
+   `PLUGINS` group heading when ≥1 plugin-owned sidebar item exists;
+   presentation only, with a spec.
+5. **Per-plugin config parity = declare non-goal.** Xenocept's config
+   GET/PUT (`:592`) has a Kikx equivalent already: the plugin's own
+   `settings-panel` + scoped plugin DB (platform P2 services). No core config
+   endpoint. Favorites/star (`:3550-3567`) and update-available badges
+   (`:3644`) = deferred nice-to-have. **Owner decision #5.**
+
+### 9.2 Security findings (amend S3/S4; owner decision 3)
+
+6. **The S3 npm pipeline as written has an integrity gap.** `npm pack
+   <spec>` verifies nothing: (i) no check against the registry's
+   `dist.integrity` sha512; (ii) spec validation must pin to registry
+   package names — `git+`, `file:` and URL specs silently change the trust
+   story (and git specs run lifecycle scripts); (iii) extraction needs
+   tarbomb/path-traversal guards (absolute and `..` members rejected).
+   **Action:** prefer a direct HTTPS tarball fetch from the fixed registry
+   host + sha512 `dist.integrity` verify + safe extract — no npm CLI in the
+   loop at all, matching Xenocept's CDN-tarball model — fallback
+   `npm pack --ignore-scripts` with validated argv; cap and schema-validate
+   registry JSON before rendering cards (host fixed ⇒ no SSRF).
+7. **Signature scope must be stated honestly, and it tensions a ruling.**
+   `.kikx-sig` signs *manifest bytes*: it proves publisher provenance +
+   manifest integrity, **not** plugin-code integrity (an on-disk code swap
+   with an untouched manifest still loads). The platform campaign's owner
+   ruling says plugins are trusted code with *no allowlist/new authority
+   boundary* — `KIKX_PLUGIN_SIGNATURES_REQUIRED=true` is effectively a
+   publication allowlist, so: default **if-present** (every current
+   deployment keeps working, ruling intact), `required` is opt-in hardening,
+   and S6 docs must record this reconciliation. Built-ins are either signed
+   in-repo or exempt under if-present (**owner decision #3**).
+   Verification failure = recorded inventory failure with reason
+   `signature`, never a crash or a silent skip.
+8. **Rotation.** One `KIKX_PLUGIN_SIGNING_PUBLIC_KEY` makes rotation
+   painful; accept comma-separated `KIKX_PLUGIN_SIGNING_PUBLIC_KEYS` (overlap
+   window), failures record which key matched. Private key stays offline
+   (sign script env/flag only, never repo or DB) — mirrors Xenocept's plan
+   line "private key offline".
+
+### 9.3 Shell/mode integration (map_territory; amends S1/S2 tests)
+
+9. **Reserved-id rule first.** `view-name-registry.mjs:27/:105`: plugin
+   descriptors may not take core ids. Claiming `settings` flips any
+   plugin-owned `settings` view to rejected — read the implementation, then
+   fix the conflict behavior in S1 (core wins, reason recorded) with a test.
+10. **Deep-link comes free and must be proven.** `?view=` validates against
+    the live registry (`view-deep-link-spec.mjs:1-45`) → `?view=settings`
+    works once registered; add addressability assertions and confirm
+    `maybeRestoreMessageHash` stays inert on sessionless settings entries
+    (there are no frames to hash).
+11. **Statusbar on sessionless views** already reports workspace totals by
+    design (Inbox precedent, `statusbar-stats-spec.mjs:167`) → Settings will
+    too; default to Inbox-consistent (**owner decision #4**).
+12. **Section clamp on live unload:** if a plugin's section is selected and
+    that plugin is uninstalled elsewhere, clamp `settingsSection` to
+    `General`; selection lives in app state (S1) with a failing-first test.
+13. **Identity gate for the mode switch** — "exact same layout, reutilize
+    the sidebar" must be proven as DOM identity, not pixels: assert shell
+    root + sidebar element identity across `pushView('settings')` and back
+    (property-store doctrine), in the puppeteer spec.
+14. **Mobile:** the section tab row and the two-column Plugins section must
+    stack at ≤960px / ≤520h; add a 390px assertion and confirm the hamburger
+    drawer still works over the settings view (new CSS rules + stylesheet
+    gate).
+
+### 9.4 Test protocol findings (test_protocol)
+
+- **Fixture/route pairing:** every stagehand fixture endpoint must be
+  paired with a real route unit test — the fixture proves the UI, the unit
+  proves the contract; alone, each gives false confidence (cynic pass).
+- **Hang risks:** units must mock registry fetch and spawn entirely (no
+  `registry.npmjs.org`, no child processes — unmocked network/stdin are the
+  listed hang culprits); 10s watchdogs default; the SSE test uses bounded
+  waits and covers reconnect/resync by following the stream's existing
+  visibilitychange re-check (`kikx-runtime-events.mjs:344`) rather than
+  inventing a second mechanism.
+- **Signature tests:** real generated ed25519 keypairs only (wrong-length
+  base64 keys = false confidence); cover payload-mismatch AND sig-mismatch.
+- **Extend, don't fork:** `navigation-stack-spec`, `view-deep-link-spec`,
+  `statusbar-stats-spec`, `plugin-component-any-area-spec`,
+  `plugin-unload`/route specs, documentation + source-size gates.
+- **TDD order:** sections model, section clamp, and the inventory reducer go
+  failing-first before any UI.
+
+### 9.5 Sequencing correction (devil_vs_angel)
+
+- **Devil won: execute S4 (signatures) before S3 (npm).** Shipping the
+  untrusted-code entry point first and retrofitting provenance is backwards;
+  the first npm install must already flow through the verify-at-load gate
+  (active under if-present from day one; `required` flips later). S4's
+  mechanics don't depend on keys existing yet — envelope parse, policy,
+  failures and the sign script land first; key generation can follow.
+- **Angel's insight kept:** `plugin.changed` carries **invalidation only**,
+  no payload — the client re-pulls inventory + descriptors with its own
+  credentials. Single auth path, no privilege in the event, bounded event.
+- **Execution order after the pass:** S1 → S2 → S4 → S3 → uninstall /
+  enable-disable (pending owner decisions) → S5 → S6. Phase IDs keep their
+  §5 names; this order governs.
+
+### 9.6 Open questions for the owner (Peer precept — decisions, not delays)
+
+1. npm search keyword: `kikx-plugin` (Xenocept mirrors with
+   `xenocept-plugin`)?
+2. Enable/disable toggle (9.1.2) in scope for this campaign?
+3. Signature default: **verify-if-present** (recommended — keeps the trusted-
+   code ruling intact) vs required from day one; built-ins signed in-repo or
+   exempt?
+4. Uninstall contract: remove files of path/npm-installed plugins only,
+   retain durable plugin data, never built-ins — confirm?
+5. Statusbar totals on Settings (Inbox-consistent default) and deferring
+   favorites/update badges — confirm?
+
+S1 is unblocked regardless of these answers.
