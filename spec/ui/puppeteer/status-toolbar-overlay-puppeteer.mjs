@@ -65,6 +65,12 @@ function rectProbe(page) {
       statsText: stats ? stats.textContent.replace(/\s+/g, '') : null,
       statusbarHasDebug: Boolean(document.querySelector('.kikx-statusbar .kikx-debug-toggle')),
       tokensHasIcon: Boolean(tokens?.querySelector('svg[data-icon="tokens"]')),
+      tokensBBox: (() => {
+        const path = tokens?.querySelector('svg[data-icon="tokens"] path');
+        if (!path) return null;
+        const box = path.getBBox();
+        return { width: box.width, height: box.height };
+      })(),
       tokensText: tokens ? tokens.textContent.trim() : null,
       eyeDisplay: display('kikx-frame-filter-popup'),
       actionsDisplay: display('.kikx-window__actions'),
@@ -97,6 +103,10 @@ function assertShared(bar) {
   assert.match(bar.statsText || '', /^\d+(\/\d+){3}$/, `counts must read as bare numbers, got "${bar.statsText}"`);
   assert.equal(bar.statusbarHasDebug, false, 'Debug is gone from the status bar');
   assert.ok(bar.tokensHasIcon, 'the tokens cell carries the traced SVG icon');
+  assert.ok(bar.tokensBBox && bar.tokensBBox.width > 100 && bar.tokensBBox.height > 100,
+    `the tokens icon must draw real geometry, got ${JSON.stringify(bar.tokensBBox)}`);
+  assert.ok(Math.abs((bar.tokensBBox.width / bar.tokensBBox.height) - 1) <= 0.2,
+    `the tokens icon should read as a square glyph, got ${JSON.stringify(bar.tokensBBox)}`);
   assert.match(bar.tokensText || '', /^\d[\d,]*$/, `the tokens cell is icon + number, got "${bar.tokensText}"`);
   assert.ok(bar.actionsDebug, 'Debug lives in the toolbar actions');
   assert.ok(bar.rawNextIsDebug, 'Debug sits immediately after Raw');
