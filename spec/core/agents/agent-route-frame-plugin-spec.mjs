@@ -99,8 +99,16 @@ class RetryingAgentProvider extends AgentInterface {
   async *run(params = {}) {
     RetryingAgentProvider.attempts += 1;
     params.services.calls.push({ method: 'retrying-run', attempt: RetryingAgentProvider.attempts });
-    if (RetryingAgentProvider.attempts === 1)
+    if (RetryingAgentProvider.attempts === 1) {
+      // Mid-stream failure AFTER phantom previews — the 2026-11-05 incident
+      // shape (session aaa31337: 45s of phantom thinking/text deltas, then a
+      // gateway timeout). Phantom previews are never committed and the retry
+      // overwrites them by id, so the ladder must still engage and the turn
+      // must recover instead of the error closing it.
+      yield { type: 'AgentThinking', phantom: true, content: { text: 'thinking…' } };
+      yield { type: 'AgentMessageDelta', phantom: true, content: { delta: 'partial answer', text: 'partial answer' } };
       throw new Error('Ollama stream error: Internal Server Error (ref: test-ref)');
+    }
 
     yield {
       type: 'AgentMessage',
@@ -2300,6 +2308,12 @@ test('AgentRoute retries an empty provider 500 and completes the turn', async ()
   assert.equal(agentFrames.length, 1);
   assert.equal(agentFrames[0].content.text, 'Recovered after provider retry');
   assert.notEqual(agentFrames[0].content.status, 'error');
+  // The phantom previews from the failed first attempt must not survive as
+  // their own committed frames or as partial text on the response.
+  let partial = frames.filter((frame) => frame.type === 'AgentMessageDelta');
+  assert.equal(partial.length, 0, 'phantom deltas are previews, never committed');
+  assert.equal(agentFrames[0].content.text.includes('partial'), false,
+    'the retry replaced the partial preview instead of appending to it');
 });
 
 test('a human message auto-resumes only the coordinator and carries the suspension warning', async () => {

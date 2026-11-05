@@ -32,6 +32,19 @@ export function isSubstantiveProviderOutput(output) {
   if (!output || typeof output.type !== 'string')
     return true;
 
+  // Phantom outputs are UI previews that are NEVER committed: they are keyed
+  // by responseFrameID, so a retry's fresh stream replaces them in place
+  // (same delta/thinking ids) instead of duplicating anything durable, and no
+  // tool has run before the stream's done line. Counting them as substantive
+  // disabled mid-stream recovery — incident 2026-11-05 (session
+  // aaa31337): an Ollama stream died 45s in on "Ollama stream error: Gateway
+  // Timeout" after only phantom thinking/text deltas, and because
+  // substantiveOutput was already true the retry ladder never engaged, so the
+  // error closed the turn and the bot went silent. Non-phantom content of any
+  // type still blocks replay exactly as before.
+  if (output.phantom === true)
+    return false;
+
   return !RETRY_SAFE_OUTPUT_TYPES.has(output.type);
 }
 

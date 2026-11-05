@@ -180,3 +180,55 @@ test('only content-bearing outputs are retry barriers', () => {
   assert.equal(isSubstantiveProviderOutput({ type: 'Done' }), true);
   assert.equal(isSubstantiveProviderOutput(null), true);
 });
+
+test('phantom stream previews never block a mid-stream retry (2026-11-05 incident)', async () => {
+  // The real failure: session aaa31337, an Ollama stream died 45 seconds in
+  // with "Ollama stream error: Gateway Timeout" AFTER emitting only phantom
+  // thinking/text previews. Phantoms are never committed and a retry replaces
+  // them by id, so the empty-prefix rule still holds — the ladder must engage
+  // and the bot must continue instead of the error closing its turn.
+  let attempts = 0;
+  let delays = [];
+  let createProvider = () => ({
+    async *run() {
+      attempts++;
+      if (attempts === 1) {
+        yield { type: 'AgentThinking', phantom: true, content: { text: 'thinking…' } };
+        yield { type: 'AgentMessageDelta', phantom: true, content: { delta: 'partial answer', text: 'partial answer' } };
+        throw errorWith({ message: 'Ollama stream error: Gateway Timeout (ref: d4220471-c075-41cb-86b3-f2a08abb2d38)' });
+      }
+      yield { type: 'AgentMessageDelta', phantom: true, content: { delta: 'recovered answer', text: 'recovered answer' } };
+      yield { type: 'Done', content: { status: 'finalized' } };
+    },
+  });
+
+  let outputs = await collect(runProviderWithRetry({
+    createProvider,
+    retryDelaysMs: [ 0 ],
+    sleep: async (delayMs) => delays.push(delayMs),
+  }));
+
+  assert.equal(attempts, 2, 'the stream replays after phantom-only previews');
+  // Attempt 1's phantom previews already streamed to the UI (the retry
+  // overwrites them under the same ids); then the replay's delta and the
+  // real completion.
+  assert.deepEqual(outputs.map((output) => output.type), [ 'AgentThinking', 'AgentMessageDelta', 'AgentMessageDelta', 'Done' ]);
+  assert.deepEqual(delays, [ 0 ]);
+});
+
+test('committed (non-phantom) streaming content still blocks replay', async () => {
+  let attempts = 0;
+  let createProvider = () => ({
+    async *run() {
+      attempts++;
+      yield { type: 'AgentMessageDelta', content: { delta: 'real committed text', text: 'real committed text' } };
+      throw errorWith({ status: 502, message: 'Bad Gateway' });
+    },
+  });
+
+  await assert.rejects(
+    () => collect(runProviderWithRetry({ createProvider, sleep: async () => {} })),
+    /Bad Gateway/,
+  );
+  assert.equal(attempts, 1, 'real content still never replays');
+});
