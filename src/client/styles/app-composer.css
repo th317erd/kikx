@@ -153,7 +153,7 @@
    solid-red pill identity comes from the component's --lpb-* theme vars, and
    the inner button matches the Send button's 88px minimum underneath it. */
 .kikx-stop-button {
-  --lpb-bg: #b91c1c;
+  --lpb-bg: #4a0f0f;
   --lpb-border: #7f1d1d;
   --lpb-text: #ffffff;
   --lpb-fill: #ef4444;
@@ -177,7 +177,7 @@
   padding: 0 14px;
   border: 2px solid #7f1d1d;
   border-radius: 6px;
-  background: #b91c1c;
+  background: #4a0f0f;
   color: #fff;
   font: inherit;
   font-size: calc(13px * 1.25);

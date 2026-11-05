@@ -97,6 +97,8 @@ function rectProbe(page) {
           x: box.x,
           right: box.right,
           radius: parseFloat(getComputedStyle(inner).borderRadius) || 0,
+          background: getComputedStyle(inner).backgroundColor,
+          border: getComputedStyle(inner).borderTopColor,
         };
       })(),
       textareaRight: (() => {
@@ -148,6 +150,11 @@ function assertShared(bar) {
     'the STOP label sits inside the button');
   assert.ok(bar.stopCaption.radius <= 8,
     `the button must be a normal rounded-rectangle, not a circle (radius=${bar.stopCaption.radius})`);
+  // Very dark red body, border untouched (#7f1d1d stays exactly itself).
+  assert.equal(bar.stopCaption.background, 'rgb(74, 15, 15)',
+    `the body must be the very dark red (#4a0f0f), got ${bar.stopCaption.background}`);
+  assert.equal(bar.stopCaption.border, 'rgb(127, 29, 29)',
+    `the border must stay #7f1d1d, got ${bar.stopCaption.border}`);
   assert.ok(bar.stop.y >= bar.send.bottom - 1,
     `STOP must sit under Send (send.bottom=${bar.send.bottom}, stop.y=${bar.stop.y})`);
   assert.ok(bar.stop.x >= bar.textareaRight - 1,
