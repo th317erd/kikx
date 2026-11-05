@@ -200,6 +200,15 @@ export class KikxChatScrollView {
   pinToEnd() {
     if (!this.element)
       return false;
+    // Gesture supremacy (mobile bottom-follow glitch, 2026-11-05): a live
+    // frame arriving under a finger must not re-pin the viewport — the old
+    // immediate write re-armed aeor's ignore-scroll window, hid the user's
+    // scroll events from _onScroll, and follow never released (three-way
+    // sawtooth with the settle timer and the focus driver). If follow survives
+    // the gesture, aeor's settle timer re-pins; if the gesture releases
+    // follow, the caller falls through to the anchor restore below.
+    if (this.element.userGestureActive)
+      return false;
     let last = Math.max(0, (this.pageSource?.totalPages || pageCount(this.frames, this.pageSize)) - 1);
     this.windowStart = last * this.pageSize;
     this.windowEnd = this.frames.length;
@@ -439,11 +448,14 @@ export class KikxChatScrollView {
     // Follow mode is a stronger contract than "preserve the old anchor": a
     // runtime sync that lands after a filter clear must not leave the viewport
     // a few hundred pixels above the newest frame. Only unlocked readers get
-    // anchor restoration.
-    if (this.element.follow === true)
-      this.pinToEnd();
-    else
+    // anchor restoration. A pin DECLINED for an active gesture falls through
+    // to the anchor restore: holding the frame under the finger beats both
+    // yanking home and standing still while the list re-scopes.
+    if (this.element.follow === true && this.pinToEnd()) {
+      // Pinned to the newest content.
+    } else {
       restoreFrameListAnchor(this.frameList, anchor);
+    }
     return { insertedNew };
   }
 

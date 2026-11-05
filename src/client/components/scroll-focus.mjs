@@ -107,6 +107,31 @@ export function stepFocusAlignment(app, frameList = app.querySelector?.('.kikx-f
   if (!pending || !frameList)
     return false;
 
+  // Gesture supremacy (mobile bottom-follow glitch, 2026-11-05): while the
+  // user's finger is down the focus driver must not write scrollTop — it was
+  // the third voice in a three-way sawtooth (pin ↔ settle ↔ focus), yanking
+  // the viewport back to the pre-drag focus a few hundred ms after each drag
+  // step. Park on a slow timer (not rAF — no layout reads per frame under the
+  // finger) and re-aim once the gesture ends, still bounded by the 1500ms
+  // lifetime below.
+  let scrollHost = frameList?.closest?.('aeor-scrollview');
+  if (scrollHost?.userGestureActive) {
+    if (Date.now() - pending.startedAt > 1500) {
+      cancelFocusAlignment(app);
+      return false;
+    }
+    if (!pending.frameScheduled) {
+      pending.frameScheduled = true;
+      setTimeout(() => {
+        if (app._pendingScrollFocus !== pending)
+          return;
+        pending.frameScheduled = false;
+        stepFocusAlignment(app, frameList);
+      }, 150);
+    }
+    return true;
+  }
+
   let item = findFrameItem(frameList, pending.frameID);
   if (!item) {
     if (Date.now() - pending.startedAt > 1500) {
