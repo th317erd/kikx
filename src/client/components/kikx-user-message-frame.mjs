@@ -1,6 +1,6 @@
 'use strict';
 
-import { renderMarkdownToElement } from '../lib/markdown-renderer.mjs';
+import { isMarkdownRawMode, renderMarkdownToElement } from '../lib/markdown-renderer.mjs';
 
 const PROMPT_SUMMARY = 'View sent prompt';
 const PROMPT_UNAVAILABLE = 'Sent prompt unavailable';
@@ -81,10 +81,14 @@ export class KikxUserMessageFrame extends HTMLElement {
 
   _renderText() {
     let text = typeof this._frame?.content?.text === 'string' ? this._frame.content.text : '';
-    if (this._text === text)
+    // The mode is part of the cache key: raw and rendered produce the same
+    // TEXT but different trees, so a toggle with unchanged text must still
+    // re-render (owner, 2026-11-05).
+    if (this._text === text && this._textRawMode === isMarkdownRawMode())
       return;
 
     this._text = text;
+    this._textRawMode = isMarkdownRawMode();
     let wake = splitQuestionWake(text);
     if (wake) {
       this._textElement.replaceChildren(
@@ -92,6 +96,7 @@ export class KikxUserMessageFrame extends HTMLElement {
         renderWakeSection('kikx-user-message__answer', wake.answer),
         wake.suffix ? renderWakeSection('kikx-user-message__after', wake.suffix) : null,
       );
+      this._syncTextClass();
       return;
     }
 
@@ -99,6 +104,18 @@ export class KikxUserMessageFrame extends HTMLElement {
       className: 'kikx-user-message__text kikx-markdown',
     });
     this._textElement.replaceChildren(...rendered.childNodes);
+    // Only the CHILDREN move out of the renderer's wrapper, so the wrapper's
+    // classes — including kikx-markdown--source, which carries raw mode's
+    // pre-wrap painting — never reach this persistent element. Mirror them.
+    this._textElement.className = rendered.className;
+  }
+
+  // Class mirror for the wake branch (its sections own their own source class,
+  // but the container keeps the mode flag consistent either way).
+  _syncTextClass() {
+    this._textElement.className = isMarkdownRawMode()
+      ? 'kikx-user-message__text kikx-markdown kikx-markdown--source'
+      : 'kikx-user-message__text kikx-markdown';
   }
 
   _updatePrompt() {
@@ -178,10 +195,13 @@ function splitQuestionWake(text) {
 
 function renderWakeSection(className, text) {
   let section = document.createElement('div');
-  section.className = className;
   let rendered = renderMarkdownToElement(document, text, {
     className: `${className} kikx-markdown`,
   });
+  // Children move out of the wrapper: mirror the wrapper's classes so the
+  // kikx-markdown base (and raw mode's source flag) actually land on the
+  // section that stays mounted.
+  section.className = rendered.className;
   section.replaceChildren(...rendered.childNodes);
   return section;
 }

@@ -1,5 +1,30 @@
 'use strict';
 
+// RAW display mode (owner, 2026-11-05: "I can not select or copy the markdown
+// styling characters... which is specifically what RAW mode is for"). The old
+// implementation painted the delimiters with ::before/::after — generated
+// content, which selection and copy ignore. Raw mode now renders the message's
+// SOURCE as a real text node at this single boundary, so every markdown surface
+// (user/agent/prompt/compact) inherits it and the characters are selectable.
+// The flag mirrors kikx.rawMarkdown (set at boot from storage, updated by
+// setRawMarkdown through setMarkdownRawMode) so no call site changes.
+let rawMarkdownMode = (() => {
+  try {
+    return globalThis.localStorage?.getItem('kikx.rawMarkdown') === '1';
+  } catch (_error) {
+    return false;
+  }
+})();
+
+export function setMarkdownRawMode(enabled) {
+  rawMarkdownMode = enabled === true;
+  return rawMarkdownMode;
+}
+
+export function isMarkdownRawMode() {
+  return rawMarkdownMode;
+}
+
 const TOKEN_PREFIX = '\u0000KIKX_MD_';
 const TOKEN_SUFFIX = '\u0000';
 const NODE_TYPES = {
@@ -91,7 +116,17 @@ export function markdownToHTML(input) {
 
 export function renderMarkdownToElement(ownerDocument, input, options = {}) {
   let element = ownerDocument.createElement('div');
-  element.className = options.className || 'kikx-frame__content kikx-markdown';
+  let base = options.className || 'kikx-frame__content kikx-markdown';
+  if (rawMarkdownMode) {
+    // Real text, exactly as authored: selectable, copyable, newline-faithful
+    // (the --source class keeps pre-wrap). No parse, no sanitize, no painted
+    // markers — the source IS the render.
+    element.className = `${base} kikx-markdown--source`;
+    element.textContent = String(input ?? '');
+    return element;
+  }
+
+  element.className = base;
   element.appendChild(renderBotContentFragment(ownerDocument, input));
   return element;
 }

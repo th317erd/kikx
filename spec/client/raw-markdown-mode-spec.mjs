@@ -3,6 +3,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { installDom } from './support/mini-dom.mjs';
+
+const { document } = installDom();
+
 import {
   RAW_MARKDOWN_STORAGE_KEY,
   readRawMarkdown,
@@ -10,6 +14,11 @@ import {
   toggleRawMarkdown,
   writeRawMarkdown,
 } from '../../src/client/lib/raw-markdown.mjs';
+import {
+  isMarkdownRawMode,
+  renderMarkdownToElement,
+  setMarkdownRawMode,
+} from '../../src/client/lib/markdown-renderer.mjs';
 
 function storage() {
   let values = new Map();
@@ -75,4 +84,39 @@ test('raw Markdown toggles only the app class and the button state', () => {
   assert.equal(button.classList.value, '');
   assert.equal(pressed, 'false');
   assert.equal(renders, 0);
+});
+
+test('raw mode renders the markdown SOURCE as real, selectable text', () => {
+  // Owner, 2026-11-05: "I can not select or copy the markdown styling
+  // characters... which is specifically what RAW mode is for." The old paint
+  // path (::before/::after markers) is generated content — invisible to
+  // selection. The renderer must now emit the source as an actual text node.
+  let source = '**bold** and _italics_ with `code`\n# Heading';
+  setMarkdownRawMode(true);
+  try {
+    assert.equal(isMarkdownRawMode(), true);
+    let element = renderMarkdownToElement(document, source);
+    assert.equal(element.textContent, source, 'every source character exists as real text');
+    assert.equal(element.querySelector('strong'), null, 'no rendered tree in raw mode');
+    assert.equal(element.querySelector('code'), null, 'backticks stay literal text');
+    assert.ok(element.className.includes('kikx-markdown--source'), 'source wrapping class applied');
+  } finally {
+    setMarkdownRawMode(false);
+  }
+
+  let rendered = renderMarkdownToElement(document, source);
+  assert.equal(rendered.querySelector('strong')?.textContent, 'bold', 'rendered mode is back');
+  assert.doesNotMatch(rendered.textContent, /\*\*bold/, 'delimiters are consumed when rendered');
+});
+
+test('setRawMarkdown flips the renderer flag alongside the class', () => {
+  globalThis.localStorage = storage();
+  let app = { _state: { rawMarkdown: false }, classList: { toggle() {} }, querySelectorAll() { return []; } };
+  setMarkdownRawMode(false);
+
+  setRawMarkdown(app, true);
+  assert.equal(isMarkdownRawMode(), true, 'renderer follows the toggle');
+
+  setRawMarkdown(app, false);
+  assert.equal(isMarkdownRawMode(), false);
 });

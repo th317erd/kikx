@@ -7,7 +7,7 @@
 // _contentParent): a verbatim move, no behavior change.
 
 import { elements, cleanupBindings } from '../lib/aeor-ui.mjs';
-import { renderMarkdownToElement } from '../lib/markdown-renderer.mjs';
+import { isMarkdownRawMode, renderMarkdownToElement } from '../lib/markdown-renderer.mjs';
 import { resolveFrameComponentDescriptor } from './frame-component-registry.mjs';
 import {
   frameContentDescriptor,
@@ -93,11 +93,17 @@ export function reconcileFrameContent(item, frame) {
 
 function reconcileMarkdown(item, frame) {
     let text = markdownText(frame);
-    if (item._lastMarkdownText === text)
+    let raw = isMarkdownRawMode();
+    // The mode is part of the cache key (raw and rendered share the TEXT), and
+    // the base class must be CLEAN before handing it to the renderer —
+    // otherwise a previous raw render's kikx-markdown--source sticks after
+    // toggling back (owner, 2026-11-05).
+    if (item._lastMarkdownText === text && item._lastMarkdownRaw === raw)
       return;
 
+    let base = String(item._contentElement.className || '').replace(/\s*kikx-markdown--source\b/g, '');
     let rendered = renderMarkdownToElement(document, text, {
-      className: item._contentElement.className,
+      className: base,
     });
 
     cleanupBindings(item._contentElement);
@@ -107,6 +113,10 @@ function reconcileMarkdown(item, frame) {
     for (let child of [ ...rendered.childNodes ])
       item._contentElement.appendChild(child);
 
+    // Children-only move: mirror the wrapper's classes so the source flag
+    // lands on the persistent element with the mode.
+    item._contentElement.className = rendered.className;
+    item._lastMarkdownRaw = raw;
     item._lastMarkdownText = text;
     item._highlightSearch(item._contentElement);
   }
@@ -152,6 +162,7 @@ export function buildFrameContent(item, frame) {
 
     if (descriptor.kind === 'markdown') {
       item._lastMarkdownText = markdownText(frame);
+      item._lastMarkdownRaw = isMarkdownRawMode();
       return renderMarkdownToElement(document, markdownText(frame), {
         className: 'kikx-frame__content kikx-markdown',
       });
