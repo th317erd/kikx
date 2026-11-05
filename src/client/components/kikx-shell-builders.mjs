@@ -585,7 +585,14 @@ export function buildThreadSection(app, sessionID) {
             .class('kikx-send-button')
             .title('Send message (Enter). Shift+Enter inserts a new line.')
             .ariaLabel('Send message')
-            .disabled(!hasSelectedSession)('Send (Enter)'),
+            .disabled(!hasSelectedSession)(
+              // Two lines (owner change, 2026-11-05): "Send" over "(Enter)".
+              // Two spans, not a <br>: the hint gets its own class so it can
+              // read as a footnote, and aria-label keeps the button announced
+              // as one "Send message" control.
+              span.class('kikx-send-button__label')('Send'),
+              span.class('kikx-send-button__hint')('(Enter)'),
+            ),
         ),
       ),
     ),

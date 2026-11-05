@@ -98,6 +98,31 @@
   font-weight: 600;
 }
 
+/* Two-line Send (owner change, 2026-11-05): "Send" over "(Enter)", stacked
+   and centered. Scoped to the composer's actions so the modal Save/Done/Create
+   buttons that share .kikx-send-button stay single-line. The line box math
+   keeps the button at the same ~34px height it had as one line. */
+.kikx-composer__actions .kikx-send-button {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  line-height: 1.1;
+}
+
+.kikx-send-button__label {
+  display: block;
+}
+
+.kikx-send-button__hint {
+  display: block;
+  font-size: calc(10px * 1.25);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .kikx-composer__actions .kikx-send-button {
     transition: background 160ms ease, border-color 160ms ease;

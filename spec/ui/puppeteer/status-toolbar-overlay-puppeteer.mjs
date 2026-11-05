@@ -80,6 +80,8 @@ function rectProbe(page) {
       })(),
       stop: rect('.kikx-stop-button'),
       composer: rect('.kikx-composer'),
+      sendLabel: rect('.kikx-send-button__label'),
+      sendHint: rect('.kikx-send-button__hint'),
       textarea: rect('textarea[name="message"]'),
       send: rect('.kikx-send-button'),
       viewport: { width: innerWidth, height: innerHeight },
@@ -112,6 +114,13 @@ function assertShared(bar) {
   assert.ok(bar.stop.bottom <= bar.send.y + 1,
     'STOP must never share a press zone with Send');
   assert.ok(bar.stop.height <= 40, `STOP must shrink (height=${bar.stop.height})`);
+
+  // Send reads as two stacked lines: "Send" over "(Enter)".
+  assert.ok(bar.sendLabel && bar.sendHint, 'the Send button renders both lines');
+  assert.ok(bar.sendHint.y >= bar.sendLabel.bottom,
+    `the (Enter) line must sit BELOW Send (label.bottom=${bar.sendLabel.bottom}, hint.y=${bar.sendHint.y})`);
+  assert.ok(Math.abs((bar.sendHint.x + bar.sendHint.width / 2) - (bar.sendLabel.x + bar.sendLabel.width / 2)) <= 2,
+    'both lines are centered on each other');
 }
 
 test('Puppeteer status bar + toolbar overflow + floating STOP on mobile and desktop', async (t) => {
