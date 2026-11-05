@@ -87,39 +87,20 @@ export function quickActionSpecForFrame(frame, canExpand = false) {
   };
 }
 
-// Message-shaped frame types: their content.text/delta IS the authored raw
-// markdown. Tool/command frames keep their payloads in input/output/command —
-// exactly the "nonsense" the owner excluded — and are gated out by type even
-// when a test fixture (or a future frame) parks command text under `text`.
-const COPYABLE_FRAME_TYPES = new Set([
-  'AgentMessage',
-  'AgentMessageDelta',
-  'UserMessage',
-  'Question',
-  'CompactionFrame',
-  'AgentThinking',
-]);
-
-// The RAW markdown of the frame's message: what the source shows, nothing
-// derived. Collapsed turn reports copy their visible summary (mirroring
-// quoteTextForFrame); streaming frames fall back to the live delta.
+// What Copy puts on the clipboard: the frame's VISIBLE text — quote-parity
+// (owner follow-up, 2026-11-05: "add this button pretty much everywhere
+// (except for cases where it really does make no sense at all)"). The earlier
+// type allowlist missed real messages (mood/progress/turn-report frames and
+// friends); one definition with the Quote action fixes the coverage and keeps
+// the two affordances from ever disagreeing about what a frame says.
+//
+// Priority does the filtering the owner asked for first: a MESSAGE copies its
+// authored raw markdown (text/delta/summary keys) and only reaches command or
+// output keys when those ARE the frame's visible content (tool rows). Frames
+// with nothing to say resolve to '' and get no button at all — the only
+// "makes no sense" case.
 export function copyTextForFrame(frame) {
-  let content = frame?.content;
-  if (!content)
-    return '';
-  if (frame.type && !COPYABLE_FRAME_TYPES.has(frame.type))
-    return '';
-
-  if (content.turnReport === true && typeof content.summary === 'string' && content.summary.trim() !== '')
-    return content.summary.trim();
-
-  for (let key of [ 'text', 'delta', 'message', 'thinkingText' ]) {
-    let value = content[key];
-    if (typeof value === 'string' && value.trim() !== '')
-      return value.trim();
-  }
-
-  return '';
+  return quoteTextForFrame(frame);
 }
 
 // Clipboard with a legacy fallback (older/embedded webviews, denied

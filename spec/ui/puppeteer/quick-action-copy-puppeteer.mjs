@@ -1,9 +1,11 @@
 'use strict';
 
-// Copy quick action in a real browser (owner, 2026-11-06): the hover rail's
-// double-paper button copies the frame's RAW markdown to the clipboard —
-// message frames only; tool/command frames get no button ("not command
-// output, and all that nonsense") — and flashes the check glyph afterwards.
+// Copy quick action in a real browser (owner, 2026-11-06, refined the same
+// day): the hover rail's double-paper button copies the frame's VISIBLE text
+// (message frames: raw markdown, message key first) to the clipboard and
+// flashes the check glyph. Coverage is quote-parity — "add this button pretty
+// much everywhere": messages, progress frames and tool rows all carry it;
+// only a frame with nothing to copy gets no button.
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -48,8 +50,8 @@ test('Puppeteer: the Copy quick action puts the raw markdown on the clipboard', 
     frame('msg_1', 1, 'AgentMessage', { text: RAW }),
     frame('user_1', 2, 'UserMessage', { text: 'user **markdown** line' }),
     frame('tool_1', 3, 'ToolCall', { toolName: 'exec', text: 'ran a command', command: 'ls -la', output: 'file1 file2' }),
-    frame('msg_2', 4, 'AgentMessage', { text: 'plain tail' }),
-    frame('user_2', 5, 'UserMessage', { text: 'two' }),
+    frame('progress_1', 4, 'AgentProgress', { text: 'migrating the deploy now' }),
+    frame('msg_2', 5, 'AgentMessage', { text: 'plain tail' }),
     frame('msg_3', 6, 'AgentMessage', { text: 'three' }),
   ]);
 
@@ -112,22 +114,39 @@ test('Puppeteer: the Copy quick action puts the raw markdown on the clipboard', 
     await page.waitForFunction(() => window.__copied !== null, { timeout: 5000 });
     assert.equal(await page.evaluate(() => window.__copied), 'user **markdown** line');
 
-    // Tool/command frame: rail exists (quote) but NO Copy — command output
-    // must never land on the clipboard through this affordance.
+    // Tool rows and progress frames get Copy too (owner follow-up,
+    // 2026-11-05: "add this button pretty much everywhere"): quote-parity —
+    // anything with visible text can be copied, message text first, and the
+    // tool row's own visible content when that IS the frame.
     const tool = await page.$('kikx-frame-item[data-frame-id="tool_1"]');
-    await tool.hover();
-    const toolParts = await tool.evaluate((node) => ({
-      rail: Boolean(node.querySelector('.kikx-frame__quick-actions')),
-      quote: Boolean(node.querySelector('.kikx-frame__quick-action--quote')),
-      copy: Boolean(node.querySelector('.kikx-frame__quick-action--copy')),
-    }));
-    assert.ok(toolParts.rail, 'the tool frame still has its rail');
-    assert.equal(toolParts.copy, false, 'tool/command frames get no Copy button');
-    await page.evaluate(() => { window.__copied = null; });
-    if (toolParts.quote) {
-      // Nothing copies from this frame through the rail.
-      assert.equal(await page.evaluate(() => window.__copied), null);
+    // Tool frames start minimized, where the whole rail (Quote included) is
+    // deliberately hidden; expand it via its header first.
+    const minimizedBefore = await tool.evaluate((node) => node.classList.contains('kikx-frame--minimized'));
+    if (minimizedBefore) {
+      await tool.click('.kikx-frame__meta');
+      await page.waitForFunction(() => {
+        const node = document.querySelector('kikx-frame-item[data-frame-id="tool_1"]');
+        return node && !node.classList.contains('kikx-frame--minimized');
+      }, { timeout: 5000 });
     }
+    await tool.hover();
+    const toolCopy = await tool.$('.kikx-frame__quick-action--copy');
+    assert.ok(toolCopy, 'an expanded tool row with visible text gets the Copy button too');
+    await page.evaluate(() => { window.__copied = null; });
+    await toolCopy.click();
+    await page.waitForFunction(() => window.__copied !== null, { timeout: 5000 });
+    assert.equal(await page.evaluate(() => window.__copied), 'ran a command',
+      'the tool row copies its visible content (message-text first)');
+
+    const progress = await page.$('kikx-frame-item[data-frame-id="progress_1"]');
+    await progress.hover();
+    assert.ok(await progress.$('.kikx-frame__quick-action--copy'),
+      'progress frames — the class most often missing it — offer Copy');
+    await page.evaluate(() => { window.__copied = null; });
+    const progressCopy = await progress.$('.kikx-frame__quick-action--copy');
+    await progressCopy.click();
+    await page.waitForFunction(() => window.__copied !== null, { timeout: 5000 });
+    assert.equal(await page.evaluate(() => window.__copied), 'migrating the deploy now');
   } finally {
     await browser.close();
     await fixture.close();

@@ -59,29 +59,46 @@ function withClipboard(fn) {
     .then(() => writes);
 }
 
-test('copyTextForFrame returns the raw markdown of message-shaped frames only', () => {
-  assert.equal(copyTextForFrame(frame('AgentMessage', { text: RAW })), RAW, 'exact source, newlines intact');
-  assert.equal(copyTextForFrame(frame('AgentMessageDelta', { delta: 'streaming **md**' })), 'streaming **md**', 'a streaming head copies its live delta');
+test('copyTextForFrame returns the frame visible text everywhere it exists', () => {
+  // Quote-parity coverage: messages, progress, reports, tool rows — the
+  // owner's "pretty much everywhere".
+  assert.equal(copyTextForFrame(frame('AgentMessage', { text: RAW })), RAW, 'exact raw markdown source, newlines intact');
+  assert.equal(copyTextForFrame(frame('AgentMessageDelta', { delta: 'streaming **md**' })), 'streaming **md**');
   assert.equal(
     copyTextForFrame(frame('CompactionFrame', { turnReport: true, summary: 'short visible report' })),
     'short visible report',
     'a collapsed turn report copies what is visible',
   );
   assert.equal(copyTextForFrame(frame('UserMessage', { text: 'hello **world**' })), 'hello **world**');
+  assert.equal(copyTextForFrame(frame('AgentProgress', { text: 'still working on the deploy' })), 'still working on the deploy');
+  assert.equal(copyTextForFrame(frame('ToolCall', { text: 'ran a command', command: 'ls' })), 'ran a command',
+    'tool frames copy too, message-text first');
 
-  // The owner's exclusion: command output and tool payloads never copy.
-  assert.equal(copyTextForFrame(frame('ToolCall', { text: 'ran a command', command: 'ls' })), '',
-    'tool frames are gated by TYPE even with text present');
-  assert.equal(copyTextForFrame(frame('ShellToolFrame', { output: 'stdout noise', command: 'ls -la' })), '');
-  assert.equal(copyTextForFrame(frame('AgentMessage', { output: 'only output here' })), '', 'no message text, nothing to copy');
+  // Priority still protects messages from tool noise...
+  assert.equal(
+    copyTextForFrame(frame('AgentMessage', { text: 'the reply', output: 'stdout noise' })),
+    'the reply',
+    'a message copies its text, never embedded output',
+  );
+  // ...and a tool row whose visible content IS its output/command copies that.
+  assert.equal(
+    copyTextForFrame(frame('ExecReadToolFrame', { output: 'file1 file2', command: 'ls -la' })),
+    'file1 file2',
+    'output-only tool rows copy their visible content (quote parity)',
+  );
+
+  // The only 'makes no sense' case: nothing to copy.
   assert.equal(copyTextForFrame(null), '');
-  assert.equal(copyTextForFrame(frame('AgentMessage', {})), '');
+  assert.equal(copyTextForFrame(frame('AgentMessage', {})), '', 'an empty frame gets no button');
+  assert.equal(copyTextForFrame(frame('AgentMessage', { status: 'running' })), '', 'non-text status alone copies nothing');
 });
 
-test('the spec offers copy only when there is message markdown to copy', () => {
+test('the spec offers copy everywhere there is visible text to copy', () => {
   assert.equal(quickActionSpecForFrame(frame('AgentMessage', { text: RAW }), false).copy, true);
-  assert.equal(quickActionSpecForFrame(frame('ToolCall', { text: 'cmd' }), true).copy, false,
-    'a tool frame never gets the button');
+  assert.equal(quickActionSpecForFrame(frame('AgentProgress', { text: 'streaming status' }), false).copy, true,
+    'progress frames are messages people copy');
+  assert.equal(quickActionSpecForFrame(frame('ToolCall', { text: 'cmd out' }), true).copy, true,
+    'tool rows copy their visible content too (owner: pretty much everywhere)');
   assert.equal(
     quickActionSpecForFrame({
       type: 'AgentMessage',
@@ -89,20 +106,24 @@ test('the spec offers copy only when there is message markdown to copy', () => {
       getQuickActionButtons: () => ({ copy: false }),
     }, false).copy,
     false,
-    'a frame class may decline the button',
+    'a frame class may still decline the button',
   );
   assert.equal(quickActionSpecForFrame({ getQuickActionButtons: () => ({ expand: true }) }, false).copy, false,
-    'no content, no button');
+    'no content at all, no button — the one makes-no-nonsense exception');
 });
 
-test('the rail builds a Copy button for messages and none for tools', () => {
+test('the rail builds a Copy button on text-bearing frames and none on empty ones', () => {
   let messageBar = buildFrameQuickActions(frame('AgentMessage', { text: RAW }), document);
   assert.ok(messageBar.querySelector('.kikx-frame__quick-action--copy'), 'message frames offer copy');
   assert.ok(messageBar.querySelector('.kikx-frame__quick-action--quote'), 'quote still ships');
 
   let toolBar = buildFrameQuickActions(frame('ToolCall', { text: 'cmd out' }), document);
-  assert.equal(toolBar.querySelector('.kikx-frame__quick-action--copy'), null,
-    'no copy button where copying would copy command noise');
+  assert.ok(toolBar.querySelector('.kikx-frame__quick-action--copy'),
+    'a tool row with visible text gets copy too (owner: pretty much everywhere)');
+
+  let emptyBar = buildFrameQuickActions(frame('AgentMessage', {}), document);
+  assert.equal(emptyBar.querySelector('.kikx-frame__quick-action--copy'), null,
+    'a frame with nothing to copy gets no dead affordance');
 });
 
 test('clicking Copy writes the raw markdown and flashes the check glyph', async () => {
