@@ -1,7 +1,10 @@
 
 .kikx-view-header {
   display: flex;
-  align-items: baseline;
+  /* Owner report (2026-11-05): the Inbox/Agents/Teams header row — back button,
+     title, count bubble — sat visibly high because baseline alignment hangs a
+     button/badge off the text baseline instead of centering the boxes. */
+  align-items: center;
   gap: 10px;
   flex-wrap: wrap;
   margin-bottom: 16px;

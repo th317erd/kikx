@@ -185,11 +185,42 @@ export class KikxChatScrollView {
       this._promoteTailResponse();
       if (pinBottom) {
         this.pinToEnd();
+        // Enforce the bounded-offscreen contract DETERMINISTICALLY after the
+        // pin (owner cap: <=6 loaded pages after clearing search). Visibility
+        // math alone flapped 5..8 under content-visibility — placeholder
+        // geometry vs metadata drift decides borderline pages by luck — so
+        // keep exactly the tail's prefetch band and return everything else to
+        // estimated gaps. Heights survive invalidatePages; scrolling back
+        // re-projects on demand.
+        this._enforceLoadedPageBudget();
       } else if (!restoreFrameListAnchor(this.frameList, anchor)) {
         restoreFilterAnchor(this.frameList, filterAnchor);
       }
     });
     return true;
+  }
+
+  // Keep loaded pages within the prefetch radius of the CURRENT center page.
+  // Runs only after an explicit bottom pin, where the center is the tail: the
+  // kept band is tail..tail-radius (<=4 pages with the default radius 3), so
+  // re-projections that landed mid-document during the clear cannot linger.
+  _enforceLoadedPageBudget() {
+    let element = this.element;
+    if (!element?.metrics || !Array.isArray(element.pages))
+      return;
+    let radius = Number(element.prefetchPages);
+    if (!Number.isFinite(radius) || radius < 0)
+      radius = 3;
+    let center = Number(element.metrics().centerPage);
+    if (!Number.isInteger(center))
+      return;
+    let excess = [];
+    element.pages.forEach((page, index) => {
+      if (page?.loaded && Math.abs(index - center) > radius)
+        excess.push(index);
+    });
+    if (excess.length > 0)
+      element.invalidatePages(excess);
   }
 
   pinToLatestAfterContext() {
@@ -201,13 +232,13 @@ export class KikxChatScrollView {
     if (!this.element)
       return false;
     // Gesture supremacy (mobile bottom-follow glitch, 2026-11-05): a live
-    // frame arriving under a finger must not re-pin the viewport — the old
+    // frame arriving under a PHYSICAL finger must not re-pin the viewport — the old
     // immediate write re-armed aeor's ignore-scroll window, hid the user's
     // scroll events from _onScroll, and follow never released (three-way
     // sawtooth with the settle timer and the focus driver). If follow survives
     // the gesture, aeor's settle timer re-pins; if the gesture releases
     // follow, the caller falls through to the anchor restore below.
-    if (this.element.userGestureActive)
+    if (this.element.viewportPointerActive)
       return false;
     let last = Math.max(0, (this.pageSource?.totalPages || pageCount(this.frames, this.pageSize)) - 1);
     this.windowStart = last * this.pageSize;
@@ -219,28 +250,32 @@ export class KikxChatScrollView {
   }
 
   _visiblePageIndexes(indexes) {
-    let viewport = this.frameList;
-    if (!viewport)
+    let element = this.element;
+    if (!element?.metrics)
       return indexes.slice();
-    let viewportRect = viewport.getBoundingClientRect();
-    let visible = new Set();
-    for (let page of this.element?.querySelectorAll?.('.aeor-scrollview__page') || []) {
-      let index = Number(page.dataset?.page);
-      if (!Number.isInteger(index) || !indexes.includes(index))
-        continue;
-      let rect = page.getBoundingClientRect();
-      let margin = Math.max(0, viewportRect.height * 0.5);
-      if (rect.bottom >= viewportRect.top - margin && rect.top <= viewportRect.bottom + margin)
-        visible.add(index);
-    }
-    if (visible.size === 0) {
-      let center = Number(this.element?.metrics?.().centerPage);
+    // Segment metadata, not rects (owner cap regression, 2026-11-05): with
+    // content-visibility, offscreen pages report PLACEHOLDER geometry whose
+    // seeded height drifts from the real one, so rect intersection kept 2-3
+    // extra pages "near" the viewport and the post-clear loaded-page count
+    // flapped 5..8 against a <=6 cap. Offsets/bounds are the same metadata the
+    // pending-page, band and pin math already use — one source of truth, and
+    // no layout reads at a moment when a filter change is rebuilding pages.
+    let metrics = element.metrics();
+    let top = metrics.scrollTop;
+    let bottom = top + metrics.clientHeight;
+    let margin = Math.max(0, metrics.clientHeight * 0.5);
+    let visible = indexes.filter((index) => {
+      let bounds = element.pageBounds?.(index);
+      return Boolean(bounds) && bounds.bottom >= top - margin && bounds.top <= bottom + margin;
+    });
+    if (visible.length === 0) {
+      let center = Number(metrics.centerPage);
       if (Number.isInteger(center) && indexes.includes(center))
-        visible.add(center);
+        visible.push(center);
       else if (indexes.length > 0)
-        visible.add(indexes[indexes.length - 1]);
+        visible.push(indexes[indexes.length - 1]);
     }
-    return [ ...visible ].sort((left, right) => left - right);
+    return visible.sort((left, right) => left - right);
   }
 
   _installEvents() {

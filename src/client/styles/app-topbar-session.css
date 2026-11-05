@@ -54,7 +54,7 @@
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
-  cursor: text;
+  cursor: pointer;
 }
 
 .kikx-breadcrumb__title:hover,
@@ -374,7 +374,7 @@ button.kikx-window__title {
   color: #f5f7fa;
   font: inherit;
   font-size: calc(15px * 1.25);
-  cursor: text;
+  cursor: pointer;
 }
 
 button.kikx-window__title:hover,

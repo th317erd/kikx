@@ -21,6 +21,28 @@ let lastTops = new WeakMap();
 let lastScrollRecordAt = 0;
 let lastDOMRecordAt = 0;
 let sequence = 0;
+// Records skipped because the frame list was mid-page-load. Folded into the
+// first entry recorded after the burst so the ring still shows "N records were
+// dropped while busy" without having paid for them (owner report, 2026-11-05:
+// every record snapshot()s layout — querySelectorAll over all frame items plus
+// a getBoundingClientRect per item — and a page load fires records continuously
+// while layout is dirty, which is exactly when the main thread must not be
+// forced to reflow).
+let busySkipped = 0;
+// Layout stays dirty for a beat after the last load lands (item entry
+// animations, follow placement, anchor writes), so records keep deferring for
+// one quiet window rather than thrashing layout in the gap between two chained
+// prefetches.
+let busyQuietUntil = 0;
+
+function frameBusy() {
+  let list = frameList();
+  if (list?.getAttribute?.('aria-busy') === 'true') {
+    busyQuietUntil = Math.max(busyQuietUntil, Date.now() + 750);
+    return true;
+  }
+  return Date.now() < busyQuietUntil;
+}
 
 function loggerEnabled() {
   try {
@@ -100,11 +122,18 @@ function snapshot() {
 function record(type, data = {}) {
   if (!enabled)
     return;
+  if (frameBusy()) {
+    busySkipped++;
+    return;
+  }
+  let skipped = busySkipped;
+  busySkipped = 0;
   let entry = {
     seq: ++sequence,
     at: new Date().toISOString(),
     perf: Math.round(globalThis.performance?.now?.() || 0),
     type,
+    ...(skipped > 0 ? { busySkipped: skipped } : {}),
     ...snapshot(),
     ...data,
   };
@@ -133,7 +162,10 @@ function installSetterTrap() {
     },
     set(value) {
       let before = descriptor.get.call(this);
-      let stack = enabled && this.matches?.('.kikx-frame-list') ? shortStack() : '';
+      // Stack capture (and the record it feeds) is pointless while a page load
+      // is churning writes: frameBusy() short-circuits record() anyway, so skip
+      // building the Error just as hard.
+      let stack = enabled && !frameBusy() && this.matches?.('.kikx-frame-list') ? shortStack() : '';
       descriptor.set.call(this, value);
       if (stack)
         record('scrollTop-write', { before: Math.round(before), requested: Math.round(Number(value)), writeStack: stack });

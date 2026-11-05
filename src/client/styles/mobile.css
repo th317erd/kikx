@@ -127,13 +127,22 @@
     max-width: 100%;
   }
 
-  .kikx-frame__meta,
   .kikx-frame__content,
   .kikx-frame__meta-main,
   .kikx-user-message,
   .kikx-user-message__text {
     min-width: 0;
     max-width: 100%;
+  }
+
+  /* NOT .kikx-frame__meta here (owner report, 2026-11-05: "Header doesn't
+     completely span frame on mobile"). The message headers are full-bleed via
+     negative margins (-12px); max-width:100% clamps their width to the frame's
+     CONTENT box, the over-constrained right margin is dropped, and a ~24px
+     strip of frame shows past the header's right edge — exactly the sliver in
+     the screenshot. min-width:0 alone still lets the flex row shrink. */
+  .kikx-frame__meta {
+    min-width: 0;
   }
 
   .kikx-frame__meta {

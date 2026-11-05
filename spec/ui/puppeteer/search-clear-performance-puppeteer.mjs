@@ -50,7 +50,10 @@ test('Puppeteer clearing search does not re-render every previously loaded page'
     assert.ok(searched.mountedItems < before.mountedItems, 'search did not reduce the mounted frame set');
 
     await page.click('.kikx-session-search__clear');
-    await new Promise((resolve) => setTimeout(resolve, 1600));
+    // Measurement is deliberately deferred after a clear (a clear is not a
+    // mid-build moment), so the post-clear prefetch/settle chain quiesces a
+    // beat later than before. Check the caps at 2.6s instead of racing it.
+    await new Promise((resolve) => setTimeout(resolve, 2600));
 
     let cleared = await page.evaluate(() => {
       let scrollview = document.querySelector('kikx-chat-view')._scrollview;

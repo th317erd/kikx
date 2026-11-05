@@ -106,8 +106,29 @@ export function updateMessageHash(app, frameID, { atBottom = false } = {}) {
 export function updateMessageHashFromScroll(app, frameList = app.querySelector('.kikx-frame-list')) {
   if (!frameList)
     return;
-  updateMessageHash(app, topVisibleFrameID(app, frameList), { atBottom: isNearBottom(frameList) });
+  // A mid-load scroll is layout bookkeeping, not the reader moving: the hash
+  // walk is a getBoundingClientRect per mounted item plus a replaceState, and
+  // page loads fire scrolls continuously while layout is dirty (owner report,
+  // 2026-11-05: "Loading Page... makes everything lock up"). The settled
+  // scroll after the load recomputes the hash normally.
+  if (frameList.getAttribute?.('aria-busy') === 'true')
+    return;
+  // Debounce to scroll-quiet: the profiled churn fired this on every scroll
+  // event (4,810 rect reads + a replaceState across a 3s window). The hash is
+  // a deep-link anchor — 150ms of quiet is plenty of precision, and a burst
+  // collapses to ONE walk instead of one per event.
+  if (hashFromScrollTimer)
+    clearTimeout(hashFromScrollTimer);
+  let target = frameList;
+  hashFromScrollTimer = setTimeout(() => {
+    hashFromScrollTimer = null;
+    if (target.isConnected === false || target.getAttribute?.('aria-busy') === 'true')
+      return;
+    updateMessageHash(app, topVisibleFrameID(app, target), { atBottom: isNearBottom(target) });
+  }, 150);
 }
+
+let hashFromScrollTimer = null;
 
 // A bottom marker is only meaningful while the anchored message is still the
 // last message. Once a new frame is appended at the bottom, keep the ordinary

@@ -146,8 +146,9 @@
  * itself, a gesture does not. Three hints, in increasing order of intrusiveness,
  * and all three are cheap because they cost no layout:
  *
- *   `cursor: text`  -- the pointer itself says "this is an editable name", which
- *                      is the standard convention for an inline-editable label;
+ *   `cursor: pointer` -- the pointer itself says "this reacts to a click"
+ *                      (owner change, 2026-11-05: the previous `text` caret read
+ *                      as a passive text field, not as a double-click target);
  *   a hover underline, so the target is identifiable before you commit to a
  *                      double-click;
  *   the `title` tooltip, set by the builder, which spells the gesture out.
@@ -161,7 +162,7 @@
  * ------------------------------------------------------------------------ */
 .kikx-breadcrumb .kikx-breadcrumb__crumb[tabindex],
 .kikx-breadcrumb .kikx-breadcrumb__crumb--active {
-  cursor: text;
+  cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
   touch-action: manipulation;
