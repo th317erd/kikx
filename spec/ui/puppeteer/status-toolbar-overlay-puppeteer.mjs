@@ -86,6 +86,12 @@ function rectProbe(page) {
         return Boolean(next && next.classList?.contains('kikx-debug-toggle'));
       })(),
       stop: rect('.kikx-stop-button'),
+      stopTag: document.querySelector('.kikx-stop-button')?.localName || null,
+      stopDuration: document.querySelector('.kikx-stop-button')?.getAttribute('duration') || null,
+      textareaRight: (() => {
+        const node = document.querySelector('textarea[name="message"]');
+        return node ? node.getBoundingClientRect().right : null;
+      })(),
       composer: rect('.kikx-composer'),
       sendLabel: rect('.kikx-send-button__label'),
       sendHint: rect('.kikx-send-button__hint'),
@@ -120,19 +126,16 @@ function assertShared(bar) {
   assert.ok(bar.actionsDebug, 'Debug lives in the toolbar actions');
   assert.ok(bar.rawNextIsDebug, 'Debug sits immediately after Raw');
 
-  // STOP floats horizontally centered over the composer — the message input
-  // area — on every width. (Not the raw viewport: on desktop the sidebar
-  // shifts the whole thread column right, and centering on the window would
-  // park STOP over the workspace pane.)
-  const composerCenter = bar.composer.x + bar.composer.width / 2;
-  const stopCenter = bar.stop.x + bar.stop.width / 2;
-  assert.ok(Math.abs(stopCenter - composerCenter) <= 2,
-    `STOP must be horizontally centered over the input (stop center ${stopCenter}, composer center ${composerCenter})`);
-  assert.ok(bar.stop.bottom <= bar.textarea.y + 1,
-    `STOP must float above the input field (stop.bottom=${bar.stop.bottom}, textarea.y=${bar.textarea.y})`);
-  assert.ok(bar.stop.bottom <= bar.send.y + 1,
-    'STOP must never share a press zone with Send');
-  assert.ok(bar.stop.height <= 40, `STOP must shrink (height=${bar.stop.height})`);
+  // STOP sits UNDER Send in the actions column as an aeor-progress-button
+  // with a 0.5s hold (owner change, 2026-11-05 — the floating pill is gone).
+  assert.equal(bar.stopTag, 'aeor-progress-button', 'STOP is a hold-to-confirm progress button');
+  assert.equal(bar.stopDuration, '500', 'the hold duration is 0.5s');
+  assert.ok(bar.stop.y >= bar.send.bottom - 1,
+    `STOP must sit under Send (send.bottom=${bar.send.bottom}, stop.y=${bar.stop.y})`);
+  assert.ok(bar.stop.x >= bar.textareaRight - 1,
+    'STOP stays in the actions column, clear of the textarea');
+  assert.ok(bar.stop.height >= 20 && bar.stop.height <= 64,
+    `the ring keeps a sane size (height=${bar.stop.height})`);
 
   // Send reads as two stacked lines: "Send" over "(Enter)".
   assert.ok(bar.sendLabel && bar.sendHint, 'the Send button renders both lines');
@@ -250,6 +253,34 @@ test('Puppeteer status bar + toolbar overflow + floating STOP on mobile and desk
     assert.notEqual(d.actionsDisplay, 'none', 'desktop keeps the actions cluster');
     assert.equal(d.overflowDisplay, 'none', 'no ⋮ on desktop');
     assert.equal(d.documentOverflowX, false, 'nothing overflows horizontally on desktop');
+
+    // The 0.5s hold: releasing early must NOT stop anything; holding through
+    // must fire exactly one confirm. Stub the app handler so no real cancel
+    // request leaves the fixture.
+    await desktop.evaluate(() => {
+      document.querySelector('kikx-app')._cancelAgents = () => {
+        window.__stopConfirms = (window.__stopConfirms || 0) + 1;
+      };
+    });
+    const stopBox = d.stop;
+    const stopX = stopBox.x + stopBox.width / 2;
+    const stopY = stopBox.y + stopBox.height / 2;
+
+    await desktop.mouse.move(stopX, stopY);
+    await desktop.mouse.down();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await desktop.mouse.up();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.equal(await desktop.evaluate(() => window.__stopConfirms || 0), 0,
+      'releasing the hold early must not stop the agents');
+
+    await desktop.mouse.move(stopX, stopY);
+    await desktop.mouse.down();
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    await desktop.mouse.up();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.equal(await desktop.evaluate(() => window.__stopConfirms || 0), 1,
+      'holding through the 0.5s ring must confirm exactly once');
     await desktop.close();
   } finally {
     await browser.close();

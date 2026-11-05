@@ -86,8 +86,7 @@
   cursor: not-allowed;
 }
 
-.kikx-composer__actions .kikx-send-button,
-.kikx-stop-button {
+.kikx-composer__actions .kikx-send-button {
   min-width: 88px;
 }
 
@@ -147,19 +146,24 @@
   color: #c9d4ff;
 }
 
-/* Owner change (2026-11-05): STOP floats, horizontally centered, ABOVE the
-   message input — out of the actions column beside Send, where "it is
-   difficult to press Send without accidentally pressing STOP". The composer is
-   position:relative, so bottom:calc(100% + 8px) parks the pill just over the
-   thread edge, and being absolute it never shifts Send. Also trimmed: the old
-   44px/14px pill was "a little too large". Same placement on desktop and
-   mobile — one rule, no breakpoint. */
+/* STOP under Send as a hold-to-confirm radial (owner change, 2026-11-05 —
+   the floating pill is gone): an <aeor-progress-button> whose ring fills over
+   a 0.5s hold before the stop lands, so cancelling the agents is deliberate.
+   The host only carries the theme vars; the component draws its own circle
+   and hover state from --apb-fill. align-self pulls it to the right edge of
+   the actions column, directly under Send. */
 .kikx-stop-button {
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 8px);
-  transform: translateX(-50%);
-  z-index: 6;
+  --apb-fill: #b91c1c;
+  --apb-track: rgba(248, 113, 113, 0.35);
+  --apb-icon: #ffd9d9;
+  align-self: flex-end;
+}
+
+/* Vendor-less fallback (Node spec harnesses load no /vendor components): the
+   old single-click pill, same class, same action — same dance as the session
+   card's delete control. */
+.kikx-stop-button:not(aeor-progress-button) {
+  min-width: 88px;
   min-height: 34px;
   padding: 0 14px;
   border: 2px solid #7f1d1d;
@@ -173,14 +177,14 @@
   cursor: pointer;
 }
 
-.kikx-stop-button:hover,
-.kikx-stop-button:focus-visible {
+.kikx-stop-button:not(aeor-progress-button):hover,
+.kikx-stop-button:not(aeor-progress-button):focus-visible {
   border-color: #ff6b6b;
   background: #dc2626;
   outline: none;
 }
 
-.kikx-stop-button:active {
+.kikx-stop-button:not(aeor-progress-button):active {
   background: #991b1b;
 }
 

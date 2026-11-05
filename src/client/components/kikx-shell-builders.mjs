@@ -553,17 +553,6 @@ export function buildThreadSection(app, sessionID) {
       // It must NOT be a .kikx-thread child: that grid is a pinned 3-track
       // layout (thread-dock-grid-spec:222) and a 4th child mis-assigns the rows.
       emojiPicker,
-      // Owner change (2026-11-05): STOP floats horizontally centered ABOVE the
-      // input row (absolute in the composer's padding box, app-composer.css),
-      // out of the actions column — "it is difficult to press Send without
-      // accidentally pressing STOP". A direct child of the form is safe: the
-      // composer is a grid, but an absolutely-positioned child takes no track.
-      button
-        .type('button')
-        .class('kikx-stop-button')
-        .title('Cancel all active agents in this session')
-        .ariaLabel('Stop all active agents')
-        .onClick(() => app._cancelAgents?.())( 'STOP'),
       div.class('kikx-composer__input-row')(
         button
           .type('button')
@@ -593,10 +582,43 @@ export function buildThreadSection(app, sessionID) {
               span.class('kikx-send-button__label')('Send'),
               span.class('kikx-send-button__hint')('(Enter)'),
             ),
+          buildStopControl(app),
         ),
       ),
     ),
   );
+}
+
+// STOP under Send in the actions column (owner change, 2026-11-05 — the
+// floating pill is gone): "turn it into an aeor-progress-button, with a 0.5s
+// duration". A half-second HOLD before the stop lands makes cancelling
+// deliberate — the original complaint was one fat press away from killing the
+// agents.
+//
+// The vendored ring fires `confirm` when the hold completes; the vendor-less
+// fallback (the Node spec harnesses load no /vendor components) keeps the old
+// single-click button with the same class and the same handler — the same dance
+// kikx-session-card.mjs makes for its delete control.
+function buildStopControl(app) {
+  let activate = () => app._cancelAgents?.();
+
+  if (typeof customElements !== 'undefined' && customElements.get('aeor-progress-button')) {
+    let control = document.createElement('aeor-progress-button');
+    control.setAttribute('icon', 'close');
+    control.setAttribute('label', 'Stop all active agents');
+    control.setAttribute('title', 'Hold for half a second to stop all active agents');
+    control.setAttribute('duration', '500');
+    control.classList.add('kikx-stop-button');
+    control.addEventListener('confirm', activate);
+    return control;
+  }
+
+  return button
+    .type('button')
+    .class('kikx-stop-button')
+    .title('Stop all active agents in this session')
+    .ariaLabel('Stop all active agents')
+    .onClick(activate)('STOP');
 }
 
 export function buildStatusBar(app) {
