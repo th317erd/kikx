@@ -94,15 +94,43 @@ test('Puppeteer: the Copy quick action puts the raw markdown on the clipboard', 
     const copied = await page.evaluate(() => window.__copied);
     assert.equal(copied, RAW, 'the clipboard received the frame raw markdown, exactly');
 
-    // Feedback: check glyph, then back to the copy icon.
+    // Feedback: check glyph + success green on the WHOLE button, then back.
     await page.waitForFunction(() => {
       const button = document.querySelector('kikx-frame-item[data-frame-id="msg_1"] .kikx-frame__quick-action--copy');
       return button?.querySelector('svg')?.dataset?.icon === 'check';
     }, { timeout: 3000 });
+    // The green is a 140ms transition — wait for it to land before sampling
+    // computed colors, then read class + paint together.
+    await page.waitForFunction(() => {
+      const button = document.querySelector('kikx-frame-item[data-frame-id="msg_1"] .kikx-frame__quick-action--copy');
+      return button && getComputedStyle(button).color === 'rgb(63, 185, 80)';
+    }, { timeout: 2000 });
+    const green = await page.evaluate(() => {
+      const button = document.querySelector('kikx-frame-item[data-frame-id="msg_1"] .kikx-frame__quick-action--copy');
+      const style = getComputedStyle(button);
+      return {
+        hasClass: button.classList.contains('is-copied'),
+        color: style.color,
+        border: style.borderTopColor,
+      };
+    });
+    assert.ok(green.hasClass, 'the success class rides the check flip');
+    assert.equal(green.color, 'rgb(63, 185, 80)', `the icon/glyph turns success green (got ${green.color})`);
+    assert.equal(green.border, 'rgb(63, 185, 80)', `the border joins in (got ${green.border})`);
     await page.waitForFunction(() => {
       const button = document.querySelector('kikx-frame-item[data-frame-id="msg_1"] .kikx-frame__quick-action--copy');
       return button?.querySelector('svg')?.dataset?.icon === 'copy';
     }, { timeout: 4000 });
+    await page.waitForFunction(() => {
+      const button = document.querySelector('kikx-frame-item[data-frame-id="msg_1"] .kikx-frame__quick-action--copy');
+      return button && getComputedStyle(button).color !== 'rgb(63, 185, 80)';
+    }, { timeout: 2000 });
+    const restored = await page.evaluate(() => {
+      const button = document.querySelector('kikx-frame-item[data-frame-id="msg_1"] .kikx-frame__quick-action--copy');
+      return { hasClass: button.classList.contains('is-copied'), color: getComputedStyle(button).color };
+    });
+    assert.equal(restored.hasClass, false, 'the green state leaves with the check');
+    assert.notEqual(restored.color, 'rgb(63, 185, 80)', 'the button returns to its normal chrome');
 
     // User message copies too.
     const user = await page.$('kikx-frame-item[data-frame-id="user_1"]');

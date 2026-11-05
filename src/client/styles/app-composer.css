@@ -455,6 +455,7 @@
   color: #a9b7c3;
   cursor: pointer;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.32);
+  transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
 }
 
 .kikx-frame__quick-action:hover,
@@ -463,6 +464,18 @@
   background: #1c2630;
   color: #e4f3ff;
   outline: none;
+}
+
+/* Success feedback (owner, 2026-11-05): a successful copy turns the WHOLE
+   button success green, not just the check glyph. Same green as the answers
+   use (#3fb950) with a tinted body; the class rides the icon flip and drops
+   when the glyph returns to the double-paper icon. */
+.kikx-frame__quick-action.is-copied,
+.kikx-frame__quick-action.is-copied:hover,
+.kikx-frame__quick-action.is-copied:focus-visible {
+  border-color: #3fb950;
+  background: rgba(63, 185, 80, 0.16);
+  color: #3fb950;
 }
 
 .kikx-frame__quick-action svg {

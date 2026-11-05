@@ -149,11 +149,14 @@ test('clicking Copy writes the raw markdown and flashes the check glyph', async 
       copy.querySelector('svg')?.dataset?.icon === 'check',
       `the glyph flips to a check, got ${copy.querySelector('svg')?.dataset?.icon}`,
     );
+    assert.ok(copy.classList.contains('is-copied'),
+      'the whole button turns success green while the check shows');
 
     // ...and it returns to the copy icon after the beat.
     await sleep(1500);
     assert.equal(copy.querySelector('svg')?.dataset?.icon, 'copy', 'the glyph returns to the double-paper icon');
     assert.equal(copy.title, 'Copy message');
+    assert.ok(!copy.classList.contains('is-copied'), 'the green state leaves with the check');
   } finally {
     if (original)
       Object.defineProperty(globalThis, 'navigator', original);

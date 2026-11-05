@@ -203,12 +203,16 @@ export function buildFrameQuickActions(frame, ownerDocument = document, spec = q
           return;
         }
         setIcon(copy, 'check');
+        // Owner, 2026-11-05: success green on the WHOLE button while the
+        // check shows (styles: .kikx-frame__quick-action.is-copied).
+        copy.classList.add('is-copied');
         copy.title = 'Copied!';
         clearTimeout(copy._copyResetTimer);
         copy._copyResetTimer = setTimeout(() => {
           if (!copy.isConnected)
             return;
           setIcon(copy, 'copy');
+          copy.classList.remove('is-copied');
           copy.title = 'Copy message';
         }, 1400);
       });
