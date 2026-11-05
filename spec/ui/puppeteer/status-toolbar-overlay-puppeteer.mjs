@@ -65,6 +65,7 @@ function rectProbe(page) {
       statsText: stats ? stats.textContent.replace(/\s+/g, '') : null,
       statusbarHasDebug: Boolean(document.querySelector('.kikx-statusbar .kikx-debug-toggle')),
       tokensHasIcon: Boolean(tokens?.querySelector('svg[data-icon="tokens"]')),
+      tokensViewBox: tokens?.querySelector('svg[data-icon="tokens"]')?.getAttribute('viewBox') || null,
       tokensBBox: (() => {
         const path = tokens?.querySelector('svg[data-icon="tokens"] path');
         if (!path) return null;
@@ -105,8 +106,16 @@ function assertShared(bar) {
   assert.ok(bar.tokensHasIcon, 'the tokens cell carries the traced SVG icon');
   assert.ok(bar.tokensBBox && bar.tokensBBox.width > 100 && bar.tokensBBox.height > 100,
     `the tokens icon must draw real geometry, got ${JSON.stringify(bar.tokensBBox)}`);
-  assert.ok(Math.abs((bar.tokensBBox.width / bar.tokensBBox.height) - 1) <= 0.2,
-    `the tokens icon should read as a square glyph, got ${JSON.stringify(bar.tokensBBox)}`);
+  // The glyph follows its viewBox aspect (square circled-T, portrait
+  // crossbar mark — whatever assets/icons/tokens.svg currently traces to),
+  // rather than pinning one specific drawing.
+  {
+    const [ , ,vbWidth, vbHeight ] = String(bar.tokensViewBox || '').split(/\s+/).map(Number);
+    const viewBoxRatio = vbHeight ? vbWidth / vbHeight : NaN;
+    const bboxRatio = bar.tokensBBox.width / bar.tokensBBox.height;
+    assert.ok(Math.abs(bboxRatio - viewBoxRatio) <= 0.1,
+      `the glyph aspect must match its viewBox (bbox ${bboxRatio.toFixed(2)}, viewBox ${viewBoxRatio.toFixed(2)})`);
+  }
   assert.match(bar.tokensText || '', /^\d[\d,]*$/, `the tokens cell is icon + number, got "${bar.tokensText}"`);
   assert.ok(bar.actionsDebug, 'Debug lives in the toolbar actions');
   assert.ok(bar.rawNextIsDebug, 'Debug sits immediately after Raw');
