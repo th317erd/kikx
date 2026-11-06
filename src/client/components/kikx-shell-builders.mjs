@@ -56,6 +56,8 @@ const aeorInput = elements['aeor-input'];
 // S1: the app render entry point. A throwing shell builder must never wedge the
 // app, so the whole build runs inside the error boundary; on failure the
 // previous children are put back so the UI is not left blank.
+import { captureShellChain, captureTreeChain, transplantShellSkeleton } from './shell-skeleton.mjs';
+
 export function renderAppShell(app) {
   countRebuild('shell', {
     reason: app._renderReason || 'unspecified',
@@ -131,14 +133,41 @@ export function renderAppShell(app) {
 
     // Only touch the live DOM once the whole new shell built successfully; a
     // throwing builder must leave the previous DOM and its bindings untouched.
+    //
+    // Fork A / §9.3.13 (DOM identity gate): instead of emptying the app and
+    // appending a fresh tree — which replaced the shell root and sidebar on
+    // every paint — GRAFT the preserved chain (root/main/sidebar/header) into
+    // the new tree and move this paint's fresh leaves into it. Leaves stay
+    // fresh on purpose: static onClick closures capture builder-time values,
+    // and only a rebuild keeps them current. Any structural mismatch (auth
+    // screen, first render) falls back to the historical path untouched.
     app._disconnectFrameListObserver();
-    app._cleanupReactiveBindings();
-    $(app).empty();
+    let transplanted = transplantShellSkeleton({
+      app,
+      tree,
+      previous: captureShellChain(app),
+      next: captureTreeChain(tree),
+      // Discarded leaves get the same teardown the old global cleanup gave
+      // them; the preserved chain's bindings (the root's bound menu class)
+      // stay subscribed.
+      onDiscard: (node) => app._cleanupReactiveBindings(node),
+    });
+    if (!transplanted) {
+      app._cleanupReactiveBindings();
+      $(app).empty();
+      app.appendChild(tree);
+    } else {
+      // A standalone error surface mounted when the shell had none is
+      // superseded now that the shell carries its own again.
+      let shellNode = captureShellChain(app).shell;
+      for (const child of Array.from((app && app.childNodes) || [])) {
+        if (child.nodeType === 1 && child !== shellNode && child.localName === 'kikx-error-surface')
+          child.remove();
+      }
+    }
 
-    app.appendChild(tree);
-    // The rebuild above emptied the app element. The answer notice is mounted
-    // beside the app rather than inside it for exactly that reason, but a view
-    // swap can replace the parent too; re-attach from the live node so a
+    // The answer notice is mounted beside the app rather than inside it, but a
+    // view swap can replace the parent too; re-attach from the live node so a
     // confirmation on screen when the send resolved is not silently dropped.
     reattachAnswerNotice(app);
     let composerInput = app.querySelector?.('textarea[name="message"]');
