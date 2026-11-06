@@ -223,19 +223,61 @@ server restart can end a session between two commands.
 
 ## Unrelated lane failures, and how that was actually established
 
-The browser lanes have pre-existing failures that are not this clamp. Getting
-that attribution right took three attempts, two of which were wrong, so the
-method is recorded rather than just the verdict.
+The browser lanes have failures that are not this clamp — proven pre-existing
+for the two lazy-paging ones, and not shown to be pre-existing for the third
+(see the correction below). Getting that attribution right took four attempts,
+three of which were wrong, so the method is recorded rather than just the
+verdict.
 
-`ui:playwright` is 18 registered / 17 pass / 1 fail at `6738eaea`.
-`ui:puppeteer` is 43 registered / 42 pass / 1 fail.
+`ui:playwright` was 18 registered / 17 pass / 1 fail at `6738eaea`.
+`ui:puppeteer` was 43 registered / 42 pass / 1 fail at `6738eaea`.
 
-The single failure in each lane is in the lazy-paging subsystem:
+The persistent failure in both lanes is in the lazy-paging subsystem:
 `thread-scrollview-playwright.mjs:75` ("follows live tail appends", `follow:
 false`, ~11.9 s) and `filtered-lazy-scroll-puppeteer.mjs` ("keeps a filtered
 frame anchored while lazy pages load above it", ~12.8 s). Both are vertical
-scroll-anchoring behaviour while pages insert; neither is width-sensitive, which
-is why the clamp was a poor suspect from the start.
+scroll-anchoring behaviour while pages insert; neither asserts frame width,
+which is why the clamp was a poor suspect from the start.
+
+**Correction, measured later.** The failure *count* is not stable, so "the
+single failure in each lane" was too strong. A fresh full lane at `9b7c4752`
+returned FAIL 41/43 with **two** failures: `filtered-lazy-scroll` again, and
+`frame-bottom-scroll-puppeteer.mjs` ("keeps the last card border inside the
+scrolled thread", `the last border is clipped by 777.38px`, 4573 ms). The
+second is a *geometry* assertion, so any implication that no geometry check
+fails in-lane does not hold.
+
+The first draft of this paragraph claimed that failure "flips only under lane
+concurrency, on both sides of the change". The logs refute it, so it is
+corrected here rather than quietly deleted:
+
+| in-lane run | `frame-bottom-scroll` |
+| --- | --- |
+| baseline `43cc56de`, no clamp | pass, 4828 ms |
+| no-clamp arm (43 registered) | pass, 5734 ms |
+| clamp arm | pass, 4476 ms |
+| `6738eaea`, clamp | pass, 4984 ms |
+| `9b7c4752`, clamp | **fail**, 4573 ms |
+
+It passed in-lane four times, on both sides of the clamp, including both
+no-clamp arms. So the clamp is not its cause — and, just as importantly,
+"lane concurrency" is not a *demonstrated* cause either: this is one failing
+sample out of five. The failing run was not slower than the passing runs
+(4573 ms against 4476–5734 ms), so a timing argument cannot separate them; it
+only shows the spec is heavily contended in-lane. It also passes 2/2 solo
+(1171 ms, 1065 ms) at the failing HEAD.
+
+No thread-geometry CSS differs across the range that contains the failure:
+`app-base-shell.css`, `app-thread.css`, `app-composer.css` and `mobile.css` are
+byte-identical between `6738eaea` and `9b7c4752`; only `app-views.css` changed,
+and it styles the settings views. That rules out a thread-layout change as the
+cause without establishing what the cause is.
+
+**Unverified: the mechanism.** The two assertions in that spec are mutually
+inconsistent — `remaining <= 1` passed while the last card's bottom sat 777 px
+below the list's bottom — which reads as a stale or partial layout snapshot
+rather than a narrow box. That is an inference from one failing sample, not a
+measurement, and it is not enough to call the test flaky or the product wrong.
 
 Two wrong methods, in order:
 
@@ -253,7 +295,7 @@ concurrency**. Two independent baseline setups agree.
 | lane | baseline `43cc56de`, clone (no clamp) | HEAD `6738eaea` (clamp) |
 | --- | --- | --- |
 | `ui:playwright` | FAIL 17/18 — `thread-scrollview-playwright` | FAIL 17/18 — same test |
-| `ui:puppeteer` | FAIL 37/40 — `filtered-lazy-scroll`, `frame-quote`, `frame-window` | FAIL 42/43 — `filtered-lazy-scroll` only |
+| `ui:puppeteer` | FAIL 37/40 — `filtered-lazy-scroll`, `frame-quote`, `frame-window` | FAIL 42/43 — `filtered-lazy-scroll` only; also `frame-bottom-scroll` at `9b7c4752` |
 
 Both failing specs fail at a commit that does not contain the change, in the
 same place, with the same signature. `distanceFromBottom` moves (4591 without the
