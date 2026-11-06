@@ -172,3 +172,48 @@
 .kikx-settings-open {
   white-space: nowrap;
 }
+
+/* System Settings (campaign S1): the mode reuses the .kikx-view-header family
+   for its heading; only the tab row and body are new surface. */
+.kikx-system-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 20px 24px;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+.kikx-system-settings__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.kikx-system-settings__tab {
+  appearance: none;
+  background: transparent;
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.kikx-system-settings__tab:hover {
+  border-color: rgba(255, 255, 255, 0.34);
+}
+
+.kikx-system-settings__tab--active {
+  border-color: rgba(255, 255, 255, 0.55);
+  font-weight: 600;
+}
+
+.kikx-system-settings__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 640px;
+}

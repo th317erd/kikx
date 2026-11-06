@@ -131,7 +131,7 @@ test('stack URL round-trips', () => {
 
 test('VIEW_NAMES lists every addressable non-session view', async () => {
   const { VIEW_NAMES } = await import('../../src/client/state/navigation-stack.mjs');
-  assert.deepEqual(VIEW_NAMES, [ 'inbox', 'agents', 'teams' ]);
+  assert.deepEqual(VIEW_NAMES, [ 'inbox', 'agents', 'teams', 'settings' ]);
 });
 
 test('a removed view name is refused, not accepted as a dangling entry', async () => {

@@ -32,6 +32,7 @@ import {
   createNavigationStack,
   isInboxView,
   pushInbox,
+  pushSystemSettings,
   pushView,
   currentViewName,
   scopeSessionID,
@@ -347,6 +348,13 @@ export function navigateBack(state = kikxState) {
 // --- Inbox navigation (plan §6) -----------------------------------------
 export function navigateInbox(state = kikxState) {
   state.navigationStack = pushInbox(getNavigationStack(state));
+}
+
+// Campaign S1: the gear and the sidebar row both land here. Mirrors
+// navigateInbox exactly — the state layer owns the transition, callers only
+// request the render.
+export function navigateSystemSettings(state = kikxState) {
+  state.navigationStack = pushSystemSettings(getNavigationStack(state));
 }
 
 export function isInboxOpen(state = kikxState) {

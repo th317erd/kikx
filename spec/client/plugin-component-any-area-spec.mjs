@@ -424,7 +424,13 @@ test('the Settings mount is reachable from the shell, not just exported', async 
   let shell = await source('src/client/components/kikx-shell-builders.mjs');
   let editors = await source('src/client/components/kikx-editors.mjs');
 
-  assert.match(topbar, /_openSettings/, 'the top bar must offer a way to open Settings');
+  // Campaign S1 navigation contract (replaces the old `_openSettings`
+  // expectation): the topbar gear opens the System Settings MODE, not the
+  // dialog. The dialog path itself stays in code — openSettings, the app
+  // binding and the shell mount are all asserted below — but the bar must
+  // reach navigation, and only navigation.
+  assert.match(topbar, /navigateSystemSettings\(app\._state\)/,
+    'the top bar must navigate to System Settings');
   assert.match(editors, /export function openSettings\(/, 'openSettings must exist');
   assert.match(editors, /state\.settingsOpen = true/, 'openSettings must set the flag the shell reads');
   assert.match(app, /this\._openSettings =/, 'the app must bind openSettings');

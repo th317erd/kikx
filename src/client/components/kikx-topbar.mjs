@@ -42,6 +42,7 @@ import {
   consumeNavigationClickGuard,
 } from './session-name-gestures.mjs';
 import { createIcon } from '../lib/icons.mjs';
+import { navigateSystemSettings } from '../state/kikx-state.mjs';
 import { stateHasFilters } from '../lib/frame-filters.mjs';
 import { buildScrollLockToolbar } from './kikx-scroll-lock.mjs';
 // ONE shared contract for the rename field's `name` (owner item 2). The bar used
@@ -368,8 +369,8 @@ export function buildTopbarActions(app, sessionID = null) {
     // Same control, same handler, new home -- immediately after Raw.
     debugToggleButton(app),
     sessionID ? participantsNode(app, sessionID) : null,
-    // Opens the Settings dialog, which is the mount point for plugin
-    // 'settings-panel' descriptors. Deliberately in the bar and NOT the sidebar:
+    // The gear opens the System Settings MODE — same layout, reusing the
+    // sidebar (campaign S1). Deliberately in the bar and NOT the sidebar:
     // the sidebar cluster is pinned at five items by two specs, and Settings is an
     // application-level surface rather than a view into the session tree.
     settingsOpenButton(app),
@@ -413,8 +414,15 @@ function settingsOpenButton(app) {
   return button
     .type('button')
     .class('kikx-settings-open')
-    .title('Settings — including panels contributed by plugins')
-    .onClick(app._openSettings)('Settings');
+    .title('System Settings')
+    .ariaLabel('System Settings')
+    .onClick(() => {
+      // Campaign S1: navigation, not the dialog. The dialog path
+      // (settingsOpen/_buildSettingsDialog) stays in code but this entry point
+      // no longer reaches it — the spec asserts exactly that split.
+      navigateSystemSettings(app._state);
+      app._requestRender();
+    })(createIcon('gear'));
 }
 
 function addButton(app, sessionID) {

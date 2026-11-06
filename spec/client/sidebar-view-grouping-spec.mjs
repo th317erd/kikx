@@ -77,7 +77,7 @@ test('view descriptors render the shared view class, not kikx-sign-out-button', 
   let cluster = buildSidebarSessionObjects(app, { group: 'view' });
 
   let rows = buttons(cluster);
-  assert.equal(rows.length, 2, 'the view cluster holds Agents and Teams');
+  assert.equal(rows.length, 3, 'the view cluster holds Agents, Teams and System Settings');
 
   for (let row of rows) {
     assert.ok(classesOf(row).includes('kikx-sidebar__view'),
@@ -106,7 +106,7 @@ test('the footer cluster never renders a view row, and vice versa', () => {
   let view = buttons(buildSidebarSessionObjects(app, { group: 'view' })).map((node) => node.textContent);
   let footer = buttons(buildSidebarSessionObjects(app, { group: 'footer' })).map((node) => node.textContent);
 
-  assert.deepEqual(view.sort(), [ 'Agents', 'Teams' ]);
+  assert.deepEqual(view.sort(), [ 'Agents', 'System Settings', 'Teams' ]);
   assert.deepEqual(footer.sort(), [ 'Account', 'Sign out' ]);
   for (let label of view)
     assert.ok(!footer.includes(label), `${label} must not appear in the footer cluster`);
@@ -122,7 +122,7 @@ test('view row textContent is exactly the label, with no stray whitespace', () =
   let cluster = buildSidebarSessionObjects(app, { group: 'view' });
 
   let texts = buttons(cluster).map((node) => node.textContent);
-  assert.deepEqual(texts, [ 'Agents', 'Teams' ]);
+  assert.deepEqual(texts, [ 'Agents', 'Teams', 'System Settings' ]);
   for (let text of texts)
     assert.equal(text, text.trim(), `"${text}" must not need trimming to match`);
 });
@@ -171,7 +171,7 @@ test('the ownership seam still runs for BOTH clusters', () => {
 
   let unfilteredView = buildSidebarSessionObjects(app, { group: 'view' });
   let unfilteredFooter = buildSidebarSessionObjects(app, { group: 'footer' });
-  assert.equal(buttons(unfilteredView).length, 2, 'CONTROL: with no filter the view cluster is kept');
+  assert.equal(buttons(unfilteredView).length, 3, 'CONTROL: with no filter the view cluster is kept');
   assert.equal(buttons(unfilteredFooter).length, 2, 'CONTROL: with no filter the footer cluster is kept');
 });
 
@@ -182,7 +182,7 @@ test('a selective filter drops only the rows it rejects', () => {
   let denyTeams = (item) => item.id !== 'teams';
 
   let cluster = buildSidebarSessionObjects(app, { group: 'view', scopeFilter: denyTeams });
-  assert.deepEqual(buttons(cluster).map((node) => node.textContent), [ 'Agents' ]);
+  assert.deepEqual(buttons(cluster).map((node) => node.textContent), [ 'Agents', 'System Settings' ]);
 });
 
 test('selecting a view row calls its own action, once', () => {

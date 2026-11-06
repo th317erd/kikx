@@ -129,17 +129,18 @@ function buildShellAt(sessionID) {
 
 // --- the seam is reached from a production entry point ---------------------
 
-test('buildRunnerShell passes a real scope predicate to BOTH sidebar clusters', () => {
+test('buildRunnerShell passes a real scope predicate to ALL sidebar clusters', () => {
   let { calls } = buildShellAt('G');
 
-  assert.equal(calls.length, 2,
-    'the shell builds exactly two session-object clusters (view + footer)');
+  assert.equal(calls.length, 3,
+    'the shell builds exactly three session-object clusters (view + plugins + footer)');
 
   let byGroup = Object.fromEntries(calls.map((call) => [ call.group, call ]));
   assert.ok(byGroup.view, 'the view cluster was built');
+  assert.ok(byGroup.plugins, 'the plugins cluster was built (§9.1.4)');
   assert.ok(byGroup.footer, 'the footer cluster was built');
 
-  for (let group of [ 'view', 'footer' ]) {
+  for (let group of [ 'view', 'plugins', 'footer' ]) {
     assert.equal(typeof byGroup[group].scopeFilter, 'function',
       `the ${group} cluster must be handed a scope filter, not left to grant-all`);
   }
@@ -182,12 +183,12 @@ test('root grants the whole cluster, chip included -- it owns everything below i
   let items = buildSessionObjectItems(appAt(null));
   let kept = filterSessionObjectItems(items, scopeFilter);
 
-  assert.equal(items.length, 5, 'the cluster has five descriptors');
-  assert.equal(kept.length, 5,
+  assert.equal(items.length, 6, 'the cluster has six descriptors');
+  assert.equal(kept.length, 6,
     'root must not be filtered to nothing: createSessionScope(null) has an empty owner set, so a raw predicate would blank the sidebar here');
 
   let ids = kept.map((item) => item.id);
-  for (let expected of [ 'account-chip', 'account', 'agents', 'teams', 'sign-out' ])
+  for (let expected of [ 'account-chip', 'account', 'agents', 'teams', 'system-settings', 'sign-out' ])
     assert.ok(ids.includes(expected), `root kept "${expected}"`);
 });
 

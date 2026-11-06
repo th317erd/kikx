@@ -224,7 +224,7 @@ test('Puppeteer status bar + toolbar overflow + floating STOP on mobile and desk
       return {
         hasRaw: text.includes('Raw'),
         hasDebug: text.includes('Debug'),
-        hasSettings: text.includes('Settings'),
+        hasSettings: Boolean(panel.querySelector('.kikx-settings-open')),
         hasAdd: /\+\s*Add/.test(text),
         dividerCount: panel.querySelectorAll('.kikx-overflow__divider').length,
         embeddedPanelVisible: (() => {

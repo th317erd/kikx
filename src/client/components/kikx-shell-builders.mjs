@@ -332,6 +332,10 @@ export function buildRunnerShell(app) {
         // 'Session View' items. They are views into the session tree, so
         // they render here with Inbox and Activities, above the tree.
         buildSidebarSessionObjects(app, { group: 'view', scopeFilter }),
+        // §9.1.4 (campaign S1): plugin-owned rows cluster under their own
+        // PLUGINS heading; the builder returns null while none exist, so no
+        // orphan heading and no empty box. Same scope filter as every cluster.
+        buildSidebarSessionObjects(app, { group: 'plugins', scopeFilter }),
         // Owner points 2, 5, 6: the identity controls stay at the FOOT of the
         // session-tree pane (CSS pushes them down with `margin-top: auto`). All
         // five are session objects, so they live in this pane and nowhere else --

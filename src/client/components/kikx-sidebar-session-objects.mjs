@@ -42,12 +42,13 @@
 // either side renames.
 
 import { elements } from '../lib/aeor-ui.mjs';
+import { navigateSystemSettings } from '../state/kikx-state.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { getScopeSessionID, isViewOpen, navigateView } from '../state/kikx-state.mjs';
 import { listSidebarItemSurfaces } from './client-view-surfaces.mjs';
 import { createSessionScope, sessionIDOf } from '../state/session-scope.mjs';
 
-const { div, span, button } = elements;
+const { div, h2, span, button } = elements;
 
 // Owner item 2 (2026-10-27): "Agents and Teams should go up into the 'Session
 // View' items." The five controls therefore split into two clusters:
@@ -62,7 +63,7 @@ const { div, span, button } = elements;
 // `onSelect` are unchanged by this split: the label text is load-bearing
 // (`clickButtonByText(page, 'Teams'|'Agents')` in seven stagehand specs) and the
 // scope id is what Prong B's predicate consumes.
-export const SESSION_OBJECT_GROUPS = Object.freeze(['view', 'footer']);
+export const SESSION_OBJECT_GROUPS = Object.freeze(['view', 'plugins', 'footer']);
 
 // `scopeSessionID === null` means "not scoped to a session" -- the user account
 // is the one item owner point 5 exempts. Everything else is scoped to the session
@@ -108,6 +109,21 @@ export function buildSessionObjectItems(app) {
       active: isViewOpen('teams', app?._state),
       onSelect: () => app._openTeamManager(),
     },
+    // Campaign S1: System Settings is a first-class mode (the annotated gear's
+    // sidebar twin). Core row, so it lives in the view group with
+    // Inbox/Agents/Teams — NOT in the plugins cluster, which is plugin-owned.
+    {
+      id: 'system-settings',
+      kind: 'button',
+      group: 'view',
+      label: 'System Settings',
+      scopeSessionID,
+      active: isViewOpen('settings', app?._state),
+      onSelect: () => {
+        navigateSystemSettings(app?._state);
+        app?._requestRender?.();
+      },
+    },
     {
       id: 'sign-out',
       kind: 'button',
@@ -118,9 +134,10 @@ export function buildSessionObjectItems(app) {
     },
     // Campaign P4: a plugin sidebar entry navigates and shows active state with
     // no core shell edit. Appended AFTER the core view rows so the built-in
-    // cluster keeps its established order, and marked group 'view' so it gets the
-    // same styling and the same scope filtering as Inbox/Agents/Teams -- a plugin
-    // row is a view into the session tree like the others, not a privileged one.
+    // cluster keeps its established order. Campaign S1 (§9.1.4) re-homes plugin
+    // rows to their own 'plugins' group so they render under a PLUGINS heading:
+    // presentation only — same scope filtering, same row rendering, one heading
+    // that only exists while a plugin-owned row does.
     ...buildPluginViewItems(app, scopeSessionID),
   ];
 }
@@ -140,7 +157,7 @@ function buildPluginViewItems(app, scopeSessionID) {
     .map((descriptor) => ({
       id: descriptor.surfaceID,
       kind: 'button',
-      group: 'view',
+      group: 'plugins',
       label: typeof descriptor.label === 'string' && descriptor.label.trim() !== ''
         ? descriptor.label.trim()
         : descriptor.surfaceID,
@@ -264,7 +281,11 @@ function renderItem(item) {
   if (item.kind === 'chip')
     return span.class('kikx-account-chip')(item.label);
 
-  if (item.group === 'view')
+  // Plugin rows present exactly like view rows — the 'plugins' group changes
+  // WHICH cluster they render under (and gives them the §9.1.4 heading), never
+  // their row styling. Without this they would fall into the footer branch and
+  // wear Sign-out styling (the defect this split once fixed, reintroduced).
+  if (item.group === 'view' || item.group === 'plugins')
     return button
       .type('button')
       .class(`kikx-sidebar__view${item.active ? ' kikx-sidebar__view--active' : ''}`)
@@ -302,7 +323,7 @@ export function buildSidebarSessionObjects(app, { scopeFilter = null, group = nu
   let modifier = (group === null || group === undefined) ? '' : ` kikx-session-objects--${group}`;
   let className = `kikx-session-objects${modifier}`;
 
-  return guardClientOperation('kikx-sidebar.session-objects', () => {
+  let rendered = guardClientOperation('kikx-sidebar.session-objects', () => {
     let items = itemsForGroup(
       filterSessionObjectItems(
         buildSessionObjectItems(app),
@@ -312,6 +333,25 @@ export function buildSidebarSessionObjects(app, { scopeFilter = null, group = nu
       group,
     );
 
+    // §9.1.4 (campaign S1): plugin-owned rows get their own PLUGINS heading,
+    // rendered ONLY while such a row exists — no orphan heading, and an empty
+    // cluster is null (the shell skips the child), never a stray empty box.
+    if (group === 'plugins') {
+      if (items.length === 0)
+        return null;
+      return div.class(className)(
+        div.class('kikx-sessions__header')(h2('PLUGINS')),
+        ...items.map(renderItem),
+      ).build(document);
+    }
+
     return div.class(className)(...items.map(renderItem)).build(document);
-  }, { surface: 'sidebar' }) || div.class(className)().build(document);
+  }, { surface: 'sidebar' });
+
+  // The plugins cluster is conditional by design: a guard failure or an empty
+  // cluster yields no child at all. The other clusters keep the historical
+  // empty-container fallback.
+  if (group === 'plugins')
+    return rendered || null;
+  return rendered || div.class(className)().build(document);
 }

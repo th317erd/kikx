@@ -36,6 +36,7 @@
 
 import { buildInboxView } from './kikx-inbox-view.mjs';
 import { buildAgentsView, buildTeamsView } from './kikx-agent-team-views.mjs';
+import { buildSystemSettingsView } from './kikx-system-settings-view.mjs';
 import {
   CORE_VIEW_SURFACE_IDS,
   getRegisteredViewNames,
@@ -66,6 +67,9 @@ const CORE_VIEW_BUILDERS = new Map([
   [ 'inbox', (app) => buildInboxView(app) ],
   [ 'agents', (app) => buildAgentsView(app) ],
   [ 'teams', (app) => buildTeamsView(app) ],
+  // System Settings (campaign S1): a core MODE through the same table — adding
+  // it was a data edit, not a new shell branch (the P7 grep gate holds).
+  [ 'settings', (app) => buildSystemSettingsView(app) ],
 ]);
 
 // Forget one surface's element, for an explicit teardown or a plugin upgrade that

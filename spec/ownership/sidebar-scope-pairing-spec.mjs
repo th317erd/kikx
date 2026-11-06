@@ -60,7 +60,7 @@ function appViewing(leafSessionID) {
   };
 }
 
-const ALL_IDS = [ 'account-chip', 'account', 'agents', 'teams', 'sign-out' ];
+const ALL_IDS = [ 'account-chip', 'account', 'agents', 'teams', 'system-settings', 'sign-out' ];
 
 test('the sidebar descriptors carry the viewed session id on every non-chip row', () => {
   let items = buildSessionObjectItems(appViewing('S-VIEW'));
@@ -71,7 +71,7 @@ test('the sidebar descriptors carry the viewed session id on every non-chip row'
   // expressible at all.
   assert.deepEqual(
     items.map((item) => item.scopeSessionID),
-    [ null, 'S-VIEW', 'S-VIEW', 'S-VIEW', 'S-VIEW' ],
+    [ null, 'S-VIEW', 'S-VIEW', 'S-VIEW', 'S-VIEW', 'S-VIEW' ],
   );
 });
 
@@ -84,7 +84,7 @@ test('scope.predicate is the seam-shaped pairing and keeps the scoped rows', () 
   // The chip is unscoped by owner point 5, so a scope filter drops it. That is
   // the documented answer, and it is why the shipped sidebar does NOT wire this
   // filter yet: see the note at the end of this file.
-  assert.deepEqual(kept.map((item) => item.id), [ 'account', 'agents', 'teams', 'sign-out' ]);
+  assert.deepEqual(kept.map((item) => item.id), [ 'account', 'agents', 'teams', 'system-settings', 'sign-out' ]);
 });
 
 test('scope.filter passed as the per-item predicate throws instead of keeping everything', () => {
@@ -145,7 +145,7 @@ test('an unscoped viewer keeps nothing, loudly or quietly, never everything', ()
   assert.equal(nullScope.owns('S-VIEW'), false);
 });
 
-test('the sidebar grants all five, because the ROOT carve-out grants them', () => {
+test('the sidebar grants all six, because the ROOT carve-out grants them', () => {
   let items = buildSessionObjectItems(appViewing('S-VIEW'));
 
   // An absent filter is identity. That legacy call shape stays pinned, but it is
@@ -159,7 +159,7 @@ test('the sidebar grants all five, because the ROOT carve-out grants them', () =
   let rootItems = buildSessionObjectItems(appViewing(null));
   assert.deepEqual(
     rootItems.map((item) => item.scopeSessionID),
-    [ null, null, null, null, null ],
+    [ null, null, null, null, null, null ],
     'at the root every descriptor is unscoped',
   );
 

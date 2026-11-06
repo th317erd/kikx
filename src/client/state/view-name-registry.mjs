@@ -26,7 +26,7 @@
 // The surfaces core still owns. This is both the fallback vocabulary and the
 // reserved set: a plugin descriptor may not take one of these ids, because "the
 // Inbox" is not a thing a plugin gets to redefine by registering a colliding id.
-export const CORE_VIEW_SURFACE_IDS = Object.freeze([ 'inbox', 'agents', 'teams' ]);
+export const CORE_VIEW_SURFACE_IDS = Object.freeze([ 'inbox', 'agents', 'teams', 'settings' ]);
 
 // Names contributed by the descriptors currently served. null means "nothing has
 // been served yet", which is distinct from "served and empty" only for the sake of

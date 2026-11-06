@@ -125,8 +125,8 @@ test('a plugin view name is refused when that plugin is not installed', () => {
 
 test('the frozen VIEW_NAMES list is still the core default, unmodified', () => {
   // Guards against "fixing" dispatch by quietly editing the core vocabulary.
-  assert.deepEqual(VIEW_NAMES, [ 'inbox', 'agents', 'teams' ]);
-  assert.deepEqual([ ...CORE_VIEW_SURFACE_IDS ], [ 'inbox', 'agents', 'teams' ]);
+  assert.deepEqual(VIEW_NAMES, [ 'inbox', 'agents', 'teams', 'settings' ]);
+  assert.deepEqual([ ...CORE_VIEW_SURFACE_IDS ], [ 'inbox', 'agents', 'teams', 'settings' ]);
 });
 
 // --- 2/3. dispatch resolves without a core branch on the name ------------
@@ -321,11 +321,15 @@ test('the sidebar renders a plugin row that is wired and reflects active state',
   let row = items.find((item) => item.id === 'metrics-link');
   assert.ok(row, 'the plugin sidebar row must be in the item list');
   assert.equal(row.label, 'Metrics');
-  assert.equal(row.group, 'view', 'a plugin row belongs in the view cluster, not the footer');
+  assert.equal(row.group, 'plugins', 'a plugin row belongs in the plugins cluster (§9.1.4), not the footer');
 
-  // Core rows keep their established order ahead of plugin rows.
+  // Core rows keep their established order in the view cluster; the plugin row
+  // re-homes to the plugins cluster (§9.1.4) with its own PLUGINS heading.
   let order = items.filter((item) => item.group === 'view').map((item) => item.id);
-  assert.deepEqual(order, [ 'agents', 'teams', 'metrics-link' ]);
+  assert.deepEqual(order, [ 'agents', 'teams', 'system-settings' ]);
+  let pluginOrder = items.filter((item) => item.group === 'plugins').map((item) => item.id);
+  assert.deepEqual(pluginOrder, [ 'metrics-link' ],
+    'the plugin row renders under the plugins cluster');
 
   // Wiring: selecting the row pushes its view. Asserted on the resulting stack so
   // a no-op handler cannot pass.

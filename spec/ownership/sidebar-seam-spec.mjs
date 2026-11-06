@@ -99,17 +99,17 @@ test('the root view keeps its whole cluster', () => {
   // navigationStack empty -> every row's scopeSessionID is null.
   let app = { _state: { navigationStack: [], account: { name: 'w' } } };
   let items = buildSessionObjectItems(app);
-  assert.equal(items.length, 5);
+  assert.equal(items.length, 6);
   assert.equal(items.every((item) => item.scopeSessionID === null), true);
 
   let kept = filterSessionObjectItems(items, scopeFilterFor(null), app._state);
-  assert.equal(kept.length, 5);
+  assert.equal(kept.length, 6);
 });
 
 test('a leaf view keeps the cluster and leaves the account chip first', () => {
   let app = { _state: { navigationStack: [{ sessionID: 'G' }], account: { name: 'w' } } };
   let kept = filterSessionObjectItems(buildSessionObjectItems(app), scopeFilterFor('G'), app._state);
-  assert.equal(kept.length, 5);
+  assert.equal(kept.length, 6);
   assert.equal(kept[0].id, 'account-chip');
 });
 
@@ -123,7 +123,7 @@ test('CONTROL: a constant-true filter passes the count and fails the denials', (
 
   // And the same no-op filter is indistinguishable by count on the real cluster.
   let app = { _state: { navigationStack: [{ sessionID: 'G' }], account: { name: 'w' } } };
-  assert.equal(filterSessionObjectItems(buildSessionObjectItems(app), alwaysTrue, app._state).length, 5);
+  assert.equal(filterSessionObjectItems(buildSessionObjectItems(app), alwaysTrue, app._state).length, 6);
 });
 
 test('CONTROL: the null-grant variant is wrong at root, and this spec says so', () => {
@@ -135,7 +135,7 @@ test('CONTROL: the null-grant variant is wrong at root, and this spec says so', 
 
   // Leaf view: looks fine (the cluster is all self-scoped, plus the chip).
   let leaf = { _state: { navigationStack: [{ sessionID: 'G' }], account: { name: 'w' } } };
-  assert.equal(filterSessionObjectItems(buildSessionObjectItems(leaf), nullGrant, leaf._state).length, 5);
+  assert.equal(filterSessionObjectItems(buildSessionObjectItems(leaf), nullGrant, leaf._state).length, 6);
 
   // Root view: every scoped row is null too, so this variant cannot tell the
   // global chip from a root-owned row and would grant an unrelated null row.

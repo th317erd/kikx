@@ -174,6 +174,13 @@ export function pushInbox(stack) {
   return pushView(stack, 'inbox');
 }
 
+// System Settings (campaign S1) is a MODE, not a dialog: same layout, reusing
+// the sidebar. Same mechanism as Inbox — a stack entry, so Back leaves it and
+// `?view=settings` addresses it for free off the live registry.
+export function pushSystemSettings(stack) {
+  return pushView(stack, 'settings');
+}
+
 // The parent session ID for the current level's grid, i.e. the session whose
 // children the current entry lists. Root lists top-level (parentSessionID null).
 export function gridParentSessionID(stack) {

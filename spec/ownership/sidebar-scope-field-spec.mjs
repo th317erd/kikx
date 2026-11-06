@@ -83,15 +83,15 @@ test('a real cluster survives the predicate at a leaf, and root keeps everything
   // THE REGRESSION, stated precisely. Two facts have to be asserted separately
   // because they fail for different reasons:
   //
-  //   1. The four SCOPED controls must survive ownership. Before the field fix
-  //      they resolved to '' and all four vanished — which is the blank sidebar.
+  //   1. The five SCOPED controls must survive ownership. Before the field fix
+  //      they resolved to '' and all five vanished — which is the blank sidebar.
   //   2. The account chip is unscoped (scopeSessionID === null), so ownership
   //      can never vouch for it. Keeping it needs the identity carve-out on top,
   //      which is the seam spec's trap 1.
   //
-  // Asserting "5 of 5" from the bare scope would blur those together and, as
+  // Asserting "6 of 6" from the bare scope would blur those together and, as
   // measured, fails at the leaf for the legitimate reason.
-  let scopedIDs = [ 'account', 'agents', 'teams', 'sign-out' ];
+  let scopedIDs = [ 'account', 'agents', 'teams', 'system-settings', 'sign-out' ];
 
   for (let viewer of [ 'G', 'C', 'P' ]) {
     let app = appViewing(viewer);
@@ -99,7 +99,7 @@ test('a real cluster survives the predicate at a leaf, and root keeps everything
     let kept = createSessionScope(viewer, SESSIONS).filter(items);
 
     assert.deepEqual(kept.map((item) => item.id), scopedIDs,
-      `viewer ${viewer} must keep all four scoped controls (pre-fix: none of them)`);
+      `viewer ${viewer} must keep all five scoped controls (pre-fix: none of them)`);
   }
 
   // The contract the shell owner must implement, exactly as sidebar-seam-spec
@@ -116,8 +116,8 @@ test('a real cluster survives the predicate at a leaf, and root keeps everything
     let app = appViewing(viewer);
     let kept = buildSessionObjectItems(app).filter((item) => scopeFilterFor(viewer)(item, item.scopeSessionID));
 
-    assert.equal(kept.length, 5,
-      `viewer ${String(viewer)} keeps all five through the contract filter, kept: ${kept.map((i) => i.id).join(',') || '(none)'}`);
+    assert.equal(kept.length, 6,
+      `viewer ${String(viewer)} keeps all six through the contract filter, kept: ${kept.map((i) => i.id).join(',') || '(none)'}`);
     assert.equal(kept[0].id, 'account-chip', 'the account chip stays first');
   }
 });
