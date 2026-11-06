@@ -457,6 +457,15 @@ kikx-app {
 .kikx-thread__body {
   position: relative;
   display: grid;
+  /* A single EXPLICIT column. Without it the column is implicit and auto-sized,
+     so it grows to the widest descendant's min-content. Measured while the
+     message scrollview mounts: a 3678px track inside this 2241px box (body
+     scrollWidth 3714 vs clientWidth 2241). A right-aligned UserMessage
+     (margin-left: auto) anchors to the far edge of that widened track and lands
+     past the list's overflow-x: hidden clip: measured left=3222 right=3799 on a
+     2523px window, off-window and unreachable by scrolling, because this box
+     clips rather than scrolls. mobile.css already clamps below 640px. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   padding: 18px;
