@@ -23,7 +23,7 @@
 import { elements } from '../lib/aeor-ui.mjs';
 import { buildViewBackButton } from './kikx-view-chrome.mjs';
 
-const { button, div, h3, h2, header, p, section } = elements;
+const { div, h3, h2, header, p, section } = elements;
 
 // The base sections, in tab order. S2 unions plugin-contributed sections on
 // top (stable by surfaceID); General is always present because it is the
@@ -58,29 +58,47 @@ export function setSettingsSection(state, sectionName, available = SETTINGS_SECT
 
 export function buildSystemSettingsView(app) {
   let state = app?._state || {};
-  let active = getSettingsSection(state);
 
   return section.class('kikx-system-settings')(
     buildViewBackButton(app),
     header.class('kikx-view-header')(
       h2.class('kikx-view-header__title')('System Settings'),
     ),
-    // Tab row: same visual family as the view header controls. The active
-    // state is a class, and the click writes app state then asks for a render
-    // — the pattern every sidebar navigation row uses.
-    div.class('kikx-system-settings__tabs')(
-      ...SETTINGS_SECTIONS.map((sectionName) => button
-        .type('button')
-        .class(`kikx-system-settings__tab${sectionName === active ? ' kikx-system-settings__tab--active' : ''}`)
-        .onClick(() => {
-          setSettingsSection(state, sectionName);
-          app?._requestRender?.();
-        })(sectionName)),
-    ),
+    // Owner correction: sections ride the framework's TabbedView
+    // (<aeor-tab-view>), not a hand-rolled button row. The component switches
+    // tab visibility itself; the tab-change listener only PERSISTS the choice
+    // into app state — deliberately without a re-render, so keyboard focus
+    // stays on the tab the user just clicked. State stays authoritative: the
+    // next paint re-derives `active` through the clamp.
     div.class('kikx-system-settings__body')(
-      buildSettingsSectionBody(active, state, app),
+      buildSettingsTabView(state, app),
     ),
   ).build(document);
+}
+
+function buildSettingsTabView(state, app) {
+  let tabView = document.createElement('aeor-tab-view');
+  tabView.setAttribute('active', getSettingsSection(state));
+
+  for (const sectionName of SETTINGS_SECTIONS) {
+    const tab = document.createElement('aeor-tab');
+    tab.setAttribute('name', sectionName);
+    tab.setAttribute('label', sectionName);
+    const body = buildSettingsSectionBody(sectionName, state, app);
+    tab.appendChild(body && typeof body.build === 'function' ? body.build(document) : body);
+    tabView.appendChild(tab);
+  }
+
+  // Bubbles from the component's switchTo(). Persist only — the component has
+  // already moved the visibility, and a rebuild here would steal focus.
+  // Unknown names are refused inside setSettingsSection (clamp discipline).
+  tabView.addEventListener('tab-change', (event) => {
+    const next = event && event.detail ? event.detail.tab : null;
+    if (typeof next === 'string')
+      setSettingsSection(state, next);
+  });
+
+  return tabView;
 }
 
 function buildSettingsSectionBody(active, state, app) {

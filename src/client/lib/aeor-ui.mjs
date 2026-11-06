@@ -31,6 +31,10 @@ const OPTIONAL_COMPONENT_URLS = [
   '/vendor/aeor-web-components/components/aeor-confirm-button.js',
   '/vendor/aeor-web-components/components/aeor-progress-button.js',
   '/vendor/aeor-web-components/components/aeor-scrollview.js',
+  // System Settings sections (campaign S1 owner correction): imported exactly
+  // once here — the component's registration lacks guards, so a second module
+  // instance would re-define the custom element and throw.
+  '/vendor/aeor-web-components/components/aeor-tab-view.js',
 ];
 
 const optionalComponentFailures = await loadOptionalModules(OPTIONAL_COMPONENT_URLS, {

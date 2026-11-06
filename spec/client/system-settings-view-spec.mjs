@@ -133,9 +133,21 @@ test('resolveViewSurface renders the settings view through the core table', asyn
   assert.ok(element, 'the core table must resolve settings to a builder result');
   let text = collectText(element);
   assert.match(text, /System Settings/, `the view must render its heading; saw: ${JSON.stringify(text.slice(0, 200))}`);
-  assert.match(text, /General/, 'the sections tab row must be present');
-  assert.match(text, /Plugins/, 'the Plugins section tab must be present');
   assert.match(text, /Account/, 'the General section renders the Account block');
+
+  // Owner correction: sections ride the framework TabbedView. Labels live on
+  // the <aeor-tab> children — the tab BAR only materialises once the custom
+  // element upgrades (the browser, covered by system-settings-shell-puppeteer).
+  const tabView = findNode(element, (node) => node.localName === 'aeor-tab-view');
+  assert.ok(tabView, 'the sections row must be <aeor-tab-view>, not a hand-rolled button row');
+  assert.equal(tabView.getAttribute('active'), 'General', 'unset state opens General');
+  const labels = [];
+  (function walkTabs(node) {
+    if (!node) return;
+    if (node.localName === 'aeor-tab') labels.push(node.getAttribute('label'));
+    for (const child of node.childNodes || []) walkTabs(child);
+  })(tabView);
+  assert.deepEqual(labels, [ 'General', 'Plugins' ], 'both sections declared, in order');
 });
 
 test('grep gate: the shell gains no viewName branch for settings', async () => {
@@ -204,25 +216,25 @@ test('the topbar opens System Settings via navigation, not the dialog', async ()
 // 6. The sidebar row lives in the view group, active when open (§5-S1)
 // ---------------------------------------------------------------------------
 
-test('the sidebar carries a System Settings row in the view group', async () => {
+test('System Settings is NOT a Workspace row — the brand mark is the global entry (owner ruling)', async () => {
+  // Built, then removed on owner correction: settings is GLOBAL, so a sidebar
+  // row made it read as session-scoped. Pin the negative (no row returns) and
+  // the positive entry (the upper-left [K] brand mark is a gear button).
   let { buildSessionObjectItems } =
     await import('../../src/client/components/kikx-sidebar-session-objects.mjs');
 
   let app = makeApp({ state: { navigationStack: [ { sessionID: null, collapsed: true, view: 'settings' } ] } });
   let items = buildSessionObjectItems(app);
-  let row = items.find((item) => item.label === 'System Settings');
+  assert.ok(!items.some((item) => item.label === 'System Settings'),
+    'no sidebar row may claim System Settings — it is not a session object');
 
-  assert.ok(row, 'the annotated sidebar entry must exist');
-  assert.equal(row.group, 'view', 'it sits with Inbox/Agents/Teams, not the footer');
-  assert.equal(row.active, true, 'active state follows the stack, same as the core rows');
-
-  app._state.navigationStack = [ { sessionID: null, collapsed: true } ];
-  let inactive = buildSessionObjectItems(app).find((item) => item.label === 'System Settings');
-  assert.equal(inactive.active, false, 'and clears when the view is not open');
-
-  inactive.onSelect();
-  assert.equal(app._state.navigationStack.at(-1).view, 'settings',
-    'the row must actually navigate (a dead control is the failure mode we hunt)');
+  let topbar = await source('src/client/components/kikx-topbar.mjs');
+  assert.match(topbar, /class\('kikx-brand__mark'\)/, 'the brand mark is the entry surface');
+  assert.match(topbar, /button[\s\S]{0,200}kikx-brand__mark/,
+    'the mark renders as a real button (clickable and focusable)');
+  assert.match(topbar, /kikx-brand__mark[\s\S]{0,500}navigateSystemSettings\(app\._state\)/,
+    'clicking the brand gear navigates to System Settings');
+  assert.match(topbar, /title\('System Settings'\)/, 'and announces itself as System Settings');
 });
 
 // ---------------------------------------------------------------------------
@@ -274,7 +286,8 @@ test('plugin sidebar rows render under a PLUGINS heading only while one exists (
   let viewCluster = collectText(buildSidebarSessionObjects(app, { group: 'view' }));
   assert.doesNotMatch(viewCluster, /PLUGINS/,
     'the heading must not leak into the Workspace cluster');
-  assert.match(viewCluster, /System Settings/, 'the core view cluster keeps its rows');
+  assert.match(viewCluster, /Agents[\s\S]*Teams/,
+    'the core view cluster keeps its rows');
 });
 
 test('every class the settings view emits exists in a stylesheet', async () => {

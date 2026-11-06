@@ -326,7 +326,7 @@ test('the sidebar renders a plugin row that is wired and reflects active state',
   // Core rows keep their established order in the view cluster; the plugin row
   // re-homes to the plugins cluster (§9.1.4) with its own PLUGINS heading.
   let order = items.filter((item) => item.group === 'view').map((item) => item.id);
-  assert.deepEqual(order, [ 'agents', 'teams', 'system-settings' ]);
+  assert.deepEqual(order, [ 'agents', 'teams' ]);
   let pluginOrder = items.filter((item) => item.group === 'plugins').map((item) => item.id);
   assert.deepEqual(pluginOrder, [ 'metrics-link' ],
     'the plugin row renders under the plugins cluster');

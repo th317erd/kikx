@@ -42,7 +42,6 @@
 // either side renames.
 
 import { elements } from '../lib/aeor-ui.mjs';
-import { navigateSystemSettings } from '../state/kikx-state.mjs';
 import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { getScopeSessionID, isViewOpen, navigateView } from '../state/kikx-state.mjs';
 import { listSidebarItemSurfaces } from './client-view-surfaces.mjs';
@@ -108,21 +107,6 @@ export function buildSessionObjectItems(app) {
       scopeSessionID,
       active: isViewOpen('teams', app?._state),
       onSelect: () => app._openTeamManager(),
-    },
-    // Campaign S1: System Settings is a first-class mode (the annotated gear's
-    // sidebar twin). Core row, so it lives in the view group with
-    // Inbox/Agents/Teams — NOT in the plugins cluster, which is plugin-owned.
-    {
-      id: 'system-settings',
-      kind: 'button',
-      group: 'view',
-      label: 'System Settings',
-      scopeSessionID,
-      active: isViewOpen('settings', app?._state),
-      onSelect: () => {
-        navigateSystemSettings(app?._state);
-        app?._requestRender?.();
-      },
     },
     {
       id: 'sign-out',

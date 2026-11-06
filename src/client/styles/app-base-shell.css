@@ -69,6 +69,29 @@ kikx-app {
   font-weight: 700;
 }
 
+/* The brand mark IS the System Settings entry (owner ruling): the [K] is a
+   gear button now, so the span box needs button resets and icon sizing. */
+button.kikx-brand__mark {
+  padding: 0;
+  font: inherit;
+  color: #dfe5ec;
+  cursor: pointer;
+}
+
+button.kikx-brand__mark svg {
+  width: 20px;
+  height: 20px;
+}
+
+button.kikx-brand__mark:hover {
+  border-color: #5b6672;
+}
+
+button.kikx-brand__mark:focus-visible {
+  outline: 2px solid #7aa2f7;
+  outline-offset: 1px;
+}
+
 .kikx-brand__copy h1,
 .kikx-brand__copy p,
 .kikx-main h2,
@@ -465,7 +488,6 @@ kikx-app {
      past the list's overflow-x: hidden clip: measured left=3222 right=3799 on a
      2523px window, off-window and unreachable by scrolling, because this box
      clips rather than scrolls. mobile.css already clamps below 640px. */
-  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   padding: 18px;

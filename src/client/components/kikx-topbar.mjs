@@ -532,7 +532,16 @@ export function buildUnifiedTopbar(app) {
 
   return header.class('kikx-topbar kikx-window__header')(
     div.class('kikx-brand')(
-      span.class('kikx-brand__mark')('K'),
+      // Owner correction: System Settings is GLOBAL, so its entry is the brand
+      // mark itself — the [K] becomes a gear; the copy stays branding.
+      button.type('button')
+        .class('kikx-brand__mark')
+        .title('System Settings')
+        .ariaLabel('System Settings')
+        .onClick(() => {
+          navigateSystemSettings(app._state);
+          app._requestRender();
+        })(createIcon('gear')),
       div.class('kikx-brand__copy')(h1('Kikx'), p('Agent runner')),
     ),
     // Owner item 1 (2026-10-27): the bar is a grid whose tracks are identical to
