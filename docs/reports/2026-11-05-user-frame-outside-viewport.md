@@ -302,12 +302,18 @@ same place, with the same signature. `distanceFromBottom` moves (4591 without th
 clamp, 5534 with it) because the clamp changes the box's height, but `follow:
 false` does not, so the clamp alters the geometry without altering the verdict.
 
-Worth stating plainly rather than smoothing over: baseline is **worse** — it
-fails two tests that pass at HEAD (`frame-quote`, `frame-window`). Those two fail
-in the same way as the in-place no-clamp arm below, so the likeliest reading is
-that both are width-sensitive too and pass once the clamp is present. That is
-consistent but not separately bisected, so it is recorded as an observation, not
-a claim.
+Worth stating plainly rather than smoothing over: baseline is **worse** — at
+`43cc56de` it also fails `frame-quote` and `frame-window`, both of which pass at
+HEAD. The two are not alike, though, and the paired arms separate them:
+
+- `frame-window` fails in the in-place no-clamp arm at `854e4d89` as well
+  (14162 ms) and passes with the clamp present (arm A, see below). That is a
+  measured flip with the clamp as the only difference.
+- `frame-quote` fails **only** at `43cc56de`. It passes in both arms at
+  `854e4d89` — clamp present *and* clamp stripped — so the clamp is not what
+  fixes it. Whatever changed between `43cc56de` and `854e4d89` to make it pass
+  was not this declaration, and it has not been bisected. Recorded as an
+  unresolved observation, not attributed to this change.
 
 ### The paired arms prove the guard fails for the right reason
 
@@ -333,6 +339,43 @@ failure message, which prints the computed `bodyColumns`. Where a log does not
 self-identify its state that is a real gap in the evidence, and the `43cc56de`
 clone arms above exist partly to cover it: there the clamp's absence is a
 property of the commit rather than of a hand edit.
+
+#### Re-measured with state recorded inside the log (21:22)
+
+That gap was then closed by re-running the same pair with the CSS state written
+into each log header instead of inferred from mtimes. Both arms ran the whole
+`ui:puppeteer` lane in a detached worktree at `/tmp/kikx-arms-854e` on the same
+commit, `854e4d89`, so the live checkout could not be stranded stripped however
+the run ended. Exactly one declaration differs between the two arms.
+
+| arm | recorded state | `ui:puppeteer` | guard spec |
+| --- | --- | --- | --- |
+| A — clamp present | `CLAMP_DECLS_IN_FILE=1`, md5 `f30d14c1…`, 9466 B | FAIL 40/41 — `filtered-lazy-scroll` only | **PASS** (9270 ms) |
+| B — clamp stripped | `CLAMP_DECLS_IN_FILE=0`, md5 `fa4d0aad…`, 9425 B | FAIL 38/41 — `filtered-lazy-scroll`, `frame-window`, and the guard | **FAIL** (6171 ms) |
+
+Arm B reproduces the escape with the same numbers as the 20:54 arm, independently
+of it: `2 of 4 samples were outside (first: {"at":"first-paint","left":2873,
+"right":3799,"window":2523,"bodyClientWidth":2241,"bodyScrollWidth":3714,
+"bodyColumns":"3678px"})`. The two files are 41 bytes apart and nothing else
+changed, so the declaration is the only variable.
+
+This also settles a hedge made earlier in this report. `frame-window` — "the
+initial thread window bounded and reveals older frames on a real scroll" —
+passes in arm A and fails in arm B at `frame-window-puppeteer.mjs:284` (*"a real
+wheel gesture moves the viewport to the top; the bottom pin is only broken by
+real input"*). It was previously recorded as "consistent but not separately
+bisected"; with the clamp as the only difference, it is now a measured flip.
+
+`filtered-lazy-scroll` fails in **both** arms (10958 ms and 13055 ms). That is
+the clearest statement available that it is independent of this change, and it
+belongs in the lane tables as a pre-existing failure rather than as a
+consequence of the clamp.
+
+Restoring the worktree is self-verifying and was checked afterwards: md5 back to
+`f30d14c1…`, `WT_STATUS_AFTER=[]`, and the live tree unmoved at `40a7cec2` with a
+clean status. Provenance: `/tmp/armsA-clamp-854e.log`,
+`/tmp/armsB-noclamp-854e.log`. The strip script asserted exactly one matching
+declaration before removing it, so a no-op edit is ruled out.
 
 Source logs, all identified by path inside the log so an arm cannot be confused
 with the other: `/tmp/lane-baseline-playwright.log`, `/tmp/lane-baseline-43cc.log`
