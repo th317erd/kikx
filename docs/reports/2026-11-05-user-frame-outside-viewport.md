@@ -210,3 +210,85 @@ server restart can end a session between two commands.
   the guard does not separately assert the geometry mid-animation; it asserts
   every mutation sample stays inside, which covers it only as far as mutations
   coincide with the animation.
+
+## Unrelated lane failures, and how that was actually established
+
+The browser lanes have pre-existing failures that are not this clamp. Getting
+that attribution right took three attempts, two of which were wrong, so the
+method is recorded rather than just the verdict.
+
+`ui:playwright` is 18 registered / 17 pass / 1 fail at `6738eaea`.
+`ui:puppeteer` is 43 registered / 42 pass / 1 fail.
+
+The single failure in each lane is in the lazy-paging subsystem:
+`thread-scrollview-playwright.mjs:75` ("follows live tail appends", `follow:
+false`, ~11.9 s) and `filtered-lazy-scroll-puppeteer.mjs` ("keeps a filtered
+frame anchored while lazy pages load above it", ~12.8 s). Both are vertical
+scroll-anchoring behaviour while pages insert; neither is width-sensitive, which
+is why the clamp was a poor suspect from the start.
+
+Two wrong methods, in order:
+
+1. **Comparing against the `kikx-fix` worktree.** It lacks the clamp, so the
+   reasoning went "two clamp-less trees both fail, therefore pre-existing". But a
+   different repo with a different commit history is not a baseline — that
+   worktree also predates four commits of unrelated shell work.
+2. **Running the spec solo.** It passes 3/3 in a clone at `43cc56de` (~5.45 s).
+   The failure, however, only ever appeared *inside a lane*. A solo pass does not
+   control for the concurrency it failed under, so this also proved nothing.
+
+The third attempt is the one that holds: **the full lane, both arms, in-lane
+concurrency**. Two independent baseline setups agree.
+
+| lane | baseline `43cc56de`, clone (no clamp) | HEAD `6738eaea` (clamp) |
+| --- | --- | --- |
+| `ui:playwright` | FAIL 17/18 — `thread-scrollview-playwright` | FAIL 17/18 — same test |
+| `ui:puppeteer` | FAIL 37/40 — `filtered-lazy-scroll`, `frame-quote`, `frame-window` | FAIL 42/43 — `filtered-lazy-scroll` only |
+
+Both failing specs fail at a commit that does not contain the change, in the
+same place, with the same signature. `distanceFromBottom` moves (4591 without the
+clamp, 5534 with it) because the clamp changes the box's height, but `follow:
+false` does not, so the clamp alters the geometry without altering the verdict.
+
+Worth stating plainly rather than smoothing over: baseline is **worse** — it
+fails two tests that pass at HEAD (`frame-quote`, `frame-window`). Those two fail
+in the same way as the in-place no-clamp arm below, so the likeliest reading is
+that both are width-sensitive too and pass once the clamp is present. That is
+consistent but not separately bisected, so it is recorded as an observation, not
+a claim.
+
+### The paired arms prove the guard fails for the right reason
+
+The same no-clamp state was also exercised by stripping the declaration in place
+on the real worktree and running the whole lane, which gives a paired result for
+the guard spec itself:
+
+| arm | `ui:puppeteer` | guard spec |
+| --- | --- | --- |
+| clamp stripped (20:54) | FAIL 40/43 | **FAIL** — `2 of 4 samples were outside (first: {"at":"first-paint","left":2873,"right":3799,"window":2523,"bodyClientWidth":2241,"bodyScrollWidth":3714,"bodyColumns":"3678px"})` |
+| clamp present (20:48) | FAIL 41/43 (only unrelated failures) | **PASS** |
+
+That is the regression guard failing on exactly the geometry this report
+describes — a `3678px` column inside a `2241px` box, the user frame's right edge
+at `3799` on a `2523px` window — and passing when the declaration is restored.
+It also reproduces the escape inside the **lane**, not only in an isolated run,
+so the guard works under the concurrency it will actually face.
+
+`/tmp/lane-clamp-FULL.log` and `/tmp/lane-noclamp-FULL2.log` are the two arms.
+Neither log records the CSS state in its own text; the arm→state mapping comes
+from each file's mtime bracketing the strip/restore and from the guard's own
+failure message, which prints the computed `bodyColumns`. Where a log does not
+self-identify its state that is a real gap in the evidence, and the `43cc56de`
+clone arms above exist partly to cover it: there the clamp's absence is a
+property of the commit rather than of a hand edit.
+
+Source logs, all identified by path inside the log so an arm cannot be confused
+with the other: `/tmp/lane-baseline-playwright.log`, `/tmp/lane-baseline-43cc.log`
+(baseline clone paths); `/tmp/lanes-uipuppeteer-full.log`, `/tmp/gate-pw.log`,
+`/tmp/s1-pw.log` (HEAD worktree paths); `/tmp/lane-clamp-FULL.log`,
+`/tmp/lane-noclamp-FULL2.log` (in-place paired arms).
+
+One reading trap, recorded because it cost two rounds: the lane summary prints
+`executed=` as the **pass** count, not the number of tests that ran.
+`ui:playwright` shows 18 registered and `executed=17`; nothing was skipped, that
+is simply 17 passing. Do not read the gap as an unrun test.
