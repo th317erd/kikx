@@ -1,5 +1,7 @@
 'use strict';
 
+import '../support/test-env.mjs';
+
 // The first plugin-owned service.
 //
 // P2's exit proof requires "Plugin unload removes service and subscriptions" and the

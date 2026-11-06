@@ -1,5 +1,7 @@
 'use strict';
 
+import '../support/test-env.mjs';
+
 // A plugin load that fails part-way through must not leave anything behind.
 //
 // Why this file exists

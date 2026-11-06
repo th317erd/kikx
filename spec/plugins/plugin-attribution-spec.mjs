@@ -1,5 +1,7 @@
 'use strict';
 
+import '../support/test-env.mjs';
+
 // Contract test for plugin attribution in the setup context.
 //
 // _recordOwnership() keys unloadPlugin() on the plugin name. A registration that

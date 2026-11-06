@@ -1,5 +1,7 @@
 'use strict';
 
+import '../../support/test-env.mjs';
+
 // =============================================================================
 // A plugin reload must reload the plugin's SUBMODULES, not only its entry
 // =============================================================================

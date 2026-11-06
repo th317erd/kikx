@@ -1,5 +1,7 @@
 'use strict';
 
+import '../support/test-env.mjs';
+
 // The unload contract, from docs/plans/plugin-platform-campaign.md §8.1:
 //
 //   4. "Unload is now mostly reversible but split across two mechanisms. The ownership

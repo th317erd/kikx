@@ -11,6 +11,11 @@ export const KIKX_CWD_PATH = '/kikx/cwd';
 export const AEORDB_URL_PATH = '/aeordb/url';
 export const AEORDB_TOKEN_PATH = '/aeordb/token';
 export const KIKX_PLUGIN_PATHS_PATH = '/kikx/plugin/paths';
+// Plugin signature enforcement (campaign S4): mode is 'required' (default,
+// fail-closed) or 'unsafe' (the explicit development bypass); keys are the
+// comma-separated raw Ed25519 trust anchors for KIKX_PLUGIN_SIGNING_PUBLIC_KEYS.
+export const KIKX_PLUGIN_SIGNATURE_MODE_PATH = '/kikx/plugin/signature/mode';
+export const KIKX_PLUGIN_SIGNING_PUBLIC_KEYS_PATH = '/kikx/plugin/signing/public/keys';
 export const KIKX_CONTEXT_WINDOW_TOKENS_PATH = '/kikx/context/window/tokens';
 export const KIKX_COMPACTION_AGENT_ID_PATH = '/kikx/compaction/agent/id';
 export const KIKX_COMPACTION_AGENT_CONTEXT_TOKENS_PATH = '/kikx/compaction/agent/context/tokens';

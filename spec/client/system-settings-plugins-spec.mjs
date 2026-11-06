@@ -138,7 +138,7 @@ test('inventory store: success unwraps {data}, loading and error stay honest', a
   let calls = 0;
   await loadSystemSettingsPlugins(state, async () => {
     calls++;
-    return { data: { plugins: [ { name: 'alpha' } ], failures: [ { location: '/x', message: 'boom' } ], restartRequired: [ 'FrameRouter' ] } };
+    return { data: { plugins: [ { name: 'alpha' } ], failures: [ { location: '/x', message: 'boom' } ], restartRequired: [ 'FrameRouter' ], signatureMode: 'required' } };
   });
   let store = state.systemSettingsPlugins;
   assert.equal(store.loading, false, 'loading clears');
@@ -147,6 +147,8 @@ test('inventory store: success unwraps {data}, loading and error stay honest', a
   assert.deepEqual(store.inventory.map((p) => p.name), [ 'alpha' ]);
   assert.deepEqual(store.failures.map((f) => f.message), [ 'boom' ], 'failures carry through for the cards');
   assert.deepEqual(store.restartRequired, [ 'FrameRouter' ]);
+  assert.equal(store.signatureMode, 'required',
+    'the enforcement mode rides the inventory payload — the banner reads it');
 
   // An operator-denied fetch (401/403) surfaces the SERVER message — the
   // single honest answer when the caller is not an operator — and keeps the
@@ -188,6 +190,7 @@ function inventoryState() {
       failures: [ { location: '/srv/plugs/broken', message: 'entry threw on load' } ],
       restartRequired: [ 'FrameRouter' ],
       loading: false, error: null, loaded: true,
+      signatureMode: 'unsafe',
     },
   };
 }
@@ -229,6 +232,8 @@ test('Installed Plugins cards render inventory, notices and actions honestly', a
   assert.match(text, /FrameRouter/, 'restart-required is surfaced');
   assert.match(text, /operator/, 'the mount auth declaration is visible');
   assert.match(text, /Browse/, 'the Browse column exists for S3');
+  assert.match(text, /Signature verification disabled — unsafe mode/,
+    'an unsafe deployment is announced where the operator looks (plan §5-S4)');
 
   let unload = find(node, (n) => n.getAttribute?.('data-action') === 'unload');
   let reload = find(node, (n) => n.getAttribute?.('data-action') === 'reload');

@@ -1,5 +1,7 @@
 'use strict';
 
+import '../support/test-env.mjs';
+
 // createServer database wiring: the built-in AeorDB driver is resolved after
 // plugins load, `db` is the canonical service, and `aeordb` remains the alias
 // existing stores read. Host embeddings that inject a ready client are aliased

@@ -8,6 +8,8 @@ import { pathToFileURL } from 'node:url';
 import { AgentInterface } from './agent-interface.mjs';
 import { invalidatePluginModules, registerReloadablePluginRoot } from './plugin-module-cache.mjs';
 import { PluginInterface } from './plugin-interface.mjs';
+import { admitPluginDirectory, parseSigningPublicKeys } from './plugin-signature.mjs';
+import { snapshotEnvironment } from '../config/env-loader.mjs';
 
 const SETUP_TIMEOUT_MS = Number(globalThis.__KIKX_PLUGIN_SETUP_TIMEOUT_MS) || 15000;
 
@@ -82,6 +84,53 @@ export async function loadPlugins(options = {}) {
   registry.registerClass('AgentInterface', AgentInterface, { pluginName: 'core' });
   registry.registerClass('PluginInterface', PluginInterface, { pluginName: 'core' });
 
+  // S4: enforcement resolved ONCE per load pass. The config service is the
+  // same seam routes use; process.env is the fallback for bare embedders and
+  // test harnesses — but ONLY for fields the config service did not answer
+  // (an explicit empty key list from config must never fall through to env).
+  // Defaults are FAIL-CLOSED: 'required', zero keys.
+  let signatureMode = 'required';
+  let signingKeyMaterial = '';
+  let modeFromConfig = false;
+  let keysFromConfig = false;
+  try {
+    const config = context && typeof context.has === 'function' && context.has('config')
+      ? context.require('config')
+      : null;
+    if (config && typeof config.get === 'function') {
+      const { KIKX_PLUGIN_SIGNATURE_MODE_PATH, KIKX_PLUGIN_SIGNING_PUBLIC_KEYS_PATH } =
+        await import('../config/config-paths.mjs');
+      const mode = await config.get(KIKX_PLUGIN_SIGNATURE_MODE_PATH);
+      const keys = await config.get(KIKX_PLUGIN_SIGNING_PUBLIC_KEYS_PATH);
+      if (typeof mode === 'string' && mode.trim() !== '') {
+        signatureMode = mode.trim();
+        modeFromConfig = true;
+      }
+      if (typeof keys === 'string') {
+        signingKeyMaterial = keys;
+        keysFromConfig = true;
+      }
+    }
+  } catch { /* fall through to the environment for unanswered fields */ }
+  if (!modeFromConfig || !keysFromConfig) {
+    // Ambient reads go through the sanctioned snapshot accessor — the
+    // no-process-env gate keeps raw `process.env` inside core/config only.
+    const env = snapshotEnvironment();
+    if (!modeFromConfig) {
+      const ambientMode = typeof env.KIKX_PLUGIN_SIGNATURE_MODE === 'string'
+        ? env.KIKX_PLUGIN_SIGNATURE_MODE.trim() : '';
+      signatureMode = ambientMode || 'required';
+    }
+    if (!keysFromConfig)
+      signingKeyMaterial = env.KIKX_PLUGIN_SIGNING_PUBLIC_KEYS || '';
+  }
+  const signingPublicKeys = parseSigningPublicKeys(signingKeyMaterial);
+  // LOUD by contract (plan §5-S4): unsafe mode is a development bypass and
+  // must never be mistaken for enforcement — the inventory also reports it and
+  // Settings → Plugins renders a banner.
+  if (signatureMode === 'unsafe')
+    logger.warn?.('[kikx] plugin signature verification DISABLED (KIKX_PLUGIN_SIGNATURE_MODE=unsafe) — development mode only; production must run required');
+
   let loaded = [];
   for (let configuredPath of normalizePluginPaths(pluginPaths)) {
     for (let pluginPath of await expandPluginPathSites(configuredPath)) {
@@ -93,6 +142,26 @@ export async function loadPlugins(options = {}) {
       try {
         // HARD BOUNDARY: nothing a plugin does may escape this iteration.
         // Not a throw, not a rejection, not a timer that never fires.
+        //
+        // S4 SIGNATURE GATE — BEFORE resolve/import, so refused code never
+        // executes. Every loader call site (engine startup, POST /install,
+        // POST /reload) funnels through here, which is what makes the gate a
+        // property of the platform rather than of each caller.
+        let signatureRefusal = await admitPluginDirectory(pluginPath, {
+          mode: signatureMode,
+          publicKeys: signingPublicKeys,
+        });
+        if (signatureRefusal) {
+          let refusedLocation = pluginLocation(pluginPath);
+          if (!registry._pluginLoadErrors) registry._pluginLoadErrors = [];
+          registry._pluginLoadErrors = registry._pluginLoadErrors
+            .filter((e) => e.location !== refusedLocation)
+            .concat([{ location: refusedLocation, message: signatureRefusal, at: new Date().toISOString() }])
+            .slice(-50);
+          logger.warn?.(`Refused plugin at ${pluginPath}: ${signatureRefusal}`);
+          continue;
+        }
+
         let modulePath = await resolvePluginModule(pluginPath);
 
         // RELOAD MEANS RELOAD THE WHOLE PLUGIN, NOT JUST ITS ENTRY FILE.

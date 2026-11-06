@@ -28,6 +28,9 @@ export function createSystemSettingsPluginsState() {
     loading: false,
     error: null,
     loaded: false,
+    // Enforcement truth from the server ('required' | 'unsafe'); the section
+    // renders the unsafe banner from this (plan §5-S4 — loud by contract).
+    signatureMode: null,
   };
 }
 
@@ -66,6 +69,7 @@ export async function loadSystemSettingsPlugins(state, fetcher) {
       loading: false,
       error: null,
       loaded: true,
+      signatureMode: typeof data.signatureMode === 'string' ? data.signatureMode : null,
     };
   } catch (error) {
     const current = ensureSystemSettingsPluginsState(state);

@@ -223,6 +223,14 @@
 .kikx-settings-plugins__failure,
 .kikx-settings-plugin-card__failure { color: #ff7b72; font-size: 12px; margin: 0; }
 .kikx-settings-plugins__restart { color: #e3b341; margin: 0; }
+.kikx-settings-plugins__banner {
+  color: #ffb86b;
+  border: 1px solid #e3b341;
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin: 0;
+  font-weight: 600;
+}
 .kikx-settings-plugins__install { display: flex; gap: 8px; flex-wrap: wrap; }
 .kikx-settings-plugins__path { flex: 1 1 220px; min-width: 0; }
 .kikx-settings-plugins__install-btn,

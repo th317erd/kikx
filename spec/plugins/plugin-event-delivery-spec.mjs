@@ -1,5 +1,7 @@
 'use strict';
 
+import '../support/test-env.mjs';
+
 // Scoped runtime event delivery to plugins — the contract docs/reference/plugins.md states
 // in one sentence: "subscribe() receives scoped runtime events for the sessions named in
 // the subscription; naming none receives nothing. These resources are closed and

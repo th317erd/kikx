@@ -1,5 +1,7 @@
 'use strict';
 
+import '../support/test-env.mjs';
+
 // unloadPlugin() must run a plugin's onShutdown hook. It did not.
 //
 // THE DEFECT, measured on the live 3003 instance 2026-11-01:

@@ -1,5 +1,7 @@
 'use strict';
 
+import '../support/test-env.mjs';
+
 // What an install does when it does not finish.
 //
 // Why this file exists

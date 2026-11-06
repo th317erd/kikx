@@ -53,13 +53,26 @@ export async function handlePluginRoutes({ request, response, url, context, json
     // uninstall gate both read this. Classification fails CLOSED: an unknown
     // root is never managed.
     let configuredPaths = null;
+    // Reported alongside the inventory so Settings → Plugins can show the
+    // unsafe-mode banner from the same authoritative answer the gate uses.
+    let signatureMode = null;
     try {
       let config = context.has?.('config') ? context.require('config') : null;
       if (config && typeof config.get === 'function') {
-        const { KIKX_PLUGIN_PATHS_PATH } = await import('../../core/config/config-paths.mjs');
+        const { KIKX_PLUGIN_PATHS_PATH, KIKX_PLUGIN_SIGNATURE_MODE_PATH } = await import('../../core/config/config-paths.mjs');
         configuredPaths = await config.get(KIKX_PLUGIN_PATHS_PATH);
+        const mode = await config.get(KIKX_PLUGIN_SIGNATURE_MODE_PATH);
+        if (typeof mode === 'string' && mode.trim() !== '')
+          signatureMode = mode.trim();
       }
     } catch (_e) { configuredPaths = null; }
+    if (signatureMode === null) {
+      const { snapshotEnvironment } = await import('../../core/config/env-loader.mjs');
+      const ambient = snapshotEnvironment();
+      const fromEnv = typeof ambient.KIKX_PLUGIN_SIGNATURE_MODE === 'string'
+        ? ambient.KIKX_PLUGIN_SIGNATURE_MODE.trim() : '';
+      signatureMode = fromEnv || 'required';
+    }
     const { isManagedPluginLocation } = await import('../../core/plugins/plugin-paths.mjs');
 
     response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -83,6 +96,7 @@ export async function handlePluginRoutes({ request, response, url, context, json
           manifest: r.manifest || null,
         })),
         failures: registry?._pluginLoadErrors || [],
+        signatureMode,
         // A class override does not change a live instance (campaign §8.1.5). create-server
         // resolves FrameRouter before plugins load, so a plugin override of it changes the
         // registry row while the router that is serving requests keeps executing core. Listing

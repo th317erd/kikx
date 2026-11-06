@@ -1,5 +1,7 @@
 'use strict';
 
+import '../support/test-env.mjs';
+
 // =============================================================================
 // P7 exit proof: install / reload / unload against a running process.
 // =============================================================================

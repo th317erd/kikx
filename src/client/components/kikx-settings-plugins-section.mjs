@@ -34,6 +34,11 @@ export function buildPluginsSection(app) {
 
   return div.class('kikx-settings-plugins')(
     div.class('kikx-settings-plugins__column kikx-settings-plugins__installed')(
+      // Loud by contract (plan §5-S4): an unsafe deployment says so where an
+      // operator would look, not only in a startup log line.
+      store.signatureMode === 'unsafe'
+        ? p.class('kikx-settings-plugins__banner')('Signature verification disabled — unsafe mode')
+        : null,
       h3('Installed Plugins'),
       store.error
         ? p.class('kikx-settings-plugins__error')(store.error)

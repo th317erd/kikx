@@ -1,5 +1,7 @@
 'use strict';
 
+import '../support/test-env.mjs';
+
 // Contract test for unloadPlugin().
 //
 // The campaign plan (docs/plans/plugin-platform-campaign.md) records this defect:
