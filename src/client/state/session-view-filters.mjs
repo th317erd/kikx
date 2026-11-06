@@ -208,3 +208,26 @@ export function applySessionViewScope(state, sessionID, storage) {
   state.sessionSearch = scope.query;
   return scope;
 }
+
+// Seed the cold-start view scope from the URL, before anything can fetch.
+//
+// Called once while the initial state object is built -- the EARLIEST moment the
+// app can know a filter, which is why it must happen here rather than later.
+// `loadFrames` builds its URL from `state.frameFilters`, so a state left at the
+// all-on default sends an unfiltered first request and paints frames the stored
+// scope excludes. See state/view-scope-bootstrap.mjs for the full chain.
+//
+// `session` absent means the thread window with no session in it, which is the
+// grid -- a scope of its own, keyed by the empty id.
+//
+// Deliberately tolerant: a throw here is a white screen, because this runs during
+// evaluation of the global state object. A sandboxed storage or a hostile URL
+// must degrade to the default view, never to no app.
+export function seedInitialViewScope(search, storage) {
+  try {
+    let params = new URLSearchParams(search || '');
+    return readSessionViewScope(params.get('session') || '', storage);
+  } catch (_error) {
+    return defaultViewScope();
+  }
+}

@@ -1,6 +1,7 @@
 'use strict';
 
 import { ReactiveState } from '../lib/aeor-ui.mjs';
+import { seedInitialViewScope } from './session-view-filters.mjs';
 import {
   defaultConfigForProvider,
   defaultTagValues,
@@ -141,8 +142,19 @@ export const kikxState = new ReactiveState({
   editingSessionNameValue: '',
   sessionDetailsByID: {},
   sessionIDs: [],
-  sessionSearch: '',
-  showDeletedSessions: false,
+  // Cold-start view scope. Resolved from the URL's session BEFORE the first frame
+  // fetch can build a request, because `loadFrames` reads `frameFilters` at
+  // request time: a state seeded with the all-on default sends an UNFILTERED first
+  // request, those frames paint, and then the stored scope arrives and filters
+  // them back out of the DOM. That show-then-vanish is the reported bug.
+  // See state/view-scope-bootstrap.mjs.
+  ...((seed) => ({
+    frameFilters: seed.filters,
+    // The Deleted gate is per-session; the grid bucket flag rides along with it so
+    // the eye cannot disagree with what the server was asked for.
+    showDeletedSessions: seed.filters?.deleted === true,
+    sessionSearch: seed.query,
+  }))(seedInitialViewScope(globalThis.location?.search || '')),
   status: 'Checking AeorDB event stream...',
   statusKind: 'pending',
   editingTeamID: '',
