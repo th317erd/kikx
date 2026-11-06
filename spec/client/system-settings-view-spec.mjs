@@ -291,8 +291,10 @@ test('plugin sidebar rows render under a PLUGINS heading only while one exists (
 });
 
 test('every class the settings view emits exists in a stylesheet', async () => {
-  let viewSource = await source('src/client/components/kikx-system-settings-view.mjs');
-  let used = [ ...viewSource.matchAll(/\.class\(\s*'([^']+)'/g) ].map((match) => match[1]);
+  let viewSource = (await source('src/client/components/kikx-system-settings-view.mjs'))
+    + (await source('src/client/components/kikx-settings-plugins-section.mjs'));
+  let used = [ ...viewSource.matchAll(/\.class\(\s*'([^']+)'/g) ]
+    .flatMap((match) => match[1].split(/\s+/).filter(Boolean));
   assert.ok(used.length > 0, 'the view must declare its classes through the DSL');
 
   let css = '';

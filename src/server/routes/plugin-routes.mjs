@@ -47,6 +47,20 @@ export async function handlePluginRoutes({ request, response, url, context, json
     // declared and reviewed"; that is only reviewable if the declaration is visible to
     // an operator without reading the plugin's source.
     let mountsById = new Map((routerForList?.listMounts?.() || []).map((m) => [ m.pluginId, m ]));
+    // S2: every record says whether its location is MANAGED (operator-owned
+    // configured path) — bundled platform code is not, and the card's
+    // "Internal Plugin — cannot be uninstalled" notice plus the future
+    // uninstall gate both read this. Classification fails CLOSED: an unknown
+    // root is never managed.
+    let configuredPaths = null;
+    try {
+      let config = context.has?.('config') ? context.require('config') : null;
+      if (config && typeof config.get === 'function') {
+        const { KIKX_PLUGIN_PATHS_PATH } = await import('../../core/config/config-paths.mjs');
+        configuredPaths = await config.get(KIKX_PLUGIN_PATHS_PATH);
+      }
+    } catch (_e) { configuredPaths = null; }
+    const { isManagedPluginLocation } = await import('../../core/plugins/plugin-paths.mjs');
 
     response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     response.end(JSON.stringify({
@@ -56,6 +70,7 @@ export async function handlePluginRoutes({ request, response, url, context, json
           // Directories only, never absolute paths: an authenticated caller still does not
           // need the operator's filesystem layout.
           location: r.pluginLocation || null,
+          managed: isManagedPluginLocation(r.pluginLocation, { configuredPaths }),
           mounted: mountsById.has(r.pluginName),
           mount: mountsById.has(r.pluginName)
             ? {

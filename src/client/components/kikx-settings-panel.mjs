@@ -56,6 +56,11 @@ export function listSettingsPanels(state = {}) {
       label: typeof descriptor.label === 'string' && descriptor.label.trim() !== ''
         ? descriptor.label.trim()
         : descriptor.surfaceID,
+      // Campaign S2: which Settings section hosts this panel. Default
+      // 'General' keeps every descriptor written before this field working.
+      section: typeof descriptor.section === 'string' && descriptor.section.trim() !== ''
+        ? descriptor.section.trim()
+        : 'General',
     }))
     .sort((left, right) => left.surfaceID.localeCompare(right.surfaceID));
 }
@@ -127,8 +132,13 @@ function buildSettingsPanelElement(panel, state, app) {
 }
 
 // One panel section per contributed descriptor.
-export function buildSettingsPanelNodes(state = {}, app = null) {
+export function buildSettingsPanelNodes(state = {}, app = null, sectionName = null) {
   return listSettingsPanels(state)
+    // Section filtering is the VIEW's need (mount panels in their section's
+    // body); the legacy dialog passes no section and keeps every panel.
+    // NOTE: the parameter must not be called `section` — it would shadow the
+    // DSL tag the map body builds with.
+    .filter((panel) => sectionName == null || panel.section === sectionName)
     .map((panel) => {
       let element = buildSettingsPanelElement(panel, state, app);
       if (!element)

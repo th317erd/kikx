@@ -189,3 +189,82 @@
   display: block;
   max-width: 720px;
 }
+
+/* Installed Plugins (S2): two columns collapsing at the mobile breakpoint,
+   card chrome, notices. Every class kikx-settings-plugins-section.mjs emits
+   appears here — the stylesheet gate fails otherwise. */
+.kikx-settings-plugins {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.kikx-settings-plugins__column,
+.kikx-settings-plugins__cards,
+.kikx-settings-plugins__failures,
+.kikx-settings-plugin-card,
+.kikx-settings-plugin-card__failures,
+.kikx-settings-plugin-card__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kikx-settings-plugins__installed,
+.kikx-settings-plugins__browse,
+.kikx-settings-plugins__cards {
+  min-width: 0;
+}
+
+.kikx-settings-plugins__error { color: #ff7b72; margin: 0; }
+.kikx-settings-plugins__loading,
+.kikx-settings-plugins__empty { color: #aab4bf; margin: 0; }
+.kikx-settings-plugins__failure,
+.kikx-settings-plugin-card__failure { color: #ff7b72; font-size: 12px; margin: 0; }
+.kikx-settings-plugins__restart { color: #e3b341; margin: 0; }
+.kikx-settings-plugins__install { display: flex; gap: 8px; flex-wrap: wrap; }
+.kikx-settings-plugins__path { flex: 1 1 220px; min-width: 0; }
+.kikx-settings-plugins__install-btn,
+.kikx-settings-plugin-card__action {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.kikx-settings-plugin-card {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 10px 12px;
+  gap: 6px;
+}
+
+.kikx-settings-plugin-card__head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.kikx-settings-plugin-card__name { font-weight: 600; }
+.kikx-settings-plugin-card__version { color: #aab4bf; font-size: 12px; }
+.kikx-settings-plugin-card__badge {
+  font-size: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  padding: 1px 8px;
+  color: #aab4bf;
+}
+.kikx-settings-plugin-card__badge--internal { color: #e3b341; border-color: #e3b341; }
+.kikx-settings-plugin-card__desc,
+.kikx-settings-plugin-card__mounts { margin: 0; color: #aab4bf; font-size: 13px; }
+
+@media (max-width: 960px) {
+  .kikx-settings-plugins { grid-template-columns: 1fr; }
+}

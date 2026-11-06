@@ -22,6 +22,9 @@
 
 import { elements } from '../lib/aeor-ui.mjs';
 import { buildViewBackButton } from './kikx-view-chrome.mjs';
+import { buildSettingsPanelNodes, listSettingsPanels } from './kikx-settings-panel.mjs';
+import { buildPluginsSection } from './kikx-settings-plugins-section.mjs';
+import { maybeLoadSystemSettingsPlugins } from '../state/system-settings-plugins.mjs';
 
 const { div, h3, h2, header, p, section } = elements;
 
@@ -49,6 +52,20 @@ export function getSettingsSection(state, available = SETTINGS_SECTIONS) {
   return clampSettingsSection(state?.settingsSection, available);
 }
 
+// The LIVE sections model (S2): base pair ∪ plugin-contributed sections from
+// `settings-panel` descriptors, extras stable-sorted by surfaceID (which the
+// list already guarantees) and de-duplicated against the base. Unloading a
+// plugin shrinks this set, which is exactly what the clamp consumes (§9.3.12).
+export function settingsSections(state) {
+  let extras = [];
+  for (const sectionName of listSettingsPanels(state).map((panel) => panel.section)) {
+    if (!SETTINGS_SECTIONS.includes(sectionName) && !extras.includes(sectionName))
+      extras.push(sectionName);
+  }
+  extras.sort();
+  return [ ...SETTINGS_SECTIONS, ...extras ];
+}
+
 export function setSettingsSection(state, sectionName, available = SETTINGS_SECTIONS) {
   if (!state || typeof sectionName !== 'string' || !available.includes(sectionName))
     return state?.settingsSection;
@@ -58,6 +75,9 @@ export function setSettingsSection(state, sectionName, available = SETTINGS_SECT
 
 export function buildSystemSettingsView(app) {
   let state = app?._state || {};
+  // The view opening IS the inventory's lifecycle trigger (S2 realtime-light:
+  // first open fetches; the once-per-page visibility hook refetches).
+  maybeLoadSystemSettingsPlugins(app);
 
   return section.class('kikx-system-settings')(
     buildViewBackButton(app),
@@ -77,10 +97,11 @@ export function buildSystemSettingsView(app) {
 }
 
 function buildSettingsTabView(state, app) {
+  let available = settingsSections(state);
   let tabView = document.createElement('aeor-tab-view');
-  tabView.setAttribute('active', getSettingsSection(state));
+  tabView.setAttribute('active', getSettingsSection(state, available));
 
-  for (const sectionName of SETTINGS_SECTIONS) {
+  for (const sectionName of available) {
     const tab = document.createElement('aeor-tab');
     tab.setAttribute('name', sectionName);
     tab.setAttribute('label', sectionName);
@@ -95,7 +116,7 @@ function buildSettingsTabView(state, app) {
   tabView.addEventListener('tab-change', (event) => {
     const next = event && event.detail ? event.detail.tab : null;
     if (typeof next === 'string')
-      setSettingsSection(state, next);
+      setSettingsSection(state, next, settingsSections(state));
   });
 
   return tabView;
@@ -103,20 +124,28 @@ function buildSettingsTabView(state, app) {
 
 function buildSettingsSectionBody(active, state, app) {
   if (active === 'Plugins')
-    // S2 replaces this with the Xenocept-parity card layout (Installed Plugins
-    // cards, inventory store, unload/reload/install actions). The honest
-    // placeholder stays until then: an empty body reads as a bug.
-    return section(
-      h3('Plugins'),
-      p('Installed plugins will be listed here.'),
-    );
+    // The S2 card layout (Installed Plugins + Browse placeholder). The honest
+    // empty/error/loading states live inside it — a blank body reads as a bug.
+    return buildPluginsSection(app);
 
-  // General: the host-owned Account block. Deliberately small in S1 — the
-  // placeholder for host preferences (per the plan §5-S1 scope).
+  // Sections other than General host only their own panels.
+  let panels = buildSettingsPanelNodes(state, app, active);
+  if (active !== 'General') {
+    return section(
+      h3(active),
+      panels.length > 0
+        ? panels
+        : p('No settings panels contribute to this section yet.'),
+    );
+  }
+
+  // General: the host-owned Account block (placeholder for host preferences,
+  // deliberately small per plan §5-S1) plus every panel filed to General.
   let account = state?.account || {};
   return section(
     h3('Account'),
     p(account.name ? `Name: ${account.name}` : 'Name: not signed in'),
     p(account.email ? `Email: ${account.email}` : 'Email: not signed in'),
+    panels,
   );
 }
