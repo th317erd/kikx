@@ -180,6 +180,7 @@ architecture. Their own authority banners govern how they may be used.
 - [Instruction recovery, 2026-10-27](./reports/instruction-recovery-2026-10-27.md)
 - [Owner UI review 2 fixes, 2026-10-27](./reports/owner-review-2-fixes-2026-10-27.md)
 - [Sync and visibility leak, 2026-10-28](./reports/sync-and-visibility-leak-2026-10-28.md)
+- [Per-session view filters, 2026-11-05](./reports/2026-11-05-per-session-view-filters.md)
 
 ## Historical archive
 

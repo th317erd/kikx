@@ -108,8 +108,23 @@ test('a stored filter never lets an excluded frame reach the DOM, not even trans
       globalThis.__excludedFrameIDs = new Set();
       globalThis.__sawExcludedText = 0;
       globalThis.__filterPopupFirstSeen = null;
+      // Anti-vacuity counters. The excluded-frame assertions below assert
+      // ABSENCE, so they also pass when the observer is broken and records
+      // nothing. These prove it actually watched the thread being built, and
+      // that its predicate did not throw mid-flight -- which it did, once,
+      // swallowing the real verdict entirely.
+      globalThis.__observerRecords = 0;
+      globalThis.__observerRecordErrors = 0;
+      globalThis.__frameItemsSeen = 0;
 
-      let record = (node) => {
+      // NB: this must not be called `record`. The observer callback below
+      // iterates `for (let record of records)`, which shadows a helper of that
+      // name inside the block, so `record(node)` called a MutationRecord and
+      // threw TypeError. The throw aborted the scan on the first record of every
+      // callback, so "the frame was never inserted" passed without ever being
+      // evaluated. Measured: the popup is really inserted at ~158ms with
+      // is-all-on honest (false), while this predicate reported it never seen.
+      let inspectAddedNode = (node) => {
         if (!node || node.nodeType !== 1)
           return;
 
@@ -120,6 +135,8 @@ test('a stored filter never lets an excluded frame reach the DOM, not even trans
         if (node.matches?.('kikx-frame-item'))
           items.push(node);
         items.push(...(node.querySelectorAll?.('kikx-frame-item') || []));
+
+        globalThis.__frameItemsSeen += items.length;
 
         for (let item of items) {
           let id = item.dataset?.frameId || '';
@@ -146,9 +163,17 @@ test('a stored filter never lets an excluded frame reach the DOM, not even trans
       };
 
       let observer = new MutationObserver((records) => {
-        for (let record of records) {
-          for (let node of record.addedNodes)
-            record(node);
+        for (let mutation of records) {
+          globalThis.__observerRecords += 1;
+          for (let node of mutation.addedNodes) {
+            // Count a throw instead of escaping into it: an escaped throw aborts
+            // the remaining records and turns every absence assertion into a pass.
+            try {
+              inspectAddedNode(node);
+            } catch (error) {
+              globalThis.__observerRecordErrors += 1;
+            }
+          }
         }
       });
       // Observe from the document itself: `document.body` does not exist yet at
@@ -168,7 +193,27 @@ test('a stored filter never lets an excluded frame reach the DOM, not even trans
       ids: [ ...globalThis.__excludedFrameIDs ],
       excludedTextSeen: globalThis.__sawExcludedText,
       popupWasAllOnAtFirstSight: globalThis.__filterPopupFirstSeen,
+      observerRecords: globalThis.__observerRecords,
+      observerRecordErrors: globalThis.__observerRecordErrors,
+      frameItemsSeen: globalThis.__frameItemsSeen,
     }));
+
+    // The lane must be able to see anything at all before its absences mean
+    // something: a dead observer satisfies every assertion below.
+    assert.ok(
+      observed.observerRecords > 0,
+      'the document-start observer recorded no mutations, so nothing below proves anything',
+    );
+    assert.equal(
+      observed.observerRecordErrors,
+      0,
+      `the observer predicate threw ${observed.observerRecordErrors} time(s); a throw aborts the scan and `
+      + 'lets the absence assertions pass vacuously',
+    );
+    assert.ok(
+      observed.frameItemsSeen > 0,
+      'the observer never saw an inserted kikx-frame-item, so it cannot say the excluded one was absent',
+    );
 
     assert.equal(
       observed.insertions,
@@ -186,7 +231,8 @@ test('a stored filter never lets an excluded frame reach the DOM, not even trans
     assert.equal(
       observed.popupWasAllOnAtFirstSight,
       false,
-      'the filter badge claimed "all on" at first paint while a stored filter was active',
+      'the filter badge claimed "all on" at first paint while a stored filter was active '
+      + `(popup first sight: ${observed.popupWasAllOnAtFirstSight})`,
     );
     let allOnNow = await page.evaluate(() => document.querySelector('kikx-frame-filter-popup')?.classList.contains('is-all-on'));
     assert.equal(allOnNow, false, 'the badge reflects the active filter');

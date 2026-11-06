@@ -1,3 +1,13 @@
+---
+title: Per-session view filters, persisted in localStorage
+status: current
+doc_type: report
+audience: [maintainers, developers]
+applies_to: development-v3
+last_verified: 2026-11-05
+keywords: [view filters, frame filters, per-session, localStorage, first paint]
+---
+
 # Per-session view filters, persisted in localStorage
 
 **Date:** 2026-11-05
@@ -204,3 +214,40 @@ would have produced a false result in a different direction, so they are recorde
   costs one small write each.
 - Private-mode `localStorage` that throws is handled and tested (degrades to
   in-memory), but not exercised against a real private-mode browser.
+
+## Provenance note (added after the fact)
+
+This report was written against the `kikx2` checkout and describes that
+investigation; the date, checkout, and serving-instance lines below are the
+original ones and are left unedited. The code landed here as a cherry-pick, so
+the `kikx2` checkout header describes where the work was done, not where it now
+lives.
+
+## Correction: an earlier "green" run of the first-paint spec proved nothing
+
+`spec/ui/puppeteer/view-scope-first-paint-puppeteer.mjs` was previously reported
+green. It was not measuring what it claimed. Its MutationObserver callback
+iterated `for (let record of records)`, which shadowed a helper also named
+`record`; the call `record(node)` therefore invoked a MutationRecord and threw.
+The throw aborted the scan on the first record of every callback, so the
+assertions of the form "the excluded frame was never inserted" passed without
+being evaluated at all.
+
+Measured with the shadowing reintroduced: the predicate throws 143 times while
+the filter popup is really inserted at ~158ms with `is-all-on` honest (`false`).
+
+The spec now renames the helper, counts observer health, and fails on it:
+
+- `observerRecords > 0` — a dead observer recorded nothing;
+- `observerRecordErrors === 0` — the predicate threw;
+- `frameItemsSeen > 0` — it never saw a frame inserted, so it cannot speak to
+  absence.
+
+Negative control: reintroduce the shadowing and the lane fails with
+"the observer predicate threw 143 time(s); a throw aborts the scan and lets the
+absence assertions pass vacuously". Restored, it passes.
+
+The absence of an authority banner in this report also left
+`spec/architecture/documentation-spec.mjs` red from the squashed filter commit
+onward, unnoticed because the lane output was read from its tail. Both are fixed
+in the commit that adds this note.
