@@ -97,6 +97,7 @@ export class KikxUserMessageFrame extends HTMLElement {
         wake.suffix ? renderWakeSection('kikx-user-message__after', wake.suffix) : null,
       );
       this._syncTextClass();
+      this._appendOriginLink();
       return;
     }
 
@@ -108,6 +109,28 @@ export class KikxUserMessageFrame extends HTMLElement {
     // classes — including kikx-markdown--source, which carries raw mode's
     // pre-wrap painting — never reach this persistent element. Mirror them.
     this._textElement.className = rendered.className;
+    this._appendOriginLink();
+  }
+
+  // Owner-approved (2026-11-06): an answer frame links to where the question
+  // was asked — a plain LINK to the session and message, never the heavy
+  // session card (cards belong to SessionFrames alone). Question-shaped only:
+  // a message with no question interaction gains no dead affordance.
+  _appendOriginLink() {
+    let frame = this._frame;
+    let interactionID = typeof frame?.interactionID === 'string' ? frame.interactionID : '';
+    if (!interactionID.startsWith('question:'))
+      return;
+    if (typeof frame?.parentID !== 'string' || frame.parentID === '')
+      return;
+
+    let origin = document.createElement('a');
+    origin.className = 'kikx-user-message__origin';
+    // Attribute, not the .href property: same result in the browser, and it
+    // stays readable under the spec DOM which does not reflect properties.
+    origin.setAttribute('href', `?session=${encodeURIComponent(frame.sessionID || '')}#message=${encodeURIComponent(frame.parentID)}`);
+    origin.textContent = 'Question & answer origin';
+    this._textElement.appendChild(origin);
   }
 
   // Class mirror for the wake branch (its sections own their own source class,

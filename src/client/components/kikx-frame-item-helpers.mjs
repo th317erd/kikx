@@ -89,8 +89,24 @@ export function typingThinkingText(frame) {
 
 // Describes the content subtree so reconciliation can tell when it may be
 // reused (same kind + tag) versus replaced.
+// Session portals are RESERVED for session frames and tool results that
+// discovered a child session (owner ruling, 2026-11-06, honoring the
+// existing tool-card contract the sub-session specs pin). What they must
+// NEVER do is hijack a MESSAGE frame: question wake answers carry "this
+// session" provenance, and that reference used to replace their content
+// with a live portal — hiding the Q+A and mirroring the current session
+// inside itself, with clicks stacking Session 1 > Session 1 forever.
+export function isSessionPortalFrame(frame) {
+  let type = typeof frame?.type === 'string' ? frame.type : '';
+  if (type === 'Session' || type === 'SubSession')
+    return true;
+  // Tool frames keep their embedded child-session cards — that is the
+  // feature's original home, not the defect.
+  return typeof isToolFrame === 'function' ? isToolFrame(frame) : false;
+}
+
 export function frameContentDescriptor(frame, appState) {
-  if (sessionReferenceFromFrame(frame))
+  if (sessionReferenceFromFrame(frame) && isSessionPortalFrame(frame))
     return { kind: 'sub-session', tagName: 'kikx-sub-session-frame' };
 
   let descriptor = resolveFrameComponentDescriptor(frame, appState);

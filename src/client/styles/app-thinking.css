@@ -448,3 +448,12 @@ kikx-frame-filter-popup:not(.is-all-on) .kikx-frame-filter__button {
   overflow: auto;
   padding: 18px;
 }
+
+/* Answer-frame origin link (owner-approved 2026-11-06): a plain link to the
+   asking session+message — never a heavy session card inside a UserMessage. */
+.kikx-user-message__origin {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #7aa2f7;
+}

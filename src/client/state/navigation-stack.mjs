@@ -72,6 +72,23 @@ export function normalizeNavigationStack(stack) {
     return normalizedEntry;
   });
 
+  // Collapse CONSECUTIVE repeats of the same session (owner-approved mirror
+  // heal): a shared URL stacking Session 1 > Session 1 > Session 1 normalizes
+  // back to one entry. Non-consecutive repeats are real history and survive;
+  // view entries are addressed by name and are never merged.
+  let deduped = [];
+  for (let entry of normalized) {
+    let prev = deduped[deduped.length - 1];
+    if (prev
+      && entry.sessionID !== null
+      && entry.sessionID === prev.sessionID
+      && prev.view === undefined
+      && entry.view === undefined)
+      continue;
+    deduped.push(entry);
+  }
+  normalized = deduped;
+
   // The root entry must always be the null-session root.
   if (normalized[0].sessionID !== null)
     normalized.unshift({ sessionID: null, collapsed: true });
@@ -116,8 +133,16 @@ export function pushThread(stack, sessionID) {
   let base = normalizeNavigationStack(stack);
   if (typeof sessionID !== 'string' || sessionID.trim() === '')
     return base;
+  let id = sessionID.trim();
 
-  return [ ...base, { sessionID: sessionID.trim(), collapsed: false } ];
+  // Idempotent like pushView (owner-approved): navigating into the session
+  // already on top must not stack a mirror copy — Session 1 > Session 1 > …
+  // was reachable by clicking a session reference inside your own thread.
+  let top = base[base.length - 1];
+  if (top && top.sessionID === id && top.view === undefined)
+    return base;
+
+  return [ ...base, { sessionID: id, collapsed: false } ];
 }
 
 export function popStack(stack) {
