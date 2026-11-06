@@ -286,6 +286,19 @@ rebase, and neither was asked for. The owner asked for the bug to be fixed on
 the instance being browsed, which an uncommitted edit achieves because `:3001`
 reads from disk per request.
 
+**Recovering the change if it is ever lost.** The edit is uncommitted
+working-tree state, so `git checkout -- src/client/styles/app-base-shell.css` in
+`kikx2` would revert it silently. A patch of exactly this change is kept outside
+`/tmp` at `../kikx2-thread-body-clamp.patch` (md5
+`465bd32698918910b8938e3d1ccdb0e5`), verified to recover the live bytes: applied
+to the pristine `a76a1ab9` blob (md5 `34b67cfd9056edbda25598593e5ac34b`) it
+yields `b5d6725060e9a0326df8b1983b673c7f`, byte-identical to what `:3001`
+serves (`cmp` -> `RECOVERY_REPRODUCES_LIVE_BYTES`). An earlier turn claimed this
+recovery script was kept at `/tmp/k2-clamp-patch.py`; that file does not exist
+and the report never cited it, so the claim was wrong on both counts. The patch
+above replaces it, and is stored in the workspace rather than a temporary
+directory.
+
 *Superseded:* the former text said `kikx2` "has never had this clamp, so if
 `:3001` is the instance being browsed, the escape is still live there", and that
 applying it "changes a running server that may be in use. That is the owner's
