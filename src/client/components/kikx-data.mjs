@@ -29,6 +29,7 @@ import {
   upsertSession,
   upsertSessionPreview,
 } from '../state/kikx-state.mjs';
+import { applySessionViewScope } from '../state/session-view-filters.mjs';
 import { frameFilterSearchParams } from '../lib/frame-filters.mjs';
 import { loadClientComponentDescriptors } from './frame-component-registry.mjs';
 import { clampPreviewCount, chunkSessionIDs } from './chat-view-model.mjs';
@@ -338,6 +339,28 @@ function setFrameLoadError(app, sessionID, message) {
 // that raw order; those heads are PREPENDED without discarding loaded newer
 // heads. Legacy whole-session callers pass `offset` to keep the old shape.
 export async function loadFrames(app, sessionID, options = {}) {
+  // LAST LINE OF DEFENCE for the first-paint invariant: a frame that the active
+  // filter excludes must never enter the DOM, not even transiently. The primary
+  // mechanism is that cold start seeds `frameFilters` from storage at module
+  // load and every navigation applies its session's scope synchronously, so the
+  // filters are already correct by the time this request is built. This guard
+  // covers a path that reaches the transport without either having run.
+  //
+  // It is deliberately narrow: ONLY the selected session, and only ONCE per
+  // session. `loadFrames` is also called for sessions other than the selected
+  // one (merge loads, runtime frame events), and applying a scope there would
+  // overwrite the live session's filter with a different session's -- the same
+  // class of cross-session leak this whole change removes.
+  if (
+    options.filters === undefined
+    && app?._state
+    && sessionID === app._state.selectedSessionID
+    && app._viewScopeResolvedFor !== sessionID
+  ) {
+    app._viewScopeResolvedFor = sessionID;
+    applySessionViewScope(app._state, sessionID);
+    app._state.showDeletedSessions = app._state.frameFilters?.deleted === true;
+  }
   let limit = Number.isInteger(options.limit) ? options.limit : DEFAULT_FRAME_WINDOW_LIMIT;
   // Read the filter state at request time rather than capturing it, so a window
   // loaded after a checkbox change carries the new selection.
