@@ -489,6 +489,7 @@ button.kikx-brand__mark:focus-visible {
      2523px window, off-window and unreachable by scrolling, because this box
      clips rather than scrolls. mobile.css already clamps below 640px. */
   grid-template-rows: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   min-height: 0;
   padding: 18px;
   overflow: hidden;

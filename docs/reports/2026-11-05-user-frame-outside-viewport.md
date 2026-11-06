@@ -153,16 +153,59 @@ Two anti-vacuity devices, both of which caught real gaps:
    The offsets occur during mount, before any update; a targeted
    `frame.updated` leaves the frame inside (`after targeted update` assertion).
 
+## The fix was briefly absent from the repository
+
+Worth recording because the report asserts a fix that, for a short window, was
+not in the tree it described.
+
+`cf94a5d4` added the declaration and its comment together (committed 20:36:55).
+`161fc573` (System Settings owner corrections, committed 20:44:47, eight minutes
+later) touched the same file to add the brand-gear button rules, and its diff
+removed this one line while **keeping the explanatory comment**:
+
+```
+      clips rather than scrolls. mobile.css already clamps below 640px. */
+-  grid-template-columns: minmax(0, 1fr);
+   grid-template-rows: minmax(0, 1fr);
+```
+
+The cause was mine. `cf94a5d4` committed the clamp, so the tree was clamped at
+20:36:55; the line was therefore stripped **again** afterwards and never
+restored before the settings work committed eight minutes later. The only reason
+this declaration was ever removed is the paired no-clamp control arm for the
+bounds measurement, which was interrupted (`/tmp/arm2-scrollview.log`, 20:17:32:
+`cancelled 1`, `Promise resolution is still pending but the event loop has
+already resolved` — a record of an interruption that proves nothing about the
+result). No log of that particular post-commit strip survives, so the causal link
+from the interrupted arm to the committed removal is an **inference from
+timestamps and motive, not a measured fact**. What is measured is both commit
+contents and the eight-minute gap between them.
+
+The result is the worst reading of this report — the comment described a fix the
+same rule no longer performed.
+
+The guard spec would have caught it, but nothing was run between `161fc573` and
+the next session. That is the actual gap: the spec existed and was not executed
+by the change that removed what it guards.
+
+Restored in the commit that follows `161fc573`, with the guard re-run at the
+restored bytes first. The lesson generalises to this whole class of measurement:
+**never leave the tree in the altered state across an interruption** — restore and
+verify the hash inside the same command that performs the experiment, because a
+server restart can end a session between two commands.
+
 ## Not verified
 
-- The live dev server was confirmed to **serve** the fixed CSS
-  (`/client/styles/app-base-shell.css`, 200, 8997 bytes, clamp at line 468,
-  md5 `2f47ca84a522998eb0834fdc378271b4`, byte-identical to disk). The check was
-  reproduced across a server restart, so it is a statement about the working
-  tree and the static serve path rather than about one process; the concrete
-  pid is deliberately not recorded here because it is not durable. What is
-  **not** verified: the escape was never re-observed in the owner's real Chrome
-  on his real session. The reproduction is a Puppeteer fixture.
+- The dev server on :3002 was confirmed to **serve** the fixed CSS: 200,
+  `md5 f30d14c101fae7c0f51f0ab29ace940a`, 9466 bytes, clamp at line 492,
+  byte-identical to the on-disk file. The figures differ from the first
+  measurement (8997 bytes, line 468, md5 `2f47ca84`) only because `161fc573`
+  added the brand-gear rules above this block; the declaration itself is
+  unchanged. Byte identity between served and disk is a statement about the
+  static serve path, not about one process, so the listening pid is not quoted
+  here. What is **not** verified: the escape was never re-observed in the
+  owner's real Chrome on his real session. The reproduction is a Puppeteer
+  fixture, and serving the fixed bytes says nothing about that browser.
 - The entry animation (`--kikx-frame--entering`) was sampled by the guard, but
   the guard does not separately assert the geometry mid-animation; it asserts
   every mutation sample stays inside, which covers it only as far as mutations
