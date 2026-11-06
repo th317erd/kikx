@@ -221,6 +221,40 @@ server restart can end a session between two commands.
   missing key cannot be mistaken for a green run. It is still an unexecuted
   browser lane, not a passing one, and no stagehand spec covers this geometry.
 
+## This fix does not reach the instance on :3001
+
+`kikx2` — the checkout behind `:3001` — has never had this clamp, so if `:3001`
+is the instance being browsed, the escape is still live there and every green
+lane in this report is irrelevant to it. Measured read-only, no write to that
+tree and no restart of that process:
+
+- `kikx2` is at `a76a1ab9`, working tree clean at the time of measurement.
+- Its `src/client/styles/app-base-shell.css` is 8337 bytes, md5
+  `34b67cfd9056edbda25598593e5ac34b`.
+- Its `.kikx-thread__body` block (line 457) is `position / display /
+  grid-template-rows: minmax(0, 1fr) / min-height / padding / overflow: hidden`
+  — no `grid-template-columns`.
+- `:3001` serves that same file: the served bytes contain no thread-body column
+  clamp.
+
+That md5 is the same as the pre-fix `kikx` file recorded earlier in this report,
+which independently confirms `kikx2` is byte-identical to `kikx` before the fix
+rather than merely similar to it.
+
+**Applying it is a one-declaration change**, the same one described under "Fix".
+A patch script was written and verified against a *copy* in `/tmp`, not against
+`kikx2`: `--check` and `--dry-run` left the copy byte-identical
+(`34b67cfd…`), `--apply` produced exactly the committed `kikx` block, and a
+second `--apply` was a clean no-op. Post-patch the copy is 8997 bytes (the size
+`kikx` had before `161fc573` added unrelated rules above the block), with
+`grid-template-columns: minmax(0, 1fr)` present once and the rule count
+unchanged. **No part of that verification touched `kikx2`**: it was read and its
+served bytes fetched, nothing more.
+
+Why it is not applied: the standing instruction is not to modify `kikx2` or
+`:3001`, and applying it changes a running server that may be in use. That is
+the owner's call, not an inference to act on.
+
 ## Unrelated lane failures, and how that was actually established
 
 The browser lanes have failures that are not this clamp — proven pre-existing
