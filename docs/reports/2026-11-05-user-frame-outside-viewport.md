@@ -269,7 +269,11 @@ Widths at a 2523px viewport with a 3000px child. Verdict
 `PROBE_MEASURES_THE_CLAMP`: the control widens the track by 513px, restoring
 returns the measurement exactly, and an inline copy of the served clamp
 reproduces the served result. The probe is therefore measuring this declaration
-and not something else.
+and not something else. Re-run on 2026-11-06 against HEAD `29d22275` reproduced all
+four rows unchanged, and that run left a log at `/tmp/k2-clamp-probe2-rerun.log`
+(`CONTROL_SENSITIVE`, `RESTORES_TO_A` and `INLINE_CLAMP_EQ_A` all `true`;
+`REAL_THREAD_BODY_PRESENT false`), so these numbers rest on a re-runnable
+observation rather than on a single one whose output was not kept.
 
 The **first** version of this probe was invalid and is not evidence. Its control
 walked `document.styleSheets` for a `.kikx-thread__body` rule to delete and found
