@@ -319,9 +319,28 @@ Two wrong methods, in order:
    reasoning went "two clamp-less trees both fail, therefore pre-existing". But a
    different repo with a different commit history is not a baseline — that
    worktree also predates four commits of unrelated shell work.
-2. **Running the spec solo.** It passes 3/3 in a clone at `43cc56de` (~5.45 s).
-   The failure, however, only ever appeared *inside a lane*. A solo pass does not
-   control for the concurrency it failed under, so this also proved nothing.
+2. **Running the spec solo.** An earlier version of this section claimed it
+   "passes 3/3 in a clone at `43cc56de` (~5.45 s)". Re-measured, that is false,
+   and the correction is worth keeping because it removes an argument rather
+   than adding one. Three solo runs on each side, same spec bytes:
+
+   | arm | run 1 | run 2 | run 3 |
+   | --- | --- | --- | --- |
+   | no clamp, clone `43cc56de` | fail 10490 ms | fail 10408 ms | fail 10456 ms |
+   | clamp, HEAD `634ca0b3` | fail 10481 ms | fail 10443 ms | pass 1546 ms |
+
+   So solo is **unstable in both directions, on both sides of the clamp**. The
+   passing run took 1546 ms; every failing run took ~10.4 s, which reads like a
+   timeout boundary under machine contention rather than a geometry effect —
+   that is an inference from the durations, not a measurement, and this session
+   was running other browser work throughout. The sibling test passed in all
+   six runs (1154–1440 ms).
+
+   The conclusion the item was making survives, but for a stronger reason than
+   the one originally written: a solo run does not merely fail to control for
+   in-lane concurrency, it does not reliably reproduce the **pass** it was
+   being used to cite. Solo cannot separate clamp from no-clamp, so it is not
+   evidence either way.
 
 The third attempt is the one that holds: **the full lane, both arms, in-lane
 concurrency**. Two independent baseline setups agree.
