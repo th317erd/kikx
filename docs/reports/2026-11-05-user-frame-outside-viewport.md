@@ -210,7 +210,7 @@ server restart can end a session between two commands.
   the guard does not separately assert the geometry mid-animation; it asserts
   every mutation sample stays inside, which covers it only as far as mutations
   coincide with the animation.
-- `ui:stagehand` **never ran** as part of this work, and could not run here. The
+- `ui:stagehand` **did run**, and failed closed rather than passing silently. The
   lane has no usable model credential: `stagehand-test-utils.mjs` falls back to
   `.env.dev`'s `AEORDB_ROOT_KEY` when no env var is set, and AeorDB (listening
   on 6833, not the 6830 that file names) rejects that key with `HTTP 401`.
@@ -218,8 +218,9 @@ server restart can end a session between two commands.
   28 registered / 28 fail / **0 skipped**, every failure an `AeorDB HTTP 401`,
   and none of them mentioning CSS, the thread body or a viewport. The lane fails
   **closed** — the credential gate throws before `t.skip` is ever reached — so a
-  missing key cannot be mistaken for a green run. It is still an unexecuted
-  browser lane, not a passing one, and no stagehand spec covers this geometry.
+  missing key cannot be mistaken for a green run. Every one of its 28 tests was
+  therefore an execution that stopped at the credential gate, not a browser
+  assertion, and no stagehand spec covers this geometry either.
 
 ## The same fix on the instance behind :3001 (owner-authorized, 2026-11-06)
 
