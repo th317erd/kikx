@@ -393,6 +393,13 @@ self-identify its state that is a real gap in the evidence, and the `43cc56de`
 clone arms above exist partly to cover it: there the clamp's absence is a
 property of the commit rather than of a hand edit.
 
+The 20:54 no-clamp log at that path was overwritten by a 21:19 re-run when the
+state-recording pair below was measured. Its original bytes survive at
+`/tmp/lane-noclamp-FULL2-2054-prior.log`, and the two copies agree in substance —
+FAIL 40/43, the same three failing tests, and the same guard geometry — so the
+table above is checkable from either file, but the survivor is the one that
+matches the 20:54 mtime.
+
 #### Re-measured with state recorded inside the log (21:22)
 
 That gap was then closed by re-running the same pair with the CSS state written
