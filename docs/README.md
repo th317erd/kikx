@@ -167,6 +167,7 @@ architecture. Their own authority banners govern how they may be used.
 - [Discord message card live proof, 2026-11-02](./discord-message-card-live-proof-20261102.md)
 - [3003 labelled restart and live proof, 2026-11-02](./3003-labelled-restart-proof-20261102.md)
 - [Stale-stylesheet fix audit, 2026-11-07](./stale-stylesheet-fix-20261107.md)
+- [STOP control verification, 2026-11-07](./stop-control-verification-20261107.md)
 - [Client targeted-update audit, 2026-10-30](./reports/client-targeted-update-audit-2026-10-30.md)
 - [User message outside the viewport — root cause, 2026-11-05](./reports/2026-11-05-user-frame-outside-viewport.md)
 - [kikx2 git sync and :3001 restart, 2026-11-06](./reports/2026-11-06-kikx2-sync-and-3001-restart.md)
