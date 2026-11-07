@@ -1,5 +1,7 @@
 # Stale-stylesheet fix: audit, verification, and what remains
 
+> **Status: current** — dated maintainer evidence for the stale-stylesheet fix (commit `cd9a2f52`). No newer stylesheet incident supersedes it.
+
 Commit `cd9a2f52`, pushed to `origin/main` (`f4ed4927..cd9a2f52`).
 Author of the interrupted work: the previous session, whose response was cut off
 mid-stream. This report corrects the record of that turn and states what is proven.
