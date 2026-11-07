@@ -45,3 +45,6 @@ docs/mythix-ui-*
 
 # Local gate logs and one-off probes (not source)
 .gate/
+
+# Kikx runtime ground (S3): runtime plugin path list + npm tarball landing
+.kikx/

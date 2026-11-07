@@ -3,6 +3,9 @@
 // Routes /api/plugins/<id>/... to the plugin that owns that mount.
 // Returns false when the path is not under a plugin mount, so the built-in chain continues.
 
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { PLUGIN_ADMIN_ACTIONS, requireOperator } from './plugin-admin-policy.mjs';
 
 // The admin branches below run before router.invoke(), which is what normally supplies a
@@ -53,11 +56,11 @@ export async function handlePluginRoutes({ request, response, url, context, json
     // uninstall gate both read this. Classification fails CLOSED: an unknown
     // root is never managed.
     let configuredPaths = null;
+    let config = context.has?.('config') ? context.require('config') : null;
     // Reported alongside the inventory so Settings → Plugins can show the
     // unsafe-mode banner from the same authoritative answer the gate uses.
     let signatureMode = null;
     try {
-      let config = context.has?.('config') ? context.require('config') : null;
       if (config && typeof config.get === 'function') {
         const { KIKX_PLUGIN_PATHS_PATH, KIKX_PLUGIN_SIGNATURE_MODE_PATH } = await import('../../core/config/config-paths.mjs');
         configuredPaths = await config.get(KIKX_PLUGIN_PATHS_PATH);
@@ -74,16 +77,52 @@ export async function handlePluginRoutes({ request, response, url, context, json
       signatureMode = fromEnv || 'required';
     }
     const { isManagedPluginLocation } = await import('../../core/plugins/plugin-paths.mjs');
+    // Managed ground (S3): configured paths + the durable runtime list +
+    // the npm landing root — every place a location can legitimately come
+    // from. Unknown roots still fail closed (never managed).
+    let managedRoots = configuredPaths;
+    try {
+      const { mergePluginPaths, resolveNpmPluginBase } = await import('../../core/plugins/plugin-paths.mjs');
+      const { runtimePathsForConfig, runtimeRootForConfig } = await import('../../core/config/runtime-plugin-paths.mjs');
+      const { KIKX_PLUGIN_NPM_DIR_PATH } = await import('../../core/config/config-paths.mjs');
+      const npmDir = config && typeof config.get === 'function' ? await config.get(KIKX_PLUGIN_NPM_DIR_PATH) : undefined;
+      const cwd = await runtimeRootForConfig(config);
+      managedRoots = mergePluginPaths(
+        configuredPaths || [],
+        await runtimePathsForConfig(config),
+        resolveNpmPluginBase({ npmDir, cwd }),
+      );
+    } catch (_e) { managedRoots = configuredPaths; }
+    // Provenance lookup (plan 10.4): install-time tag, absent = null.
+    let tagsStore = context.has?.('tagsStore') ? context.require('tagsStore') : null;
+    async function sourceFor(name) {
+      if (!tagsStore || typeof tagsStore.getTag !== 'function') return null;
+      try {
+        const tag = await tagsStore.getTag({ target_type: 'plugin', target_id: name, name: 'source' });
+        return JSON.parse(tag.value);
+      } catch { return null; }
+    }
 
     response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     response.end(JSON.stringify({
       data: {
-        plugins: records.map((r) => ({
+        plugins: await Promise.all(records.map(async (r) => ({
           name: r.pluginName,
           // Directories only, never absolute paths: an authenticated caller still does not
           // need the operator's filesystem layout.
           location: r.pluginLocation || null,
-          managed: isManagedPluginLocation(r.pluginLocation, { configuredPaths }),
+          // S3 (plan 10.4): provenance recorded at install time, plus whether
+          // the load proves a signature: 'required' mode means the gate inside
+          // loadPlugins admitted it (loaded = verified → true); 'unsafe' proves
+          // nothing, reported honestly as unknown (null).
+          source: await sourceFor(r.pluginName),
+          signed: signatureMode === 'required' ? true : null,
+          // Managed classification runs on the REAL directory (pluginPath),
+          // never the display token: inventory location is deliberately
+          // `basename#hash`, which resolves under no root and would fail
+          // closed forever. pluginPath stays out of the response — the
+          // operator's filesystem layout is not disclosed by listing.
+          managed: isManagedPluginLocation(r.pluginPath, { configuredPaths: managedRoots ?? configuredPaths }),
           mounted: mountsById.has(r.pluginName),
           mount: mountsById.has(r.pluginName)
             ? {
@@ -94,7 +133,7 @@ export async function handlePluginRoutes({ request, response, url, context, json
             : null,
           subscriptions: bus?.list?.().find((s) => s.pluginId === r.pluginName) || null,
           manifest: r.manifest || null,
-        })),
+        }))),
         failures: registry?._pluginLoadErrors || [],
         signatureMode,
         // A class override does not change a live instance (campaign §8.1.5). create-server
@@ -138,8 +177,8 @@ export async function handlePluginRoutes({ request, response, url, context, json
     // operator has explicitly turned it on - an open install endpoint is remote code
     // execution with a JSON body.
     let enabled = false;
+    let config = context.has?.('config') ? context.require('config') : null;
     try {
-      let config = context.has?.('config') ? context.require('config') : null;
       if (config && typeof config.get === 'function') {
         const { KIKX_PLUGIN_INSTALL_ENABLED_PATH } = await import('../../core/config/config-paths.mjs');
         let value = await config.get(KIKX_PLUGIN_INSTALL_ENABLED_PATH);
@@ -157,18 +196,79 @@ export async function handlePluginRoutes({ request, response, url, context, json
       return true;
     }
 
-    // Bounded: an install payload is a path.
+    // Bounded: an install payload is {path} or {npm} — never both.
     let body = await readBoundedJsonBody(request);
-    let target = typeof body?.path === 'string' ? body.path.trim() : '';
-    if (!target) {
-      response.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-      response.end(JSON.stringify({ error: { message: 'install requires a path' } }));
+    let pathInput = typeof body?.path === 'string' ? body.path.trim() : '';
+    let npmInput = typeof body?.npm === 'string' ? body.npm : '';
+    let target = '';
+    // Provenance (plan 10.4): recorded for BOTH shapes on success.
+    let source = null;
+    const answerError = (status, message, hint) => {
+      response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ error: { message, ...(hint ? { hint } : {}) } }));
       return true;
-    }
-    if (!target.startsWith('/')) {
-      response.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-      response.end(JSON.stringify({ error: { message: 'install path must be absolute' } }));
-      return true;
+    };
+    if (pathInput && npmInput)
+      return answerError(400, 'install takes either a path or an npm spec, not both');
+    if (!pathInput && !npmInput)
+      return answerError(400, 'install requires a path', 'send {path:"/abs/dir"} or {npm:"pkg[@version]"}');
+
+    if (pathInput) {
+      if (!pathInput.startsWith('/'))
+        return answerError(400, 'install path must be absolute');
+      target = pathInput;
+      source = { type: 'path', ref: target, registry: null };
+    } else {
+      // --- npm branch (campaign S3, plan 5-S3): resolve against configured
+      // registries, verify dist.integrity sha512, extract with tarbomb
+      // guards into staging, swap atomically. The injected fetch seam
+      // (pluginNpmRegistryFetch) exists for tests; production rides fetch.
+      const { parseNpmPackageSpec } = await import('../../core/plugins/npm-package.mjs');
+      const parsed = parseNpmPackageSpec(npmInput);
+      if (!parsed)
+        return answerError(400, 'invalid npm package spec — registry names and spaceless versions/ranges only',
+          'expected <name>[@version] or <name>[@range], e.g. kikx-plugin-echo@^1.2.0');
+      const { resolvePackage, downloadTarball } = await import('../../core/plugins/npm-registry.mjs');
+      const { extractTarball } = await import('../../core/plugins/npm-tar.mjs');
+      const { resolveNpmPluginBase, npmPluginDirFor } = await import('../../core/plugins/plugin-paths.mjs');
+      const { runtimeRootForConfig } = await import('../../core/config/runtime-plugin-paths.mjs');
+      const { KIKX_PLUGIN_REGISTRY_URLS_PATH, KIKX_PLUGIN_NPM_DIR_PATH } = await import('../../core/config/config-paths.mjs');
+      const registryUrls = config && typeof config.get === 'function' ? await config.get(KIKX_PLUGIN_REGISTRY_URLS_PATH) : undefined;
+      const npmDirConfig = config && typeof config.get === 'function' ? await config.get(KIKX_PLUGIN_NPM_DIR_PATH) : undefined;
+      const fetchImpl = context.has?.('pluginNpmRegistryFetch') ? context.require('pluginNpmRegistryFetch') : globalThis.fetch;
+      const npmBase = resolveNpmPluginBase({ npmDir: npmDirConfig, cwd: await runtimeRootForConfig(config) });
+
+      let meta;
+      try {
+        meta = await resolvePackage(parsed.name, parsed.version, { registryUrls, fetchImpl });
+      } catch (error) {
+        return answerError(502, `registry resolution failed: ${String(error?.error || error?.message || error)}`);
+      }
+      if (meta?.error)
+        return answerError(meta.error === 'version-not-found' ? 404 : 502, `registry resolution failed: ${meta.error}`);
+      let tarballBytes;
+      try {
+        tarballBytes = await downloadTarball(meta, { fetchImpl });
+      } catch (error) {
+        return answerError(502, `tarball download rejected: ${String(error?.error || error?.message || error)}`);
+      }
+      // Stage, extract (guards run against the staging tree only), then swap
+      // atomically — a failed extract leaves no target and no staging dir.
+      const dest = npmPluginDirFor(npmBase, meta.name);
+      const staging = path.join(npmBase,
+        `.staging-${meta.name.replace(/[^a-z0-9._-]/gi, '_')}-${process.pid}-${Date.now().toString(36)}`);
+      try {
+        fs.mkdirSync(npmBase, { recursive: true });
+        extractTarball(tarballBytes, staging);
+        fs.rmSync(dest, { recursive: true, force: true });
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.renameSync(staging, dest);
+      } catch (error) {
+        fs.rmSync(staging, { recursive: true, force: true });
+        return answerError(502, `tarball rejected: ${String(error?.error || error?.message || error)}`);
+      }
+      target = dest;
+      source = { type: 'npm', ref: `${meta.name}@${meta.version}`, registry: meta.registry };
     }
 
     let before = new Set((registry._pluginRegistrations || new Map()).keys());
@@ -232,13 +332,35 @@ export async function handlePluginRoutes({ request, response, url, context, json
       return true;
     }
 
+    // Bookkeeping that must not survive a failed install, and must survive a
+    // successful one: the durable runtime path list (ConfigStore is
+    // read-only — reload reads this file) and provenance tags (inventory).
+    // Runs after the rollback window: a bookkeeping hiccup warns loudly
+    // rather than pretending a loaded plugin failed to install.
+    if (added.length && source) {
+      try {
+        if (source.type === 'npm') {
+          const { appendRuntimePluginPath, runtimeRootForConfig } = await import('../../core/config/runtime-plugin-paths.mjs');
+          appendRuntimePluginPath(target, { cwd: await runtimeRootForConfig(config) });
+        }
+        if (context.has?.('tagsStore')) {
+          const tags = context.require('tagsStore');
+          const value = JSON.stringify(source);
+          for (const name of added)
+            await tags.upsertTag({ target_type: 'plugin', target_id: name, name: 'source', value });
+        }
+      } catch (error) {
+        console.warn('[plugin-install] provenance/runtime-path bookkeeping failed:', error?.message);
+      }
+    }
+
     let after = new Set((registry._pluginRegistrations || new Map()).keys());
     // `added` was computed before migrations ran; nothing loads during the migration step.
     let newFailures = (registry._pluginLoadErrors || []).slice(failuresBefore);
 
     response.writeHead(added.length ? 201 : 200, { 'Content-Type': 'application/json; charset=utf-8' });
     response.end(JSON.stringify({
-      data: { path: target, added, total: after.size, failures: newFailures },
+      data: { path: target, source, added, total: after.size, failures: newFailures },
     }));
     return true;
   }
@@ -284,6 +406,16 @@ export async function handlePluginRoutes({ request, response, url, context, json
     } catch (_e) { pluginPaths = null; }
     if (!pluginPaths && context.has?.('pluginPaths'))
       pluginPaths = context.require('pluginPaths');
+    // S3: runtime installs append to <cwd>/.kikx/plugin-paths.json (ConfigStore
+    // is read-only) — a reload must scan them too, or an npm install would
+    // live exactly until something else reloaded the configured list.
+    try {
+      const { mergePluginPaths } = await import('../../core/plugins/plugin-paths.mjs');
+      const { runtimePathsForConfig } = await import('../../core/config/runtime-plugin-paths.mjs');
+      const cfg = context.has?.('config') ? context.require('config') : null;
+      const merged = mergePluginPaths(pluginPaths || [], await runtimePathsForConfig(cfg));
+      if (merged.length) pluginPaths = merged;
+    } catch (_e) { /* keep the configured list */ }
     if (!registry || !pluginPaths) {
       response.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' });
       response.end(JSON.stringify({ error: { message: 'plugin reload is unavailable' } }));

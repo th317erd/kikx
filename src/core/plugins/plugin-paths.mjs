@@ -1,5 +1,6 @@
 'use strict';
 
+import os from 'node:os';
 import path from 'node:path';
 
 // Plugin ingestion is additive: the checkout's own plugins are a base layer,
@@ -48,6 +49,27 @@ function isUnder(candidate, root) {
     return false;
   const normalizedRoot = root.endsWith('/') || root.endsWith('\\') ? root : `${root}/`;
   return candidate === root || candidate.startsWith(normalizedRoot);
+}
+
+// --- npm landing (campaign S3) ----------------------------------------------
+//
+// KIKX_PLUGIN_NPM_DIR when configured, else <cwd>/.kikx/plugins/npm — a root
+// OUTSIDE every auto-scanned plugin directory on purpose: a tarball whose
+// load later fails must not be rediscovered by the next boot and loaded
+// anyway (the install route rolls back on failure, and a stray directory
+// inside a scanned root would undo that). The inventory counts this root as
+// managed ground, so npm-landed plugins are uninstallable like the rest.
+export function resolveNpmPluginBase({ npmDir = '', cwd = os.homedir() } = {}) {
+  const configured = typeof npmDir === 'string' ? npmDir.trim() : '';
+  const base = configured || path.join(cwd, '.kikx', 'plugins', 'npm');
+  return path.resolve(base);
+}
+
+// Per-package landing directory. The name has already passed the strict
+// registry-name regex (no '..', no leading '-', scoped names nest one level
+// exactly as npm itself nests them), so splitting on '/' is safe here.
+export function npmPluginDirFor(base, name) {
+  return path.resolve(base, ...String(name).split('/'));
 }
 
 export function isManagedPluginLocation(location, { bundledRoot = BUNDLED_PLUGIN_ROOT, configuredPaths = '' } = {}) {

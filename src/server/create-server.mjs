@@ -143,6 +143,13 @@ export async function createServer(options = {}) {
   // launcher's CWD after all.
   let baseCWD = path.resolve(options.cwd || await config.get(KIKX_CWD_PATH) || os.homedir());
 
+  // S3: runtime installs append to <cwd>/.kikx/plugin-paths.json (ConfigStore
+  // is read-only), so the boot scan unions the configured list with the
+  // durable runtime list — resolved against the SAME root the services get
+  // (baseCWD), so a harness's options.cwd stays hermetic.
+  const { readRuntimePluginPaths } = await import('../core/config/runtime-plugin-paths.mjs');
+  pluginPaths = mergePluginPaths(pluginPaths, readRuntimePluginPaths({ cwd: baseCWD }));
+
   // S5 memory monitoring (off by default). The interval is configured in
   // seconds; the sampler works in milliseconds and clamps a too-small value.
   let memorySamplerEnabled = parseBoolean(await config.get(KIKX_MONITORING_MEMORY_ENABLED_PATH), false);

@@ -8,49 +8,11 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 
 import { extractTarball } from '../../../src/core/plugins/npm-tar.mjs';
+import { buildTar } from '../../support/tar-fixture.mjs';
 
 // Campaign S3 slice 2 (plan 5-S3): "extract with tarbomb/path-traversal
 // guards". Dependency-free ustar/pax reader; every hostile shape must throw
 // a guarded error instead of writing outside the landing directory.
-
-function writeOctal(buf, offset, length, value) {
-  buf.write(String(value.toString(8)).padStart(length - 1, '0') + '\0', offset, length, 'ascii');
-}
-
-function buildHeader({ name, size, type = '0', mode = 0o644, prefix = '', linkname = '' }) {
-  const h = Buffer.alloc(512);
-  h.write(name.slice(0, 100), 0, 100, 'utf8');
-  writeOctal(h, 100, 8, mode);
-  writeOctal(h, 108, 8, 0);
-  writeOctal(h, 116, 8, 0);
-  writeOctal(h, 124, 12, size);
-  writeOctal(h, 136, 12, 0);
-  h.write('        ', 148, 8, 'ascii'); // checksum placeholder = spaces
-  h.write(type, 156, 1, 'ascii');
-  h.write(linkname.slice(0, 100), 157, 100, 'utf8');
-  h.write('ustar\0', 257, 6, 'ascii');
-  h.write('00', 263, 2, 'ascii');
-  if (prefix) h.write(prefix.slice(0, 155), 345, 155, 'utf8');
-  let sum = 0;
-  for (const byte of h) sum += byte;
-  h.write(sum.toString(8).padStart(6, '0') + '\0 ', 148, 8, 'ascii');
-  return h;
-}
-
-function buildTar(entries) {
-  const blocks = [];
-  for (const entry of entries) {
-    const data = Buffer.from(entry.data || '', 'utf8');
-    blocks.push(buildHeader({ name: entry.name, size: data.length, type: entry.type || '0', mode: entry.mode ?? 0o644, prefix: entry.prefix || '', linkname: entry.linkname || '' }));
-    if (data.length) {
-      const padded = Buffer.alloc(Math.ceil(data.length / 512) * 512);
-      data.copy(padded);
-      blocks.push(padded);
-    }
-  }
-  blocks.push(Buffer.alloc(1024)); // two zero blocks: end of archive
-  return Buffer.concat(blocks);
-}
 
 function tmpDest(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kikx-tar-'));
