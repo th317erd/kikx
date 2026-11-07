@@ -87,16 +87,62 @@ now checks `statusbar-stats.css` (directly linked, import-free), and I added a t
 that follows `app.css`'s stamped `app-composer.css` specifier to the real bytes —
 which is the case that actually regressed.
 
+## Reproduced at the public boundary (2026-11-07, after deploy)
+
+Both artifacts were reproduced in a real Chrome against `https://kikx3.taraani.org`
+with a **discriminating control**: same page, same DOM, same mount code, same URL —
+only the served stylesheet bytes differ (pre-deploy `dce21c05` bytes injected with
+`request.respond`; everything else live from the edge).
+
+**STOP control** — a real `<aeor-confirm-button class="kikx-stop-button">` mounted in
+a real `.kikx-composer__actions` band:
+
+| arm | host bg | host border | host box | inner bg | inner box | nested |
+|---|---|---|---|---|---|---|
+| NEW | `rgba(0,0,0,0)` | `0px none` | 88x35 | `rgb(74,15,15)` | 88x35 | **false** |
+| OLD | `rgb(185,28,28)` | `2px solid rgb(127,29,29)` | **1280x44** | `rgb(33,38,45)` | 68x35 | **true** |
+
+The OLD row is the owner's artifact: a full-width red band with a small grey
+(`#21262d`) STOP button sitting inside it — literally a button in a button.
+
+**Tokens cell** — the real `.kikx-statusbar__tokens`:
+
+| arm | display | cell h | icon y | value y | sameRow | stacked |
+|---|---|---|---|---|---|---|
+| NEW | `flex` | 24 | 878 | 874 | **true** | **false** |
+| OLD | `block` | **41** | 859 | **878** | **false** | **true** |
+
+The OLD row is the owner's artifact: icon on its own line above the count.
+
+Old bytes used are the pre-deploy `dce21c05` sheets, preserved at `/tmp/oldcss/`:
+`app-composer.css` 10467 B md5 `2467be615e788f53c7921fffda770d70`,
+`app-base-shell.css` 7798 B md5 `17d73d3805fb23ce16da40de5e6545b4`.
+
+### Probe methodology, including two failures worth recording
+
+Attempt 1 stripped `?v=` in a cold browser. Useless: a cold browser simply re-fetches
+the *current* CSS from the edge, so both arms were guaranteed identical. It proved
+nothing, and it was briefly reported as a control before being caught.
+
+Attempt 2 mutated the live CSSOM to swap the rules. It silently no-opped — the
+`document.styleSheets` lookup returned nothing for the `@import`ed sheet, so the
+"old" arm re-measured the "new" arm. Caught only because the probe emitted a
+`sheet: false` marker.
+
+Attempt 3 (the table above) swaps at the **network layer** with `request.respond`
+and asserts the interception actually fired (`sheet: ["INTERCEPTED …"]` in the OLD
+arm). A control that cannot show it fired is not a control.
+
 ## What is NOT verified
 
-- The artifacts were **not** reproduced from a genuinely stale browser cache. Proven:
-  old bytes + a selector conflict that paints the host + a cache mechanism that
-  permits it + the new code removing the channel. That is a strong chain, not an
-  in-situ capture.
+- This is not an *in-situ* capture: no browser was observed holding a real expired
+  four-hour lease. The reproduction supplies the stale bytes rather than waiting for
+  the cache to hand them over. The lease mechanism itself is separately measured
+  (no ETag, `max-age=14400`, `If-Modified-Since` a year ahead still returns 200).
 - **Origin identity unverified.** Health and 404 bodies were byte-identical from
   edge, `:3001` and `:3002` — non-discriminating. "kikx3's origin is the `kikx2`
   checkout" remains inference.
-- Nothing is deployed. `:3002` is the only server running this commit.
+- The `.js` module path remains uncovered — see the scope gap below.
 
 ## Deliberate scope gap
 
@@ -106,10 +152,23 @@ Vendored `aeor-web-components` **`.js`** modules *are* edge-cached, so they rema
 residual skew risk; versioning them means rewriting every `import` specifier in
 `aeor-ui.mjs` and inside the vendor tree. Separate change, not attempted here.
 
+This gap has already been observed in the wild and is recorded in
+`docs/deploy-3098-runbook-20261031.md:38` ("Second defect: module URLs are not
+cache-busted … Not fixed; needs a decision"): the edge served a cached
+`cf-cache-status: HIT` **404** for `/vendor/.../aeor-scrollview.css` while the
+origin returned 200. The CSS half of that defect is now closed; the `.js` half
+is not. Re-measured 2026-11-07: `elements.js`, `reactive-state.js` and
+`components/aeor-confirm-button.js` all return 200 with
+`cache-control: max-age=14400`, while `/client/lib/aeor-ui.mjs` returns
+`no-cache` / `cf-cache-status: DYNAMIC`.
+
 ## Deploying
 
 `kikx-docker/deploy.sh` builds locally, saves the previous tag for
 `./rollback.sh`, runs a boot smoke and rolls back automatically on failure.
+
+Deployed 2026-11-07T04:14:13Z as `aad7743c` (previous `f3595e59`); container
+`kikx/kikx:aad7743c` healthy on `wyatt-laptop`.
 
 The useful property: because the fix changes the URL, deploying it **bypasses the
 owner's stale cache immediately** — `app.css?v=<newhash>` is a URL their browser has
