@@ -455,3 +455,16 @@
   min-width: 0;
   padding: 6px 8px 10px;
 }
+
+/* Owner correction (2026-11-07): the thread column is CENTRED and bounded.
+   Two complaints, one mechanism: left-anchored cards left a ~1100px void on
+   the right of every agent message ("huge gap"), and stretching cards to kill
+   that void made messages full-width ("this frame is FULL WIDTH!"). A centred
+   max-width track splits the slack EQUALLY — no one-sided void, no full-width
+   frames. User cards still justify-self:end INSIDE the track; tool/compact
+   rows keep their own caps. Vertical geometry (heights, anchors, page
+   boundaries) is untouched — width only. */
+.kikx-frame-list .aeor-scrollview__items {
+  max-width: var(--kikx-thread-column, 1440px);
+  margin-inline: auto;
+}

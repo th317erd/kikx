@@ -468,20 +468,12 @@
   font-size: 0.85em;
 }
 
-/* Owner fix (2026-11-07): expanded message cards FILL the thread column —
-   the fit-content chain (inner measure -> fit-content card) left a ~1100px
-   empty gutter to the right of every agent card on wide viewports: the "huge
-   gap". The reading measure moves INSIDE the card (prose caps below); the
-   surface spans. User cards keep justify-self:end; tool/compact/minimized
-   rows keep their 960px caps. */
-.kikx-frame--AgentMessage:not(.kikx-frame--compact),
-.kikx-frame--AgentMessageDelta:not(.kikx-frame--compact),
-.kikx-frame--AgentProgress:not(.kikx-frame--compact),
-.kikx-frame--Question:not(.kikx-frame--compact) {
-  width: 100%;
-  max-width: none;
-  justify-self: stretch;
-}
+/* Owner corrections, both sides (2026-11-07): stretch-to-fill is REJECTED —
+   "a few messages are now full-width" — and the earlier "huge gap" is solved
+   by CENTRING the column instead (app-thread.css: bounded max-width,
+   margin-inline:auto), which splits the slack evenly rather than parking it
+   all right of every card. Cards are back to bounded fit-content; the 116ch
+   prose cap stays as the inner measure. */
 
 .kikx-frame--AgentMessage .kikx-markdown,
 .kikx-frame--AgentMessageDelta .kikx-markdown,
