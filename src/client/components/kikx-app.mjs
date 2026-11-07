@@ -15,6 +15,7 @@ import { installScrollDebugLogger } from '../lib/scroll-debug-logger.mjs';
 import { hasSessionDeepLink } from './kikx-app-helpers.mjs';
 import { toggleDebugMode } from '../lib/debug-mode.mjs';
 import { loadServerVersion } from '../state/server-version.mjs';
+import { startScrollTelemetry } from '../lib/scroll-telemetry.mjs';
 import { toggleRawMarkdown } from '../lib/raw-markdown.mjs';
 import { flushComposerDraft, flushLocalComposerDraft } from './composer-drafts.mjs';
 import {
@@ -527,8 +528,12 @@ export class KikxApp extends HTMLElement {
       // Debug mode can already be ON from persistence at boot (kikx.debug=1):
       // setDebugMode never runs then, so kick the version fetch here too — the
       // statusbar cell must appear either way (owner task, 2026-11-07).
-      if (this._state.debugMode === true)
+      if (this._state.debugMode === true) {
         void loadServerVersion(this);
+        // …and start the scrollview telemetry stream (owner's real-time
+        // debugging channel), also only in debug sessions.
+        startScrollTelemetry(this);
+      }
 
       let startupLoads = [
         this._loadClientComponents(),

@@ -1,6 +1,7 @@
 'use strict';
 
 import { loadServerVersion } from '../state/server-version.mjs';
+import { setActiveScrollTelemetry, startScrollTelemetry } from './scroll-telemetry.mjs';
 
 export const DEBUG_MODE_STORAGE_KEY = 'kikx.debug';
 
@@ -37,6 +38,12 @@ export function setDebugMode(app, enabled) {
   // 2026-11-07), so the one fetch is kicked HERE rather than at boot.
   if (next)
     void loadServerVersion(app);
+  // Scroll telemetry streams to the server ONLY while debug mode is on — the
+  // owner's real-time scrollview debugging channel (owner ask, 2026-11-07).
+  if (next)
+    startScrollTelemetry(app);
+  else
+    setActiveScrollTelemetry(app, false);
   return next;
 }
 

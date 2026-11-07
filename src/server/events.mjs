@@ -168,7 +168,7 @@ function coalescableFrameKey(event) {
   return `${sessionID}\u0000${frame.type || ''}\u0000${frame.id}`;
 }
 
-function writeSSE(response, event, data, maxBufferedBytes = DEFAULT_MAX_SSE_BUFFERED_BYTES) {
+export function writeSSE(response, event, data, maxBufferedBytes = DEFAULT_MAX_SSE_BUFFERED_BYTES) {
   // The socket can go away between the cleanup listener firing and the next
   // event; writing to it then would raise an async 'error' on the response.
   if (!response || response.destroyed || response.writableEnded)
