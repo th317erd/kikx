@@ -259,3 +259,40 @@ never seen. No cache purge and no hard reload needed.
 
 Rollback path if the probe above ever fails: `./rollback.sh` on `wyatt-laptop`,
 target `f3595e59`.
+
+## Post-restart re-verification and a stronger control (2026-11-07)
+
+Re-measured after an agent restart rather than trusting the session notes. Two
+checkouts serving the *same* vendored file on this desktop give the control this
+document previously lacked — a real old-code server, not an injected rule and not
+a direct function call:
+
+| server | checkout commit | bytes | stamped | md5 |
+|---|---|---|---|---|
+| `127.0.0.1:3001` | `f3595e59` (old code) | 4281 | **0 / 4** | `a5eb9e0f79edc4e577c906cde4de23da` |
+| `127.0.0.1:3002` | `29ce6125` (HEAD) | 4341 | **4 / 4** | `8f883723ba30be8a8bf8db75d3ab3f1e` |
+| `kikx3.taraani.org` | deployed `aad7743c` | 4281 | **0 / 4** | `a5eb9e0f79edc4e577c906cde4de23da` |
+
+Production is **byte-identical to the old-code server** — not merely "unstamped".
+Stripping the stamps from the HEAD body reproduces production exactly:
+`diff_lines = 0`, `byte_delta = 60 = 4 x 15` (`?v=` plus 12 hex characters).
+One variable changed across the arms (serving code version); path, file and
+request are constant, so the arms cannot silently measure each other.
+
+All four payloads already resolve from production, so the stamped URLs will not
+404 after a deploy: `Inter-Regular` 111268 B, `Inter-Medium` 114348 B,
+`Inter-Bold` 114840 B, `JetBrainsMono-Regular` 92380 B, each `200 font/woff2`,
+byte counts equal to the vendored files on disk.
+
+Deploy prerequisites checked read-only: `fonts/*.woff2` are **tracked** in
+`aeor-web-components` (HEAD `911af99`) so `git archive` staging includes them;
+`deploy.sh:144` runs `scripts/check-vendor-coverage.mjs` and refuses to build if a
+client-imported vendor file is missing; the deploy host `wyatt-laptop` is at
+`29ce6125` with only unrelated untracked files (`.miri-post-once.mjs`, `public/`).
+
+Gates at `29ce6125`, exit codes read from the log rather than through a pipe:
+
+- `node --test spec/server/*.mjs` — 253 tests, 251 pass, **0 fail**, 2 skipped, `REAL_EXIT=0`
+- `node --test spec/client/*.mjs` — 1300 tests, 1300 pass, **0 fail**, 0 skipped, `REAL_EXIT=0`
+
+Still not deployed. Production remains 0/4 on the font URLs until it is.
