@@ -62,7 +62,7 @@ parent would have shipped an unchanged version for a changed document.
 
 | check | result |
 |---|---|
-| `spec/server/*` | **247 pass, 0 fail, 2 skipped** (was 245/1/2) |
+| `spec/server/*` | **247 pass, 0 fail, 2 skipped** (was 245/1/2); **251 pass / 253 tests** once the font work landed |
 | `spec/server/asset-stamping-spec.mjs` | 8/8 |
 | `stylesheet-links-spec` + `thread-dock-grid-spec` | 22/22 |
 | real Chrome against `:3002` | 35 CSS requests, **35 stamped, 0 unversioned, 0 non-200** |
@@ -146,7 +146,7 @@ arm). A control that cannot show it fired is not a control.
   checkout" remains inference.
 - The `.js` module path remains uncovered — see the scope gap below.
 
-## Deliberate scope gap
+## Remaining scope gap: vendored `.js` modules
 
 Client `.mjs` modules return `cf-cache-status: DYNAMIC` with `no-cache` and are never
 cached, so they are not stamped — a stamp there would only churn the import graph.
@@ -168,22 +168,23 @@ is not. Re-measured 2026-11-07: `elements.js`, `reactive-state.js` and
 
 Every request the authenticated page makes was classified by (a) did the response
 carry a positive `max-age` (i.e. the Cloudflare rewrite applies) and (b) is the URL
-content-stamped. Result: 16 edge-cached, unstamped URLs remain.
+content-stamped. Result at the time of that audit: 16 edge-cached, unstamped URLs. The font row
+is now closed (see “Font payloads” below); **14 remain, all of them vendor `.js`**.
 
 | kind | count | examples |
 |---|---|---|
 | vendor `.js` | 14 | `elements.js`, `reconcile.js`, `components/aeor-confirm-button.js` |
-| vendor `.woff2` fonts | 4 declared / 2 loaded | `Inter-Regular`, `Inter-Medium`, `Inter-Bold`, `JetBrainsMono-Regular` |
+| ~~vendor `.woff2` fonts~~ | ~~4 declared / 2 loaded~~ | **closed** — see “Font payloads” below |
 
-The fonts are a new finding, not in the runbook. All four are declared via
+The fonts were a new finding, not in the runbook. All four are declared via
 `@font-face { src: url("../fonts/...") }` inside
 `/vendor/aeor-web-components/styles/globals.css`. That sheet *is* stamped
-(`?v=0a6bfe7fd607`), but `stampAssetText` rewrites link `href`s and `@import`
-specifiers only — it leaves `url()` payloads inside a sheet untouched, so all
-four font URLs ship unversioned. Measured directly: each returns 200 with
-`cache-control: max-age=14400`. The count is 4 declared versus 2 actually
+(`?v=0a6bfe7fd607`), but `stampAssetText` rewrote link `href`s and `@import`
+specifiers only — it left `url()` payloads inside a sheet untouched, so all
+four font URLs shipped unversioned. Measured directly: each returns 200 with
+`cache-control: max-age=14400`. The count was 4 declared versus 2 actually
 fetched, because only Regular and Bold are used by the current UI — the other
-two would join the same leak the moment a rule references them.
+two would have joined the same leak the moment a rule referenced them.
 
 Everything else is clean:
 
@@ -198,8 +199,51 @@ Everything else is clean:
 
 Severity of the two remaining classes, honestly: a stale `.js` component can pair
 with current CSS and mis-render (the runbook's observed HIT-404 is this class), and
-a stale font renders wrong glyph metrics. Both are latent, unlike the CSS case,
-which was live. Neither was attempted here.
+a stale font renders wrong glyph metrics. Both were latent, unlike the CSS case,
+which was live. Of the two, the font class has since been closed (next section);
+the `.js` class remains open.
+
+## Font payloads: the sweep's font finding, now closed
+
+The sweep above found four unversioned `.woff2` payloads reachable through a
+*stamped* sheet. Stamping the sheet while leaving its payloads bare is the same
+defect as stamping the document while leaving its `@import`s bare — one layer
+up, and it recurred one layer down. This is that layer.
+
+`stampCSSUrls()` in `src/server/asset-stamping.mjs` rewrites `url()` payloads
+whose extension is in `CSS_URL_VERSIONED_EXTENSIONS` (`.woff`, `.woff2`,
+`.ttf`, `.otf`). `.css` is deliberately **not** in that set: `@import` already
+owns stylesheet specifiers, and stamping them here too would create a second
+source of truth for one URL.
+
+The load-bearing half is not the rewrite, it is the **version**. If the payload
+moved but the sheet's `?v=` did not, a fresh sheet URL would still point at a
+four-hour-old font and the glyph metrics would be wrong behind a URL the browser
+has never seen. So `stampCSSUrls()` returns a per-file stat fingerprint and
+`renderSheet()` folds it into the text it hashes: a referenced font edit moves
+the sheet version, an unreferenced font edit does not, and restoring the bytes
+restores the version.
+
+Verified on this tree:
+
+| check | result |
+|---|---|
+| `spec/server/*.mjs` | **253 tests, 251 pass, 0 fail, 2 skipped, exit 0** |
+| `spec/server/asset-stamping-spec.mjs` | **10/10** (was 8) |
+| stamped `@font-face` URL serves the font | 200, `content-length` > 1000 |
+| unreferenced font edited | sheet version **unchanged** (no churn) |
+| referenced font edited | sheet version **moves** |
+| font bytes restored | version **returns** to its original value |
+| negative control | version `!=` the pre-stamp hash of the on-disk sheet text |
+
+Before the change, measured live at `https://kikx3.taraani.org`:
+`globals.css?v=0a6bfe7fd607` served all four payloads as bare
+`url('../fonts/Inter-Regular.woff2')` and siblings — **0 of 4** carried `?v=` —
+while each font itself answered 200 with `cache-control: max-age=14400`.
+
+**Not yet true in production.** This is committed but **not deployed**. Until it
+is, the edge still serves the bare font URLs, and every number above describes
+this checkout rather than what a browser is currently getting.
 
 ## Deploying
 
