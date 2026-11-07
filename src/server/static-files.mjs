@@ -3,7 +3,14 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { stampAssetText } from './asset-stamping.mjs';
 import { writeText } from './http-helpers.mjs';
+
+// Documents and stylesheets carry references that must change when the bytes
+// behind them change; see asset-stamping.mjs for why (Cloudflare rewrites
+// `no-cache` to `max-age=14400` on `.css`, so an unchanged URL stays stale for
+// four hours after a deploy).
+const STAMPED_EXTENSIONS = new Set([ '.html', '.css' ]);
 
 export async function serveStaticRequest({ request, response, url, staticRoots }) {
   let match = getStaticAsset(url.pathname, staticRoots);
@@ -15,8 +22,72 @@ export async function serveStaticRequest({ request, response, url, staticRoots }
     return true;
   }
 
+  if (STAMPED_EXTENSIONS.has(path.extname(match.filePath).toLowerCase())) {
+    await serveStampedFile({
+      request,
+      response,
+      filePath: match.filePath,
+      cacheControl: match.cacheControl,
+      staticRoots,
+    });
+    return true;
+  }
+
   await serveResolvedFile({ request, response, filePath: match.filePath, cacheControl: match.cacheControl });
   return true;
+}
+
+// Serve a file after rewriting its cache-busting references. Only reachable
+// through the static roots above, never for plugin assets: a plugin's own
+// files are not ours to rewrite.
+//
+// Stamping happens here, at serve time, never on disk. `index.html` keeps its
+// plain hrefs so repository guards can still resolve them against the working
+// tree, and a stamped URL still returns the exact bytes of the sheet on disk.
+async function serveStampedFile({ request, response, filePath, cacheControl = 'no-cache', staticRoots }) {
+  let stats;
+  try {
+    stats = await fs.stat(filePath);
+  } catch (_error) {
+    writeText(response, 404, 'Not Found');
+    return;
+  }
+
+  if (!stats.isFile()) {
+    writeText(response, 404, 'Not Found');
+    return;
+  }
+
+  // A stamping failure must never break delivery. Unstamped text serves the
+  // same content on an unchanged URL — the pre-existing cache behaviour — which
+  // is strictly better than a 500 on the document root.
+  let body;
+  try {
+    let text = await fs.readFile(filePath, 'utf8');
+    body = Buffer.from(await stampAssetText({ filePath, text, staticRoots }), 'utf8');
+  } catch (_error) {
+    try {
+      body = await fs.readFile(filePath);
+    } catch (_readError) {
+      writeText(response, 404, 'Not Found');
+      return;
+    }
+  }
+
+  response.writeHead(200, {
+    'Content-Type': contentTypeFor(filePath),
+    // Stamped text can be longer than the file on disk, so the length is the
+    // rendered one. Sending `stats.size` here truncates the document.
+    'Content-Length': body.length,
+    'Cache-Control': cacheControl,
+  });
+
+  if (request.method === 'HEAD') {
+    response.end();
+    return;
+  }
+
+  response.end(body);
 }
 
 // Stream a known, already-resolved file. Shared by the static roots and the
