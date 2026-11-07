@@ -676,3 +676,15 @@ test('a new bottom focus survives its entry animation and ends fully aligned', (
     setAnimationFrameScheduler(null);
   }
 });
+
+// Owner jump #4 (telemetry seq 275-295, 2026-11-07): a +6174px EASED
+// animation ran with ZERO user input — easing across more than a viewport
+// reads as a runaway. Large deltas snap; small continuous follow corrections
+// still ease.
+test('oversized scroll deltas snap instead of easing', async () => {
+  const { shouldSnapFrameListScroll } = await import('../../src/client/components/kikx-frame-scroll-lock.mjs');
+  assert.equal(shouldSnapFrameListScroll(6174, 900), true, 'multi-viewport teleports snap');
+  assert.equal(shouldSnapFrameListScroll(1300, 900), true, 'just over ~1.25 viewports snaps');
+  assert.equal(shouldSnapFrameListScroll(180, 900), false, 'small follow growth still eases');
+  assert.equal(shouldSnapFrameListScroll(600, 0), false, 'unknown viewport keeps a 600px floor easing');
+});

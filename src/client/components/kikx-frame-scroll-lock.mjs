@@ -393,13 +393,23 @@ export function lockScrollAtBottom(app) {
   return true;
 }
 
+// Owner jump #4 (telemetry seq 275-295, 2026-11-07): a +6174px EASED
+// animation ran with zero user input — easing across more than a viewport
+// reads as a runaway scroll, and native chat surfaces snap for large growth.
+// Small, continuous corrections (follow nudges, focus arrivals) still ease.
+export function shouldSnapFrameListScroll(delta, viewportHeight) {
+  const withRatio = Math.max(600, (Number(viewportHeight) || 0) * 1.25);
+  return !Number.isFinite(delta) || Math.abs(delta) > withRatio;
+}
+
 export function animateFrameListScroll(app, frameList, resolveTarget, options = {}) {
   cancelFrameListScrollAnimation(app);
   let duration = Number.isFinite(options.duration) ? Math.max(0, options.duration) : SCROLL_ANIMATION_MS;
   let startTop = frameList.scrollTop;
   let reduced = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
   let target = clampedScrollTop(frameList, resolveTarget());
-  if (reduced || duration === 0 || Math.abs(target - startTop) < 1) {
+  if (reduced || duration === 0 || Math.abs(target - startTop) < 1
+    || shouldSnapFrameListScroll(target - startTop, frameList.clientHeight)) {
     setFrameListScrollTop(app, frameList, target, { programmatic: true });
     options.onComplete?.();
     return;

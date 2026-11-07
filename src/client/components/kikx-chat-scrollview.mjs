@@ -280,6 +280,90 @@ export class KikxChatScrollView {
   }
 
   _installEvents() {
+    // Owner jump #1 (telemetry seq 48, 2026-11-07): the debounced user-anchor
+    // fired 20ms after a wheel and wrote +1439px of HISTORY over the user's
+    // live position. A captured anchor may only restore while the user has not
+    // scrolled since it was captured — any real input invalidates it and kills
+    // the pending debounce. Element-scoped: thread-focused keys only (composer
+    // typing must not cancel a thread anchor).
+    let noteUserIntent = () => {
+      this._userPageAnchor = null;
+      if (this._userPageAnchorTimer != null) {
+        clearTimeout(this._userPageAnchorTimer);
+        this._userPageAnchorTimer = null;
+      }
+      this._lastUserInputAt = performance.now();
+    };
+    for (const inputType of [ 'wheel', 'touchmove', 'keydown' ])
+      this.element.addEventListener(inputType, noteUserIntent, { capture: true, passive: true });
+
+    // Owner jump #3 (telemetry seq 141/148-157: focal slipped ~369px under a
+    // still finger; pages mounted at the 3500 intrinsic placeholder then
+    // materialized at 2505/3098): spliced pages ABOVE the viewport re-size
+    // when content-visibility reveals them, and overflow-anchor is OFF —
+    // nothing corrects that natively. ResizeObserver callbacks run BEFORE
+    // paint, so adding (new - old) to scrollTop lands in the SAME paint as the
+    // height change: geometry correction with no anchor, no stale intent, and
+    // no second writer. Pinned readers (follow) belong to aeor's own settle.
+    if (typeof ResizeObserver === 'function') {
+      this._pageResizeSizes = new Map();
+      this._pageResizeObserver = new ResizeObserver((entries) => {
+        try {
+          if (!this.frameList || this.element?.follow === true)
+            return;
+          const viewportTop = this.frameList.getBoundingClientRect().top;
+          for (const entry of entries) {
+            const page = entry.target;
+            if (!page || !page.isConnected) {
+              this._pageResizeObserver.unobserve(page);
+              this._pageResizeSizes.delete(page);
+              continue;
+            }
+            const next = Math.round(entry.contentRect?.height ?? 0);
+            const prev = this._pageResizeSizes.get(page);
+            this._pageResizeSizes.set(page, next);
+            if (prev == null || next === prev || next <= 0)
+              continue;
+            const rect = page.getBoundingClientRect();
+            if (rect.bottom > viewportTop + 2)
+              continue; // straddling or below: focal math, not delta math
+            const delta = next - prev;
+            const max = Math.max(0, this.frameList.scrollHeight - this.frameList.clientHeight);
+            markFrameListProgrammaticWrite(this.frameList, 220);
+            this.frameList.scrollTop = Math.min(max, Math.max(0, this.frameList.scrollTop + delta));
+          }
+        } catch {
+          // Correction is best-effort; a broken observation must never break scrolling.
+        }
+      });
+      const observePages = () => {
+        try {
+          const pages = this.frameList?.querySelectorAll?.('.aeor-scrollview__page') || [];
+          for (const page of pages) {
+            if (!this._pageResizeSizes.has(page)) {
+              // Baseline = the placeholder size at splice time; the FIRST later
+              // change is exactly the materialization delta to compensate.
+              this._pageResizeSizes.set(page, Math.round(page.getBoundingClientRect().height));
+              this._pageResizeObserver.observe(page);
+            }
+          }
+          // Pages are transient (rebuilt each render): drop disconnected ones
+          // so observed targets cannot accumulate.
+          for (const page of [ ...this._pageResizeSizes.keys() ]) {
+            if (!page.isConnected) {
+              this._pageResizeObserver.unobserve(page);
+              this._pageResizeSizes.delete(page);
+            }
+          }
+        } catch {
+          /* selector/disconnect edges are non-fatal */
+        }
+      };
+      observePages();
+      this.element.addEventListener('scrollview-page-load', observePages, { capture: true });
+      this.element.addEventListener('scrollview-page-loaded', observePages, { capture: true });
+    }
+
     this.element.addEventListener('scrollview-follow-change', (event) => {
       // A deliberate user scroll releases the temporary clear-filter pin.
       if (event.detail?.follow === false)

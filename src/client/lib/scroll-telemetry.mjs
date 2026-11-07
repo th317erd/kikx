@@ -151,8 +151,21 @@ function installInstruments() {
       Object.defineProperty(Element.prototype, 'scrollTop', {
         get() { return desc.get.call(this); },
         set(value) {
-          if (singleton?.active)
-            rec('write', { v: Math.round(Number(value) || 0), s: shortStack() });
+          if (singleton?.active) {
+            const data = { v: Math.round(Number(value) || 0), s: shortStack() };
+            try {
+              // Frame-list writes carry the writer's world: was follow pinned,
+              // was a gesture live (the seq-275 ease needs these to attribute).
+              if (typeof this.closest === 'function') {
+                const scroller = this.closest('.aeor-scrollview__viewport')?.closest('aeor-scrollview');
+                if (scroller) {
+                  data.f = scroller.follow === true ? 1 : 0;
+                  data.g = scroller.userGestureActive === true ? 1 : 0;
+                }
+              }
+            } catch { /* flags are best-effort */ }
+            rec('write', data);
+          }
           return desc.set.call(this, value);
         },
         configurable: true,
@@ -160,13 +173,17 @@ function installInstruments() {
     }
   } catch { /* trapped already or not trapable */ }
 
-  // 2. Inputs, throttled (a wheel storm is one event per 150ms, not sixty).
+  // 2. Inputs. Keys are NEVER throttled (the seq-275 runaway ease could not be
+  //    attributed because a keydown fell inside the wheel throttle window);
+  //    wheel/touch stay bounded at one event per 150ms.
   let lastInput = 0;
   const noteInput = (kind, data) => {
-    const t = Date.now();
-    if (t - lastInput < 150)
-      return;
-    lastInput = t;
+    if (kind !== 'key') {
+      const t = Date.now();
+      if (t - lastInput < 150)
+        return;
+      lastInput = t;
+    }
     rec('input', { kind, ...data });
   };
   addEventListener('wheel', (e) => noteInput('wheel', { dx: Math.round(e.deltaX), dy: Math.round(e.deltaY) }), { capture: true, passive: true });

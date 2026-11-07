@@ -48,7 +48,18 @@ export class KikxThreadPageSource {
     return Math.max(0, Math.trunc(Number(token) || 0));
   }
 
-  estimatePageHeight() {
+  estimatePageHeight(index) {
+    // Owner jump #3 support (telemetry, 2026-11-07): per-page memory first —
+    // measured() records EXACT heights, and first-visit pages fall back to the
+    // running mean of what has been measured (placeholders of 3500 vs real
+    // 1564-3098 in the owner's capture; the mean halves the miss before the
+    // delta correction runs). The old signature ignored `index` entirely.
+    const key = Number(index);
+    if (Number.isFinite(key)) {
+      const known = this.pageHeights?.get(key);
+      if (Number.isFinite(known) && known > 0)
+        return known;
+    }
     return this.averagePageHeight;
   }
 

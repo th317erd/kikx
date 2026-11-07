@@ -181,3 +181,23 @@ test('a query filters a fresh page even before app filters are initialised', asy
   let page = await source.loadPage({ pageIndex: 1 });
   assert.deepEqual(page.items.map((item) => item.frame.id), [ 'user_4' ]);
 });
+
+// Owner jump #3 support (telemetry, 2026-11-07): measured() records EXACT
+// per-page heights, but estimatePageHeight() ignored them and returned the
+// running mean — so even a page loaded seconds ago re-estimated at the wrong
+// height (placeholder 3500 vs real 1564-3098 in the owner's capture).
+test('estimate prefers the exact page memory, falling back to the measured mean', async () => {
+  let source = new KikxThreadPageSource({
+    pageSize: 2,
+    totalRawFrames: 8,
+    loadPage: async () => null,
+    getFilters: () => null,
+  });
+  source.measured(0, 900);
+  source.measured(1, 1800);
+  assert.equal(source.estimatePageHeight(1), 1800,
+    'a measured page estimates at its REAL height, not the mean (1350)');
+  assert.equal(source.estimatePageHeight(0), 900);
+  assert.equal(source.estimatePageHeight(3), 1350,
+    'unmeasured pages fall back to the running mean of what WAS measured');
+});
