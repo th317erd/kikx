@@ -157,10 +157,13 @@ button.kikx-brand__mark:focus-visible {
 
 /* Box metrics live on <aeor-button> now (owner ruling, 2026-11-07): the old
    20px pill is what made DEBUG read as a label beside its neighbours. */
+/* Box metrics live on <aeor-button> (owner ruling, 2026-11-07). This class
+   keeps its identity: dim, letter-spaced caps. (An earlier trim orphaned the
+   last two declarations outside the rule — that is why "DEBUG" rendered as
+   mixed-case "Debug"; repaired here.) */
 .kikx-debug-toggle {
   color: #7f8c97;
   letter-spacing: 0.06em;
-}
   opacity: 0.55;
   text-transform: uppercase;
 }

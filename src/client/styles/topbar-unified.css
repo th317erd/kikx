@@ -107,6 +107,9 @@
   flex: 1 1 auto;
   min-width: 0;
   max-width: 600px;
+  /* Centring, half one (owner pair-centring spec): the actions cluster's
+     margin-right is the other half — [search+eye | actions] centres as ONE
+     band, which is also the owner's 2026-11-07 "move them over here" move. */
   margin-left: auto;
   margin-right: auto;
 }
@@ -123,15 +126,27 @@
   flex: 0 0 auto;
 }
 
-/* Trailing cluster: preview status, participants, eyeball, + Add. Pinned right
- * and never wrapped -- a wrapped `+ Add Project` reads as a second bar. */
+/* Actions cluster: preview status, participants, + Add — now ADJACENT to
+ * search+eye (owner annotation, 2026-11-07: "Move them over here" / "Move this
+ * way" pointing at the search group). order 2 = same flex slot as the search
+ * group; DOM order puts it immediately after search+eye, so the free space
+ * falls AFTER the whole control band instead of splitting it across the bar. */
 .kikx-topbar.kikx-window__header .kikx-window__actions {
-  order: 3;
+  order: 2;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: nowrap;
+  /* The other half of the centring (the group keeps margin-left: auto): the
+     pair [search+eye | actions] centres as ONE band — which is exactly the
+     owner's 2026-11-07 "move them over here" annotation. */
+  margin-right: auto;
+}
+
+/* Plugin extensions still trail the core band. */
+.kikx-topbar.kikx-window__header .kikx-topbar__plugin-action {
+  order: 3;
 }
 
 /* ---------------------------------------------------------------------------
