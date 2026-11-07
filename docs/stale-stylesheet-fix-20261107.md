@@ -162,6 +162,43 @@ is not. Re-measured 2026-11-07: `elements.js`, `reactive-state.js` and
 `cache-control: max-age=14400`, while `/client/lib/aeor-ui.mjs` returns
 `no-cache` / `cf-cache-status: DYNAMIC`.
 
+### Full request sweep: what else the edge caches unstamped
+
+Every request the authenticated page makes was classified by (a) did the response
+carry a positive `max-age` (i.e. the Cloudflare rewrite applies) and (b) is the URL
+content-stamped. Result: 16 edge-cached, unstamped URLs remain.
+
+| kind | count | examples |
+|---|---|---|
+| vendor `.js` | 14 | `elements.js`, `reconcile.js`, `components/aeor-confirm-button.js` |
+| vendor `.woff2` fonts | 4 declared / 2 loaded | `Inter-Regular`, `Inter-Medium`, `Inter-Bold`, `JetBrainsMono-Regular` |
+
+The fonts are a new finding, not in the runbook. All four are declared via
+`@font-face { src: url("../fonts/...") }` inside
+`/vendor/aeor-web-components/styles/globals.css`. That sheet *is* stamped
+(`?v=0a6bfe7fd607`), but `stampAssetText` rewrites link `href`s and `@import`
+specifiers only — it leaves `url()` payloads inside a sheet untouched, so all
+four font URLs ship unversioned. Measured directly: each returns 200 with
+`cache-control: max-age=14400`. The count is 4 declared versus 2 actually
+fetched, because only Regular and Bold are used by the current UI — the other
+two would join the same leak the moment a rule references them.
+
+Everything else is clean:
+
+- **`.css`** — all stamped, including 12 vendored sheets.
+- **`.mjs` and `/shared`** — `no-cache` / `cf-cache-status: DYNAMIC`; the edge
+  does not cache them, so a stamp would only churn the module graph. Excluding them
+  is correct.
+- **Icons** — inlined into `src/client/lib/icons.mjs` (generated from
+  `src/client/assets/icons/*.svg`); the page fetches no icon URLs at all.
+- **Service worker** — none exists in the tree, so there is no second cache layer
+  below the browser HTTP cache.
+
+Severity of the two remaining classes, honestly: a stale `.js` component can pair
+with current CSS and mis-render (the runbook's observed HIT-404 is this class), and
+a stale font renders wrong glyph metrics. Both are latent, unlike the CSS case,
+which was live. Neither was attempted here.
+
 ## Deploying
 
 `kikx-docker/deploy.sh` builds locally, saves the previous tag for
@@ -174,4 +211,5 @@ The useful property: because the fix changes the URL, deploying it **bypasses th
 owner's stale cache immediately** — `app.css?v=<newhash>` is a URL their browser has
 never seen. No cache purge and no hard reload needed.
 
-Not deployed, because a production deploy is an owner decision.
+Rollback path if the probe above ever fails: `./rollback.sh` on `wyatt-laptop`,
+target `f3595e59`.
