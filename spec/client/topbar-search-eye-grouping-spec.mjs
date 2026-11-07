@@ -206,13 +206,15 @@ test('the search group is not inside the trailing actions', () => {
   assert.equal(order.indexOf(group.querySelector('kikx-frame-filter-popup')), 1, 'the eye comes second');
 });
 
-// --- the group must be the centred element now ------------------------------
+// --- the group + actions read as ONE left control band --------------------
 
-test('the sheet centres and gaps the GROUP, not the bare field', async () => {
-  // The field used to carry `margin-left/right: auto`, which is what centred it.
-  // Once the eye sits beside it, centring the FIELD alone splits the pair across
-  // the bar again: the field centres on itself and the eye hangs off its right.
-  // The group must therefore be the centred, gapped element.
+test('the group hugs its neighbours: no auto margins split the control band', async () => {
+  // Owner annotations (2026-11-07, twice): "Move them over here" / "Move this
+  // way" — the actions cluster belongs IMMEDIATELY beside search+eye as one
+  // left-hand band. An earlier ruling centred the group with margin auto; the
+  // measured result was a 182px hole and a cluster still parked right, so the
+  // owner re-annotated. Auto margins are now banned from both rules: the free
+  // space falls AFTER the band instead of being split around its members.
   let css = await readFile(fileURLToPath(new URL('../../src/client/styles/topbar-unified.css', import.meta.url)), 'utf8');
   let stripped = css.replace(/\/\*[\s\S]*?\*\//g, '');
 
@@ -221,16 +223,15 @@ test('the sheet centres and gaps the GROUP, not the bare field', async () => {
   let body = groupRule[1];
 
   assert.match(body, /(^|[;\s])gap\s*:/, 'the group must set the gap that makes the two controls hug');
-  assert.match(body, /margin-left\s*:\s*auto/, 'the group must carry half the centring');
-  // Owner move (2026-11-07, "Move them over here"): the actions cluster now
-  // rides the group's flex slot, so the pair centres as ONE band — the other
-  // half of the centring (margin-right: auto) lives on the actions rule.
+  assert.doesNotMatch(body, /margin-(left|right)\s*:\s*auto/,
+    'no auto margin on the group — it was what pushed the band right');
+
   let actionsRule = /\.kikx-window__actions\s*\{([^}]*)\}/.exec(stripped);
   assert.ok(actionsRule, 'the actions rule must exist in topbar-unified.css');
-  assert.match(actionsRule[1], /margin-right\s*:\s*auto/,
-    'actions carries the other half of the centring');
   assert.match(actionsRule[1], /order\s*:\s*2/,
     'actions rides the search group slot — that is the move');
+  assert.doesNotMatch(actionsRule[1], /margin-(left|right)\s*:\s*auto/,
+    'and must not reintroduce a hole between the controls');
 
   // A "hugged up next to" gap, not the bar's normal rhythm: the two must read as
   // one control pair. 8px is the ceiling the owner's wording allows.

@@ -107,11 +107,11 @@
   flex: 1 1 auto;
   min-width: 0;
   max-width: 600px;
-  /* Centring, half one (owner pair-centring spec): the actions cluster's
-     margin-right is the other half — [search+eye | actions] centres as ONE
-     band, which is also the owner's 2026-11-07 "move them over here" move. */
-  margin-left: auto;
-  margin-right: auto;
+  /* Owner annotations (2026-11-07, twice): the actions cluster MOVED here —
+     [search+eye | actions] reads as ONE left-hand control band with no auto
+     margins splitting it (the earlier pair-centring pushed them right again,
+     and a leftover margin-right: auto measured as a 512px hole). */
+}
 }
 
 .kikx-topbar.kikx-window__header .kikx-session-search {
@@ -138,10 +138,9 @@
   align-items: center;
   gap: 8px;
   flex-wrap: nowrap;
-  /* The other half of the centring (the group keeps margin-left: auto): the
-     pair [search+eye | actions] centres as ONE band — which is exactly the
-     owner's 2026-11-07 "move them over here" annotation. */
-  margin-right: auto;
+  /* NO margin-right: auto — auto margins were what left the 182px hole and
+     kept the cluster visually right. The band hugs search+eye (order 2, same
+     flex slot, DOM order after the group); free space falls after the band. */
 }
 
 /* Plugin extensions still trail the core band. */
