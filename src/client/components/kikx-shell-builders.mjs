@@ -2,6 +2,9 @@
 
 import { elements, $ } from '../lib/aeor-ui.mjs';
 import { createIcon } from '../lib/icons.mjs';
+// The status bar lives in its own module since the 800-line hard-cap split
+// (2026-11-07). Re-exported here so kikx-app and the specs import unchanged.
+export { buildStatusBar } from './kikx-statusbar.mjs';
 import { stateHasFilters } from '../lib/frame-filters.mjs';
 import { buildScrollLockFloatingButton } from './kikx-scroll-lock.mjs';
 import { createKikxPageContext } from './kikx-chat-scrollview.mjs';
@@ -30,7 +33,7 @@ import {
 } from '../state/kikx-state.mjs';
 import { hasAnyFrames, threadRenderFrames } from '../state/thinking-state.mjs';
 import { childSessions } from './chat-view-model.mjs';
-import { formatTokenUsageTotal, hasSessionDeepLink } from './kikx-app-helpers.mjs';
+import { hasSessionDeepLink } from './kikx-app-helpers.mjs';
 import { countRebuild } from './render-stats.mjs';
 // Unified top toolbar (owner spec pts 1-4). This is the only top bar: it has no
 // enable flag and no legacy sibling, so there is nothing to switch at runtime.
@@ -652,67 +655,10 @@ function buildStopControl(app) {
     .onClick(activate)('STOP');
 }
 
-export function buildStatusBar(app) {
-  // Owner review 3 (2026-10-28): the Activities view and its sidebar entry are gone;
-  // its four counts live here instead and follow the session on top of the stack.
-  // These are PLAIN values, not bindings: the whole shell is rebuilt on every render
-  // (`:112-115` -> `$(app).empty()` then `appendChild`), so this recomputes on every
-  // navigation by construction. A binding here would allocate listeners for text that
-  // is always fresh -- see the note in `statusbar-stats.mjs`.
-  //
-  // Every lookup is defensive because this runs inside the shell's error boundary: a
-  // throw here blanks the entire app, not just the bar.
-  let sessions = [];
-  let questions = [];
-  try {
-    sessions = Array.isArray(getSessions(app._state)) ? getSessions(app._state) : [];
-    questions = Array.isArray(getQuestionsState(app._state)?.questions)
-      ? getQuestionsState(app._state).questions
-      : [];
-  } catch {
-    // Leave both empty: the bar degrades to a zeroed row rather than killing the shell.
-  }
+// (buildStatusBar moved to kikx-statusbar.mjs — 800-line hard-cap split,
+// 2026-11-07; re-exported above.)
 
-  let stats = buildStatusBarStats({
-    sessions,
-    questions,
-    currentSessionID: getCurrentSessionID(app._state),
-  });
-
-  // Owner change (2026-11-05): the bar collapses to bare numbers joined by
-  // slashes -- `2 / 0 / 1234 / 234` -- on BOTH desktop and mobile. The labels
-  // the cards used are not rendered; each value keeps its label as a hover
-  // title, and the group title spells out the order, so nothing is lost for a
-  // pointer. The connection TEXT is likewise dropped on mobile only (the dot
-  // keeps the state), and the Debug toggle moved to the toolbar next to Raw.
-  let statsTitle = `Counts for ${stats.scopeLabel}: sessions / open questions / messages / agents`;
-
-  return div.class.bindState((state) => `kikx-statusbar kikx-statusbar--${state.connectionStatusKind}`, ['connectionStatusKind'])(
-    span.class('kikx-statusbar__dot')(),
-    span.class('kikx-statusbar__connection')
-      .textContent.bindState((state) => state.connectionStatus, ['connectionStatus'])(),
-    span.class('kikx-statusbar__spacer')(),
-    // The counts sit AFTER the spacer, so the connection/dot cluster stays left and
-    // the tallies read as a right-aligned group beside the token total.
-    div.class('kikx-statusbar__stats').title(statsTitle)(
-      stats.cells.flatMap((cell, index) => [
-        index > 0 ? span.class('kikx-statusbar__stat-sep')('/') : null,
-        span.class('kikx-statusbar__stat')(
-          span.class('kikx-statusbar__stat-value').title(cell.label)(String(cell.value)),
-        ),
-      ]),
-    ),
-    span.class('kikx-statusbar__spacer')(),
-    span
-      .class('kikx-statusbar__tokens')
-      .title('Total tracked tokens')(
-        createIcon('tokens'),
-        span
-          .class('kikx-statusbar__tokens-value')
-          .textContent.bindState((state) => formatTokenUsageTotal(state.totalTokensUsed), ['totalTokensUsed'])(),
-      ),
-  );
-}
+// Always returns a built ELEMENT — never a builder.
 
 // Always returns a built ELEMENT — never a builder. Callers use the result both
 // as a DOM node (body.replaceChildren(...)) and as a builder child (the DSL

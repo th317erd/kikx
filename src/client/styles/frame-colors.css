@@ -467,3 +467,33 @@
      At `inherit` the pill is 24px and grows the header to 24.5px. */
   font-size: 0.85em;
 }
+
+/* Owner fix (2026-11-07): expanded message cards FILL the thread column —
+   the fit-content chain (inner measure -> fit-content card) left a ~1100px
+   empty gutter to the right of every agent card on wide viewports: the "huge
+   gap". The reading measure moves INSIDE the card (prose caps below); the
+   surface spans. User cards keep justify-self:end; tool/compact/minimized
+   rows keep their 960px caps. */
+.kikx-frame--AgentMessage:not(.kikx-frame--compact),
+.kikx-frame--AgentMessageDelta:not(.kikx-frame--compact),
+.kikx-frame--AgentProgress:not(.kikx-frame--compact),
+.kikx-frame--Question:not(.kikx-frame--compact) {
+  width: 100%;
+  max-width: none;
+  justify-self: stretch;
+}
+
+.kikx-frame--AgentMessage .kikx-markdown,
+.kikx-frame--AgentMessageDelta .kikx-markdown,
+.kikx-frame--AgentProgress .kikx-markdown,
+.kikx-frame--Question .kikx-markdown {
+  max-width: 116ch;
+}
+
+/* The version cell rides the bar only in debug sessions; keep it quiet. */
+.kikx-statusbar__version {
+  margin-left: 10px;
+  font-size: 11px;
+  color: #aab4bf;
+  opacity: 0.85;
+}

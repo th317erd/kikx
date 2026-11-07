@@ -1,5 +1,7 @@
 'use strict';
 
+import { loadServerVersion } from '../state/server-version.mjs';
+
 export const DEBUG_MODE_STORAGE_KEY = 'kikx.debug';
 
 export function readDebugMode() {
@@ -31,6 +33,10 @@ export function setDebugMode(app, enabled) {
   if (app?._state)
     app._state.debugMode = next;
   app?.classList?.toggle?.('kikx-debug-mode', next);
+  // The statusbar version cell belongs to debug sessions only (owner task,
+  // 2026-11-07), so the one fetch is kicked HERE rather than at boot.
+  if (next)
+    void loadServerVersion(app);
   return next;
 }
 

@@ -329,3 +329,37 @@ test('a legacy ?view=activities bookmark degrades to a normal window', () => {
   let inbox = stackFromSearchParams('?view=inbox');
   assert.equal(currentViewName(inbox.stack), 'inbox');
 });
+
+// --- version cell (owner task 2, 2026-11-07) -------------------------------
+//
+// "Add a version identifier to the statusbar when in UI Debug Mode": the cell
+// renders ONLY when debugMode is on AND a version has been fetched — an
+// always-on cell would noise the bar for everyone who never opens debug, and a
+// cell without a version would render "undefined" while /health is in flight.
+
+test('the statusbar shows the instance version cell only in debug mode', async () => {
+  const { buildStatusBar } = await import('../../src/client/components/kikx-shell-builders.mjs');
+
+  const versionCells = (state) => {
+    const bar = buildStatusBar({ _state: state }).build(document);
+    const cells = [];
+    (function walk(node) {
+      if (!node) return;
+      if (typeof node.className === 'string' && node.className.includes('kikx-statusbar__version'))
+        cells.push(node);
+      for (const child of node.childNodes || []) walk(child);
+    })(bar);
+    return cells;
+  };
+
+  const base = { connectionStatus: 'Connected', connectionStatusKind: 'ok', totalTokensUsed: 0 };
+
+  const debugOn = versionCells({ ...base, debugMode: true, kikxVersion: 'abc12345' });
+  assert.equal(debugOn.length, 1, 'debug mode with a version renders exactly one version cell');
+  assert.match(String(debugOn[0].textContent || ''), /abc12345/);
+
+  assert.equal(versionCells({ ...base, debugMode: false, kikxVersion: 'abc12345' }).length, 0,
+    'without debug mode the cell is absent — the bar stays clean');
+  assert.equal(versionCells({ ...base, debugMode: true }).length, 0,
+    'debug mode before /health answers renders no cell — never "undefined"');
+});

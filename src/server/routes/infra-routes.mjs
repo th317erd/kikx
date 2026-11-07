@@ -20,6 +20,11 @@ export async function handleInfraRoutes({ request, response, url, context }) {
     writeJSON(response, 200, {
       ok: true,
       ready: context.get?.('startupReady') === true,
+      // Instance identity for the fleet view (owner task, 2026-11-07): one
+      // memoized string — KIKX_VERSION, else git short hash (+dirty), else
+      // 'unknown'. Unauthenticated like the rest of /health: it is a deploy
+      // verifier surface and carries no secret.
+      version: (await import('../version.mjs')).resolveKikxVersion(),
       services: {
         // Driver-neutral: PostgreSQL in the default deployment, AeorDB only as
         // a legacy driver. Reads the canonical `db` slot; `aeordb` is a mirror of
