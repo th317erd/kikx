@@ -74,3 +74,10 @@ export const KIKX_DISCORD_BOT_TOKEN_PATH = '/kikx/discord/bot/token';
 // default: an endpoint that can do that is remote code execution with a JSON body, and a
 // dev convenience is not worth shipping open.
 export const KIKX_PLUGIN_INSTALL_ENABLED_PATH = '/kikx/plugin/install/enabled';
+
+// S3 npm integration (plan 5-S3, 10): registries are CONFIGURATION, never a
+// host hardcoded in code — a list of base URLs (comma-separated env value),
+// defaulting to public npm; and the landing directory for fetched tarballs
+// (default <data>/plugins/npm/<pkg>), which reload re-reads from config.
+export const KIKX_PLUGIN_REGISTRY_URLS_PATH = '/kikx/plugin/registry/urls';
+export const KIKX_PLUGIN_NPM_DIR_PATH = '/kikx/plugin/npm/dir';
