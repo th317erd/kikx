@@ -201,15 +201,20 @@ test('a section whose plugin was unloaded clamps to General (§9.3.12)', async (
 // 5. The topbar gear reaches navigation, not the dialog
 // ---------------------------------------------------------------------------
 
-test('the topbar opens System Settings via navigation, not the dialog', async () => {
+test('the ONLY System Settings entry is the upper-left brand mark (owner ruling)', async () => {
+  // Owner ruling (2026-11-07): the cluster gear is gone — "it is NOT supposed
+  // to be here (only in the upper left)". Pin the negative so the cluster gear
+  // cannot quietly return, and the brand path with it.
   let topbar = await source('src/client/components/kikx-topbar.mjs');
 
-  assert.match(topbar, /navigateSystemSettings\(app\._state\)/,
-    'the gear must push the settings view');
-  assert.doesNotMatch(topbar, /app\._openSettings\)/,
-    'the topbar must no longer call the dialog opener (the dialog path stays in code)');
-  assert.match(topbar, /createIcon\('gear'\)/, 'the entry point is the gear icon');
-  assert.match(topbar, /title\('System Settings'\)/, 'titled per the annotation');
+  assert.doesNotMatch(topbar, /settingsOpenButton/,
+    'no settings gear in the actions cluster — settings is brand-only');
+  assert.match(topbar, /button[\s\S]{0,200}kikx-brand__mark/,
+    'the brand mark remains a real button (clickable and focusable)');
+  assert.match(topbar, /kikx-brand__mark[\s\S]{0,500}navigateSystemSettings\(app\._state\)/,
+    'and clicking it still navigates to System Settings');
+  assert.match(topbar, /title\('System Settings'\)/, 'and announces itself');
+  assert.doesNotMatch(topbar, /app\._openSettings\)/, 'never the dialog opener');
 });
 
 // ---------------------------------------------------------------------------

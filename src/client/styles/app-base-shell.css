@@ -155,17 +155,12 @@ button.kikx-brand__mark:focus-visible {
   min-width: 12px;
 }
 
+/* Box metrics live on <aeor-button> now (owner ruling, 2026-11-07): the old
+   20px pill is what made DEBUG read as a label beside its neighbours. */
 .kikx-debug-toggle {
-  min-height: 20px;
-  padding: 0 7px;
-  border: 1px solid #39444e;
-  border-radius: 4px;
-  background: transparent;
   color: #7f8c97;
-  cursor: pointer;
-  font: inherit;
-  font-size: calc(10px * 1.25);
   letter-spacing: 0.06em;
+}
   opacity: 0.55;
   text-transform: uppercase;
 }

@@ -369,11 +369,9 @@ export function buildTopbarActions(app, sessionID = null) {
     // Same control, same handler, new home -- immediately after Raw.
     debugToggleButton(app),
     sessionID ? participantsNode(app, sessionID) : null,
-    // The gear opens the System Settings MODE — same layout, reusing the
-    // sidebar (campaign S1). Deliberately in the bar and NOT the sidebar:
-    // the sidebar cluster is pinned at five items by two specs, and Settings is an
-    // application-level surface rather than a view into the session tree.
-    settingsOpenButton(app),
+    // Owner ruling (2026-11-07): NO System Settings gear here — settings is
+    // reachable only from the upper-left brand mark. The cluster carries
+    // session actions, nothing application-global.
     // Label from the same scope noun the inline Add card uses, so the two can
     // never disagree about what this level creates.
     addButton(app, sessionID),
@@ -384,24 +382,54 @@ export function buildTopbarActions(app, sessionID = null) {
   );
 }
 
+// One definition per control, now on the shared <aeor-button> box (owner
+// ruling, 2026-11-07: "ALL these buttons are different sizes and styles…
+// maybe a consistent button like aeor-button?"). The framework stylesheet
+// owns height/padding/radius/typography; legacy classes keep only identity
+// (uppercase labels, accent colors), and every existing selector still hits
+// the element users click. Returns a NODE (like participantsNode) so the
+// cluster and the mobile overflow menu pass it through unchanged.
+//
+// ARIA is set HERE as well as in the component: unit trees are detached
+// (custom-element callbacks never fire), and specs assert aria-pressed on
+// them — the component mirrors the same attributes once connected.
+function toolbarButton({ className, title, pressed, onClick, label }) {
+  let node = document.createElement('aeor-button');
+  node.className = className;
+  node.setAttribute('role', 'button');
+  node.setAttribute('tabindex', '0');
+  if (title != null)
+    node.setAttribute('title', title);
+  if (pressed != null) {
+    node.setAttribute('pressed', pressed ? 'true' : 'false');
+    node.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+  }
+  if (typeof onClick === 'function')
+    node.addEventListener('click', onClick);
+  node.textContent = label;
+  return node;
+}
+
 function rawToggleButton(app) {
   let raw = app._state.rawMarkdown === true;
-  return button
-    .type('button')
-    .class(`kikx-raw-toggle${raw ? ' is-on' : ''}`)
-    .title('Show Markdown source with inline formatting (Raw mode)')
-    .ariaPressed(raw ? 'true' : 'false')
-    .onClick(app._toggleRawMarkdown)('Raw');
+  return toolbarButton({
+    className: `kikx-raw-toggle${raw ? ' is-on' : ''}`,
+    title: 'Show Markdown source with inline formatting (Raw mode)',
+    pressed: raw,
+    onClick: app._toggleRawMarkdown,
+    label: 'Raw',
+  });
 }
 
 function debugToggleButton(app) {
   let on = app._state.debugMode === true;
-  return button
-    .type('button')
-    .class(`kikx-debug-toggle${on ? ' is-on' : ''}`)
-    .ariaPressed(on ? 'true' : 'false')
-    .title('Toggle client debug mode')
-    .onClick(app._toggleDebugMode)('Debug');
+  return toolbarButton({
+    className: `kikx-debug-toggle${on ? ' is-on' : ''}`,
+    title: 'Toggle client debug mode',
+    pressed: on,
+    onClick: app._toggleDebugMode,
+    label: 'Debug',
+  });
 }
 
 function participantsNode(app, sessionID) {
@@ -410,27 +438,17 @@ function participantsNode(app, sessionID) {
   return participants;
 }
 
-function settingsOpenButton(app) {
-  return button
-    .type('button')
-    .class('kikx-settings-open')
-    .title('System Settings')
-    .ariaLabel('System Settings')
-    .onClick(() => {
-      // Campaign S1: navigation, not the dialog. The dialog path
-      // (settingsOpen/_buildSettingsDialog) stays in code but this entry point
-      // no longer reaches it — the spec asserts exactly that split.
-      navigateSystemSettings(app._state);
-      app._requestRender();
-    })(createIcon('gear'));
-}
+// Owner ruling (2026-11-07): the cluster settings gear is REMOVED — settings
+// is reachable only from the upper-left brand mark. (No replacement stub: the
+// brand-only spec asserts the name cannot survive anywhere in this file.)
 
 function addButton(app, sessionID) {
-  return button
-    .type('button')
-    .class('kikx-window__add')
-    .title(sessionID ? 'Add a session inside this one' : 'Add a project')
-    .onClick(() => app._createSession())(`+ Add ${sessionID ? scopeNounForTopbar(app) : 'Project'}`);
+  return toolbarButton({
+    className: 'kikx-window__add',
+    title: sessionID ? 'Add a session inside this one' : 'Add a project',
+    onClick: () => app._createSession(),
+    label: `+ Add ${sessionID ? scopeNounForTopbar(app) : 'Project'}`,
+  });
 }
 
 function previewStatusNode() {
@@ -452,11 +470,10 @@ function previewStatusNode() {
 // cluster, so there is exactly one VISIBLE copy of each action.
 export function buildTopbarOverflowActionNodes(app, sessionID = null) {
   return [
-    rawToggleButton(app).build(document),
-    debugToggleButton(app).build(document),
+    rawToggleButton(app),
+    debugToggleButton(app),
     sessionID ? participantsNode(app, sessionID) : null,
-    settingsOpenButton(app).build(document),
-    addButton(app, sessionID).build(document),
+    addButton(app, sessionID),
   ].filter(Boolean);
 }
 

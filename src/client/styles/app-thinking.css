@@ -379,15 +379,10 @@ kikx-frame-filter-popup:not(.is-all-on) .kikx-frame-filter__button {
 }
 
 /* Create button in the window header, to the right of the eyeball. */
+/* Box metrics live on <aeor-button> (owner ruling, 2026-11-07). */
 .kikx-window__add {
   flex: 0 0 auto;
-  padding: 4px 10px;
-  border: 1px solid #2f3944;
-  border-radius: 6px;
-  background: transparent;
   color: #dce3ea;
-  font: inherit;
-  font-size: calc(12px * 1.25);
   white-space: nowrap;
   cursor: pointer;
 }

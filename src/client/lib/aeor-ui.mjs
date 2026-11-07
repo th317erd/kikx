@@ -35,6 +35,8 @@ const OPTIONAL_COMPONENT_URLS = [
   // once here — the component's registration lacks guards, so a second module
   // instance would re-define the custom element and throw.
   '/vendor/aeor-web-components/components/aeor-tab-view.js',
+  // The shared button box (owner ruling, 2026-11-07): uniform toolbar buttons.
+  '/vendor/aeor-web-components/components/aeor-button.js',
 ];
 
 const optionalComponentFailures = await loadOptionalModules(OPTIONAL_COMPONENT_URLS, {

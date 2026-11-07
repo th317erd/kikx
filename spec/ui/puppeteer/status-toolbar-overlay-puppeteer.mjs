@@ -238,8 +238,12 @@ test('Puppeteer status bar + toolbar overflow + floating STOP on mobile and desk
         viewportHeight: innerHeight,
       };
     });
-    assert.ok(menu.hasRaw && menu.hasDebug && menu.hasSettings && menu.hasAdd,
+    assert.ok(menu.hasRaw && menu.hasDebug && menu.hasAdd,
       `the menu must carry every toolbar action; got ${JSON.stringify(menu)}`);
+    // Owner ruling (2026-11-07): settings is brand-only — no cluster gear, so
+    // no overflow row either. Brand stays visible on mobile above this menu.
+    assert.equal(menu.hasSettings, false,
+      'Settings is NOT an overflow action — the brand mark is its only entry');
     assert.equal(menu.dividerCount, 1, 'one divider between actions and filters');
     assert.ok(menu.embeddedPanelVisible, 'the filter checkboxes render open at the bottom');
     assert.ok(menu.filterRowCount >= 5, `expected master + categories + Hidden, got ${menu.filterRowCount}`);

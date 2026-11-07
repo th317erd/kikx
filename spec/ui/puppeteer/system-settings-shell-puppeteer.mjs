@@ -103,8 +103,9 @@ test('System Settings mode switch keeps shell root + sidebar node identity (§9.
       assert.equal(same, true, `${phase}: ${selector} must be the SAME node (identity, not appearance)`);
     };
 
-    // ---- enter System Settings via the topbar gear -------------------------
-    await page.click('.kikx-settings-open');
+    // ---- enter System Settings via the upper-left brand mark (owner ruling:
+    // the cluster gear is gone; the brand mark is the only entry) ----------
+    await page.click('.kikx-brand__mark');
     await page.waitForSelector('.kikx-system-settings', { timeout: 10000 });
     const heading = await page.$eval('.kikx-system-settings h2', (node) => node.textContent);
     assert.equal(heading.trim(), 'System Settings', 'the mode renders its heading');
