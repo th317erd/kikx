@@ -14,6 +14,7 @@ import { cleanupBindings } from '../lib/aeor-ui.mjs';
 import { installScrollDebugLogger } from '../lib/scroll-debug-logger.mjs';
 import { hasSessionDeepLink } from './kikx-app-helpers.mjs';
 import { toggleDebugMode } from '../lib/debug-mode.mjs';
+import { loadServerVersion } from '../state/server-version.mjs';
 import { toggleRawMarkdown } from '../lib/raw-markdown.mjs';
 import { flushComposerDraft, flushLocalComposerDraft } from './composer-drafts.mjs';
 import {
@@ -523,6 +524,12 @@ export class KikxApp extends HTMLElement {
       // all settle (each swallows its own errors) so a browser probe can wait
       // for startup to finish before driving the UI, instead of racing a late
       // rebuild that would detach the focused search field mid-typing.
+      // Debug mode can already be ON from persistence at boot (kikx.debug=1):
+      // setDebugMode never runs then, so kick the version fetch here too — the
+      // statusbar cell must appear either way (owner task, 2026-11-07).
+      if (this._state.debugMode === true)
+        void loadServerVersion(this);
+
       let startupLoads = [
         this._loadClientComponents(),
         this._loadAccount(),
