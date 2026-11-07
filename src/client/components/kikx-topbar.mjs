@@ -372,13 +372,23 @@ export function buildTopbarActions(app, sessionID = null) {
     // Owner ruling (2026-11-07): NO System Settings gear here — settings is
     // reachable only from the upper-left brand mark. The cluster carries
     // session actions, nothing application-global.
-    // Label from the same scope noun the inline Add card uses, so the two can
-    // never disagree about what this level creates.
-    addButton(app, sessionID),
+    // Owner task (2026-11-07): "+ Add Session" moved OUT of this cluster into
+    // buildTopbarTrailingAdd — the core band hugs search, the create action
+    // stays trailing.
     // Owner point 2: no session-object cluster here -- it lives in the sidebar
     // (./kikx-sidebar-session-objects.mjs). The spacer keeps `justify-content`
     // honest so the trailing actions stay right-aligned when the sidebar owns them.
     span.class('kikx-topbar__spacer')(),
+  );
+}
+
+// "+ Add Session" STAYS on the right (owner task, 2026-11-07): the rest of the
+// cluster moved left beside search; the create action is its own trailing
+// container. Label still comes from the same scope noun as the inline Add card,
+// so the two Add affordances can never disagree.
+function buildTopbarTrailingAdd(app, sessionID) {
+  return div.class('kikx-topbar__trailing-actions')(
+    addButton(app, sessionID),
   );
 }
 
@@ -571,6 +581,7 @@ export function buildUnifiedTopbar(app) {
       authed ? buildTopbarBreadcrumb(app) : null,
       authed ? buildTopbarSearch(app, sessionID) : null,
       authed ? buildTopbarActions(app, sessionID) : span.class('kikx-topbar__spacer')(),
+      authed ? buildTopbarTrailingAdd(app, sessionID) : null,
       ...pluginActions,
     ),
   );

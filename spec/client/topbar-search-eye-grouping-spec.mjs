@@ -233,6 +233,14 @@ test('the group hugs its neighbours: no auto margins split the control band', as
   assert.doesNotMatch(actionsRule[1], /margin-(left|right)\s*:\s*auto/,
     'and must not reintroduce a hole between the controls');
 
+  // Owner task (2026-11-07): "+ Add Session" stays on the RIGHT while the
+  // rest of the cluster moved left — a separate trailing container pins it.
+  let trailingRule = /\.kikx-topbar__trailing-actions\s*\{([^}]*)\}/.exec(stripped);
+  assert.ok(trailingRule, 'the trailing +Add container must exist');
+  assert.match(trailingRule[1], /order\s*:\s*3/, '+Add rides the trailing slot');
+  assert.match(trailingRule[1], /margin-left\s*:\s*auto/,
+    'and is pinned right by the trailing auto margin');
+
   // A "hugged up next to" gap, not the bar's normal rhythm: the two must read as
   // one control pair. 8px is the ceiling the owner's wording allows.
   let gap = /(^|[;\s])gap\s*:\s*(\d+(?:\.\d+)?)px/.exec(body);
