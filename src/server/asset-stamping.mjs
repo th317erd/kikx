@@ -50,10 +50,18 @@ const DEFAULT_CLIENT_ROOT = fileURLToPath(new URL('../client/', import.meta.url)
 const LINK_TAG_RE = /<link\b[^>]*>/gi;
 const LINK_HREF_RE = /\bhref\s*=\s*(["'])([^"']*)\1/i;
 const CSS_IMPORT_RE = /@import\s+(?:url\(\s*)?(["']?)([^"')\s]+)\1\s*\)?/g;
+const CSS_URL_RE = /url\(\s*(["']?)([^"')\s]+)\1\s*\)/g;
 
 // Only these are edge-cached and therefore need a version. Anything else is
 // either uncacheable (`.mjs` is DYNAMIC) or not our business.
 const VERSIONED_EXTENSIONS = new Set([ '.css' ]);
+
+// Fonts are edge-cached exactly like stylesheets (measured: `max-age=14400`
+// through Cloudflare), so an unchanged font URL stays stale for four hours
+// after a deploy just like an unchanged sheet did. `.css` payloads are
+// deliberately absent: `@import` owns those, and stamping them here too would
+// create a second source of truth for the same specifier.
+const CSS_URL_VERSIONED_EXTENSIONS = new Set([ '.woff', '.woff2', '.ttf', '.otf' ]);
 
 // version key -> version. Keyed by path + mtime + size, so a rewrite invalidates
 // the entry even when the new bytes happen to be identical in length.
@@ -199,7 +207,7 @@ function resolveDocumentAsset(href, roots) {
 // Map an `@import` specifier onto disk, relative to the sheet that contains it.
 // The containment root is the root that sheet lives under, so a stylesheet can
 // reference its neighbours but not escape its tree.
-function resolveImportAsset(reference, fromFile, roots) {
+function resolveSheetReference(reference, fromFile, roots) {
   let clean = reference.split('#')[0].split('?')[0];
   if (!clean || isRemoteReference(clean))
     return null;
@@ -218,6 +226,57 @@ function resolveImportAsset(reference, fromFile, roots) {
   }
 
   return containWithin(root, path.relative(root, baseDir ? path.resolve(baseDir, clean) : clean));
+}
+
+// Stamp the `url(...)` payloads inside a sheet — in practice the `@font-face`
+// sources. Returns the rewritten text plus a fingerprint of every file that
+// contributed, so a caller can fold it into the sheet's own version and a font
+// change still moves the URL above it.
+async function stampCSSUrls(css, fromFile, roots) {
+  if (typeof css !== 'string' || !css.includes('url('))
+    return { text: css, fingerprint: '' };
+
+  let matches = [ ...css.matchAll(CSS_URL_RE) ];
+  if (matches.length === 0)
+    return { text: css, fingerprint: '' };
+
+  let resolved = await Promise.all(matches.map(async (match) => {
+    let reference = match[2];
+    if (isRemoteReference(reference))
+      return null;
+
+    let assetPath = resolveSheetReference(reference, fromFile, roots);
+    let extension = path.extname(assetPath || '').toLowerCase();
+    if (!CSS_URL_VERSIONED_EXTENSIONS.has(extension))
+      return null;
+
+    let stats;
+    try {
+      stats = await fs.stat(assetPath);
+    } catch (_error) {
+      return null;
+    }
+    if (!stats.isFile())
+      return null;
+
+    let version = await assetVersionForFile(assetPath);
+    if (!version)
+      return null;
+
+    return { version, fingerprint: `${assetPath}\u0000${stats.mtimeMs}\u0000${stats.size}` };
+  }));
+
+  let index = 0;
+  let fingerprint = '';
+  let text = css.replace(CSS_URL_RE, (all, quote, reference) => {
+    let entry = resolved[index++];
+    if (!entry)
+      return all;
+    fingerprint += `|${entry.fingerprint}`;
+    return all.replace(reference, withAssetVersion(reference, entry.version));
+  });
+
+  return { text, fingerprint };
 }
 
 // ── rendered-content versioning ────────────────────────────────────────────
@@ -243,7 +302,7 @@ async function renderSheet(filePath, roots, seen) {
   let fingerprint = own;
 
   let rendered = await stampCSSImports(text, async (reference) => {
-    let childPath = resolveImportAsset(reference, absolute, roots);
+    let childPath = resolveSheetReference(reference, absolute, roots);
     if (!isVersionedAsset(childPath || ''))
       return null;
 
@@ -258,7 +317,13 @@ async function renderSheet(filePath, roots, seen) {
     return child.version;
   });
 
-  let version = crypto.createHash('sha256').update(rendered).digest('hex').slice(0, 12);
+  // Font payloads must be stamped before the version is hashed. Otherwise a
+  // changed font would keep the sheet's URL: the cached version is keyed by
+  // stat fingerprint, which only tracked stylesheet stats.
+  let urls = await stampCSSUrls(rendered, absolute, roots);
+  fingerprint += urls.fingerprint;
+
+  let version = crypto.createHash('sha256').update(urls.text).digest('hex').slice(0, 12);
   return { version, fingerprint };
 }
 
@@ -373,12 +438,15 @@ export async function stampAssetText({ filePath, text, staticRoots, clientRoot, 
   }
 
   if (extension === '.css') {
-    return stampCSSImports(text, async (reference) => {
-      let assetPath = resolveImportAsset(reference, filePath, roots);
+    let imported = await stampCSSImports(text, async (reference) => {
+      let assetPath = resolveSheetReference(reference, filePath, roots);
       if (!isVersionedAsset(assetPath || ''))
         return null;
       return renderedCSSVersion(assetPath, roots);
     });
+
+    let urls = await stampCSSUrls(imported, filePath, roots);
+    return urls.text;
   }
 
   return text;

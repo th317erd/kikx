@@ -13,10 +13,15 @@
 //   - index.html links every stylesheet with a content-derived `?v=`.
 //   - every served stylesheet stamps its own `@import` specifiers, so the
 //     nested sheets cannot go stale behind a fresh parent.
+//   - every served stylesheet stamps its own `url()` payloads, so a font
+//     cannot go stale behind a fresh sheet, and the sheet's version moves when
+//     the font does.
 //   - a stamped URL still serves the exact bytes of the file on disk.
 
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fsp from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
@@ -27,6 +32,7 @@ import { PluginRegistry } from '../../src/core/plugins/index.mjs';
 import {
   assetVersionForFile,
   clearAssetVersionCache,
+  renderedCSSVersion,
   stampCSSImports,
   stampHTMLAssets,
 } from '../../src/server/asset-stamping.mjs';
@@ -223,4 +229,134 @@ test('transforms are inert when nothing resolves (negative control)', async () =
   // Remote and non-CSS references are never rewritten.
   let remote = '@import url("https://example.com/x.css");';
   assert.equal(await stampCSSImports(remote, async () => 'deadbeef1234'), remote);
+});
+
+// ── @font-face url() payloads ───────────────────────────────────────────────
+//
+// globals.css declares four `@font-face` blocks whose `src: url('../fonts/…woff2')`
+// payloads are edge-cached at `max-age=14400` exactly like every other asset.
+// The `@import` rewriter never touched them, so a font change ships behind an
+// unchanged URL — the same defect as the composer artifact, one layer deeper.
+//
+// Verified live 2026-11-07: all four fonts returned 200 with
+// `cache-control: max-age=14400` through https://kikx3.taraani.org while the
+// document's globals.css link carried a content version.
+
+test('a served stylesheet stamps its @font-face url() payloads', async () => {
+  await withServer(async (baseURL) => {
+    let html = await (await fetch(`${baseURL}/`)).text();
+    let href = stylesheetHrefs(html).find((h) => h.includes('/styles/globals.css'));
+    assert.ok(href, 'globals.css should be linked from the document');
+
+    let css = await (await fetch(`${baseURL}${href}`)).text();
+    let payloads = [ ...css.matchAll(/src:\s*url\(\s*(['"]?)([^'")]+)\1\s*\)/g) ].map((m) => m[2]);
+    assert.ok(payloads.length >= 4, `expected the four @font-face sources, saw ${payloads.length}`);
+
+    for (let payload of payloads) {
+      let version = new URL(payload, `${baseURL}${href}`).searchParams.get('v');
+      assert.ok(version, `@font-face url() left unversioned: ${payload}`);
+      assert.match(version, VERSION_RE, `font version is not a content hash: ${payload}`);
+    }
+  });
+});
+
+test('a stamped @font-face URL serves the font, not a 404', async () => {
+  await withServer(async (baseURL) => {
+    let html = await (await fetch(`${baseURL}/`)).text();
+    let href = stylesheetHrefs(html).find((h) => h.includes('/styles/globals.css'));
+    let css = await (await fetch(`${baseURL}${href}`)).text();
+    let payload = [ ...css.matchAll(/src:\s*url\(\s*(['"]?)([^'")]+)\1\s*\)/g) ].map((m) => m[2])[0];
+    assert.ok(payload, 'globals.css should declare a font source');
+
+    let response = await fetch(new URL(payload, `${baseURL}${href}`));
+    assert.equal(response.status, 200, 'a stamped font URL must not 404');
+    assert.ok(
+      Number(response.headers.get('content-length')) > 1000,
+      'a real woff2 should come back, not a placeholder',
+    );
+  });
+});
+
+// Stamping the payload is half the fix. The other half is that the sheet's own
+// `?v=` must move when the font changes — otherwise a fresh sheet URL still
+// points at a four-hour-old `.woff2` and the glyphs are wrong behind a URL the
+// browser has never seen. `stampCSSUrls` returns a stat fingerprint for each
+// payload and `renderSheet` folds it into the version it hashes.
+//
+// Measured on this code: `02b18b768d1c` -> `886ab8a2c002` after rewriting the
+// referenced font; `02b18b768d1c` unchanged after rewriting an unreferenced one;
+// back to `02b18b768d1c` when the font bytes are restored.
+test('editing a font payload moves the version of the sheet that references it', async () => {
+  let root = await fsp.mkdtemp(path.join(os.tmpdir(), 'kikx-font-version-'));
+  try {
+    await fsp.mkdir(path.join(root, 'styles'), { recursive: true });
+    await fsp.mkdir(path.join(root, 'fonts'), { recursive: true });
+
+    let referenced = path.join(root, 'fonts/a.woff2');
+    let unreferenced = path.join(root, 'fonts/unused.woff2');
+    await fsp.writeFile(referenced, Buffer.alloc(2048, 1));
+    await fsp.writeFile(unreferenced, Buffer.alloc(2048, 2));
+
+    let sheet = path.join(root, 'styles/globals.css');
+    let original = [
+      '@font-face { font-family: X; src: url("../fonts/a.woff2") format("woff2"); }',
+      '.a { background: url("../fonts/a.woff2"); }',
+      '',
+    ].join('\n');
+    await fsp.writeFile(sheet, original);
+
+    let roots = { clientRoot: root, aeorWebComponentsRoot: null };
+    let first = await renderedCSSVersion(sheet, roots);
+    assert.match(first, VERSION_RE, 'a sheet with a font payload must still be versioned');
+
+    // An unreferenced font must not churn the URL. A version that moved on any
+    // font edit anywhere in the tree would bust every sheet on every font build.
+    await fsp.writeFile(unreferenced, Buffer.alloc(4096, 3));
+    assert.equal(
+      await renderedCSSVersion(sheet, roots),
+      first,
+      'an unreferenced font must not move the sheet version',
+    );
+
+    // The referenced payload is the case that matters.
+    await fsp.writeFile(referenced, Buffer.alloc(3000, 9));
+    assert.notEqual(
+      await renderedCSSVersion(sheet, roots),
+      first,
+      'a rewritten font payload must move the sheet version',
+    );
+
+    // Restoring the bytes restores the version, so the version is a function of
+    // content and not of when the stat happened to run.
+    await fsp.writeFile(referenced, Buffer.alloc(2048, 1));
+    assert.equal(
+      await renderedCSSVersion(sheet, roots),
+      first,
+      'restoring the font bytes must restore the sheet version',
+    );
+
+    // Negative control: hashing the text as it sits on disk — the behaviour
+    // before this change — is blind to the font, so it cannot move. Without this
+    // arm the assertions above could pass on a version derived from anything.
+    let preStamp = crypto.createHash('sha256').update(original).digest('hex').slice(0, 12);
+    assert.notEqual(
+      first,
+      preStamp,
+      'the shipped version must not be the pre-stamp text hash',
+    );
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+// `@import` and `url()` are different specifier kinds but the same syntax. A
+// second rewrite pass must never produce `?v=a?v=b` — that URL would 404.
+test('stamping never stacks two versions on one specifier', async () => {
+  await withServer(async (baseURL) => {
+    let css = await (await fetch(`${baseURL}/client/styles/app.css`)).text();
+    for (let match of css.matchAll(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g)) {
+      let versions = (match[2].match(/\?v=/g) || []).length;
+      assert.equal(versions <= 1, true, `specifier carries two versions: ${match[2]}`);
+    }
+  });
 });
