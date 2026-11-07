@@ -125,13 +125,24 @@ md5 `360109a4e9f0a64b47b61d51a7d7e963`, identical to disk); a cold authenticated
 browser against `https://kikx3.taraani.org` made **35 CSS requests, 35 stamped, 0
 unstamped, 0 non-200, 0 page errors**.
 
-**Not established here:** no browser was observed holding a *real, unexpired* four-hour
-edge lease showing the artifact. The reproduction *supplies* the old bytes. The lease
-mechanism that makes staleness possible is separately measured (no ETag, `max-age=14400`,
-an `If-Modified-Since` a year in the future still returns `200`, not `304`), and
-`?v=<hash>` requests return `cf-cache-status: MISS`, so a changed stamp genuinely
-bypasses the lease. Also not established: kikx3's origin identity, which remains
-inference from byte-identical health and 404 bodies at the edge, `:3001` and `:3002`.
+**Established in a browser holding a stale cached copy (2026-11-07, `cache-repro2`):**
+a Chrome profile that had already cached the *old* composer sheet under the bare URL
+kept rendering the painted-host artifact after the server's bytes at that same URL
+changed to the *new* sheet. The browser never contacted the network for that sheet in
+that arm; 35 of 35 CSS requests replayed the earlier arm's cached responses. The
+identical new bytes under a stamped URL, in the same profile, fetched fresh and rendered
+the fixed control. See [Stale-cache reproduction](#stale-cache-reproduction-2026-11-07)
+for the numbers and for why the instrument is trustworthy.
+
+**Not established here:** the *real* kikx3 edge was never caught serving stale bytes to
+a real browser. The reproduction models the measured edge behaviour
+(`public, max-age=14400` on `.css`, no ETag, `If-Modified-Since` a year ahead still `200`)
+against the local origin `:3002`; a model of the lease is not the lease. The lease itself
+is measured at the edge, and `?v=<hash>` requests return `cf-cache-status: MISS`, so a
+changed stamp genuinely bypasses it. Also not established: kikx3's origin identity, which
+remains inference from byte-identical health and 404 bodies at the edge, `:3001` and
+`:3002`. The tokens artifact was not re-probed under a stale cache; it shares the
+mechanism but only the STOP control was measured this way.
 
 The STOP control mounts only while a generation is active, so a cold render with no
 running agents cannot measure it in situ; `stopFound: false` in the cold-render probe is
@@ -146,3 +157,53 @@ mounts the element explicitly rather than waiting for a generation to be running
 - Network-layer probe: `/tmp/probe-stop-net.mjs`.
 - Cold public render: `/tmp/probe-public-render.mjs`, screenshot `/tmp/public-cold.png`.
 - Fix commits: `8f1c066f` (scoping), shipped to production in `aad7743c`.
+
+## Stale-cache reproduction (2026-11-07)
+
+This closes the question the rest of the document could not answer: not "do the old
+bytes produce the artifact" (proved above by supplying them), but "does a browser
+holding an *unexpired* copy keep showing the artifact after the origin is fixed".
+Probe: `/tmp/cache-repro2.mjs`, output `/tmp/cache-repro2.out.json`.
+
+**Setup.** A local proxy in front of the HEAD-code origin (`:3002`) reproduces the one
+header that matters, measured at the Cloudflare edge and nowhere else: `.css` under a
+bare URL is served `public, max-age=14400`; everything else stays `no-cache`. Three arms
+run in **one** Chrome profile so the cache persists between them, and **no request
+interception is used anywhere** — interception disables Chrome's HTTP cache and would
+have voided the experiment.
+
+**The variable is the URL, and only the URL.** In arms 2 and 3 the proxy serves
+*byte-identical new CSS*. Arm 2 asks for it under the bare URL that arm 1 cached; arm 3
+asks under its stamped URL. Whatever differs between arms 2 and 3 is therefore caused by
+the cache key and nothing else.
+
+| arm | URL in document | bytes the server would serve | bytes the browser used | source of the sheet | host bg / border | host box vs inner | nested |
+|---|---|---|---|---|---|---|---|
+| 1 prime | `/client/styles/app-composer.css` | OLD `2467be61` | OLD | network (this arm) | `rgb(185,28,28)` / `2px solid rgb(127,29,29)` | **1280x44** vs 68x35 | **true** |
+| 2 stale | `/client/styles/app-composer.css` | **NEW** `d5655bd0` | **OLD** | **cache, earlier arm** | `rgb(185,28,28)` / `2px solid rgb(127,29,29)` | **1280x44** vs 68x35 | **true** |
+| 3 control | `/client/styles/app-composer.css?v=cf1c38e92ffc` | NEW `d5655bd0` | NEW | network (this arm) | `rgba(0,0,0,0)` / `0px none` | 88x35 vs 88x35 | false |
+
+**Why the stale arm is a cache hit and not a coincidence.** `request.fromCache()` was
+useless here: it returned `null` on every arm, including the control whose stamped URL
+cannot have been cached, so a `null` there distinguishes nothing. The instrument used
+instead is a per-arm response header. The proxy sets `x-arm: <arm>` on every response,
+and Puppeteer exposes response headers for cached responses too. A cache hit therefore
+replays the *earlier* arm's name. In arm 2 the composer's response carried
+`x-arm: prime` — a header only arm 1 could have produced — with `networkThisArm: false`
+and `cacheHitFromOtherArm: true`; all 35 CSS responses in that arm came from the prime
+cache. The proxy ledger confirms the serving side independently: it has an entry for arm
+1 (OLD, 10467 B) and arm 3 (NEW, 12783 B) and **none for arm 2**, because no request for
+the composer sheet reached the proxy in arm 2 at all.
+
+**The negative control inside the same run.** The stale arm's recorded
+`staleMd5 = d5655bd00e7c802bbcd1696d309b29fe` is the new sheet: that is exactly what the
+proxy would have returned had the browser revalidated. It rendered the old artifact
+anyway. Had the browser revalidated, it would have fetched NEW and rendered the fixed
+control, as arm 3 did.
+
+**Take 1 failed and is not cited.** `/tmp/cache-repro.out.json` shows the same three-arm
+shape, but its only instrumentation was `fromCache`, which read `null` on every arm
+including the unstampable control. An instrument that reads the same both when the cache
+is used and when it is not proves nothing; the run was discarded and the header
+instrument built for take 2. This is the fourth methodology failure in this investigation
+and the same lesson as the other three: a control must be able to show that it fired.
