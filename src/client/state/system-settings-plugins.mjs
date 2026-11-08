@@ -21,6 +21,8 @@ export const SYSTEM_SETTINGS_PLUGINS_KEY = 'systemSettingsPlugins';
 export const PLUGINS_INVENTORY_URL = '/api/v1/plugins';
 // Browse search (S3): keyword-scoped registry search behind the INVENTORY gate.
 export const PLUGINS_SEARCH_URL = '/api/v1/plugins/search';
+// Update check (S3 slice 6): one bounded batch against registry metadata.
+export const PLUGINS_UPDATES_URL = '/api/v1/plugins/updates';
 
 export function createSystemSettingsPluginsState() {
   return {
@@ -42,6 +44,9 @@ export function createSystemSettingsPluginsState() {
     browseError: null,
     browseSeq: 0,
     installing: null,
+    // Update chips (S3 slice 6): { [pluginName]: { latest } } — only strictly
+    // newer packages appear; lookup failure leaves the map empty (no chip).
+    updates: {},
   };
 }
 
@@ -176,7 +181,9 @@ export function maybeLoadSystemSettingsPlugins(app) {
   const store = state[SYSTEM_SETTINGS_PLUGINS_KEY];
   if (store.loaded || store.loading)
     return;
-  void loadSystemSettingsPlugins(state, (url) => app._getJSON(url)).catch(() => {});
+  void loadSystemSettingsPlugins(state, (url) => app._getJSON(url))
+    .then(() => maybeLoadSystemSettingsPluginUpdates(app))
+    .catch(() => {});
 }
 
 function ensureInventoryVisibilityHook(app) {
@@ -191,10 +198,68 @@ function ensureInventoryVisibilityHook(app) {
       const store = state[SYSTEM_SETTINGS_PLUGINS_KEY];
       if (!store || store.loaded !== true)
         return;
-      void loadSystemSettingsPlugins(state, (url) => app._getJSON(url)).catch(() => {});
+      void loadSystemSettingsPlugins(state, (url) => app._getJSON(url))
+        .then(() => maybeLoadSystemSettingsPluginUpdates(app))
+        .catch(() => {});
     });
   } catch {
     // Non-DOM environments (specs without a document) simply skip the hook;
     // explicit loads still work.
   }
+}
+
+// --- Update system (S3 slice 6, plan 5-S3) ---------------------------------
+// Only npm-sourced installs are checked (path installs have no registry to
+// ask), version taken from the provenance ref (name@version — the pin that
+// was actually installed). The check is deliberately SILENT on failure:
+// lookup failure = no chip, never an error banner the operator must clear.
+function versionFromSourceRef(ref) {
+  const at = String(ref).lastIndexOf('@');
+  return at > 0 ? String(ref).slice(at + 1) : null;
+}
+
+function npmInstallTargets(store) {
+  const targets = [];
+  for (const plugin of (Array.isArray(store.inventory) ? store.inventory : [])) {
+    const source = plugin && plugin.source;
+    if (!source || source.type !== 'npm' || typeof source.ref !== 'string')
+      continue;
+    if (!plugin || typeof plugin.name !== 'string' || !plugin.name)
+      continue;
+    targets.push({ name: plugin.name, version: versionFromSourceRef(source.ref) });
+  }
+  return targets;
+}
+
+export async function loadSystemSettingsPluginUpdates(state, requester) {
+  if (!state || typeof state !== 'object' || typeof requester !== 'function')
+    return null;
+  const store = ensureSystemSettingsPluginsState(state);
+  const targets = npmInstallTargets(store);
+  if (!targets.length)
+    return store.updates || {};
+  try {
+    const json = await requester(PLUGINS_UPDATES_URL, { packages: targets });
+    const current = ensureSystemSettingsPluginsState(state);
+    const data = (json && typeof json === 'object' && json.data && typeof json.data === 'object')
+      ? json.data
+      : (json || {});
+    const updates = (data.updates && typeof data.updates === 'object') ? data.updates : {};
+    state[SYSTEM_SETTINGS_PLUGINS_KEY] = { ...current, updates };
+    return updates;
+  } catch {
+    // Silent by contract (plan 5-S3): a failed lookup leaves the previous
+    // (possibly empty) chip map and touches no error slot.
+    return ensureSystemSettingsPluginsState(state).updates || {};
+  }
+}
+
+export function maybeLoadSystemSettingsPluginUpdates(app) {
+  const state = app && app._state;
+  if (!state || typeof app._postJSON !== 'function')
+    return;
+  const store = ensureSystemSettingsPluginsState(state);
+  if (!npmInstallTargets(store).length)
+    return;
+  void loadSystemSettingsPluginUpdates(state, (url, body) => app._postJSON(url, body)).catch(() => {});
 }

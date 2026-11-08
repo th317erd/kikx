@@ -146,6 +146,18 @@ export function resolveVersionSpec(packument, spec) {
   return best;
 }
 
+// Update check (S3 slice 6): is the installed pin strictly behind the
+// registry's latest? Every UNCERTAIN answer is false — plan 5-S3: lookup
+// failure or unknown installed version = no chip, never a guess.
+export function isOutdated(installed, latest) {
+  if (typeof latest !== 'string' || !latest) return false;
+  if (typeof installed !== 'string' || !installed) return false;
+  const current = parseVersion(installed);
+  const next = parseVersion(latest);
+  if (!current || !next) return false;
+  return cmpVersion(next, current) > 0;
+}
+
 async function fetchBounded(url, fetchImpl, maxBytes) {
   const res = await fetchImpl(url, { headers: { accept: 'application/json' } });
   if (!res || !res.ok) return null;

@@ -543,3 +543,96 @@ test('Browse column: notice, search field, result cards, Installed chip, empty s
   })();
   assert.match(textOf(emptyNode), /No kikx-plugin packages found for/, 'empty state names the query');
 });
+
+// ---------------------------------------------------------------------------
+// 10. Update system (campaign S3 slice 6, plan 5-S3)
+// ---------------------------------------------------------------------------
+
+test('update check derives npm-sourced packages only, and applies newer latests', async () => {
+  let { loadSystemSettingsPluginUpdates, createSystemSettingsPluginsState } =
+    await import('../../src/client/state/system-settings-plugins.mjs');
+
+  let state = {
+    systemSettingsPlugins: {
+      ...createSystemSettingsPluginsState(),
+      inventory: [
+        { name: 'alpha-plugin', source: { type: 'npm', ref: 'alpha-plugin@1.0.0', registry: 'https://registry.npmjs.org' } },
+        { name: 'pathy', source: { type: 'path', ref: '/srv/plugs/pathy', registry: null } },
+        { name: 'unknown-src' },
+      ],
+      loaded: true,
+    },
+  };
+
+  const calls = [];
+  await loadSystemSettingsPluginUpdates(state, async (url, body) => {
+    calls.push([ url, body ]);
+    return { data: { updates: { 'alpha-plugin': { latest: '1.2.0' } }, checked: 1 } };
+  });
+
+  assert.equal(calls.length, 1, 'one batch request per check');
+  assert.equal(calls[0][0], '/api/v1/plugins/updates', 'the S3 route');
+  assert.deepEqual(calls[0][1], { packages: [ { name: 'alpha-plugin', version: '1.0.0' } ] },
+    'only npm-sourced installs are checked, version taken from the provenance ref');
+
+  const store = state.systemSettingsPlugins;
+  assert.deepEqual(store.updates, { 'alpha-plugin': { latest: '1.2.0' } }, 'the chip map lands in the store');
+  assert.equal(store.error, null, 'a successful check never touches the error slot');
+});
+
+test('update check failure is silent: no chip state, no error pollution, no throw', async () => {
+  let { loadSystemSettingsPluginUpdates, createSystemSettingsPluginsState } =
+    await import('../../src/client/state/system-settings-plugins.mjs');
+
+  let state = {
+    systemSettingsPlugins: {
+      ...createSystemSettingsPluginsState(),
+      inventory: [ { name: 'alpha-plugin', source: { type: 'npm', ref: 'alpha-plugin@1.0.0' } } ],
+      loaded: true,
+    },
+  };
+
+  await loadSystemSettingsPluginUpdates(state, async () => { throw new Error('network gone'); });
+
+  const store = state.systemSettingsPlugins;
+  assert.deepEqual(store.updates, {}, 'lookup failure = no chip, by contract');
+  assert.equal(store.error, null, 'and it does not clobber the inventory error slot');
+});
+
+test('an available Update renders the chip and an action pinning the latest version', async () => {
+  let { buildPluginsSection } = await import('../../src/client/components/kikx-settings-plugins-section.mjs');
+  let { createSystemSettingsPluginsState } = await import('../../src/client/state/system-settings-plugins.mjs');
+
+  const app = makeApp({
+    systemSettingsPlugins: {
+      ...createSystemSettingsPluginsState(),
+      inventory: [
+        { name: 'alpha-plugin', location: 'alpha-plugin#abc', managed: true,
+          source: { type: 'npm', ref: 'alpha-plugin@1.0.0' },
+          manifest: { version: '1.0.0' }, mounted: false, mount: null, subscriptions: null },
+        { name: 'beta-plugin', location: 'beta-plugin#def', managed: true,
+          source: { type: 'npm', ref: 'beta-plugin@2.0.0' },
+          manifest: { version: '2.0.0' }, mounted: false, mount: null, subscriptions: null },
+      ],
+      loaded: true,
+      updates: { 'alpha-plugin': { latest: '1.2.0' } },
+    },
+  });
+  let built = buildPluginsSection(app);
+  let node = typeof built.build === 'function' ? built.build(document) : built;
+
+  let text = '';
+  const buttons = [];
+  (function walk(n) {
+    if (!n) return;
+    if (n.nodeType === 3) text += `${n.textContent || ''} `;
+    if (n.getAttribute?.('data-action') === 'update-npm') buttons.push(n);
+    for (const c of n.childNodes || []) walk(c);
+  })(node);
+
+  assert.match(text, /Update available/, 'the chip renders for the outdated package');
+  const chips = text.split('Update available').length - 1;
+  assert.equal(chips, 1, 'exactly ONE chip — beta-plugin has no update');
+  assert.equal(buttons.length, 1, 'and exactly one Update action');
+  assert.match(text, /Update/, 'the action is labelled');
+});

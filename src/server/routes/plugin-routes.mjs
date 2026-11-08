@@ -7,6 +7,23 @@ import { readBoundedJsonBody } from './bounded-json-body.mjs';
 import { handlePluginInstall } from './plugin-install-routes.mjs';
 
 import { PLUGIN_ADMIN_ACTIONS, requireOperator } from './plugin-admin-policy.mjs';
+// Registry seams shared by the three S3 branches (search/updates/install):
+// configured base URLs (config, never hardcoded — §10) and the injected fetch
+// (pluginNpmRegistryFetch) that keeps tests off the real network.
+async function configuredRegistryUrls(config) {
+  try {
+    if (config && typeof config.get === 'function') {
+      const { KIKX_PLUGIN_REGISTRY_URLS_PATH } = await import('../../core/config/config-paths.mjs');
+      return await config.get(KIKX_PLUGIN_REGISTRY_URLS_PATH);
+    }
+  } catch (_e) { /* fall back to the default registry */ }
+  return undefined;
+}
+
+function registryFetchSeam(context) {
+  return context.has?.('pluginNpmRegistryFetch') ? context.require('pluginNpmRegistryFetch') : globalThis.fetch;
+}
+
 export async function handlePluginRoutes({ request, response, url, context, json, rawBody }) {
   let router = null;
   try {
@@ -153,13 +170,9 @@ export async function handlePluginRoutes({ request, response, url, context, json
       response.end(JSON.stringify({ error: { message: 'search requires q (1-100 characters)' } }));
       return true;
     }
-    let config = context.has?.('config') ? context.require('config') : null;
-    let registryUrls;
-    try {
-      const { KIKX_PLUGIN_REGISTRY_URLS_PATH } = await import('../../core/config/config-paths.mjs');
-      registryUrls = config && typeof config.get === 'function' ? await config.get(KIKX_PLUGIN_REGISTRY_URLS_PATH) : undefined;
-    } catch (_e) { registryUrls = undefined; }
-    const fetchImpl = context.has?.('pluginNpmRegistryFetch') ? context.require('pluginNpmRegistryFetch') : globalThis.fetch;
+    const config = context.has?.('config') ? context.require('config') : null;
+    const registryUrls = await configuredRegistryUrls(config);
+    const fetchImpl = registryFetchSeam(context);
     const { searchPlugins, SEARCH_KEYWORD } = await import('../../core/plugins/npm-registry.mjs');
     let result;
     try {
@@ -176,6 +189,56 @@ export async function handlePluginRoutes({ request, response, url, context, json
     }
     response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     response.end(JSON.stringify({ data: { query: q, keyword: SEARCH_KEYWORD, plugins: result.plugins } }));
+    return true;
+  }
+
+  // Update check (S3 slice 6, plan 5-S3): ONE bounded batch when the Plugins
+  // view opens. Per-package lookup failure = no chip (never a 500), the batch
+  // is capped at 25, and the strict name regex applies — this endpoint fetches
+  // the registry on the operator's behalf, so it wears the INVENTORY gate.
+  if (url.pathname === '/api/v1/plugins/updates' && request.method === 'POST') {
+    await requireOperator(context, request, PLUGIN_ADMIN_ACTIONS.INVENTORY);
+
+    const body = await readBoundedJsonBody(request);
+    const packages = Array.isArray(body?.packages) ? body.packages : null;
+    const badRequest = (message) => {
+      response.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ error: { message } }));
+      return true;
+    };
+    if (!packages)
+      return badRequest('updates requires a packages array');
+    if (packages.length > 25)
+      return badRequest('updates batch is capped at 25 packages');
+
+    // Validate the WHOLE batch before one byte leaves for the registry.
+    const { parseNpmPackageSpec } = await import('../../core/plugins/npm-package.mjs');
+    for (const [index, entry] of packages.entries()) {
+      const name = entry && typeof entry.name === 'string' ? entry.name : null;
+      const parsed = name ? parseNpmPackageSpec(name) : null;
+      if (!parsed || parsed.version !== null || parsed.name !== name)
+        return badRequest(`invalid package at index ${index} — bare registry names only`);
+    }
+
+    const { resolvePackage, isOutdated } = await import('../../core/plugins/npm-registry.mjs');
+    const config = context.has?.('config') ? context.require('config') : null;
+    const registryUrls = await configuredRegistryUrls(config);
+    const fetchImpl = registryFetchSeam(context);
+    const updates = {};
+    let checked = 0;
+    for (const entry of packages) {
+      checked += 1;
+      try {
+        const meta = await resolvePackage(entry.name, null, { registryUrls, fetchImpl });
+        const installed = typeof entry.version === 'string' ? entry.version : null;
+        if (meta && !meta.error && isOutdated(installed, meta.version))
+          updates[entry.name] = { latest: meta.version };
+      } catch (_e) {
+        // Per-package lookup failure = no chip (plan 5-S3) — the batch still 200s.
+      }
+    }
+    response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    response.end(JSON.stringify({ data: { updates, checked } }));
     return true;
   }
 

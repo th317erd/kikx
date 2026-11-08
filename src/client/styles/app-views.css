@@ -255,6 +255,13 @@
   padding: 1px 6px;
   font-size: 11px;
 }
+.kikx-settings-plugin-card__badge--update {
+  color: #e3b341;
+  border: 1px solid #e3b341;
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-size: 11px;
+}
 .kikx-settings-plugins__search-btn,
 .kikx-browse-card__install {
   appearance: none;

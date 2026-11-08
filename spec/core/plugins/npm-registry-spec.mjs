@@ -10,6 +10,7 @@ import {
   resolvePackage,
   verifyIntegrity,
   downloadTarball,
+  isOutdated,
 } from '../../../src/core/plugins/npm-registry.mjs';
 
 // Campaign S3 slice 2 (plan 5-S3): resolve against CONFIGURED registries
@@ -114,6 +115,16 @@ test('verifyIntegrity: sha512 SRI match, multi-token SRI, tamper detection', asy
   assert.equal(verifyIntegrity(bytes, `sha256-aaaa ${good}`), true, 'any sha512 token in the SRI list may match');
   assert.equal(verifyIntegrity(bytes, 'sha512-' + 'B'.repeat(88)), false, 'tampered bytes fail');
   assert.equal(verifyIntegrity(bytes, undefined), false, 'no SRI = fail');
+});
+
+test('isOutdated: only a strictly newer latest counts — everything uncertain is false', () => {
+  assert.equal(isOutdated('1.0.0', '1.1.0'), true, 'newer = chip');
+  assert.equal(isOutdated('2.0.0-rc.1', '2.0.0'), true, 'prerelease to its release = chip');
+  assert.equal(isOutdated('2.0.0', '2.0.0'), false, 'equal = no chip');
+  assert.equal(isOutdated('1.0.0', '0.9.0'), false, 'registry behind the install = no chip');
+  assert.equal(isOutdated(null, '1.1.0'), false, 'unknown installed version = no chip (plan: lookup failure = no chip)');
+  assert.equal(isOutdated('weird', 'also-weird'), false, 'unparsable comparison = no chip, never a guess');
+  assert.equal(isOutdated('1.0.0', null), false);
 });
 
 test('downloadTarball: fetches, verifies before use, enforces size cap', async () => {

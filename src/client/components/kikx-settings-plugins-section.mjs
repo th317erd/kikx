@@ -23,6 +23,7 @@ import {
   ensureSystemSettingsPluginsState,
   loadSystemSettingsPlugins,
   searchSystemSettingsPlugins,
+  maybeLoadSystemSettingsPluginUpdates,
 } from '../state/system-settings-plugins.mjs';
 
 const { button, div, h3, p, span, input } = elements;
@@ -159,12 +160,22 @@ function buildPluginCard(app, plugin, store) {
   const location = plugin && typeof plugin.location === 'string' ? plugin.location : '';
   const cardFailures = (store.failures || []).filter((failure) => failure && location && failure.location === location);
   const mount = plugin && plugin.mount && typeof plugin.mount === 'object' ? plugin.mount : null;
+  // Update chip (S3 slice 6): the store only ever holds strictly-newer
+  // latests, so presence alone decides both the chip and the Update action.
+  const update = plugin && plugin.name && store.updates && store.updates[plugin.name]
+    && typeof store.updates[plugin.name] === 'object'
+    ? store.updates[plugin.name]
+    : null;
+  const busy = Boolean(store.installing);
 
   return div.class('kikx-settings-plugin-card')(
     div.class('kikx-settings-plugin-card__head')(
       span.class('kikx-settings-plugin-card__name')(plugin && plugin.name ? String(plugin.name) : '(unnamed)'),
       manifest.version
         ? span.class('kikx-settings-plugin-card__version')(String(manifest.version))
+        : null,
+      update && typeof update.latest === 'string'
+        ? span.class('kikx-settings-plugin-card__badge kikx-settings-plugin-card__badge--update')('Update available')
         : null,
       plugin && plugin.managed === false
         ? span.class('kikx-settings-plugin-card__badge kikx-settings-plugin-card__badge--internal')(INTERNAL_NOTICE)
@@ -192,6 +203,14 @@ function buildPluginCard(app, plugin, store) {
       button.type('button')['data-action']('reload')
         .class('kikx-settings-plugin-card__action')
         .onClick(() => runPluginAction(app, 'reload', plugin))('Reload'),
+      update && typeof update.latest === 'string'
+        ? button.type('button')['data-action']('update-npm')
+          .class('kikx-settings-plugin-card__action')
+          .disabled(busy)
+          // Reuses the EXACT install pipeline with the RESOLVED version —
+          // the plan's wording, and runInstallFromNpm already pins it.
+          .onClick(() => runInstallFromNpm(app, { name: plugin.name, version: update.latest }))('Update')
+        : null,
     ),
   );
 }
@@ -200,7 +219,11 @@ function refresh(app) {
   const state = app && app._state;
   if (!state || typeof app._getJSON !== 'function')
     return Promise.resolve();
-  return loadSystemSettingsPlugins(state, (url) => app._getJSON(url)).catch(() => {});
+  return loadSystemSettingsPlugins(state, (url) => app._getJSON(url))
+    // Every inventory refresh re-derives the update chips: after installing
+    // an update the fresh latest equals the new pin and the chip clears.
+    .then(() => maybeLoadSystemSettingsPluginUpdates(app))
+    .catch(() => {});
 }
 
 function reportError(app, error) {
