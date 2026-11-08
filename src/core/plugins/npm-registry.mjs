@@ -199,3 +199,49 @@ export async function downloadTarball({ tarball, integrity }, { fetchImpl = glob
   if (!verifyIntegrity(bytes, integrity)) throw fail('integrity-mismatch');
   return bytes;
 }
+
+// --- Browse search (S3, plan 5-S3) -----------------------------------------
+// npm's /-/v1/search scoped to the owner-confirmed `kikx-plugin` keyword.
+// The qualifier rides as text=keywords:kikx-plugin <q>; registries treat
+// keyword qualifiers best-effort, so results are RE-filtered on the way
+// back — a package without the keyword never reaches the Browse column.
+// Bounded: query length, response bytes, and result count.
+export const SEARCH_KEYWORD = 'kikx-plugin';
+const MAX_QUERY = 100;
+const DEFAULT_SEARCH_SIZE = 25;
+
+export async function searchPlugins({
+  q,
+  registryUrls,
+  fetchImpl = globalThis.fetch,
+  size = DEFAULT_SEARCH_SIZE,
+  maxBytes = 2 * 1024 * 1024,
+} = {}) {
+  const query = String(q ?? '').trim();
+  if (!query || query.length > MAX_QUERY) return { error: 'invalid-query' };
+  const base = pickRegistryBase(registryUrls);
+  const bounded = Math.max(1, Math.min(Number(size) || DEFAULT_SEARCH_SIZE, 50));
+  const text = `keywords:${SEARCH_KEYWORD} ${query}`;
+  const bytes = await fetchBounded(
+    `${base}/-/v1/search?text=${encodeURIComponent(text)}&size=${bounded}`,
+    fetchImpl,
+    maxBytes,
+  );
+  if (!bytes) return { error: 'registry-unreachable' };
+  let payload;
+  try { payload = JSON.parse(bytes.toString('utf8')); } catch { return { error: 'registry-unreachable' }; }
+  const objects = Array.isArray(payload?.objects) ? payload.objects : [];
+  const plugins = [];
+  for (const entry of objects) {
+    const pkg = entry?.package;
+    if (!pkg || typeof pkg.name !== 'string') continue;
+    if (!Array.isArray(pkg.keywords) || !pkg.keywords.includes(SEARCH_KEYWORD)) continue;
+    plugins.push({
+      name: pkg.name,
+      version: typeof pkg.version === 'string' ? pkg.version : null,
+      description: typeof pkg.description === 'string' ? pkg.description.slice(0, 500) : null,
+    });
+    if (plugins.length >= bounded) break;
+  }
+  return { plugins };
+}
