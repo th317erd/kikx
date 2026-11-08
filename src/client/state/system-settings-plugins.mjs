@@ -19,6 +19,8 @@
 
 export const SYSTEM_SETTINGS_PLUGINS_KEY = 'systemSettingsPlugins';
 export const PLUGINS_INVENTORY_URL = '/api/v1/plugins';
+// Browse search (S3): keyword-scoped registry search behind the INVENTORY gate.
+export const PLUGINS_SEARCH_URL = '/api/v1/plugins/search';
 
 export function createSystemSettingsPluginsState() {
   return {
@@ -31,6 +33,15 @@ export function createSystemSettingsPluginsState() {
     // Enforcement truth from the server ('required' | 'unsafe'); the section
     // renders the unsafe banner from this (plan §5-S4 — loud by contract).
     signatureMode: null,
+    // Browse column (S3 slice 5): last committed query, its results, honest
+    // loading/error, a monotonic request sequence that drops stale responses,
+    // and the npm spec currently installing (busy button state).
+    browseQuery: '',
+    browseResults: [],
+    browseLoading: false,
+    browseError: null,
+    browseSeq: 0,
+    installing: null,
   };
 }
 
@@ -62,7 +73,12 @@ export async function loadSystemSettingsPlugins(state, fetcher) {
     const data = (json && typeof json === 'object' && json.data && typeof json.data === 'object')
       ? json.data
       : (json || {});
+    // Re-read the CURRENT store after the await: a Browse search (or an
+    // install's busy flag) may have landed mid-flight, and an inventory
+    // refresh must never wipe what the operator was browsing.
+    const settled = ensureSystemSettingsPluginsState(state);
     state[SYSTEM_SETTINGS_PLUGINS_KEY] = {
+      ...settled,
       inventory: Array.isArray(data.plugins) ? data.plugins : [],
       failures: Array.isArray(data.failures) ? data.failures : [],
       restartRequired: Array.isArray(data.restartRequired) ? data.restartRequired : [],
@@ -83,6 +99,69 @@ export async function loadSystemSettingsPlugins(state, fetcher) {
     };
   }
   return state[SYSTEM_SETTINGS_PLUGINS_KEY];
+}
+
+// Browse search (S3 slice 5, plan 5-S3): GET /api/v1/plugins/search?q=…
+// through the same injected fetcher shape as the inventory. A monotonic
+// request sequence guards the write: only the NEWEST search may land its
+// results — network order must never decide the UI. Failure keeps the
+// previous results (stale-but-true beats blank) and shows the server
+// message verbatim, same rule as the inventory. An empty query clears the
+// column and invalidates any in-flight request WITHOUT fetching.
+export async function searchSystemSettingsPlugins(state, fetcher, query) {
+  if (!state || typeof state !== 'object' || typeof fetcher !== 'function')
+    return null;
+
+  const q = String(query ?? '').trim();
+  const before = ensureSystemSettingsPluginsState(state);
+  const seq = (Number.isFinite(before.browseSeq) ? before.browseSeq : 0) + 1;
+
+  if (!q) {
+    state[SYSTEM_SETTINGS_PLUGINS_KEY] = {
+      ...before,
+      browseQuery: '',
+      browseResults: [],
+      browseLoading: false,
+      browseError: null,
+      browseSeq: seq,
+    };
+    return state[SYSTEM_SETTINGS_PLUGINS_KEY];
+  }
+
+  state[SYSTEM_SETTINGS_PLUGINS_KEY] = {
+    ...before,
+    browseQuery: q,
+    browseLoading: true,
+    browseError: null,
+    browseSeq: seq,
+  };
+
+  try {
+    const json = await fetcher(`${PLUGINS_SEARCH_URL}?q=${encodeURIComponent(q)}`);
+    const current = ensureSystemSettingsPluginsState(state);
+    if (current.browseSeq !== seq)
+      return current; // a newer search owns the column — this response is dropped whole
+    const data = (json && typeof json === 'object' && json.data && typeof json.data === 'object')
+      ? json.data
+      : (json || {});
+    state[SYSTEM_SETTINGS_PLUGINS_KEY] = {
+      ...current,
+      browseResults: Array.isArray(data.plugins) ? data.plugins : [],
+      browseLoading: false,
+      browseError: null,
+    };
+    return state[SYSTEM_SETTINGS_PLUGINS_KEY];
+  } catch (error) {
+    const current = ensureSystemSettingsPluginsState(state);
+    if (current.browseSeq !== seq)
+      return current;
+    state[SYSTEM_SETTINGS_PLUGINS_KEY] = {
+      ...current,
+      browseLoading: false,
+      browseError: messageOf(error),
+    };
+    return state[SYSTEM_SETTINGS_PLUGINS_KEY];
+  }
 }
 
 // Called when the System Settings view opens. First open kicks the fetch;

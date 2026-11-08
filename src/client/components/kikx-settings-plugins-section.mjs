@@ -22,6 +22,7 @@ import { elements } from '../lib/aeor-ui.mjs';
 import {
   ensureSystemSettingsPluginsState,
   loadSystemSettingsPlugins,
+  searchSystemSettingsPlugins,
 } from '../state/system-settings-plugins.mjs';
 
 const { button, div, h3, p, span, input } = elements;
@@ -78,7 +79,77 @@ export function buildPluginsSection(app) {
     ),
     div.class('kikx-settings-plugins__column kikx-settings-plugins__browse')(
       h3('Browse'),
-      p('Registry search arrives with the NPM phase.'),
+      // Notice mirrors Xenocept's Browse posture: name the keyword honestly
+      // and say the dangerous part out loud — installing runs third-party code.
+      p.class('kikx-settings-plugins__notice')(
+        'Registry packages tagged \'kikx-plugin\'. Installing runs third-party code — review what you install.',
+      ),
+      div.class('kikx-settings-plugins__search')(
+        // The draft lives on the APP (not _state): keystrokes must never
+        // trigger a reactive rebuild that would destroy the focused input,
+        // and the value must survive rebuilds driven by inventory refreshes.
+        input.type('text')
+          .class('kikx-settings-plugins__search-input')
+          .placeholder('search kikx-plugin packages')
+          .value(typeof app.__pluginsBrowseDraft === 'string' ? app.__pluginsBrowseDraft : (store.browseQuery || ''))
+          .onInput((event) => {
+            try { app.__pluginsBrowseDraft = String(event?.target?.value ?? ''); } catch { /* non-DOM event */ }
+          })
+          .onKeydown((event) => {
+            if (event?.key === 'Enter') void runBrowseSearch(app);
+          })(),
+        button.type('button')
+          .class('kikx-settings-plugins__search-btn')
+          .onClick(() => runBrowseSearch(app))('Search'),
+      ),
+      store.browseError
+        ? p.class('kikx-settings-plugins__browse-error')(store.browseError)
+        : null,
+      store.browseLoading
+        ? p.class('kikx-settings-plugins__browse-loading')('Searching…')
+        : null,
+      (store.browseResults || []).length > 0
+        ? div.class('kikx-settings-plugins__results')(
+          ...store.browseResults.map((result) => buildBrowseCard(app, result, store)),
+        )
+        : (!store.browseLoading && store.browseQuery
+          ? p.class('kikx-settings-plugins__browse-empty')(
+            `No kikx-plugin packages found for “${store.browseQuery}”.`,
+          )
+          : null),
+    ),
+  );
+}
+
+function buildBrowseCard(app, result, store) {
+  const name = result && typeof result.name === 'string' ? result.name : '';
+  const version = result && typeof result.version === 'string' ? result.version : null;
+  const description = result && typeof result.description === 'string' ? result.description : null;
+  const inventory = Array.isArray(store.inventory) ? store.inventory : [];
+  const installed = Boolean(name) && inventory.some((plugin) => plugin && plugin.name === name);
+  const busy = Boolean(store.installing);
+  const mine = Boolean(store.installing) && Boolean(name) && store.installing === (version ? `${name}@${version}` : name);
+
+  return div.class('kikx-settings-plugin-card')(
+    div.class('kikx-settings-plugin-card__head')(
+      span.class('kikx-settings-plugin-card__name')(name || '(unnamed)'),
+      version
+        ? span.class('kikx-settings-plugin-card__version')(version)
+        : null,
+      installed
+        ? span.class('kikx-settings-plugin-card__badge kikx-settings-plugin-card__badge--installed')('Installed')
+        : null,
+    ),
+    description
+      ? p.class('kikx-settings-plugin-card__desc')(description)
+      : null,
+    div.class('kikx-settings-plugin-card__actions')(
+      button.type('button')['data-action']('install-npm')
+        .class('kikx-browse-card__install')
+        .disabled(installed || busy)
+        .onClick(() => runInstallFromNpm(app, { name, version }))(
+        installed ? 'Installed' : (mine ? 'Installing…' : 'Install'),
+      ),
     ),
   );
 }
@@ -179,5 +250,43 @@ async function runInstallFromPath(app) {
   } catch (error) {
     reportError(app, error);
   }
+  await refresh(app);
+}
+
+async function runBrowseSearch(app) {
+  const state = app && app._state;
+  if (!state || typeof app._getJSON !== 'function')
+    return;
+  const field = app.querySelector && app.querySelector('.kikx-settings-plugins__search-input');
+  const draft = field && typeof field.value === 'string'
+    ? field.value
+    : (typeof app.__pluginsBrowseDraft === 'string' ? app.__pluginsBrowseDraft : '');
+  if (!draft.trim())
+    app.__pluginsBrowseDraft = '';
+  // The store owns the fetch, the stale-sequence guard and the error copy.
+  await searchSystemSettingsPlugins(state, (url) => app._getJSON(url), draft);
+}
+
+async function runInstallFromNpm(app, result) {
+  const state = app && app._state;
+  if (!state || typeof app?._postJSON !== 'function')
+    return;
+  const name = result && typeof result.name === 'string' ? result.name : '';
+  if (!name)
+    return;
+  // Pin the version the operator SAW — reproducible installs, and the same
+  // shape slice 6's Update action will reuse with the resolved version.
+  const spec = result.version ? `${name}@${result.version}` : name;
+  const store = ensureSystemSettingsPluginsState(state);
+  if (store.installing)
+    return; // one install at a time — the busy flag is the whole guard
+  state.systemSettingsPlugins = { ...store, installing: spec, error: null };
+  try {
+    await app._postJSON('/api/v1/plugins/install', { npm: spec });
+  } catch (error) {
+    reportError(app, error);
+  }
+  const current = ensureSystemSettingsPluginsState(state);
+  state.systemSettingsPlugins = { ...current, installing: null };
   await refresh(app);
 }

@@ -366,3 +366,180 @@ test('the settings view mounts a plugin panel inside its section tab', async () 
 
   setClientComponents([], state);
 });
+
+// ---------------------------------------------------------------------------
+// 9. Browse search store + column (campaign S3 slice 5, plan 5-S3)
+// ---------------------------------------------------------------------------
+
+test('browse search: hits the S3 route with encoded q, flips loading honestly', async () => {
+  let { searchSystemSettingsPlugins, createSystemSettingsPluginsState } =
+    await import('../../src/client/state/system-settings-plugins.mjs');
+
+  let state = {};
+  const seen = [];
+  await searchSystemSettingsPlugins(state, async (url) => {
+    seen.push(url);
+    return { data: { query: 'echo tools', keyword: 'kikx-plugin', plugins: [ { name: 'kikx-echo', version: '1.4.0', description: 'Echoes' } ] } };
+  }, 'echo tools');
+
+  const store = state.systemSettingsPlugins;
+  assert.equal(seen.length, 1, 'one fetch');
+  assert.ok(seen[0].startsWith('/api/v1/plugins/search?q='), 'the S3 search route');
+  assert.ok(seen[0].includes(encodeURIComponent('echo tools')), 'q rides URL-encoded');
+  assert.equal(store.browseQuery, 'echo tools');
+  assert.equal(store.browseLoading, false, 'loading clears');
+  assert.equal(store.browseError, null);
+  assert.deepEqual(store.browseResults.map((r) => r.name), [ 'kikx-echo' ], 'results unwrap from {data.plugins}');
+
+  const defaults = createSystemSettingsPluginsState();
+  assert.ok(Array.isArray(defaults.browseResults), 'browse fields live in the default state');
+  assert.equal(defaults.browseLoading, false);
+});
+
+test('a stale search response never overwrites the newer one', async () => {
+  let { searchSystemSettingsPlugins } = await import('../../src/client/state/system-settings-plugins.mjs');
+
+  let state = {};
+  let resolveSlow = null;
+  const slow = searchSystemSettingsPlugins(state, () => new Promise((resolve) => { resolveSlow = resolve; }), 'slow query');
+  const fast = searchSystemSettingsPlugins(state, async () => ({ data: { query: 'fast', plugins: [ { name: 'fast-pkg' } ] } }), 'fast');
+  await fast;
+  resolveSlow({ data: { query: 'slow', plugins: [ { name: 'slow-pkg' } ] } });
+  await slow;
+
+  const store = state.systemSettingsPlugins;
+  assert.deepEqual(store.browseResults.map((r) => r.name), [ 'fast-pkg' ],
+    'the slow response is dropped whole — network order must not decide the UI');
+  assert.equal(store.browseQuery, 'fast', 'nor the committed query');
+  assert.equal(store.browseLoading, false);
+});
+
+test('search failure keeps previous results and shows the server message', async () => {
+  let { searchSystemSettingsPlugins } = await import('../../src/client/state/system-settings-plugins.mjs');
+
+  let state = {};
+  await searchSystemSettingsPlugins(state, async () => ({ data: { plugins: [ { name: 'kept-pkg' } ] } }), 'first');
+  await searchSystemSettingsPlugins(state, async () => {
+    const error = new Error('registry search failed: registry-unreachable');
+    throw error;
+  }, 'second');
+
+  const store = state.systemSettingsPlugins;
+  assert.equal(store.browseLoading, false, 'error clears loading');
+  assert.match(store.browseError, /registry search failed/, 'the failure is readable');
+  assert.deepEqual(store.browseResults.map((r) => r.name), [ 'kept-pkg' ],
+    'stale-but-true beats blank, same rule as the inventory');
+});
+
+test('an empty query clears the Browse column without a fetch', async () => {
+  let { searchSystemSettingsPlugins } = await import('../../src/client/state/system-settings-plugins.mjs');
+
+  let state = {};
+  await searchSystemSettingsPlugins(state, async () => ({ data: { plugins: [ { name: 'seeded' } ] } }), 'seed');
+  let fetches = 0;
+  await searchSystemSettingsPlugins(state, async () => { fetches++; return { data: { plugins: [] } }; }, '   ');
+
+  const store = state.systemSettingsPlugins;
+  assert.equal(fetches, 0, 'whitespace never reaches the network');
+  assert.deepEqual(store.browseResults, [], 'the column clears');
+  assert.equal(store.browseQuery, '');
+  assert.equal(store.browseLoading, false);
+});
+
+test('an inventory refresh preserves Browse results and installing state', async () => {
+  let { searchSystemSettingsPlugins, loadSystemSettingsPlugins } =
+    await import('../../src/client/state/system-settings-plugins.mjs');
+
+  let state = {};
+  await searchSystemSettingsPlugins(state, async () => ({ data: { plugins: [ { name: 'browse-pkg', version: '2.0.0', description: 'x' } ] } }), 'browse');
+  state.systemSettingsPlugins = { ...state.systemSettingsPlugins, installing: 'browse-pkg@2.0.0' };
+
+  // The post-install refresh must not wipe what the operator was browsing.
+  await loadSystemSettingsPlugins(state, async () => ({ data: { plugins: [ { name: 'browse-pkg', managed: true } ], failures: [], restartRequired: [], signatureMode: 'required' } }));
+
+  const store = state.systemSettingsPlugins;
+  assert.deepEqual(store.browseResults.map((r) => r.name), [ 'browse-pkg' ], 'browse results survive the refresh');
+  assert.equal(store.browseQuery, 'browse');
+  assert.equal(store.installing, 'browse-pkg@2.0.0');
+  assert.deepEqual(store.inventory.map((p) => p.name), [ 'browse-pkg' ], 'and the inventory still updates');
+  assert.equal(store.signatureMode, 'required');
+});
+
+test('Browse column: notice, search field, result cards, Installed chip, empty state', async () => {
+  let { buildPluginsSection } = await import('../../src/client/components/kikx-settings-plugins-section.mjs');
+
+  const baseBrowse = {
+    browseQuery: 'echo',
+    browseResults: [
+      { name: 'kikx-echo', version: '1.4.0', description: 'Echoes back' },
+      { name: 'kikx-other', version: '0.3.0', description: 'Something else' },
+    ],
+    browseLoading: false,
+    browseError: null,
+    browseSeq: 3,
+    installing: null,
+  };
+  const inventory = [ { name: 'kikx-echo', location: 'kikx-echo#abc', managed: true, manifest: { version: '1.4.0' }, mounted: true, mount: { auth: 'operator' }, subscriptions: null } ];
+
+  let app = makeApp({
+    systemSettingsPlugins: {
+      inventory, failures: [], restartRequired: [], loading: false, error: null, loaded: true,
+      signatureMode: 'required',
+      ...baseBrowse,
+    },
+  });
+  let built = buildPluginsSection(app);
+  let node = typeof built.build === 'function' ? built.build(document) : built;
+
+  const textOf = (root) => {
+    let text = '';
+    (function walk(current) {
+      if (!current) return;
+      if (current.nodeType === 3) text += `${current.textContent || ''} `;
+      for (const child of current.childNodes || []) walk(child);
+    })(root);
+    return text;
+  };
+  const find = (root, predicate) => {
+    if (!root) return null;
+    if (predicate(root)) return root;
+    for (const child of root.childNodes || []) {
+      const hit = find(child, predicate);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  const text = textOf(node);
+
+  assert.match(text, /kikx-plugin/, 'the notice names the keyword the column searches');
+  assert.match(text, /third-party|runs/, 'the notice warns that installing runs code');
+
+  const searchField = find(node, (n) => String(n.className || '').includes('kikx-settings-plugins__search-input'));
+  assert.ok(searchField, 'the search field exists');
+  assert.equal(searchField?.getAttribute?.('value'), 'echo', 'the committed query is restored into the field');
+  assert.ok(find(node, (n) => String(n.className || '').includes('kikx-settings-plugins__search-btn')), 'a Search button');
+
+  assert.match(text, /Echoes back/, 'result description renders');
+  assert.match(text, /kikx-other/, 'every hit renders');
+  const installButtons = [];
+  (function collect(n) {
+    if (!n) return;
+    if (n.getAttribute?.('data-action') === 'install-npm') installButtons.push(n);
+    for (const c of n.childNodes || []) collect(c);
+  })(node);
+  assert.equal(installButtons.length, 2, 'each result offers Install');
+  assert.match(text, /Installed/, 'a package already in the inventory wears the Installed chip');
+
+  // Empty state: results gone but a committed query shows the honest message.
+  let emptyApp = makeApp({
+    systemSettingsPlugins: {
+      inventory: [], failures: [], restartRequired: [], loading: false, error: null, loaded: true,
+      ...baseBrowse, browseResults: [], browseQuery: 'zzz',
+    },
+  });
+  let emptyNode = (() => {
+    const b = buildPluginsSection(emptyApp);
+    return typeof b.build === 'function' ? b.build(document) : b;
+  })();
+  assert.match(textOf(emptyNode), /No kikx-plugin packages found for/, 'empty state names the query');
+});

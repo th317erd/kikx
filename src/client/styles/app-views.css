@@ -233,6 +233,42 @@
 }
 .kikx-settings-plugins__install { display: flex; gap: 8px; flex-wrap: wrap; }
 .kikx-settings-plugins__path { flex: 1 1 220px; min-width: 0; }
+
+/* Browse column (S3 slice 5): notice, search row, results. Result cards
+   reuse .kikx-settings-plugin-card so Installed and Browse rows share one
+   look; only the badge colour and install button are new. */
+.kikx-settings-plugins__notice { color: #aab4bf; font-size: 12px; margin: 0; }
+.kikx-settings-plugins__results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.kikx-settings-plugins__search { display: flex; gap: 8px; align-items: center; }
+.kikx-settings-plugins__search-input { flex: 1 1 auto; min-width: 0; }
+.kikx-settings-plugins__browse-error { color: #ff7b72; margin: 0; }
+.kikx-settings-plugins__browse-loading,
+.kikx-settings-plugins__browse-empty { color: #aab4bf; margin: 0; }
+.kikx-settings-plugin-card__badge--installed {
+  color: #3fb950;
+  border: 1px solid #3fb950;
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-size: 11px;
+}
+.kikx-settings-plugins__search-btn,
+.kikx-browse-card__install {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.kikx-settings-plugins__search-btn:disabled,
+.kikx-browse-card__install:disabled { opacity: 0.5; cursor: default; }
 .kikx-settings-plugins__install-btn,
 .kikx-settings-plugin-card__action {
   appearance: none;
