@@ -12,6 +12,12 @@
 //                             Same gate as reload, and for the same reason - removing a
 //                             plugin tears down a serving surface, which is at least as
 //                             consequential as adding one.
+//   /api/v1/plugins/uninstall uninstall: DELETES a managed directory (plan 9.1.1,
+//                             approved in full) - the most destructive admin action
+//                             there is, wearing the same config gate as install.
+//   /api/v1/plugins/set-enabled
+//                             enable/disable: disable stops code (identity only),
+//                             enable LOADS code (install's config gate applies).
 //
 // Install already refused to run unless the operator set KIKX_PLUGIN_INSTALL_ENABLED.
 // That is a config gate, not an authorization check: it answers "is this deployment
@@ -40,6 +46,11 @@ export const PLUGIN_ADMIN_ACTIONS = Object.freeze({
   RELOAD: 'plugins:reload',
   // Remove a loaded plugin from the running process.
   UNLOAD: 'plugins:unload',
+  // Delete a managed plugin directory (plan 9.1.1 — approved in full:
+  // managed dirs only, built-ins never, durable data retained).
+  UNINSTALL: 'plugins:uninstall',
+  // Persist the disabled set / reload an enabled plugin (plan 9.1.2).
+  SET_ENABLED: 'plugins:set-enabled',
 });
 
 // ONE message for every unauthenticated rejection. The account store distinguishes

@@ -47,6 +47,12 @@ export function createSystemSettingsPluginsState() {
     // Update chips (S3 slice 6): { [pluginName]: { latest } } — only strictly
     // newer packages appear; lookup failure leaves the map empty (no chip).
     updates: {},
+    // Enable/disable (9.1.2): the server's disabled list (display tokens,
+    // never raw paths) — these render as their own cards with Enable.
+    disabledPlugins: [],
+    // Uninstall confirm-once (9.1.1): {name, at} while armed. Store-held so
+    // the armed label repaints with the section and survives rebuilds.
+    uninstallConfirm: null,
   };
 }
 
@@ -91,6 +97,7 @@ export async function loadSystemSettingsPlugins(state, fetcher) {
       error: null,
       loaded: true,
       signatureMode: typeof data.signatureMode === 'string' ? data.signatureMode : null,
+      disabledPlugins: Array.isArray(data.disabledPlugins) ? data.disabledPlugins : [],
     };
   } catch (error) {
     const current = ensureSystemSettingsPluginsState(state);

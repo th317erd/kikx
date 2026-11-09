@@ -3,8 +3,14 @@
 // Routes /api/plugins/<id>/... to the plugin that owns that mount.
 // Returns false when the path is not under a plugin mount, so the built-in chain continues.
 
+
 import { readBoundedJsonBody } from './bounded-json-body.mjs';
 import { handlePluginInstall } from './plugin-install-routes.mjs';
+import {
+  managedPluginRoots,
+  handlePluginUninstall,
+  handlePluginSetEnabled,
+} from './plugin-lifecycle-routes.mjs';
 
 import { PLUGIN_ADMIN_ACTIONS, requireOperator } from './plugin-admin-policy.mjs';
 // Registry seams shared by the three S3 branches (search/updates/install):
@@ -77,22 +83,8 @@ export async function handlePluginRoutes({ request, response, url, context, json
       signatureMode = fromEnv || 'required';
     }
     const { isManagedPluginLocation } = await import('../../core/plugins/plugin-paths.mjs');
-    // Managed ground (S3): configured paths + the durable runtime list +
-    // the npm landing root — every place a location can legitimately come
-    // from. Unknown roots still fail closed (never managed).
-    let managedRoots = configuredPaths;
-    try {
-      const { mergePluginPaths, resolveNpmPluginBase } = await import('../../core/plugins/plugin-paths.mjs');
-      const { runtimePathsForConfig, runtimeRootForConfig } = await import('../../core/config/runtime-plugin-paths.mjs');
-      const { KIKX_PLUGIN_NPM_DIR_PATH } = await import('../../core/config/config-paths.mjs');
-      const npmDir = config && typeof config.get === 'function' ? await config.get(KIKX_PLUGIN_NPM_DIR_PATH) : undefined;
-      const cwd = await runtimeRootForConfig(config);
-      managedRoots = mergePluginPaths(
-        configuredPaths || [],
-        await runtimePathsForConfig(config),
-        resolveNpmPluginBase({ npmDir, cwd }),
-      );
-    } catch (_e) { managedRoots = configuredPaths; }
+    let managedRoots = await managedPluginRoots(config);
+    if (managedRoots === null) managedRoots = configuredPaths;
     // Provenance lookup (plan 10.4): install-time tag, absent = null.
     let tagsStore = context.has?.('tagsStore') ? context.require('tagsStore') : null;
     async function sourceFor(name) {
@@ -102,6 +94,21 @@ export async function handlePluginRoutes({ request, response, url, context, json
         return JSON.parse(tag.value);
       } catch { return null; }
     }
+    // Disabled plugins (plan 9.1.2) render as cards too — they are not in the
+    // registrations, so the disabled file IS their inventory. Locations wear
+    // the same display token as loaded records; never the raw path.
+    let disabledPlugins = [];
+    try {
+      const { readDisabledPlugins } = await import('../../core/config/runtime-disabled-plugins.mjs');
+      const { runtimeRootForConfig } = await import('../../core/config/runtime-plugin-paths.mjs');
+      const { pluginLocation } = await import('../../core/plugins/plugin-loader.mjs');
+      const disabledCwd = await runtimeRootForConfig(config);
+      disabledPlugins = readDisabledPlugins({ cwd: disabledCwd }).map((entry) => ({
+        name: entry.name,
+        location: pluginLocation(entry.location),
+        managed: isManagedPluginLocation(entry.location, { configuredPaths: managedRoots ?? configuredPaths }),
+      }));
+    } catch (_e) { disabledPlugins = []; }
 
     response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     response.end(JSON.stringify({
@@ -134,6 +141,9 @@ export async function handlePluginRoutes({ request, response, url, context, json
           subscriptions: bus?.list?.().find((s) => s.pluginId === r.pluginName) || null,
           manifest: r.manifest || null,
         }))),
+        // Disabled plugins (9.1.2): name + display token + managed flag — the
+        // section renders Enable/Uninstall cards from this list.
+        disabledPlugins,
         failures: registry?._pluginLoadErrors || [],
         signatureMode,
         // A class override does not change a live instance (campaign §8.1.5). create-server
@@ -308,7 +318,16 @@ export async function handlePluginRoutes({ request, response, url, context, json
     let before = new Set((registry._pluginRegistrations || new Map()).keys());
     try {
       const { loadPlugins } = await import('../../core/plugins/plugin-loader.mjs');
-      await loadPlugins({ pluginPaths, registry, commandRegistry: context.require('commandRegistry'), context });
+      const { disabledSkipKeys } = await import('../../core/config/runtime-disabled-plugins.mjs');
+      const { runtimeRootForConfig } = await import('../../core/config/runtime-plugin-paths.mjs');
+      const cfgForSkip = context.has?.('config') ? context.require('config') : null;
+      await loadPlugins({
+        pluginPaths,
+        registry,
+        commandRegistry: context.require('commandRegistry'),
+        context,
+        disabledNames: disabledSkipKeys({ cwd: await runtimeRootForConfig(cfgForSkip) }),
+      });
       let after = new Set((registry._pluginRegistrations || new Map()).keys());
       response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       response.end(JSON.stringify({
@@ -405,6 +424,14 @@ export async function handlePluginRoutes({ request, response, url, context, json
     }
     return true;
   }
+
+  // Uninstall (plan 9.1.1) and enable/disable (plan 9.1.2) — extracted to
+  // plugin-lifecycle-routes.mjs (source line limits); gates, ordering,
+  // managed checks, rollback and the shared helpers live there.
+  if (url.pathname === '/api/v1/plugins/uninstall' && request.method === 'POST')
+    return await handlePluginUninstall({ request, response, context });
+  if (url.pathname === '/api/v1/plugins/set-enabled' && request.method === 'POST')
+    return await handlePluginSetEnabled({ request, response, context });
 
   let match = router.match(url.pathname);
   if (!match)

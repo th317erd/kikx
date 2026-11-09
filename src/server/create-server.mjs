@@ -266,11 +266,17 @@ export async function createServer(options = {}) {
 
   if (!context.has('pluginLoadPromise')) {
     context.set('pluginLoadPromise', (async () => {
+      // Enable/disable (plan 9.1.2): the boot scan honours the durable
+      // disabled set — flag lives in <baseCWD>/.kikx/plugin-disabled.json,
+      // read here directly (tagsStore does not exist yet at this point,
+      // which is exactly why the flag is a file and not a tag).
+      const { disabledSkipKeys } = await import('../core/config/runtime-disabled-plugins.mjs');
       await loadPlugins({
         pluginPaths,
         registry: context.require('pluginRegistry'),
         commandRegistry: context.require('commandRegistry'),
         context,
+        disabledNames: disabledSkipKeys({ cwd: baseCWD }),
       });
     // Plugins registered their migrations during load, so this is the first point at
     // which the full set is known. A failure stops startup: a half-migrated

@@ -262,6 +262,13 @@
   padding: 1px 6px;
   font-size: 11px;
 }
+.kikx-settings-plugin-card__badge--disabled {
+  color: #8b949e;
+  border: 1px solid #444c56;
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-size: 11px;
+}
 .kikx-settings-plugins__search-btn,
 .kikx-browse-card__install {
   appearance: none;

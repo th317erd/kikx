@@ -136,11 +136,18 @@ export async function handlePluginInstall({ request, response, context }) {
   let added = [];
   try {
     const { loadPlugins } = await import('../../core/plugins/plugin-loader.mjs');
+    // Disable flag honoured here too (plan 9.1.2): installing a path whose
+    // BASENAME is disabled must not sneak it past the flag — Enable is the
+    // only action that clears it. cwd comes from the same runtime-root
+    // resolution every other runtime-file reader uses.
+    const { disabledSkipKeys } = await import('../../core/config/runtime-disabled-plugins.mjs');
+    const { runtimeRootForConfig } = await import('../../core/config/runtime-plugin-paths.mjs');
     await loadPlugins({
       pluginPaths: target,
       registry,
       commandRegistry: context.require('commandRegistry'),
       context,
+      disabledNames: disabledSkipKeys({ cwd: await runtimeRootForConfig(config) }),
     });
 
     // Computed before migrations run, for the reason above: if the migration step

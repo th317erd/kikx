@@ -34,7 +34,10 @@ function withTimeout(promise, ms, message) {
 // A stable, non-disclosing identifier for a plugin directory. Two installs with the
 // same directory name must not share a failure slot, and the absolute path must not be
 // served to unauthenticated callers.
-function pluginLocation(pluginPath) {
+// Exported (plan 9.1.1): the inventory renders DISABLED plugins from their
+// stored location file, and locations must never leave the server as paths —
+// the same display token loaded records use.
+export function pluginLocation(pluginPath) {
   let name = String(pluginPath).split(/[/\\]/).filter(Boolean).pop() || 'unknown';
   let hash = crypto.createHash('sha256').update(String(pluginPath)).digest('hex').slice(0, 8);
   return `${name}#${hash}`;
@@ -76,6 +79,11 @@ export async function loadPlugins(options = {}) {
     commandRegistry = null,
     context = {},
     logger = console,
+    // ENABLE/DISABLE TOGGLE (campaign 9.1.2): plugin DIRECTORY BASNAMES to
+    // skip silently — before the signature gate and the import, so a disabled
+    // plugin never executes and never lands in the failure list (absent by
+    // CHOICE, not broken). Array or Set; null/empty = old behaviour.
+    disabledNames = null,
   } = options;
 
   if (!registry)
@@ -131,9 +139,17 @@ export async function loadPlugins(options = {}) {
   if (signatureMode === 'unsafe')
     logger.warn?.('[kikx] plugin signature verification DISABLED (KIKX_PLUGIN_SIGNATURE_MODE=unsafe) — development mode only; production must run required');
 
+  let disabledSkipKeys = disabledNames instanceof Set
+    ? disabledNames
+    : (Array.isArray(disabledNames) ? new Set(disabledNames) : null);
+
   let loaded = [];
   for (let configuredPath of normalizePluginPaths(pluginPaths)) {
     for (let pluginPath of await expandPluginPathSites(configuredPath)) {
+      // Skipped BEFORE the signature gate: a disabled plugin produces neither
+      // a refusal entry nor an import — it is intentionally not loaded.
+      if (disabledSkipKeys && disabledSkipKeys.has(pluginNameFromPath(pluginPath)))
+        continue;
       // Declared outside the try so a failure part-way through can roll back what
       // this iteration already registered.
       let pluginName = null;

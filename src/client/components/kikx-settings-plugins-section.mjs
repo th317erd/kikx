@@ -63,8 +63,16 @@ export function buildPluginsSection(app) {
           )),
         )
         : null,
-      store.restartRequired.length > 0
+      (store.restartRequired || []).length > 0
         ? p.class('kikx-settings-plugins__restart')(`Restart required for: ${store.restartRequired.join(', ')}`)
+        : null,
+      // Disabled plugins (9.1.2): their own cards — Enable reverses the
+      // flag, Uninstall follows the same confirm-once + managed rules.
+      (store.disabledPlugins || []).length > 0
+        ? div.class('kikx-settings-plugins__cards')(
+          h3('Disabled'),
+          ...store.disabledPlugins.map((entry) => buildDisabledCard(app, entry, store)),
+        )
         : null,
       div.class('kikx-settings-plugins__install')(
         // NOTE: the chain must be FINALIZED with an empty child call — real
@@ -211,6 +219,22 @@ function buildPluginCard(app, plugin, store) {
           // the plan's wording, and runInstallFromNpm already pins it.
           .onClick(() => runInstallFromNpm(app, { name: plugin.name, version: update.latest }))('Update')
         : null,
+      button.type('button')['data-action']('disable')
+        .class('kikx-settings-plugin-card__action')
+        .disabled(busy)
+        // Reversible — no confirm needed. Files are NEVER touched by disable,
+        // so it applies to built-ins too (stopping platform code is legal;
+        // DELETING it is what management governs).
+        .onClick(() => runSetEnabled(app, plugin, false))('Disable'),
+      plugin && plugin.managed !== false
+        ? button.type('button')['data-action']('uninstall')
+          .class('kikx-settings-plugin-card__action')
+          .disabled(busy)
+          // Confirm-once (9.1.1 approved): first click arms, second fires.
+          .onClick(() => runUninstall(app, plugin))(
+            isUninstallArmed(store, plugin && plugin.name) ? 'Confirm Uninstall' : 'Uninstall',
+          )
+        : null,
     ),
   );
 }
@@ -219,12 +243,23 @@ function refresh(app) {
   const state = app && app._state;
   if (!state || typeof app._getJSON !== 'function')
     return Promise.resolve();
-  return loadSystemSettingsPlugins(state, (url) => app._getJSON(url))
+  // Exported as refreshPluginsData for specs. Component descriptors refetch
+  // BEFORE the inventory: a section whose plugin just went away must stop
+  // being selectable before (or as) its rows repaint — the 9.3.12 clamp.
+  return (async () => {
+    try {
+      if (typeof app._loadClientComponents === 'function')
+        await app._loadClientComponents();
+    } catch { /* best-effort: the inventory refresh below still runs */ }
+    try {
+      await loadSystemSettingsPlugins(state, (url) => app._getJSON(url));
+    } catch { /* the store records its own errors */ }
     // Every inventory refresh re-derives the update chips: after installing
     // an update the fresh latest equals the new pin and the chip clears.
-    .then(() => maybeLoadSystemSettingsPluginUpdates(app))
-    .catch(() => {});
+    maybeLoadSystemSettingsPluginUpdates(app);
+  })();
 }
+export { refresh as refreshPluginsData };
 
 function reportError(app, error) {
   const state = app && app._state;
@@ -312,4 +347,92 @@ async function runInstallFromNpm(app, result) {
   const current = ensureSystemSettingsPluginsState(state);
   state.systemSettingsPlugins = { ...current, installing: null };
   await refresh(app);
+}
+
+// --- Uninstall + enable/disable (plan 9.1.1 / 9.1.2) -----------------------
+
+export const UNINSTALL_CONFIRM_WINDOW_MS = 5000;
+
+// Confirm-once (9.1.1 approved): 'arm' on first contact, 'fire' only for the
+// SAME name inside the window — expiry and name changes re-arm, so a stale
+// confirmation can never delete the wrong thing later.
+export function nextUninstallAction(store, name, now = Date.now()) {
+  const confirm = store && store.uninstallConfirm;
+  const armed = Boolean(confirm)
+    && confirm.name === name
+    && typeof confirm.at === 'number'
+    && (now - confirm.at) <= UNINSTALL_CONFIRM_WINDOW_MS;
+  return armed ? 'fire' : 'arm';
+}
+
+function isUninstallArmed(store, name) {
+  return Boolean(store && store.uninstallConfirm && store.uninstallConfirm.name === name
+    && typeof name === 'string' && name);
+}
+
+export async function runUninstall(app, plugin) {
+  const state = app && app._state;
+  if (!state || typeof app?._postJSON !== 'function')
+    return;
+  const name = plugin && typeof plugin.name === 'string' ? plugin.name : '';
+  if (!name)
+    return;
+  const store = ensureSystemSettingsPluginsState(state);
+  if (nextUninstallAction(store, name) === 'arm') {
+    // Whole-store swap: the repaint is what turns the button into
+    // "Confirm Uninstall" — the armed state must never live only in the node.
+    state.systemSettingsPlugins = { ...store, uninstallConfirm: { name, at: Date.now() } };
+    return;
+  }
+  state.systemSettingsPlugins = { ...ensureSystemSettingsPluginsState(state), uninstallConfirm: null };
+  try {
+    await app._postJSON('/api/v1/plugins/uninstall', { name });
+  } catch (error) {
+    reportError(app, error);
+  }
+  await refresh(app);
+}
+
+export async function runSetEnabled(app, plugin, enabled) {
+  const state = app && app._state;
+  if (!state || typeof app?._postJSON !== 'function')
+    return;
+  const name = plugin && typeof plugin.name === 'string' ? plugin.name : '';
+  if (!name || typeof enabled !== 'boolean')
+    return;
+  try {
+    await app._postJSON('/api/v1/plugins/set-enabled', { name, enabled });
+  } catch (error) {
+    reportError(app, error);
+  }
+  await refresh(app);
+}
+
+function buildDisabledCard(app, entry, store) {
+  const name = entry && typeof entry.name === 'string' ? entry.name : '';
+  const location = entry && typeof entry.location === 'string' ? entry.location : '';
+  const busy = Boolean(store.installing);
+  return div.class('kikx-settings-plugin-card')(
+    div.class('kikx-settings-plugin-card__head')(
+      span.class('kikx-settings-plugin-card__name')(name || '(unnamed)'),
+      location
+        ? span.class('kikx-settings-plugin-card__version')(location)
+        : null,
+      span.class('kikx-settings-plugin-card__badge kikx-settings-plugin-card__badge--disabled')('Disabled'),
+    ),
+    div.class('kikx-settings-plugin-card__actions')(
+      button.type('button')['data-action']('enable')
+        .class('kikx-settings-plugin-card__action')
+        .disabled(busy)
+        .onClick(() => runSetEnabled(app, entry, true))('Enable'),
+      entry && entry.managed !== false
+        ? button.type('button')['data-action']('uninstall')
+          .class('kikx-settings-plugin-card__action')
+          .disabled(busy)
+          .onClick(() => runUninstall(app, entry))(
+            isUninstallArmed(store, name) ? 'Confirm Uninstall' : 'Uninstall',
+          )
+        : null,
+    ),
+  );
 }

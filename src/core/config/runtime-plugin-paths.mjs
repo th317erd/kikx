@@ -66,15 +66,31 @@ export function appendRuntimePluginPath(dir, { cwd = os.homedir() } = {}) {
   const resolved = path.resolve(dir.trim());
   if (!list.includes(resolved)) {
     list.push(resolved);
-    const file = runtimePluginPathsFile(cwd);
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    const tmp = `${file}.tmp-${process.pid}`;
-    fs.writeFileSync(tmp, `${JSON.stringify(list, null, 2)}\n`);
-    fs.renameSync(tmp, file);
+    writeList(list, cwd);
   }
   return list;
 }
 
 export function mergeWithRuntimePluginPaths(configured, { cwd = os.homedir() } = {}) {
   return mergePluginPaths(configured || [], readRuntimePluginPaths({ cwd }));
+}
+
+// Uninstall (plan 9.1.1): a deleted directory must leave the runtime list in
+// the same breath, or the next reload scans a ghost and reports a permanent
+// failure for a directory the operator removed on purpose. Idempotent.
+export function removeRuntimePluginPath(dir, { cwd = os.homedir() } = {}) {
+  if (typeof dir !== 'string' || !dir.trim()) return readRuntimePluginPaths({ cwd });
+  const resolved = path.resolve(dir.trim());
+  const list = readRuntimePluginPaths({ cwd });
+  const next = list.filter((entry) => entry !== resolved);
+  if (next.length !== list.length) writeList(next, cwd);
+  return next;
+}
+
+function writeList(list, cwd) {
+  const file = runtimePluginPathsFile(cwd);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.tmp-${process.pid}`;
+  fs.writeFileSync(tmp, `${JSON.stringify(list, null, 2)}\n`);
+  fs.renameSync(tmp, file);
 }

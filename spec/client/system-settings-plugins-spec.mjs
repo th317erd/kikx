@@ -636,3 +636,181 @@ test('an available Update renders the chip and an action pinning the latest vers
   assert.equal(buttons.length, 1, 'and exactly one Update action');
   assert.match(text, /Update/, 'the action is labelled');
 });
+
+// ---------------------------------------------------------------------------
+// 11. Uninstall + enable/disable (campaign 9.1.1 / 9.1.2)
+// ---------------------------------------------------------------------------
+
+test('inventory carries the disabled list into the store', async () => {
+  let { loadSystemSettingsPlugins, createSystemSettingsPluginsState } =
+    await import('../../src/client/state/system-settings-plugins.mjs');
+
+  let state = {};
+  await loadSystemSettingsPlugins(state, async () => ({
+    data: {
+      plugins: [], failures: [], restartRequired: [], signatureMode: 'required',
+      disabledPlugins: [ { name: 'sleeping', location: 'sleeping#abc12345', managed: true } ],
+    },
+  }));
+
+  const store = state.systemSettingsPlugins;
+  assert.equal(store.disabledPlugins.length, 1, 'the disabled list unwraps');
+  assert.equal(store.disabledPlugins[0].name, 'sleeping');
+  assert.equal(store.disabledPlugins[0].location, 'sleeping#abc12345', 'display token, never a raw path');
+  assert.deepEqual(createSystemSettingsPluginsState().disabledPlugins, [], 'empty by default');
+});
+
+test('loaded cards gain Uninstall (confirm-once) + Disable; unmanaged cards never show Uninstall', async () => {
+  // Ruling per plan 9.1.1: unmanaged (built-in) = never uninstallable.
+  // Disable applies to loaded plugins regardless of management — stopping
+  // platform code at runtime is a legitimate operator action (its files are
+  // never touched).
+  let { buildPluginsSection } = await import('../../src/client/components/kikx-settings-plugins-section.mjs');
+  let { createSystemSettingsPluginsState } = await import('../../src/client/state/system-settings-plugins.mjs');
+
+  const app = makeApp({
+    systemSettingsPlugins: {
+      ...createSystemSettingsPluginsState(),
+      inventory: [
+        { name: 'managed-one', location: 'managed-one#aaa', managed: true, manifest: { version: '1.0.0' }, mounted: true, mount: { auth: 'operator' }, subscriptions: null },
+        { name: 'bundled-one', location: 'bundled-one#bbb', managed: false, manifest: { version: '0.1.0' }, mounted: false, mount: null, subscriptions: null },
+      ],
+      disabledPlugins: [ { name: 'sleeping-one', location: 'sleeping-one#ccc', managed: true } ],
+      loaded: true,
+    },
+  });
+  let built = buildPluginsSection(app);
+  let node = typeof built.build === 'function' ? built.build(document) : built;
+
+  // Collect CARDS first, then read each card's text and actions — element
+  // textContent is not modelled in mini-dom, only nodeType-3 text is.
+  const cards = [];
+  (function collect(n) {
+    if (!n) return;
+    const cls = String(n.className || '');
+    if (cls === 'kikx-settings-plugin-card') cards.push(n);
+    for (const c of n.childNodes || []) collect(c);
+  })(node);
+  assert.equal(cards.length, 3, 'two loaded cards + one disabled card');
+
+  const textOf = (root) => {
+    let out = '';
+    (function walk(n) {
+      if (!n) return;
+      if (n.nodeType === 3) out += `${n.textContent || ''} `;
+      for (const c of n.childNodes || []) walk(c);
+    })(root);
+    return out;
+  };
+  const cardFor = (name) => cards.find((card) => textOf(card).includes(name));
+  const actionsOf = (card) => {
+    const found = [];
+    (function walk(n) {
+      if (!n) return;
+      const action = n.getAttribute?.('data-action');
+      if (action) found.push(action);
+      for (const c of n.childNodes || []) walk(c);
+    })(card);
+    return found;
+  };
+
+  const managed = cardFor('managed-one');
+  const bundled = cardFor('bundled-one');
+  const sleeping = cardFor('sleeping-one');
+  assert.ok(managed && bundled && sleeping, 'all three cards render');
+
+  assert.ok(actionsOf(managed).includes('uninstall'), 'the managed loaded card offers Uninstall');
+  assert.ok(actionsOf(managed).includes('disable'), 'and Disable');
+  assert.ok(!actionsOf(bundled).includes('uninstall'),
+    'the built-in NEVER shows Uninstall (plan 9.1.1: built-ins never)');
+  assert.ok(actionsOf(bundled).includes('disable'),
+    'Disable still applies to built-ins — it never touches files');
+  assert.ok(actionsOf(sleeping).includes('enable'), 'the disabled card offers Enable');
+  assert.ok(actionsOf(sleeping).includes('uninstall'), 'and Uninstall (managed disabled entry)');
+
+  const text = textOf(node);
+  assert.match(text, /Disabled/, 'the disabled card wears the Disabled chip');
+  assert.match(text, /sleeping-one/, 'and names the disabled plugin');
+});
+
+test('confirm-once: first click arms, second within 5s fires, then re-arms; staleness and other names re-arm', async () => {
+  let { nextUninstallAction } = await import('../../src/client/components/kikx-settings-plugins-section.mjs');
+
+  const store = { uninstallConfirm: null };
+  const t0 = 1_000_000;
+  assert.equal(nextUninstallAction(store, 'alpha', t0), 'arm', 'first contact arms');
+
+  const armed = { uninstallConfirm: { name: 'alpha', at: t0 } };
+  assert.equal(nextUninstallAction(armed, 'alpha', t0 + 1_000), 'fire', 'a second click in the window fires');
+  assert.equal(nextUninstallAction(armed, 'alpha', t0 + 5_001), 'arm', 'past the 5s window it re-arms — no surprises later');
+  assert.equal(nextUninstallAction(armed, 'beta', t0 + 10), 'arm', 'a DIFFERENT name re-arms rather than firing alpha\'s confirmation');
+});
+
+test('actions wire the right endpoints, and refresh refetches client components', async () => {
+  let { buildPluginsSection } = await import('../../src/client/components/kikx-settings-plugins-section.mjs');
+  let { createSystemSettingsPluginsState } = await import('../../src/client/state/system-settings-plugins.mjs');
+
+  const componentCalls = [];
+  const app = makeApp({
+    systemSettingsPlugins: {
+      ...createSystemSettingsPluginsState(),
+      inventory: [ { name: 'managed-one', location: 'm#1', managed: true, manifest: { version: '1.0.0' }, mounted: false, mount: null, subscriptions: null } ],
+      loaded: true,
+    },
+  });
+  app._loadClientComponents = async () => { componentCalls.push('components'); };
+  app._getJSON = async (url) => { componentCalls.push(`inv:${url}`); return { data: { plugins: [], failures: [], restartRequired: [], signatureMode: 'required', disabledPlugins: [] } }; };
+
+  let built = buildPluginsSection(app);
+  let node = typeof built.build === 'function' ? built.build(document) : built;
+  let uninstallBtn = null;
+  let disableBtn = null;
+  (function walk(n) {
+    if (!n) return;
+    if (n.getAttribute?.('data-action') === 'uninstall') uninstallBtn = n;
+    if (n.getAttribute?.('data-action') === 'disable') disableBtn = n;
+    for (const c of n.childNodes || []) walk(c);
+  })(node);
+  assert.ok(uninstallBtn, 'the Uninstall control exists');
+  assert.ok(disableBtn, 'the Disable control exists');
+
+  // First click: ARMS (endpoint must NOT be called yet).
+  uninstallBtn.dispatchEvent(new CustomEvent('click', { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const postsAfterArm = app._posts.filter(([ url ]) => url === '/api/v1/plugins/uninstall');
+  assert.equal(postsAfterArm.length, 0, 'the FIRST click only arms — confirm-once means no accidental deletion');
+  assert.equal(app._state.systemSettingsPlugins.uninstallConfirm?.name, 'managed-one',
+    'the armed state lives in the STORE (repaints the label, survives rebuilds)');
+
+  // Second click inside the window FIRES.
+  const rebuilt = buildPluginsSection(app);
+  const rebuiltNode = typeof rebuilt.build === 'function' ? rebuilt.build(document) : rebuilt;
+  let armedLabel = null;
+  (function walk(n) {
+    if (!n) return;
+    if (n.getAttribute?.('data-action') === 'uninstall') armedLabel = n;
+    for (const c of n.childNodes || []) walk(c);
+  })(rebuiltNode);
+  assert.equal(String(armedLabel?.textContent || '').trim(), 'Confirm Uninstall',
+    'the rebuilt button wears the armed label');
+  armedLabel.dispatchEvent(new CustomEvent('click', { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const fired = app._posts.filter(([ url ]) => url === '/api/v1/plugins/uninstall');
+  assert.equal(fired.length, 1, 'the second click uninstalls');
+  assert.deepEqual(fired[0][1], { name: 'managed-one' });
+
+  // Disable goes straight to the endpoint (no confirm: reversible).
+  disableBtn.dispatchEvent(new CustomEvent('click', { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const disables = app._posts.filter(([ url ]) => url === '/api/v1/plugins/set-enabled');
+  assert.equal(disables.length, 1, 'Disable posts immediately — it is reversible');
+  assert.deepEqual(disables[0][1], { name: 'managed-one', enabled: false });
+
+  // Refresh chain: components refetch BEFORE the inventory (a section that
+  // vanished must not be selected while old rows still render).
+  componentCalls.length = 0;
+  const { refreshPluginsData } = await import('../../src/client/components/kikx-settings-plugins-section.mjs');
+  await refreshPluginsData(app);
+  assert.equal(componentCalls[0], 'components', 'client components refetch FIRST');
+  assert.ok(componentCalls.some((entry) => entry.startsWith('inv:')), 'then the inventory');
+});

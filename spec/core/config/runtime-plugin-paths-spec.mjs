@@ -21,6 +21,7 @@ import {
   runtimePluginPathsFile,
   readRuntimePluginPaths,
   appendRuntimePluginPath,
+  removeRuntimePluginPath,
   mergeWithRuntimePluginPaths,
 } from '../../../src/core/config/runtime-plugin-paths.mjs';
 
@@ -70,4 +71,20 @@ test('merge unions configured and runtime paths, deduped and absolute', (t) => {
   assert.ok(merged.includes(path.resolve(shared)), 'deduped overlap appears once');
   assert.equal(merged.filter((p) => p === path.resolve(shared)).length, 1);
   assert.ok(merged.some((p) => p.endsWith(path.join('.kikx', 'plugins', 'npm', 'a'))), 'runtime additions join');
+});
+
+test('removeRuntimePluginPath prunes a deleted dir (uninstall contract) — idempotent', (t) => {
+  const cwd = tmpCwd(t);
+  const a = path.join(cwd, 'x', 'a');
+  const b = path.join(cwd, 'x', 'b');
+  appendRuntimePluginPath(a, { cwd });
+  appendRuntimePluginPath(b, { cwd });
+
+  removeRuntimePluginPath(a, { cwd });
+  removeRuntimePluginPath(a, { cwd }); // second removal: no rewrite, no throw
+  const rest = readRuntimePluginPaths({ cwd });
+  assert.deepEqual(rest, [ path.resolve(b) ], 'only the deleted dir leaves the list');
+
+  removeRuntimePluginPath('', { cwd }); // junk input is a no-op, not a wipe
+  assert.equal(readRuntimePluginPaths({ cwd }).length, 1);
 });
