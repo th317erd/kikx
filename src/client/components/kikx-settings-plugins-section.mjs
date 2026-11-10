@@ -46,7 +46,10 @@ export function buildPluginsSection(app) {
         ? p.class('kikx-settings-plugins__error')(store.error)
         : null,
       store.loading && !store.loaded
-        ? p.class('kikx-settings-plugins__loading')('Loading plugins…')
+        ? p.class('kikx-settings-plugins__loading')(
+          span.class('kikx-spinner').ariaLabel('Loading')(),
+          ' Loading plugins…',
+        )
         : null,
       store.inventory.length > 0
         ? div.class('kikx-settings-plugins__cards')(
@@ -115,7 +118,10 @@ export function buildPluginsSection(app) {
         ? p.class('kikx-settings-plugins__browse-error')(store.browseError)
         : null,
       store.browseLoading
-        ? p.class('kikx-settings-plugins__browse-loading')('Searching…')
+        ? p.class('kikx-settings-plugins__browse-loading')(
+          span.class('kikx-spinner').ariaLabel('Searching')(),
+          ' Searching…',
+        )
         : null,
       (store.browseResults || []).length > 0
         ? div.class('kikx-settings-plugins__results')(

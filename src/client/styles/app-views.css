@@ -187,7 +187,10 @@
 
 .kikx-system-settings__body {
   display: block;
-  max-width: 720px;
+  /* Owner 1 (styling): the plugins two-column grid was crammed into 720px —
+     content surfaces get a wide measure (the thread column precedent), forms
+     stay readable because they are label/field rows, not prose. */
+  max-width: min(1120px, 100%);
 }
 
 /* Installed Plugins (S2): two columns collapsing at the mobile breakpoint,
@@ -211,117 +214,225 @@
   gap: 8px;
 }
 
+/* Owner 1: THEME-MATCHED panels — the exact chrome language of
+   .kikx-session-card (app-workspace.css:162): dark panel on the shell, the
+   app's hairline border, 10px radius. Columns read as surfaces now, not
+   floating text. */
 .kikx-settings-plugins__installed,
-.kikx-settings-plugins__browse,
-.kikx-settings-plugins__cards {
+.kikx-settings-plugins__browse {
   min-width: 0;
+  background: #14181d;
+  border: 1px solid #2a3138;
+  border-radius: 10px;
+  padding: 14px;
+  gap: 10px;
+}
+.kikx-settings-plugins__cards { min-width: 0; }
+
+/* Headings follow the app type scale (root is 125%; explicit px scales
+   through calc, per app-base-shell.css). */
+.kikx-system-settings h3,
+.kikx-settings-plugins h3 {
+  margin: 0;
+  font-size: calc(14px * 1.25);
+  font-weight: 600;
+  color: #f5f7fa;
 }
 
 .kikx-settings-plugins__error { color: #ff7b72; margin: 0; }
+/* Owner 5: loading states are rows with a real spinner. */
 .kikx-settings-plugins__loading,
-.kikx-settings-plugins__empty { color: #aab4bf; margin: 0; }
+.kikx-settings-plugins__empty,
+.kikx-settings-plugins__browse-loading,
+.kikx-settings-plugins__browse-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: #8b949e;
+  font-size: calc(13px * 1.25);
+}
+@keyframes kikx-spin { to { transform: rotate(360deg); } }
+.kikx-spinner {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  border: 2px solid rgb(255 255 255 / 0.16);
+  border-top-color: #587183;
+  border-radius: 50%;
+  animation: kikx-spin 700ms linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .kikx-spinner { animation: none; opacity: 0.8; }
+}
 .kikx-settings-plugins__failure,
-.kikx-settings-plugin-card__failure { color: #ff7b72; font-size: 12px; margin: 0; }
-.kikx-settings-plugins__restart { color: #e3b341; margin: 0; }
+.kikx-settings-plugin-card__failure {
+  color: #ff7b72;
+  font-size: calc(12px * 1.25);
+  margin: 0;
+  background: rgb(255 123 114 / 0.07);
+  border-left: 2px solid #ff7b72;
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+.kikx-settings-plugins__restart {
+  color: #e3b341;
+  margin: 0;
+  background: rgb(227 179 65 / 0.08);
+  border: 1px solid rgb(227 179 65 / 0.35);
+  border-radius: 8px;
+  padding: 5px 9px;
+  font-size: calc(12px * 1.25);
+}
 .kikx-settings-plugins__banner {
   color: #ffb86b;
   border: 1px solid #e3b341;
-  border-radius: 6px;
-  padding: 6px 10px;
+  background: rgb(227 179 65 / 0.08);
+  border-radius: 8px;
+  padding: 7px 10px;
   margin: 0;
   font-weight: 600;
+  font-size: calc(13px * 1.25);
 }
 .kikx-settings-plugins__install { display: flex; gap: 8px; flex-wrap: wrap; }
-.kikx-settings-plugins__path { flex: 1 1 220px; min-width: 0; }
+.kikx-settings-plugins__path {
+  flex: 1 1 220px;
+  min-width: 0;
+  background: #0d1014;
+  border: 1px solid #2a3138;
+  border-radius: 8px;
+  color: #e8edf2;
+  padding: 7px 10px;
+  font-size: calc(13px * 1.25);
+}
+.kikx-settings-plugins__path:focus,
+.kikx-settings-plugins__search-input:focus {
+  outline: none;
+  border-color: #4d5b68;
+  box-shadow: 0 0 0 2px rgb(88 113 131 / 0.25);
+}
 
 /* Browse column (S3 slice 5): notice, search row, results. Result cards
    reuse .kikx-settings-plugin-card so Installed and Browse rows share one
    look; only the badge colour and install button are new. */
-.kikx-settings-plugins__notice { color: #aab4bf; font-size: 12px; margin: 0; }
+.kikx-settings-plugins__notice { color: #8b949e; margin: 0; font-size: calc(12px * 1.25); }
 .kikx-settings-plugins__results {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 .kikx-settings-plugins__search { display: flex; gap: 8px; align-items: center; }
-.kikx-settings-plugins__search-input { flex: 1 1 auto; min-width: 0; }
+.kikx-settings-plugins__search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: #0d1014;
+  border: 1px solid #2a3138;
+  border-radius: 8px;
+  color: #e8edf2;
+  padding: 7px 10px;
+  font-size: calc(13px * 1.25);
+}
 .kikx-settings-plugins__browse-error { color: #ff7b72; margin: 0; }
-.kikx-settings-plugins__browse-loading,
-.kikx-settings-plugins__browse-empty { color: #aab4bf; margin: 0; }
 .kikx-settings-plugin-card__badge--installed {
   color: #3fb950;
   border: 1px solid #3fb950;
-  border-radius: 6px;
-  padding: 1px 6px;
-  font-size: 11px;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: calc(11px * 1.25);
 }
 .kikx-settings-plugin-card__badge--update {
   color: #e3b341;
   border: 1px solid #e3b341;
-  border-radius: 6px;
-  padding: 1px 6px;
-  font-size: 11px;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: calc(11px * 1.25);
 }
 .kikx-settings-plugin-card__badge--disabled {
   color: #8b949e;
   border: 1px solid #444c56;
-  border-radius: 6px;
-  padding: 1px 6px;
-  font-size: 11px;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: calc(11px * 1.25);
 }
+/* Owner 1: one themed button language for every action in this surface
+   (matches the card hairlines and the app's 125% type scale). */
 .kikx-settings-plugins__search-btn,
-.kikx-browse-card__install {
-  appearance: none;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 6px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: 12px;
-  padding: 4px 10px;
-  cursor: pointer;
-}
-.kikx-settings-plugins__search-btn:disabled,
-.kikx-browse-card__install:disabled { opacity: 0.5; cursor: default; }
+.kikx-browse-card__install,
 .kikx-settings-plugins__install-btn,
 .kikx-settings-plugin-card__action {
   appearance: none;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 6px;
-  background: transparent;
-  color: inherit;
+  border: 1px solid #39444d;
+  border-radius: 8px;
+  background: #1b2027;
+  color: #e8edf2;
   font: inherit;
-  font-size: 12px;
-  padding: 4px 10px;
+  font-size: calc(12px * 1.25);
+  padding: 5px 11px;
   cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
 }
+.kikx-settings-plugins__search-btn:hover:not(:disabled),
+.kikx-browse-card__install:hover:not(:disabled),
+.kikx-settings-plugins__install-btn:hover:not(:disabled),
+.kikx-settings-plugin-card__action:hover:not(:disabled) {
+  background: #232a31;
+  border-color: #4a5560;
+}
+.kikx-settings-plugins__search-btn:disabled,
+.kikx-browse-card__install:disabled,
+.kikx-settings-plugins__install-btn:disabled,
+.kikx-settings-plugin-card__action:disabled { opacity: 0.5; cursor: default; }
 
 .kikx-settings-plugin-card {
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 8px;
-  padding: 10px 12px;
-  gap: 6px;
+  /* Owner 1: session-card chrome, verbatim — the app's card language. */
+  border: 1px solid #2a3138;
+  border-radius: 10px;
+  background: #171c21;
+  color: #e8edf2;
+  padding: 12px;
+  gap: 8px;
+}
+
+/* Actions are a wrapped ROW (they were inheriting the column group and
+   stacking each button vertically — part of the \"styling really bad\" look). */
+.kikx-settings-plugin-card__actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
 .kikx-settings-plugin-card__head {
   display: flex;
   gap: 8px;
-  align-items: baseline;
+  align-items: center;
   flex-wrap: wrap;
 }
 
-.kikx-settings-plugin-card__name { font-weight: 600; }
-.kikx-settings-plugin-card__version { color: #aab4bf; font-size: 12px; }
+.kikx-settings-plugin-card__name {
+  font-weight: 600;
+  color: #f5f7fa;
+  font-size: calc(13px * 1.25);
+}
+.kikx-settings-plugin-card__version {
+  color: #8b949e;
+  font-size: calc(12px * 1.25);
+  font-variant-numeric: tabular-nums;
+}
 .kikx-settings-plugin-card__badge {
-  font-size: 11px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
+  font-size: calc(11px * 1.25);
+  border: 1px solid rgb(255 255 255 / 0.18);
   border-radius: 999px;
   padding: 1px 8px;
-  color: #aab4bf;
+  color: #8b949e;
 }
 .kikx-settings-plugin-card__badge--internal { color: #e3b341; border-color: #e3b341; }
 .kikx-settings-plugin-card__desc,
-.kikx-settings-plugin-card__mounts { margin: 0; color: #aab4bf; font-size: 13px; }
+.kikx-settings-plugin-card__mounts {
+  margin: 0;
+  color: #aab4bf;
+  font-size: calc(13px * 1.25);
+}
 
 @media (max-width: 960px) {
   .kikx-settings-plugins { grid-template-columns: 1fr; }

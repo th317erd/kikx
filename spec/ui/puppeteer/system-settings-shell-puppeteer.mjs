@@ -134,6 +134,86 @@ test('System Settings mode switch keeps shell root + sidebar node identity (§9.
   }
 });
 
+test('gear writes ?view=settings, reload restores the mode, and Plugins loading clears unaided (owner bugs 2+4)', async (t) => {
+  let chromePath = findChromeExecutable();
+  if (!chromePath) {
+    t.skip('System Settings URL/reload coverage requires Chrome');
+    return;
+  }
+
+  const fixture = await startStagehandUIServer({
+    sessions: [ { id: 'session_identity', title: 'Identity Session', messageCount: 20 } ],
+    agents: [ { id: 'agent_1', name: 'Identity Agent', pluginID: 'test-agent', enabled: true } ],
+  });
+  fixture.frameRuntime.framesBySessionID.set('session_identity', frames(20));
+  const port = new URL(fixture.baseURL).port;
+
+  const browser = await puppeteer.launch({
+    executablePath: chromePath,
+    headless: process.env.KIKX_PUPPETEER_HEADLESS === '0' ? false : 'new',
+    args: [ '--no-sandbox', '--disable-setuid-sandbox' ],
+  });
+
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1440, height: 900 });
+    const pageErrors = [];
+    page.on('pageerror', (error) => pageErrors.push(String(error?.message || error)));
+
+    await page.evaluateOnNewDocument(() => {
+      sessionStorage.setItem('kikx.auth.session', JSON.stringify({ token: 'identity-token', refresh_token: 'identity-refresh' }));
+    });
+
+    // ---- BUG 2 (probe-confirmed): entering settings from a session never
+    // wrote view= to the address bar, so a reload dropped the mode. ----------
+    await page.goto(`http://127.0.0.1:${port}/?session=session_identity`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.waitForSelector('.kikx-thread-scrollview', { timeout: 15000 });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    await page.click('.kikx-brand__mark');
+    await page.waitForSelector('.kikx-system-settings', { timeout: 10000 });
+    const encoded = await page.evaluate(() => location.search);
+    assert.ok(encoded.includes('view=settings'), `the gear must encode the mode (got "${encoded}")`);
+    assert.ok(encoded.includes('session=session_identity'), 'the session context stays in the URL');
+
+    // A REAL reload must come back to the mode, not a Session.
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.waitForSelector('.kikx-system-settings', { timeout: 10000 });
+    const restored = await page.evaluate(() => location.search);
+    assert.ok(restored.includes('view=settings'), 'the mode survives a real reload');
+    assert.ok(restored.includes('session=session_identity'), 'and the session context with it');
+
+    // ---- BUG 4: click the Plugins tab ONCE, then never touch it again —
+    // the inventory completion must repaint itself (repaint hook). -----------
+    const clicked = await page.evaluate(() => {
+      const tab = [...document.querySelectorAll('aeor-tab, [role=tab]')]
+        .find((el) => (el.getAttribute('label') || el.textContent || '').includes('Plugins'));
+      if (!tab) return false;
+      tab.click();
+      return true;
+    });
+    assert.equal(clicked, true, 'the Plugins tab exists');
+    await page.waitForSelector('.kikx-settings-plugins', { timeout: 10000 });
+
+    let cleared = false;
+    for (let attempt = 0; attempt < 30 && !cleared; attempt += 1) {
+      cleared = await page.evaluate(() => !(document.body.innerText || '').includes('Loading plugins'));
+      if (!cleared)
+        await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    assert.equal(cleared, true,
+      'the loading state clears WITHOUT any further interaction — owner bug 4 (eternal Loading)');
+
+    const sectionText = await page.$eval('.kikx-settings-plugins', (node) => node.textContent);
+    assert.ok(sectionText.includes('Installed Plugins'), 'the section reached its terminal content');
+
+    assert.deepEqual(pageErrors, [], 'no page errors across gear/reload/plugins flow');
+  } finally {
+    await browser.close();
+    fixture.close();
+  }
+});
+
 test('?view=settings deep-links into the mode on a sessionless entry (§9.3.10)', async (t) => {
   let chromePath = findChromeExecutable();
   if (!chromePath) {

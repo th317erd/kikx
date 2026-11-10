@@ -567,6 +567,12 @@ export function buildUnifiedTopbar(app) {
         .ariaLabel('System Settings')
         .onClick(() => {
           navigateSystemSettings(app._state);
+          // Owner bug 2 (probe-confirmed): every other navigation site writes
+          // the address bar; the gear did not, so the URL kept only
+          // ?session=… — a reload dropped the settings mode and landed on a
+          // Session. Push the full stack (sessions + view=settings) so reload
+          // and shared links restore exactly this view.
+          app._syncURLFromStack?.({ push: true });
           app._requestRender();
         })(createIcon('gear')),
       div.class('kikx-brand__copy')(h1('Kikx'), p('Agent runner')),

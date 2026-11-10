@@ -637,6 +637,63 @@ test('an available Update renders the chip and an action pinning the latest vers
   assert.match(text, /Update/, 'the action is labelled');
 });
 
+test('the repaint hook subscribes once and store writes request a render (owner bug 4: eternal Loading)', async () => {
+  let { maybeLoadSystemSettingsPlugins } = await import('../../src/client/state/system-settings-plugins.mjs');
+
+  const subscribedKeys = [];
+  const listeners = [];
+  const renders = [];
+  const state = {
+    navigationStack: [],
+    on: (key, fn) => { subscribedKeys.push(key); listeners.push(fn); },
+    off: () => {},
+  };
+  const app = {
+    _state: state,
+    _requestRender: (reason) => renders.push(reason),
+    _getJSON: async () => ({ data: { plugins: [], failures: [], restartRequired: [], signatureMode: 'required', disabledPlugins: [] } }),
+  };
+
+  maybeLoadSystemSettingsPlugins(app);
+  maybeLoadSystemSettingsPlugins(app);
+  assert.deepEqual(subscribedKeys, [ 'systemSettingsPlugins' ],
+    'exactly ONE subscription for the store — installed once per page, never stacked');
+
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(renders.length, 0, 'the subscription itself does not render — only store writes do');
+
+  for (const fn of listeners) fn();
+  assert.deepEqual(renders, [ 'system-settings-plugins' ],
+    'firing the listener requests a render — THIS is what clears the loading state');
+});
+
+test('loading states carry the spinner (owner bug 5)', async () => {
+  let { buildPluginsSection } = await import('../../src/client/components/kikx-settings-plugins-section.mjs');
+  let { createSystemSettingsPluginsState } = await import('../../src/client/state/system-settings-plugins.mjs');
+
+  const hasSpinner = (node) => {
+    let found = false;
+    (function walk(n) {
+      if (!n) return;
+      if (String(n.className || '').includes('kikx-spinner')) found = true;
+      for (const c of n.childNodes || []) walk(c);
+    })(node);
+    return found;
+  };
+  const build = (store) => {
+    const app = makeApp({ systemSettingsPlugins: { ...createSystemSettingsPluginsState(), ...store } });
+    const built = buildPluginsSection(app);
+    return typeof built.build === 'function' ? built.build(document) : built;
+  };
+
+  assert.equal(hasSpinner(build({ loading: true, loaded: false })), true,
+    'the inventory loading state renders a spinner next to its text');
+  assert.equal(hasSpinner(build({ browseLoading: true, loaded: true, inventory: [ { name: 'x' } ] })), true,
+    'the Browse searching state renders a spinner too');
+  assert.equal(hasSpinner(build({ loading: false, loaded: true, inventory: [] })), false,
+    'terminal states carry no spinner');
+});
+
 // ---------------------------------------------------------------------------
 // S5 realtime: plugin.changed → components-then-inventory refetch (9.1.3)
 // ---------------------------------------------------------------------------

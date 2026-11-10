@@ -185,12 +185,32 @@ export function maybeLoadSystemSettingsPlugins(app) {
     return;
   ensureSystemSettingsPluginsState(state);
   ensureInventoryVisibilityHook(app);
+  ensurePluginsRepaintHook(app);
   const store = state[SYSTEM_SETTINGS_PLUGINS_KEY];
   if (store.loaded || store.loading)
     return;
   void loadSystemSettingsPlugins(state, (url) => app._getJSON(url))
     .then(() => maybeLoadSystemSettingsPluginUpdates(app))
     .catch(() => {});
+}
+
+// Owner bug 4 (probe-confirmed 2026-11-11): the inventory fetch COMPLETES
+// (two 200s traced) yet "Loading plugins…" never cleared — there was NO
+// state→render listener for this store, so completion writes only became
+// visible when some unrelated interaction happened to repaint (a tab click).
+// Every store-driven surface (loading state, browse results, update chips,
+// armed labels, busy flags) was frozen until then. Once-per-page subscription
+// beside the visibility hook: any top-level store write requests a render.
+function ensurePluginsRepaintHook(app) {
+  const state = app && app._state;
+  if (!state || typeof state.on !== 'function')
+    return;
+  if (state.__pluginsRenderHooked === true)
+    return;
+  state.__pluginsRenderHooked = true;
+  state.on(SYSTEM_SETTINGS_PLUGINS_KEY, () => {
+    app._requestRender?.('system-settings-plugins');
+  });
 }
 
 function ensureInventoryVisibilityHook(app) {
