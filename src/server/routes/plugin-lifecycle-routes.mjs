@@ -75,7 +75,7 @@ async function installGateEnabled(config) {
 // ordering is asserted by a fixture that records directory existence from
 // inside its own teardown.
 export async function handlePluginUninstall({ request, response, context }) {
-    await requireOperator(context, request, PLUGIN_ADMIN_ACTIONS.UNINSTALL);
+    const gate = await requireOperator(context, request, PLUGIN_ADMIN_ACTIONS.UNINSTALL);
     let config = context.has?.('config') ? context.require('config') : null;
     if (!await installGateEnabled(config)) {
       response.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -167,6 +167,9 @@ export async function handlePluginUninstall({ request, response, context }) {
     } catch (error) {
       console.warn('[plugin-uninstall] bookkeeping failed:', error?.message);
     }
+    // S5: the files are gone and the lists pruned — announce, then answer.
+    const { publishPluginChanged, actorFromGate } = await import('../plugin-changed.mjs');
+    publishPluginChanged(context, { pluginID: name, action: 'uninstall', actor: actorFromGate(gate) });
     response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     response.end(JSON.stringify({ data: { name, unloaded, removed: true } }));
     return true;
@@ -176,7 +179,7 @@ export async function handlePluginUninstall({ request, response, context }) {
 // + unloads (identity gate only); enable reloads from the stored location
 // under install's config gate, with rollback-to-disabled on any failure.
 export async function handlePluginSetEnabled({ request, response, context }) {
-    await requireOperator(context, request, PLUGIN_ADMIN_ACTIONS.SET_ENABLED);
+    const gate = await requireOperator(context, request, PLUGIN_ADMIN_ACTIONS.SET_ENABLED);
     let config = context.has?.('config') ? context.require('config') : null;
     const body = await readBoundedJsonBody(request);
     const name = typeof body?.name === 'string' ? body.name.trim() : '';
@@ -224,6 +227,9 @@ export async function handlePluginSetEnabled({ request, response, context }) {
           return true;
         }
       }
+      // S5: disable is durable + unloaded — announce exactly once.
+      const { publishPluginChanged, actorFromGate } = await import('../plugin-changed.mjs');
+      publishPluginChanged(context, { pluginID: name, action: 'disable', actor: actorFromGate(gate) });
       response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       response.end(JSON.stringify({ data: { name, enabled: false, unloaded } }));
       return true;
@@ -282,6 +288,9 @@ export async function handlePluginSetEnabled({ request, response, context }) {
       }));
       return true;
     }
+    // S5: the load succeeded and the flag stays cleared — announce exactly once.
+    const { publishPluginChanged, actorFromGate } = await import('../plugin-changed.mjs');
+    publishPluginChanged(context, { pluginID: name, action: 'enable', actor: actorFromGate(gate) });
     response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     response.end(JSON.stringify({ data: { name, enabled: true, loaded: true } }));
     return true;

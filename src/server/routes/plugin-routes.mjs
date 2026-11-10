@@ -263,7 +263,7 @@ export async function handlePluginRoutes({ request, response, url, context, json
   // where the boot would find it, then asking for a reload. This previously had no gate
   // at all, unlike install, even though it also executes newly discovered plugin code.
   if (url.pathname === '/api/v1/plugins/reload' && request.method === 'POST') {
-    await requireOperator(context, request, PLUGIN_ADMIN_ACTIONS.RELOAD);
+    const gate = await requireOperator(context, request, PLUGIN_ADMIN_ACTIONS.RELOAD);
 
     // Re-read the env file before anything loads. The launchers load it once, before
     // spawning this process, so a key added afterwards - a bot token, a channel
@@ -329,6 +329,10 @@ export async function handlePluginRoutes({ request, response, url, context, json
         disabledNames: disabledSkipKeys({ cwd: await runtimeRootForConfig(cfgForSkip) }),
       });
       let after = new Set((registry._pluginRegistrations || new Map()).keys());
+      // S5: reload is repo-wide (pluginID null) — the event still tells every
+      // client "plugins changed, look again", which is all the refetch needs.
+      const { publishPluginChanged, actorFromGate } = await import('../plugin-changed.mjs');
+      publishPluginChanged(context, { pluginID: null, action: 'reload', actor: actorFromGate(gate) });
       response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       response.end(JSON.stringify({
         data: {
@@ -362,7 +366,7 @@ export async function handlePluginRoutes({ request, response, url, context, json
   // followed by a reload of the configured paths will find the directory again and bring
   // the plugin back - deliberately, and it is reported in the response for that reason.
   if (url.pathname === '/api/v1/plugins/unload' && request.method === 'POST') {
-    await requireOperator(context, request, PLUGIN_ADMIN_ACTIONS.UNLOAD);
+    const gate = await requireOperator(context, request, PLUGIN_ADMIN_ACTIONS.UNLOAD);
 
     let registry = context.has?.('pluginRegistry') ? context.require('pluginRegistry') : null;
     if (!registry) {
@@ -408,6 +412,9 @@ export async function handlePluginRoutes({ request, response, url, context, json
       let remaining = registry._pluginRegistrations instanceof Map
         ? [ ...registry._pluginRegistrations.keys() ]
         : [];
+      // S5: one announce on the success path only (the 500s above returned).
+      const { publishPluginChanged, actorFromGate } = await import('../plugin-changed.mjs');
+      publishPluginChanged(context, { pluginID: name, action: 'unload', actor: actorFromGate(gate) });
       response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       response.end(JSON.stringify({
         data: {

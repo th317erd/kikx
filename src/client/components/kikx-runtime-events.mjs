@@ -7,6 +7,7 @@ import { clearAnswerDraft } from '../state/question-drafts.mjs';
 import { isDeletedSession } from '../state/session-state-utils.mjs';
 import { guardClientOperation, reportClientError } from '../lib/error-boundary.mjs';
 import { scheduleAnimationFrame, parseRuntimeEventResult } from './kikx-app-helpers.mjs';
+import { refreshPluginsData } from './kikx-settings-plugins-section.mjs';
 import { addFrameToBatch, addTouchedFrameIDs, renderedFrameIDsFor } from './frame-runtime-batch.mjs';
 import { syncThinkingRack } from './kikx-frame-scroll.mjs';
 import { refreshSubSessionCards } from './kikx-sub-session-frame.mjs';
@@ -84,6 +85,22 @@ function dispatchRuntimeEvent(app, event) {
 
   if (data.type === 'tokens.updated') {
     setTokenUsage(data.tokenUsage || {}, data.totalTokensUsed, app._state);
+    return;
+  }
+
+  // S5 realtime (plan 5-S5 + 9.1.3): any plugin admin action on ANY client
+  // lands here. Refetch BOTH — component descriptors FIRST (the 9.3.12
+  // section clamp needs a vanished plugin's section gone before its rows
+  // repaint), then the inventory — via refreshPluginsData, which is the same
+  // chain the view's own actions use (targeted store swap, no shell repaint).
+  // UNCONDITIONAL even with the settings view closed: S2's maybeLoad skips a
+  // loaded store, so a conditional refresh would open the view stale on the
+  // next visit. Own actions fetch twice (self-refresh + this event) — bounded,
+  // harmless, and the S2 visibility fallback stays untouched.
+  if (data.type === 'plugin.changed') {
+    guardClientOperation('kikx-runtime-events.pluginChanged', () => {
+      void refreshPluginsData(app);
+    }, { pluginID: data.pluginID ?? null, action: data.action ?? null });
     return;
   }
 

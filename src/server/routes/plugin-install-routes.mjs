@@ -19,7 +19,7 @@ export async function handlePluginInstall({ request, response, context }) {
   // Identity first, config gate second. The config flag answers "is this deployment
   // willing to install at runtime"; it never answered "is this caller allowed to", and
   // anyone who can reach the port inherits it.
-  await requireOperator(context, request, PLUGIN_ADMIN_ACTIONS.INSTALL);
+  const gate = await requireOperator(context, request, PLUGIN_ADMIN_ACTIONS.INSTALL);
 
   let registry = context.has?.('pluginRegistry') ? context.require('pluginRegistry') : null;
   if (!registry) {
@@ -219,6 +219,11 @@ export async function handlePluginInstall({ request, response, context }) {
   let after = new Set((registry._pluginRegistrations || new Map()).keys());
   // `added` was computed before migrations ran; nothing loads during the migration step.
   let newFailures = (registry._pluginLoadErrors || []).slice(failuresBefore);
+
+  // S5: ONE announce per successful action — every failure above returned
+  // early, so whatever reaches here actually loaded (or cleanly no-op'd).
+  const { publishPluginChanged, actorFromGate } = await import('../plugin-changed.mjs');
+  publishPluginChanged(context, { pluginID: added[0] ?? null, action: 'install', actor: actorFromGate(gate) });
 
   response.writeHead(added.length ? 201 : 200, { 'Content-Type': 'application/json; charset=utf-8' });
   response.end(JSON.stringify({

@@ -638,6 +638,50 @@ test('an available Update renders the chip and an action pinning the latest vers
 });
 
 // ---------------------------------------------------------------------------
+// S5 realtime: plugin.changed → components-then-inventory refetch (9.1.3)
+// ---------------------------------------------------------------------------
+
+test('plugin.changed (S5) refetches components then inventory — the list updates in place, no shell repaint', async () => {
+  let { onRuntimeEvent } = await import('../../src/client/components/kikx-runtime-events.mjs');
+  let { createSystemSettingsPluginsState } = await import('../../src/client/state/system-settings-plugins.mjs');
+
+  const calls = [];
+  const app = makeApp({
+    // loaded:true is the trap: S2's maybeLoad skips a loaded store, so an
+    // event arriving while the view is CLOSED would otherwise leave the next
+    // open stale. S5 refreshes unconditionally — components first (the 9.3.12
+    // clamp needs vanished sections gone), then the inventory.
+    systemSettingsPlugins: {
+      ...createSystemSettingsPluginsState(),
+      inventory: [ { name: 'old-one' } ],
+      loaded: true,
+    },
+  });
+  app._render = () => calls.push('render');
+  app._requestRender = () => calls.push('requestRender');
+  app._loadClientComponents = async () => { calls.push('components'); };
+  app._getJSON = async (url) => {
+    calls.push(`inv:${url}`);
+    return { data: { plugins: [ { name: 'fresh-one' } ], failures: [], restartRequired: [], signatureMode: 'required', disabledPlugins: [] } };
+  };
+
+  onRuntimeEvent(app, {
+    type: 'message',
+    data: JSON.stringify({ type: 'plugin.changed', pluginID: 'fresh-one', action: 'install', actor: 'op@host' }),
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  assert.equal(calls[0], 'components', 'client-component descriptors refetch FIRST (section clamp before rows repaint)');
+  assert.equal(calls[1], 'inv:/api/v1/plugins', 'then the inventory');
+
+  const store = app._state.systemSettingsPlugins;
+  assert.deepEqual(store.inventory.map((p) => p.name), [ 'fresh-one' ],
+    'the list updates IN PLACE in the store — the settings view repaints from state, not a shell rebuild');
+  assert.ok(!calls.includes('render') && !calls.includes('requestRender'),
+    'no shell repaint (plan 5-S5: targeted update)');
+});
+
+// ---------------------------------------------------------------------------
 // 11. Uninstall + enable/disable (campaign 9.1.1 / 9.1.2)
 // ---------------------------------------------------------------------------
 
