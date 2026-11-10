@@ -390,3 +390,16 @@ AEOR recent commits:
 - Keep docs index entries current when adding docs.
 - Leave the Aeor uncommitted documentation migration alone unless the owner
   explicitly asks to finish that separate consolidation.
+
+### §8 addendum — plugin campaign completion (2026-11-10)
+Campaign plan `docs/plans/system-settings-xenocept-plugins-campaign.md`
+S1-S6 ALL DELIVERED. Phase commits: S1 43cc56de+161fc573+6738eaea (shell
+fork-A identity), S2 1b91915f, S4 6ef445be (signatures required default),
+S3 9ef4194b→b62c0bd1 (six slices: validation, registry/integrity/tar-guards,
+{npm} install+provenance+runtime paths, search+extraction split, Browse UI,
+update chips), uninstall+toggle c4f419af, S5 realtime ed0100bf
+(plugin.changed success-only publishes, components-then-inventory client
+refetch, no repaint), S6 docs 179cf5f6. Suite at close: 3,480/0/30.
+Owner-deferred: favorites, audit log, community mode. Wake port on this
+host: systemd kikx-wake.timer (single sender), bot-common 5f6e999+80de0a4+
+2dcf096, fixtures/tools/kikx-wake-*, first live fire 2026-11-10T04:20:02Z.
