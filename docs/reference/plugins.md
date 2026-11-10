@@ -198,6 +198,62 @@ A plugin that registers a service or mount must release any external resource it
 created in `teardown` or `onShutdown`; the ledger covers registry entries, not
 sockets, timers, or child processes.
 
+## Admin endpoints
+
+Every `/api/v1/plugins…` endpoint requires a resolved Kikx identity
+(`requireOperator`: 503 when the deployment has no account store, 401
+otherwise); endpoints that load or delete code additionally require the
+explicit `KIKX_PLUGIN_INSTALL_ENABLED` config gate.
+
+| Endpoint | What it does |
+| --- | --- |
+| `GET /api/v1/plugins` | Inventory: location tokens, managed ground, mounted/mount, provenance `source`, `signed`, the disabled list, load failures, `signatureMode`, restart/inert overrides. |
+| `POST /api/v1/plugins/install` | `{path}` (absolute directory) **or** `{npm}` (registry spec) — never both. npm resolves against configured registries, verifies sha512 `dist.integrity`, extracts with tarbomb guards into staging, swaps atomically, then rides the shared load/migrations/rollback pipeline. |
+| `POST /api/v1/plugins/search?q=` | Registry search scoped to the `kikx-plugin` keyword (inventory gate); hits are re-filtered to that keyword before the UI sees them. |
+| `POST /api/v1/plugins/updates` | Bounded batch (≤25) version check; a per-package lookup failure yields no chip, never an error. |
+| `POST /api/v1/plugins/reload` | Re-scan configured paths plus the durable runtime list. |
+| `POST /api/v1/plugins/unload` | Teardown and deregistration; files stay, so a reload finds them again. |
+| `POST /api/v1/plugins/uninstall` | Unload FIRST, then delete files **only** under managed ground (configured ∪ runtime ∪ npm roots); built-ins answer `Internal Plugin — cannot be uninstalled`. Durable plugin data is retained — purge is a separate future action. |
+| `POST /api/v1/plugins/set-enabled` | `{name, enabled}`: disable persists a durable flag and unloads (identity gate only — stopping code needs no config permission); enable reloads from the stored location under the install gate, restoring the flag if the load fails. The loader skips disabled basenames at boot, reload, and install. |
+
+Every **successful** action publishes `plugin.changed {pluginID, action,
+actor}` through the runtime event gateway, and connected clients refetch
+component descriptors plus the inventory in place; failures publish nothing.
+
+## Signature policy
+
+Verification is **required by default and fail-closed**: `loadPlugins` admits a
+directory only after checking its `.kikx-sig` envelope, BEFORE the import —
+refused code never executes.
+
+- Sign: `node scripts/sign-plugin.mjs [--key <pem>] <pluginDir...>` — `--key`
+  defaults to `$KIKX_PLUGIN_SIGNING_PRIVATE_KEY_FILE`; `--all-bundled` signs
+  the repository's own plugins.
+- Trust anchors: `KIKX_PLUGIN_SIGNING_PUBLIC_KEYS`, comma-separated raw
+  Ed25519 keys — publisher key plus operator keys, overlapping for rotation
+  (the envelope `keyID` field is reserved for exactly that).
+- Mode: `required` for every real deployment; `unsafe` is a development-only
+  bypass announced by a startup warning, the inventory's `signatureMode`, and
+  a persistent Settings → Plugins banner.
+- Inventory `signed`: `true` under `required` (loaded implies verified),
+  honestly `null` under `unsafe` (load proves nothing there).
+
+## Configuration keys
+
+| Key | Property path | Meaning |
+| --- | --- | --- |
+| `KIKX_PLUGIN_PATHS` | `/kikx/plugin/paths` | Extra plugin sites; extend, never replace, bundled roots. |
+| `KIKX_PLUGIN_SIGNATURE_MODE` | `/kikx/plugin/signature/mode` | `required` (default) or `unsafe` (dev only). |
+| `KIKX_PLUGIN_SIGNING_PUBLIC_KEYS` | `/kikx/plugin/signature/public/keys` | Comma-separated Ed25519 trust anchors. |
+| `KIKX_PLUGIN_INSTALL_ENABLED` | `/kikx/plugin/install/enabled` | Explicit gate for code-loading/deleting endpoints. |
+| `KIKX_PLUGIN_REGISTRY_URLS` | `/kikx/plugin/registry/urls` | Registry allowlist (comma-separated bases; default public npm) — configuration, never hardcoded hosts. |
+| `KIKX_PLUGIN_NPM_DIR` | `/kikx/plugin/npm/dir` | Tarball landing root (default `<service root>/.kikx/plugins/npm`). |
+
+Runtime-installed directories live in a durable list under the service root
+(`.kikx/plugin-paths.json`, unioned at boot/reload) and the disabled set in
+`.kikx/plugin-disabled.json` — the config store is read-only, and the tag
+store is constructed after the boot load, so neither can hold these.
+
 ## Sources of truth
 
 - `src/core/plugins/plugin-loader.mjs`
@@ -210,7 +266,13 @@ sockets, timers, or child processes.
 - `src/core/plugins/plugin-migrations.mjs`
 - `src/core/plugins/core-classes.mjs`
 - `src/core/plugins/plugin-paths.mjs`
+- `src/core/plugins/plugin-signature.mjs`
+- `src/core/config/runtime-plugin-paths.mjs`
+- `src/core/config/runtime-disabled-plugins.mjs`
 - `src/server/routes/plugin-asset-routes.mjs`
+- `src/server/routes/plugin-install-routes.mjs`
+- `src/server/routes/plugin-lifecycle-routes.mjs`
+- `src/server/plugin-changed.mjs`
 - `spec/plugins/plugin-unload-spec.mjs`
 - `spec/core/plugins/plugin-authority-spec.mjs`
 - `plugins/ocr/index.mjs`

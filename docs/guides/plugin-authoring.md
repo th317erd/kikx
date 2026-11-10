@@ -230,12 +230,69 @@ The bootstrap loads a plugin `main-app` descriptor before defining the built-in
 `view`, `sidebar-item`, `toolbar-action`, and `settings-panel` descriptors are
 available for a plugin shell to compose.
 
+## System Settings surfaces
+
+A plugin can paint into System Settings (the gear behind the brand mark) with
+registrations from `setup()`'s provide context:
+
+```js
+registerClientSurface('settings-panel', 'echo-panel', {
+  tagName: 'kikx-echo-settings',
+  moduleURL: `/api/v1/plugin-assets/${pluginName}/settings.mjs`,
+  label: 'Echo settings',
+  section: 'Plugins',   // the tab; unknown sections clamp to General when a
+                        // plugin unloads — the live section set owns that
+});
+registerClientSurface('sidebar-item', 'echo-row', {
+  tagName: 'kikx-sidebar-echo',
+  moduleURL: `/api/v1/plugin-assets/${pluginName}/sidebar.mjs`,
+  label: 'Echo',        // plugin-owned rows group under a PLUGINS heading
+});
+```
+
+For settings pages, extend the exported `KikxSettingsPage` base and call
+`configure({ label, description, section })` — teardown runs exactly once on
+disconnect. The sections model unions the base tabs with plugin sections,
+stable-sorted by `surfaceID`. State a user typed belongs in the store, never
+only inside a DOM node: rebuilding a subtree destroys DOM-held input, and
+`ReactiveState` notifies on top-level assignment only (replace, don't mutate).
+
 ## Bundled versus external plugins
 
 Plugins placed as immediate children of the repository `plugins/` directory load
 automatically. External sites are added with `KIKX_PLUGIN_PATHS`; they extend
 rather than replace bundled sites. A configured path can point to one plugin or a
 container of plugin directories.
+
+## Signing (required by default)
+
+Real deployments verify signatures; development runs `unsafe`. Sign each plugin
+directory before installing it anywhere real:
+
+```sh
+node scripts/sign-plugin.mjs --key /path/to/publisher.pem plugins/my-plugin
+node scripts/sign-plugin.mjs --all-bundled   # the repository's own plugins
+```
+
+`--key` defaults to `$KIKX_PLUGIN_SIGNING_PRIVATE_KEY_FILE`; public anchors live
+in `KIKX_PLUGIN_SIGNING_PUBLIC_KEYS`. The gate runs inside `loadPlugins` before
+the import, so an unsigned directory in `required` mode never executes. Policy
+detail lives in the [plugin reference](../reference/plugins.md#signature-policy).
+
+## Installing and lifecycle
+
+- **Path:** Settings → Plugins → “Install from path” (absolute directory), or
+  `POST /api/v1/plugins/install {path}`.
+- **npm:** the Browse column searches the registry for the `kikx-plugin`
+  keyword and installs a pinned version; or `POST {npm: "pkg[@version]"}` —
+  sha512-verified, tarbomb-guarded, atomic landing, the same load pipeline.
+- **Updates:** an “Update available” chip (bounded registry batch check)
+  reuses the exact install pipeline with the resolved version.
+- **Lifecycle:** Unload stops the runtime (files stay); Disable persists a
+  durable skip flag and unloads; Enable reloads from the stored location;
+  Uninstall deletes **managed** directories only — built-ins refuse, durable
+  data is retained. Every successful action republishes `plugin.changed`, so
+  open Settings views update in place across clients.
 
 ## Teardown and reload
 
@@ -257,6 +314,9 @@ plugin data is retained unless the plugin explicitly purges it.
 - Client assets cannot escape the plugin client root.
 - Plugin `main-app` replacement falls back to the core shell on failure.
 - Teardown releases external resources; reload produces the same registration state.
+- A signed directory passes `required` mode; an unsigned one is refused before its code imports.
+- Settings sections register, clamp to General when their plugin unloads, and an incoming `plugin.changed` refreshes an open view in place (no shell repaint).
+- Browse install and the update chip round-trip against a mocked registry — tests never touch the network.
 
 ## Sources of truth
 
