@@ -259,11 +259,12 @@ test('gear writes ?view=settings, reload restores the mode, and Plugins loading 
     assert.equal(scroll.ok, true,
       `the settings/plugins area scrolls (got ${JSON.stringify(scroll)})`);
 
-    // ---- Owner #1 (last half): leaving the mode cleans the URL. -----------
+    // ---- Owner (2026-11-12, second report): back after a reload must
+    // HYDRATE the session — the old accept-empty-state version of this wait
+    // MASKED the bug (boot skips frame load when the mode tops the stack and
+    // minimizeCurrent never loaded either). Fixture has frames: they must
+    // render, full stop.
     await page.evaluate(() => document.querySelector('.kikx-view__back')?.click());
-    // Contract, not one selector: the mode must be GONE and a session surface
-    // back — the real dev session showed the empty-state (no thread-scrollview
-    // node at all), so poll for "settings absent" then accept either surface.
     let left = false;
     for (let attempt = 0; attempt < 40 && !left; attempt += 1) {
       left = await page.evaluate(() => !document.querySelector('.kikx-system-settings'));
@@ -271,13 +272,17 @@ test('gear writes ?view=settings, reload restores the mode, and Plugins loading 
         await new Promise((resolve) => setTimeout(resolve, 250));
     }
     assert.equal(left, true, 'Back leaves the mode');
+    // Frames for the fixture session must actually appear — the regression
+    // was "No messages yet" on a session that HAS frames.
+    await page.waitForSelector('.kikx-thread-scrollview', { timeout: 15000 });
     const surface = await page.evaluate(() => ({
       thread: Boolean(document.querySelector('.kikx-thread-scrollview')),
-      grid: Boolean(document.querySelector('kikx-session-grid')),
       empty: (document.body.innerText || '').includes('No messages yet'),
+      frames: document.querySelectorAll('kikx-frame-item').length,
     }));
-    assert.equal(surface.thread || surface.grid || surface.empty, true,
-      `a session surface is back (got ${JSON.stringify(surface)})`);
+    assert.equal(surface.empty, false,
+      `the session hydrates after Back — no phantom empty state (got ${JSON.stringify(surface)})`);
+    assert.ok(surface.frames > 0, `frame items render (got ${JSON.stringify(surface)})`);
     const leftSearch = await page.evaluate(() => location.search);
     assert.ok(!leftSearch.includes('view=settings') && !leftSearch.includes('section='),
       `Back drops the mode params from the URL (got "${leftSearch}")`);

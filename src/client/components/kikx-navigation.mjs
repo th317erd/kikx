@@ -4,6 +4,7 @@ import {
   getCurrentEntry,
   getCurrentSessionID,
   getGridParentSessionID,
+  getSelectedFrames,
   getSessions,
   getStackDepth,
   getVisibleSessions,
@@ -380,10 +381,25 @@ export function minimizeCurrent(app) {
     app._render();
     let grid = app.querySelector('kikx-session-grid');
     setHeroName(app, grid?.cardViewElement(leavingSessionID));
-  }).finally(() => {
+  }).finally(async () => {
     clearHeroNames(app);
     app._loadSessionPreviews?.().catch?.(() => null);
     app._loadQuestions?.({ complete: true });
+    // Owner (2026-11-12): reload lands ON the mode, so boot never loaded any
+    // frames (the stack top was the view entry → getCurrentSessionID null →
+    // loadSessionFramesForURL skipped) — popping back showed "No messages
+    // yet" forever. Pre-reload flows only worked because the frames were
+    // ALREADY in memory. The pop path hydrates the session it just revealed
+    // whenever its frame list is empty — same loader as boot/deep-link.
+    const backTo = getCurrentSessionID(app._state);
+    if (backTo && getSelectedFrames(app._state).length === 0) {
+      try {
+        await loadSessionFramesForURL(app, backTo);
+      } catch (_error) {
+        // A failed frame fetch leaves the empty state readable; the next
+        // navigation or event retries through its own path.
+      }
+    }
   });
 }
 
