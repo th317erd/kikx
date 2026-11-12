@@ -220,14 +220,16 @@ export function gridParentSessionID(stack) {
 // Encodes the current stack into a search string so a reload restores the
 // exact view. Format:
 //   ?session=<root>&session=<child>&...   (one per entered session, root first)
+//   &view=settings&section=Plugins        (the mode and its LIVE tab)
 //   &collapsed=1                        (legacy: parsed and ignored, see below)
 // The root entry (sessionID null) is implicit and never encoded.
-export function stackToSearchParams(stack, existing = '') {
+export function stackToSearchParams(stack, existing = '', options = {}) {
   let base = normalizeNavigationStack(stack);
   let params = new URLSearchParams(existing);
   params.delete('session');
   params.delete('view');
   params.delete('collapsed');
+  params.delete('section');
 
   for (let entry of base.slice(1)) {
     // A view entry carries no session; it is encoded as `view=<name>` below.
@@ -241,13 +243,19 @@ export function stackToSearchParams(stack, existing = '') {
   if (viewName)
     params.set('view', viewName);
 
+  // Owner (2026-11-12): the URL must capture navigation ON the settings page —
+  // the live tab rides as `section=…` so a reload/shared link reopens the tab
+  // the operator was actually looking at.
+  if (viewName === 'settings' && typeof options.section === 'string' && options.section.trim())
+    params.set('section', options.section.trim());
+
 
   return params;
 }
 
 export function stackToURL(stack, options = {}) {
   let { origin = '', pathname = '/', search = '' } = options;
-  let params = stackToSearchParams(stack, search);
+  let params = stackToSearchParams(stack, search, options);
   let query = params.toString();
   return `${origin}${pathname}${query ? `?${query}` : ''}`;
 }
@@ -281,6 +289,12 @@ export function stackFromSearchParams(search) {
   let view = isRegisteredViewName(viewParam) ? viewParam : null;
   if (view)
     stack = pushView(stack, view);
+
+  // Owner (2026-11-12): restore the mode's LIVE tab onto the pushed entry —
+  // getSettingsSection reads it as the fallback when app state is fresh.
+  let sectionParam = params.get('section');
+  if (view === 'settings' && sectionParam && stack.length > 0)
+    stack[stack.length - 1] = { ...stack[stack.length - 1], section: sectionParam };
 
   return {
     stack,

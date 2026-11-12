@@ -296,7 +296,12 @@ export function syncSessionShell(app) {
   // shell rebuild (and replaced the composer under the user's caret).
   let threadTitle = app.querySelector('.kikx-breadcrumb__title, .kikx-breadcrumb__crumb--active, .kikx-window__header h2');
   let editingTitle = app.querySelector('.kikx-breadcrumb__title-input, .kikx-breadcrumb__crumb--editing, .kikx-window__header .kikx-window__title-input');
-  if (threadTitle && !editingTitle) {
+  // Owner mode (settings, 2026-11-12): the crumb is MODE-OWNED
+  // ('Settings › section'). Writing a session title over it produced
+  // 'No session' (sessionless) or the stale session name — probe-confirmed
+  // ('Settings', 'No session'). Only session surfaces own this text.
+  const modeOwnsCrumb = currentViewName(app._state?.navigationStack || []) === 'settings';
+  if (threadTitle && !editingTitle && !modeOwnsCrumb) {
     let selectedSession = app._selectedSession();
     let nextTitle = selectedSession?.title || 'No session';
     // session.saved fires repeatedly while an agent is busy. Rewriting the same

@@ -183,8 +183,17 @@ test('gear writes ?view=settings, reload restores the mode, and Plugins loading 
     assert.ok(restored.includes('view=settings'), 'the mode survives a real reload');
     assert.ok(restored.includes('session=session_identity'), 'and the session context with it');
 
-    // ---- BUG 4: click the Plugins tab ONCE, then never touch it again —
-    // the inventory completion must repaint itself (repaint hook). -----------
+    // ---- Owner (2026-11-12) #1/#2: the tab switch must PUBLISH crumb + URL
+    // with NO help from inventory renders. First let the inventory settle on
+    // its own while still on General, then a SINGLE tab click must do it. ----
+    let settled = false;
+    for (let attempt = 0; attempt < 30 && !settled; attempt += 1) {
+      settled = await page.evaluate(() => !(document.body.innerText || '').includes('Loading plugins'));
+      if (!settled)
+        await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    assert.equal(settled, true, 'the inventory settles unaided on entry (owner bug 4)');
+
     const clicked = await page.evaluate(() => {
       const tab = [...document.querySelectorAll('aeor-tab, [role=tab]')]
         .find((el) => (el.getAttribute('label') || el.textContent || '').includes('Plugins'));
@@ -194,15 +203,28 @@ test('gear writes ?view=settings, reload restores the mode, and Plugins loading 
     });
     assert.equal(clicked, true, 'the Plugins tab exists');
     await page.waitForSelector('.kikx-settings-plugins', { timeout: 10000 });
+    await new Promise((resolve) => setTimeout(resolve, 400)); // let the queued rAF render land
 
-    let cleared = false;
-    for (let attempt = 0; attempt < 30 && !cleared; attempt += 1) {
-      cleared = await page.evaluate(() => !(document.body.innerText || '').includes('Loading plugins'));
-      if (!cleared)
-        await new Promise((resolve) => setTimeout(resolve, 200));
-    }
-    assert.equal(cleared, true,
-      'the loading state clears WITHOUT any further interaction — owner bug 4 (eternal Loading)');
+    const afterTab = await page.evaluate(() => location.search);
+    assert.ok(afterTab.includes('section=Plugins'),
+      `the tab switch writes section= to the URL (got "${afterTab}")`);
+    const crumbsAfterTab = await page.$$eval('.kikx-breadcrumb__crumb, .kikx-window__title',
+      (nodes) => nodes.map((node) => node.textContent.trim()));
+    assert.ok(crumbsAfterTab.includes('Settings'), `crumb shows the mode (got ${JSON.stringify(crumbsAfterTab)})`);
+    assert.ok(crumbsAfterTab.includes('Plugins'),
+      'the breadcrumb FOLLOWS the tab — owner saw it frozen on General');
+
+    // ---- Owner #1 (second half): reload reopens THE TAB IN VIEW, unaided. ---
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.waitForSelector('.kikx-system-settings', { timeout: 10000 });
+    await page.waitForSelector('.kikx-settings-plugins', { timeout: 10000 });
+    const restoredSearch = await page.evaluate(() => location.search);
+    assert.ok(restoredSearch.includes('view=settings') && restoredSearch.includes('section=Plugins'),
+      `the URL survives the reload complete (got "${restoredSearch}")`);
+    const crumbsRestored = await page.$$eval('.kikx-breadcrumb__crumb, .kikx-window__title',
+      (nodes) => nodes.map((node) => node.textContent.trim()));
+    assert.ok(crumbsRestored.includes('Plugins'),
+      'the restored tab shows WITHOUT any click — breadcrumb matches it');
 
     const sectionText = await page.$eval('.kikx-settings-plugins', (node) => node.textContent);
     assert.ok(sectionText.includes('Installed Plugins'), 'the section reached its terminal content');
@@ -236,6 +258,29 @@ test('gear writes ?view=settings, reload restores the mode, and Plugins loading 
     });
     assert.equal(scroll.ok, true,
       `the settings/plugins area scrolls (got ${JSON.stringify(scroll)})`);
+
+    // ---- Owner #1 (last half): leaving the mode cleans the URL. -----------
+    await page.evaluate(() => document.querySelector('.kikx-view__back')?.click());
+    // Contract, not one selector: the mode must be GONE and a session surface
+    // back — the real dev session showed the empty-state (no thread-scrollview
+    // node at all), so poll for "settings absent" then accept either surface.
+    let left = false;
+    for (let attempt = 0; attempt < 40 && !left; attempt += 1) {
+      left = await page.evaluate(() => !document.querySelector('.kikx-system-settings'));
+      if (!left)
+        await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    assert.equal(left, true, 'Back leaves the mode');
+    const surface = await page.evaluate(() => ({
+      thread: Boolean(document.querySelector('.kikx-thread-scrollview')),
+      grid: Boolean(document.querySelector('kikx-session-grid')),
+      empty: (document.body.innerText || '').includes('No messages yet'),
+    }));
+    assert.equal(surface.thread || surface.grid || surface.empty, true,
+      `a session surface is back (got ${JSON.stringify(surface)})`);
+    const leftSearch = await page.evaluate(() => location.search);
+    assert.ok(!leftSearch.includes('view=settings') && !leftSearch.includes('section='),
+      `Back drops the mode params from the URL (got "${leftSearch}")`);
 
     assert.deepEqual(pageErrors, [], 'no page errors across gear/reload/plugins flow');
   } finally {

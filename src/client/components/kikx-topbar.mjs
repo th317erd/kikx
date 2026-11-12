@@ -81,9 +81,13 @@ export function buildCrumbModel(app) {
   // meaningless there, and its stale crumbs made the mode feel detached from
   // the bar. Mode first, live section second (active).
   if (currentViewName(stack) === 'settings') {
+    // Live state wins; a freshly reloaded page adopts the tab the URL named
+    // (the stack entry carries `section`) — same fallback as
+    // getSettingsSection, so crumb and body can never disagree.
+    let top = stack[stack.length - 1];
     let section = typeof app._state?.settingsSection === 'string' && app._state.settingsSection.trim()
       ? app._state.settingsSection.trim()
-      : 'General';
+      : (top && typeof top.section === 'string' && top.section.trim() ? top.section : 'General');
     return [
       { label: 'Settings', depth: 1, active: false, sessionID: null },
       { label: section, depth: 2, active: true, sessionID: null },

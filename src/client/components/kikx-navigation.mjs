@@ -589,6 +589,10 @@ export function syncURLFromStack(app, { push = false } = {}) {
     origin: globalThis.location.origin,
     pathname: globalThis.location.pathname,
     search: globalThis.location.search,
+    // Owner (2026-11-12): "the URL doesn't capture any navigation on System
+    // Settings" — the live tab travels with the mode, written on EVERY sync
+    // (gear, tab switch, back), so reload lands on the tab in view.
+    section: app._state?.settingsSection,
   });
 
   if (url === globalThis.location.href)

@@ -358,4 +358,38 @@ test('buildCrumbModel reads "Settings › <section>" while the mode is open (own
   const defaulted = { _state: { navigationStack: stack, sessions: [] } };
   assert.deepEqual(buildCrumbModel(defaulted).map((c) => c.label), [ 'Settings', 'General' ],
     'an unset section falls back to General');
+
+  // The reload case: fresh state, tab only on the stack entry — crumb and
+  // body must agree without any click (puppeteer pins the pair end-to-end).
+  const withEntrySection = pushSystemSettings([ { sessionID: null, collapsed: true } ]);
+  withEntrySection[withEntrySection.length - 1] = {
+    ...withEntrySection[withEntrySection.length - 1],
+    section: 'Plugins',
+  };
+  assert.deepEqual(
+    buildCrumbModel({ _state: { navigationStack: withEntrySection, sessions: [] } }).map((c) => c.label),
+    [ 'Settings', 'Plugins' ],
+    'a restored entry.section feeds the crumb when app state is fresh',
+  );
+});
+
+test('getSettingsSection prefers live state, falls back to the URL-restored entry, clamps junk (owner 2026-11-12)', async () => {
+  let { getSettingsSection } = await import('../../src/client/components/kikx-system-settings-view.mjs');
+
+  const restored = [
+    { sessionID: null, collapsed: true },
+    { view: 'settings', section: 'Plugins' },
+  ];
+
+  assert.equal(getSettingsSection({ navigationStack: restored }), 'Plugins',
+    'a freshly reloaded page opens the tab the URL named — no click needed');
+  assert.equal(getSettingsSection({ navigationStack: restored, settingsSection: 'General' }), 'General',
+    'live state always wins over the restored entry');
+  assert.equal(getSettingsSection({ navigationStack: [ { sessionID: null } ] }), 'General',
+    'no entry, no state → the default');
+  assert.equal(
+    getSettingsSection({ navigationStack: [ { sessionID: null }, { view: 'settings', section: 'Bogus' } ] }),
+    'General',
+    'an unknown restored section clamps to the base pair',
+  );
 });

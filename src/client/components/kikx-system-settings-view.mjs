@@ -21,6 +21,7 @@
 // instead of rendering a body that no longer exists.
 
 import { elements } from '../lib/aeor-ui.mjs';
+import { scheduleAnimationFrame } from './kikx-app-helpers.mjs';
 import { buildViewBackButton } from './kikx-view-chrome.mjs';
 import { buildSettingsPanelNodes, listSettingsPanels } from './kikx-settings-panel.mjs';
 import { buildPluginsSection } from './kikx-settings-plugins-section.mjs';
@@ -49,7 +50,16 @@ export function clampSettingsSection(sectionName, available = SETTINGS_SECTIONS)
 // read would make "what the user chose" indistinguishable from "what the code
 // defaulted", and the unload clamp would have nothing to clamp against.
 export function getSettingsSection(state, available = SETTINGS_SECTIONS) {
-  return clampSettingsSection(state?.settingsSection, available);
+  // Owner (2026-11-12): a RESTORED mode opens the tab the URL names — the
+  // stack entry carries `section` (stackFromSearchParams) while fresh app
+  // state has none yet. Live state wins; the entry is the restore-time
+  // fallback before the clamp.
+  let restored = null;
+  let stack = state?.navigationStack;
+  let top = Array.isArray(stack) && stack.length ? stack[stack.length - 1] : null;
+  if (top && top.view === 'settings' && typeof top.section === 'string' && top.section.trim())
+    restored = top.section;
+  return clampSettingsSection(state?.settingsSection ?? restored, available);
 }
 
 // The LIVE sections model (S2): base pair ∪ plugin-contributed sections from
@@ -89,10 +99,11 @@ export function buildSystemSettingsView(app) {
     ),
     // Owner correction: sections ride the framework's TabbedView
     // (<aeor-tab-view>), not a hand-rolled button row. The component switches
-    // tab visibility itself; the tab-change listener only PERSISTS the choice
-    // into app state — deliberately without a re-render, so keyboard focus
-    // stays on the tab the user just clicked. State stays authoritative: the
-    // next paint re-derives `active` through the clamp.
+    // tab visibility itself; the tab-change listener persists the choice into
+    // app state, syncs the URL (`section=…`) and requests a render so the
+    // breadcrumb follows the tab (owner 2026-11-12: it stayed "General" after
+    // clicking Plugins because nothing listened to the section write).
+    // Focus is restored to the active tab after the rebuild.
     div.class('kikx-system-settings__body')(
       buildSettingsTabView(state, app),
     ),
@@ -113,13 +124,26 @@ function buildSettingsTabView(state, app) {
     tabView.appendChild(tab);
   }
 
-  // Bubbles from the component's switchTo(). Persist only — the component has
-  // already moved the visibility, and a rebuild here would steal focus.
-  // Unknown names are refused inside setSettingsSection (clamp discipline).
+  // Bubbles from the component's switchTo(). Persist AND publish (owner
+  // 2026-11-12): the breadcrumb and URL must follow the tab — persist-only
+  // left both stale unless an unrelated inventory render happened to repaint.
+  // The render rebuilds the tab list, so restore focus to the ACTIVE tab
+  // afterwards (focus follows activation — keyboard users keep their place).
   tabView.addEventListener('tab-change', (event) => {
     const next = event && event.detail ? event.detail.tab : null;
-    if (typeof next === 'string')
-      setSettingsSection(state, next, settingsSections(state));
+    if (typeof next !== 'string')
+      return;
+    setSettingsSection(state, next, settingsSections(state));
+    app._syncURLFromStack?.();
+    app._requestRender?.('settings-section');
+    // The render is already queued for the next frame; queue ours after it so
+    // the rebuilt DOM exists when we refocus.
+    scheduleAnimationFrame(() => {
+      const active = document.querySelector(
+        '.kikx-system-settings__body [role="tab"][aria-selected="true"], .kikx-system-settings__body aeor-tab[active]',
+      );
+      active?.focus?.();
+    });
   });
 
   return tabView;

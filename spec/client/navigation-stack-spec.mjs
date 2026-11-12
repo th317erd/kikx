@@ -242,3 +242,29 @@ test('normalizeNavigationStack preserves a known view and drops an unknown one',
   let dropped = normalizeNavigationStack([ { sessionID: null }, { view: 'bogus' } ]);
   assert.equal(dropped.at(-1).view, undefined);
 });
+
+test('the settings section rides the URL: encode + restore onto the stack entry (owner 2026-11-12)', async () => {
+  const { pushSystemSettings, stackToURL, stackFromSearchParams } = await import('../../src/client/state/navigation-stack.mjs');
+
+  const modeStack = pushSystemSettings([ { sessionID: null, collapsed: true } ]);
+
+  // encode: view= + section= together, only while the mode is the top entry
+  const url = stackToURL(modeStack, { pathname: '/', search: '', section: 'Plugins' });
+  assert.match(url, /view=settings/, 'the mode is encoded');
+  assert.match(url, /section=Plugins/, 'the LIVE tab is encoded beside it');
+
+  const plain = stackToURL(modeStack, { pathname: '/', search: '' });
+  assert.doesNotMatch(plain, /section=/, 'no section param when none is supplied');
+
+  const sessionsOnly = stackToURL(
+    [ { sessionID: null, collapsed: true }, { sessionID: 'a', collapsed: false } ],
+    { pathname: '/', search: '', section: 'Plugins' },
+  );
+  assert.doesNotMatch(sessionsOnly, /section=/, 'section never leaks into a session URL');
+
+  // restore: the section lands ON the pushed settings entry
+  const restored = stackFromSearchParams(url.split('?')[1]);
+  assert.equal(restored.view, 'settings', 'the mode restores');
+  assert.equal(restored.stack.at(-1).section, 'Plugins',
+    'the entry carries the tab so fresh app state can adopt it');
+});
