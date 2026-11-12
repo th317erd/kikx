@@ -393,3 +393,40 @@ test('getSettingsSection prefers live state, falls back to the URL-restored entr
     'an unknown restored section clamps to the base pair',
   );
 });
+
+test('General renders the eight rainbow theme swatches with the selected one pressed (owner 2026-11-11)', async () => {
+  let { resolveViewSurface } = await import('../../src/client/components/client-view-surfaces.mjs');
+  let { THEME_PALETTE } = await import('../../src/client/lib/theme.mjs');
+
+  const state = {
+    account: { name: 'Wyatt', email: 'w@example.com' },
+    navigationStack: [ { sessionID: null, collapsed: true } ],
+    settingsSection: 'General',
+    themeID: 'purple',
+  };
+  const app = makeApp();
+  app._state = state;
+  const view = resolveViewSurface('settings', state, app);
+
+  const swatches = [];
+  (function walk(node) {
+    if (!node) return;
+    // Exact class TOKEN — a substring match also catches the __swatches
+    // container, whose class starts with the same prefix (that bug: 9 !== 8).
+    if (String(node.className || '').split(/\s+/).includes('kikx-theme-picker__swatch')) swatches.push(node);
+    for (const child of node.childNodes || []) walk(child);
+  })(view);
+
+  assert.equal(swatches.length, THEME_PALETTE.length, 'one swatch per palette color (8)');
+  for (const color of THEME_PALETTE) {
+    const swatch = swatches.find((node) => String(node.className || '').split(/\s+/).includes(`kikx-theme-picker__swatch--${color.id}`));
+    assert.ok(swatch, `the ${color.id} swatch exists`);
+    assert.match(String(swatch.getAttribute('aria-label') || ''), new RegExp(color.label, 'i'),
+      `${color.id} is labelled for screen readers`);
+    const pressed = swatch.getAttribute('aria-pressed');
+    assert.equal(pressed, color.id === 'purple' ? 'true' : 'false',
+      `aria-pressed reflects state.themeID exactly once (${color.id})`);
+  }
+  assert.equal(swatches.filter((node) => node.getAttribute('aria-pressed') === 'true').length, 1,
+    'exactly ONE swatch reads as selected');
+});

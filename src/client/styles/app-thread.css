@@ -350,7 +350,7 @@
 }
 
 .kikx-frame__compact > summary:focus-visible {
-  outline: 2px solid #3d6cff;
+  outline: 2px solid var(--kikx-accent);
   outline-offset: 1px;
 }
 

@@ -59,7 +59,7 @@
 
 .kikx-sidebar__view--active,
 .kikx-sidebar__inbox--active {
-  border-color: #3d6cff;
+  border-color: var(--kikx-accent);
   background: #17203a;
   color: #f5f7fa;
 }
@@ -80,7 +80,7 @@
   min-width: 20px;
   padding: 1px 6px;
   border-radius: 999px;
-  background: #3d6cff;
+  background: var(--kikx-accent);
   color: #ffffff;
   font-size: calc(11px * 1.25);
   font-weight: 700;

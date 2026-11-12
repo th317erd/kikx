@@ -189,13 +189,13 @@
 }
 
 .kikx-view__back:hover {
-  border-color: #3d6cff;
+  border-color: var(--kikx-accent);
   color: #dce3ea;
   background: #1d242b;
 }
 
 .kikx-view__back:focus-visible {
-  outline: 2px solid #3d6cff;
+  outline: 2px solid var(--kikx-accent);
   outline-offset: 2px;
 }
 

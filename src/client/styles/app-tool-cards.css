@@ -393,7 +393,7 @@ kikx-typing-indicator {
 }
 
 .kikx-composer-history__search:focus {
-  border-color: #3d6cff;
+  border-color: var(--kikx-accent);
   outline: none;
   box-shadow: 0 0 0 2px rgba(61, 108, 255, 0.22);
 }

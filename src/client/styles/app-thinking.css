@@ -141,7 +141,7 @@ kikx-frame-filter-popup {
 .kikx-frame-filter__button:hover,
 .kikx-frame-filter__button:focus-visible,
 kikx-frame-filter-popup.is-open .kikx-frame-filter__button {
-  border-color: #587183;
+  border-color: var(--kikx-accent);
   color: #f5f7fa;
   outline: none;
 }
@@ -177,7 +177,7 @@ kikx-frame-filter-popup:not(.is-all-on) .kikx-frame-filter__button {
 }
 
 .kikx-frame-filter__panel:focus-visible {
-  outline: 2px solid #3d6cff;
+  outline: 2px solid var(--kikx-accent);
   outline-offset: 2px;
 }
 
@@ -244,7 +244,7 @@ kikx-frame-filter-popup:not(.is-all-on) .kikx-frame-filter__button {
   width: 15px;
   height: 15px;
   margin: 0;
-  accent-color: #3d6cff;
+  accent-color: var(--kikx-accent);
   cursor: pointer;
 }
 
@@ -389,7 +389,7 @@ kikx-frame-filter-popup:not(.is-all-on) .kikx-frame-filter__button {
 
 .kikx-window__add:hover,
 .kikx-window__add:focus-visible {
-  border-color: #3d6cff;
+  border-color: var(--kikx-accent);
   color: #ffffff;
   outline: none;
 }

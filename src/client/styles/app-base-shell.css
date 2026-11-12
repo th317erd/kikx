@@ -282,7 +282,7 @@ button.kikx-brand__mark:focus-visible {
   inset: 0 auto 0 0;
   width: 38%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #3d6cff, #7ca7d9, #7dd3d0);
+  background: linear-gradient(90deg, var(--kikx-accent), #7ca7d9, #7dd3d0);
   animation: kikx-startup-progress 1.35s ease-in-out infinite;
 }
 
@@ -495,4 +495,20 @@ button.kikx-brand__mark:focus-visible {
 
 .kikx-thread .kikx-composer {
   padding: 0 18px 18px;
+}
+
+/* Primary theme (owner, 2026-11-11): the rainbow choice rides ONE custom
+   property set inline on <html> by src/client/lib/theme.mjs (localStorage
+   kikx.theme, palette-validated, applied at state init before first paint).
+   --accent/--accent-hover alias the AEOR framework convention (tokens.css
+   loads first at index.html:8; this later :root wins the cascade), so every
+   vendor consumer - tab-view active/focus, links, aeor-button primary,
+   components.css - follows the choice with zero vendor edits. The former
+   #3d6cff primaries across the app stylesheets are var(--kikx-accent).
+   Semantic colors (STOP red, Installed green, Update amber, errors) are
+   intentionally NOT derived from this. */
+:root {
+  --kikx-accent: #3d6cff;
+  --accent: var(--kikx-accent);
+  --accent-hover: color-mix(in srgb, var(--kikx-accent) 84%, #000);
 }

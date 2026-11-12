@@ -176,13 +176,13 @@
 
 .kikx-session-card:hover,
 .kikx-session-card:focus-visible {
-  border-color: #3d6cff;
+  border-color: var(--kikx-accent);
   outline: none;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 }
 
 .kikx-session-card.is-selected {
-  border-color: #3d6cff;
+  border-color: var(--kikx-accent);
 }
 
 .kikx-session-card.has-error {

@@ -272,7 +272,7 @@
   height: 14px;
   flex: 0 0 auto;
   border: 2px solid rgb(255 255 255 / 0.16);
-  border-top-color: #587183;
+  border-top-color: var(--kikx-accent);
   border-radius: 50%;
   animation: kikx-spin 700ms linear infinite;
 }
@@ -323,7 +323,7 @@
 .kikx-settings-plugins__search-input:focus {
   outline: none;
   border-color: #4d5b68;
-  box-shadow: 0 0 0 2px rgb(88 113 131 / 0.25);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--kikx-accent) 30%, transparent);
 }
 
 /* Browse column (S3 slice 5): notice, search row, results. Result cards
@@ -451,3 +451,48 @@
 @media (max-width: 960px) {
   .kikx-settings-plugins { grid-template-columns: 1fr; }
 }
+
+/* Primary theme picker (System Settings → General). Selection reads as a
+   white ring — color-agnostic, so a yellow swatch stays visible as selected
+   against the dark shell. */
+.kikx-theme-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 6px;
+}
+.kikx-theme-picker__label {
+  margin: 0;
+  color: #f5f7fa;
+  font-weight: 600;
+  font-size: calc(14px * 1.25);
+}
+.kikx-theme-picker__swatches {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.kikx-theme-picker__swatch {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 2px solid rgb(255 255 255 / 0.16);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+.kikx-theme-picker__swatch:hover {
+  transform: translateY(-1px);
+}
+.kikx-theme-picker__swatch[aria-pressed='true'] {
+  border-color: #f5f7fa;
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 0.22);
+}
+.kikx-theme-picker__swatch--red { background: #d43f3f; }
+.kikx-theme-picker__swatch--orange { background: #d97025; }
+.kikx-theme-picker__swatch--yellow { background: #c9a227; }
+.kikx-theme-picker__swatch--green { background: #2fae5f; }
+.kikx-theme-picker__swatch--cyan { background: #22a7bd; }
+.kikx-theme-picker__swatch--blue { background: #3d6cff; }
+.kikx-theme-picker__swatch--purple { background: #9a55d6; }
+.kikx-theme-picker__swatch--pink { background: #d8558f; }

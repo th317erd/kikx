@@ -294,6 +294,99 @@ test('gear writes ?view=settings, reload restores the mode, and Plugins loading 
   }
 });
 
+test('primary theme: swatch applies instantly, themes framework accents, survives reload (owner 2026-11-11)', async (t) => {
+  let chromePath = findChromeExecutable();
+  if (!chromePath) {
+    t.skip('Theme coverage requires Chrome');
+    return;
+  }
+
+  const fixture = await startStagehandUIServer({
+    sessions: [ { id: 'session_identity', title: 'Identity Session', messageCount: 5 } ],
+    agents: [ { id: 'agent_1', name: 'Identity Agent', pluginID: 'test-agent', enabled: true } ],
+  });
+  const port = new URL(fixture.baseURL).port;
+
+  const browser = await puppeteer.launch({
+    executablePath: chromePath,
+    headless: process.env.KIKX_PUPPETEER_HEADLESS === '0' ? false : 'new',
+    args: [ '--no-sandbox', '--disable-setuid-sandbox' ],
+  });
+
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1440, height: 900 });
+    const pageErrors = [];
+    page.on('pageerror', (error) => pageErrors.push(String(error?.message || error)));
+    await page.evaluateOnNewDocument(() => {
+      sessionStorage.setItem('kikx.auth.session', JSON.stringify({ token: 'identity-token', refresh_token: 'identity-refresh' }));
+      // NOTE: do NOT clear kikx.theme here — evaluateOnNewDocument runs on
+      // RELOAD too, and wiping it there destroyed the persistence assertion.
+      // Puppeteer's fresh profile starts with clean localStorage anyway.
+    });
+
+    await page.goto(`http://127.0.0.1:${port}/?view=settings`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.waitForSelector('.kikx-theme-picker__swatches', { timeout: 10000 });
+    // The inventory completion repaints the section (repaint hook) — that
+    // rebuild detaches puppeteer's pre-click handle, so settle first and
+    // click IN-PAGE (query + click synchronously, no handle window).
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const busy = await page.evaluate(() => (document.body.innerText || '').includes('Loading plugins'));
+      if (!busy) break;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+
+    const before = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--kikx-accent').trim());
+
+    // click the Purple swatch
+    const clicked = await page.evaluate(() => {
+      const swatch = document.querySelector('.kikx-theme-picker__swatch--purple');
+      if (!swatch) return false;
+      swatch.click();
+      return true;
+    });
+    assert.equal(clicked, true, 'the purple swatch exists and was clicked in-page');
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const after = await page.evaluate(() => ({
+      accent: getComputedStyle(document.documentElement).getPropertyValue('--kikx-accent').trim(),
+      stored: localStorage.getItem('kikx.theme'),
+      pressed: document.querySelector('.kikx-theme-picker__swatch--purple')?.getAttribute('aria-pressed'),
+      bluePressed: document.querySelector('.kikx-theme-picker__swatch--blue')?.getAttribute('aria-pressed'),
+      // vendor tab-view follows via the --accent alias: active tab border = accent
+      tabBorder: (() => {
+        const active = document.querySelector('aeor-tab-view .tab.active, aeor-tab-view [role="tab"][aria-selected="true"]');
+        return active ? getComputedStyle(active).borderTopColor || getComputedStyle(active).borderColor : null;
+      })(),
+    }));
+
+    assert.notEqual(after.accent, before, 'the accent variable CHANGED on click — instant, no reload');
+    assert.equal(after.accent.toLowerCase(), '#9a55d6', 'purple hex is what the stylesheet receives');
+    assert.equal(after.stored, 'purple', 'persisted to localStorage');
+    assert.equal(after.pressed, 'true', 'the clicked swatch reads pressed');
+    assert.equal(after.bluePressed, 'false', 'the previous selection released');
+    const expected = 'rgb(154, 85, 214)';
+    assert.equal(after.tabBorder, expected,
+      `vendor tab-view accent follows via --accent alias (got ${after.tabBorder})`);
+
+    // persistence: a real reload keeps the choice
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.waitForSelector('.kikx-theme-picker__swatches', { timeout: 10000 });
+    const reloaded = await page.evaluate(() => ({
+      accent: getComputedStyle(document.documentElement).getPropertyValue('--kikx-accent').trim(),
+      pressed: document.querySelector('.kikx-theme-picker__swatch--purple')?.getAttribute('aria-pressed'),
+    }));
+    assert.equal(reloaded.accent.toLowerCase(), '#9a55d6', 'the choice survives a reload');
+    assert.equal(reloaded.pressed, 'true', 'and the picker renders it selected');
+
+    assert.deepEqual(pageErrors, [], 'no page errors across the theme flow');
+  } finally {
+    await browser.close();
+    fixture.close();
+  }
+});
+
 test('?view=settings deep-links into the mode on a sessionless entry (§9.3.10)', async (t) => {
   let chromePath = findChromeExecutable();
   if (!chromePath) {

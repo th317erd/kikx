@@ -47,6 +47,7 @@ import {
 } from './navigation-stack.mjs';
 import { createQuestionsState } from './questions-state.mjs';
 import { readDebugMode } from '../lib/debug-mode.mjs';
+import { initTheme } from '../lib/theme.mjs';
 import { readRawMarkdown } from '../lib/raw-markdown.mjs';
 import { previewStatusStore } from './preview-status-store.mjs';
 import {
@@ -56,8 +57,11 @@ import {
   SESSION_PREFERENCE_DEFAULTS,
 } from '../../shared/session-preferences.mjs';
 
-export const AUTH_STORAGE_KEY = 'kikx.auth.session';
-export const AUTH_SHARED_STORAGE_KEY = 'kikx.auth.shared';
+import { loadSavedAuth } from './saved-auth.mjs';
+// Boot-time auth + the storage keys live in ./saved-auth.mjs (extracted
+// 2026-11-11 under the line cap); re-exported here so every existing import
+// path (kikx-json-api, auth-persistence-spec) keeps working.
+export { AUTH_STORAGE_KEY, AUTH_SHARED_STORAGE_KEY, loadSavedAuth } from './saved-auth.mjs';
 
 let savedAuth = loadSavedAuth();
 let params = new URLSearchParams(globalThis.location?.search || '');
@@ -110,6 +114,11 @@ export const kikxState = new ReactiveState({
   deletedSessionDetailsByID: {},
   deletedSessionIDs: [],
   debugMode: readDebugMode(),
+  // Primary theme (owner 2026-11-11): read + validate + APPLY the stored
+  // rainbow color at state init — before first paint, mirroring debugMode's
+  // boot discipline. Picker state lives here so any later paint renders the
+  // pressed ring from the same source of truth.
+  themeID: initTheme(),
   draft: '',
   editingSessionID: '',
   editingSessionTitle: '',
@@ -740,57 +749,4 @@ function normalizeNonNegativeInteger(value) {
     return 0;
 
   return Math.trunc(number);
-}
-
-// Boot-time auth read.
-//
-// Owner decision (2026-11-05): "tokens aren't attached to a _browser
-// session_, and instead just expire naturally (after 30 days)". The durable
-// home is localStorage under the same key — closing the browser must not sign
-// you out. sessionStorage survives only as a LEGACY candidate (pre-change
-// tabs, and the specs that still seed it directly), and the shared rotation
-// key stays a candidate so one tab's rotation supersedes a stale copy
-// anywhere. The previous rule — "never use localStorage to authenticate a tab
-// that has no session at all" — is deliberately reversed: a fresh tab IS a
-// returning user now, and the server's 30-day refresh-token window is the
-// only expiry that matters (auth-service default refreshTTLSeconds = 2592000,
-// sliding on each rotation).
-//
-// Exported for the persistence specs: it is a pure reader over the injected
-// globals plus one migration write.
-export function loadSavedAuth() {
-  let durable = readStoredAuth(globalThis.localStorage, AUTH_STORAGE_KEY);
-  let legacy = readStoredAuth(globalThis.sessionStorage, AUTH_STORAGE_KEY);
-  let shared = readStoredAuth(globalThis.localStorage, AUTH_SHARED_STORAGE_KEY);
-
-  let best = durable?.token ? durable : null;
-  for (let candidate of [ legacy, shared ]) {
-    if (candidate?.token && (!best || authExpiry(candidate) > authExpiry(best)))
-      best = candidate;
-  }
-
-  // Migrate on read: whichever candidate won, the durable slot must hold it,
-  // so the next cold start never depends on sessionStorage or the shared key
-  // again. `best === durable` (the common case) is the same object, so this
-  // writes nothing.
-  if (best && best !== durable) {
-    try {
-      globalThis.localStorage?.setItem(AUTH_STORAGE_KEY, JSON.stringify(best));
-    } catch (_error) {}
-  }
-
-  return best || {};
-}
-
-function readStoredAuth(storage, key) {
-  try {
-    return JSON.parse(storage?.getItem(key) || '{}') || {};
-  } catch (_error) {
-    return {};
-  }
-}
-
-function authExpiry(auth) {
-  let value = Number(auth?.expires_at);
-  return Number.isFinite(value) ? value : 0;
 }

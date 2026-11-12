@@ -22,12 +22,13 @@
 
 import { elements } from '../lib/aeor-ui.mjs';
 import { scheduleAnimationFrame } from './kikx-app-helpers.mjs';
+import { THEME_PALETTE, setPrimaryTheme } from '../lib/theme.mjs';
 import { buildViewBackButton } from './kikx-view-chrome.mjs';
 import { buildSettingsPanelNodes, listSettingsPanels } from './kikx-settings-panel.mjs';
 import { buildPluginsSection } from './kikx-settings-plugins-section.mjs';
 import { maybeLoadSystemSettingsPlugins } from '../state/system-settings-plugins.mjs';
 
-const { div, h3, h2, header, p, section } = elements;
+const { button, div, h3, h2, header, p, section } = elements;
 
 // The base sections, in tab order. S2 unions plugin-contributed sections on
 // top (stable by surfaceID); General is always present because it is the
@@ -173,6 +174,34 @@ function buildSettingsSectionBody(active, state, app) {
     h3('Account'),
     p(account.name ? `Name: ${account.name}` : 'Name: not signed in'),
     p(account.email ? `Email: ${account.email}` : 'Email: not signed in'),
+    // Primary theme (owner 2026-11-11): host preference, General section.
+    h3('Theme'),
+    buildThemePicker(state, app),
     panels,
+  );
+}
+
+// Eight rainbow swatches. Click = persist + apply IMMEDIATELY (the whole app
+// recolors via one CSS custom property — no reload, no re-render) and update
+// the pressed state on the existing nodes, so keyboard focus stays on the
+// swatch the user just activated.
+function buildThemePicker(state, app) {
+  return div.class('kikx-theme-picker')(
+    p.class('kikx-theme-picker__label')('Primary color'),
+    div.class('kikx-theme-picker__swatches')(
+      ...THEME_PALETTE.map((color) => button.type('button')
+        .class(`kikx-theme-picker__swatch kikx-theme-picker__swatch--${color.id}`)
+        .title(color.label)
+        .ariaLabel(`Primary color: ${color.label}`)
+        .ariaPressed(String(state?.themeID === color.id))
+        .onClick((event) => {
+          setPrimaryTheme(app?._state || state, color.id);
+          const swatches = event?.currentTarget?.parentElement
+            ? [...event.currentTarget.parentElement.children]
+            : [];
+          for (const node of swatches)
+            node.setAttribute?.('aria-pressed', String(node === event.currentTarget));
+        })()),
+    ),
   );
 }
