@@ -80,8 +80,11 @@ export function buildSystemSettingsView(app) {
   maybeLoadSystemSettingsPlugins(app);
 
   return section.class('kikx-system-settings')(
-    buildViewBackButton(app),
+    // Owner screenshot 1: the Back control floated as its own row \"in the
+    // middle of nowhere\". view-chrome's doctrine: inject into the view's
+    // EXISTING header — it rides the title row now, like every other view.
     header.class('kikx-view-header')(
+      buildViewBackButton(app),
       h2.class('kikx-view-header__title')('System Settings'),
     ),
     // Owner correction: sections ride the framework's TabbedView

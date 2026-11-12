@@ -181,8 +181,22 @@
   flex-direction: column;
   gap: 14px;
   padding: 16px 20px 24px;
-  min-height: 100%;
+  /* Owner (2026-11-12): the plugins area never scrolled — .kikx-main is
+     overflow:hidden and this view only had min-height, so tall content just
+     clipped. The view scrolls itself now (thread and inbox scroll inside
+     their own containers for the same reason). */
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   box-sizing: border-box;
+}
+/* THE actual scroll defect: as a flex COLUMN with a definite height, every
+   child defaulted to flex-shrink:1 — tall content SQUEEZED to fit 804px
+   instead of overflowing, so the container had nothing to scroll (spacer
+   probe: scrollHeight stayed == clientHeight). Children keep their natural
+   size now and the section scrolls over them. */
+.kikx-system-settings > * {
+  flex: 0 0 auto;
 }
 
 .kikx-system-settings__body {

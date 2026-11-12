@@ -43,6 +43,7 @@ import {
 } from './session-name-gestures.mjs';
 import { createIcon } from '../lib/icons.mjs';
 import { navigateSystemSettings } from '../state/kikx-state.mjs';
+import { currentViewName } from '../state/navigation-stack.mjs';
 import { stateHasFilters } from '../lib/frame-filters.mjs';
 import { buildScrollLockToolbar } from './kikx-scroll-lock.mjs';
 // ONE shared contract for the rename field's `name` (owner item 2). The bar used
@@ -75,6 +76,19 @@ const { div, nav, header, h1, p, span, button, input } = elements;
 // crumb has no session, hence no pencil: there is no session row to rename.
 export function buildCrumbModel(app) {
   let stack = app._state?.navigationStack || [];
+  // Owner screenshot 2 (2026-11-12): inside System Settings the breadcrumb
+  // must read "Settings › <section>" — the session path behind the mode is
+  // meaningless there, and its stale crumbs made the mode feel detached from
+  // the bar. Mode first, live section second (active).
+  if (currentViewName(stack) === 'settings') {
+    let section = typeof app._state?.settingsSection === 'string' && app._state.settingsSection.trim()
+      ? app._state.settingsSection.trim()
+      : 'General';
+    return [
+      { label: 'Settings', depth: 1, active: false, sessionID: null },
+      { label: section, depth: 2, active: true, sessionID: null },
+    ];
+  }
   let sessions = getSessions(app._state);
   let crumbs = [{ label: 'Projects', depth: 1, active: stack.length === 1, sessionID: null }];
 

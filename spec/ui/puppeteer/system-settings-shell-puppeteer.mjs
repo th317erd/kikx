@@ -207,6 +207,36 @@ test('gear writes ?view=settings, reload restores the mode, and Plugins loading 
     const sectionText = await page.$eval('.kikx-settings-plugins', (node) => node.textContent);
     assert.ok(sectionText.includes('Installed Plugins'), 'the section reached its terminal content');
 
+    // ---- Owner screenshot 1: Back rides the view header, not a lone row. ---
+    const backInHeader = await page.evaluate(
+      () => Boolean(document.querySelector('.kikx-view-header .kikx-view__back')),
+    );
+    assert.equal(backInHeader, true,
+      'the Back control lives INSIDE the view header (was "hanging out in the middle of nowhere")');
+
+    // ---- Owner screenshot 2: breadcrumb reads Settings › live section. -----
+    const crumbs = await page.$$eval('.kikx-breadcrumb__crumb, .kikx-window__title',
+      (nodes) => nodes.map((node) => node.textContent.trim()));
+    assert.ok(crumbs.includes('Settings'), `breadcrumb shows the mode (got ${JSON.stringify(crumbs)})`);
+    assert.ok(crumbs.includes('Plugins'), 'and the live section as the active crumb');
+
+    // ---- Owner item 1: the view scrolls itself (.kikx-main is overflow:
+    // hidden). A tall spacer proves the container, not just the CSS text. ---
+    const scroll = await page.evaluate(() => {
+      const el = document.querySelector('.kikx-system-settings');
+      if (!el) return { ok: false, reason: 'missing' };
+      const spacer = document.createElement('div');
+      spacer.style.height = '2400px';
+      el.appendChild(spacer);
+      const overflowed = el.scrollHeight > el.clientHeight;
+      el.scrollTop = el.scrollHeight;
+      const stuck = el.scrollTop > 0;
+      spacer.remove();
+      return { ok: overflowed && stuck, overflowed, stuck, overflowY: getComputedStyle(el).overflowY };
+    });
+    assert.equal(scroll.ok, true,
+      `the settings/plugins area scrolls (got ${JSON.stringify(scroll)})`);
+
     assert.deepEqual(pageErrors, [], 'no page errors across gear/reload/plugins flow');
   } finally {
     await browser.close();

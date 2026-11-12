@@ -336,3 +336,26 @@ function findNode(node, predicate) {
   }
   return null;
 }
+
+test('buildCrumbModel reads "Settings › <section>" while the mode is open (owner screenshot 2)', async () => {
+  let { buildCrumbModel } = await import('../../src/client/components/kikx-topbar.mjs');
+  let { pushSystemSettings } = await import('../../src/client/state/navigation-stack.mjs');
+
+  // Mode stacked over a session — the exact shape the screenshot showed
+  // (breadcrumb wrongly read "Projects › Session 1 › Session" instead).
+  const stack = pushSystemSettings([
+    { sessionID: null, collapsed: true },
+    { sessionID: 'session_1', collapsed: false },
+  ]);
+
+  const app = { _state: { navigationStack: stack, settingsSection: 'Plugins', sessions: [] } };
+  const crumbs = buildCrumbModel(app);
+  assert.deepEqual(crumbs.map((c) => c.label), [ 'Settings', 'Plugins' ],
+    'mode first, live section second — never the session path behind it');
+  assert.equal(crumbs[1].active, true, 'the section carries the active crumb');
+  assert.equal(crumbs[0].sessionID, null, 'mode crumbs carry no session, so no pencil');
+
+  const defaulted = { _state: { navigationStack: stack, sessions: [] } };
+  assert.deepEqual(buildCrumbModel(defaulted).map((c) => c.label), [ 'Settings', 'General' ],
+    'an unset section falls back to General');
+});
