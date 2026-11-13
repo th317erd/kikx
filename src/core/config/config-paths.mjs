@@ -17,6 +17,10 @@ export const KIKX_PLUGIN_PATHS_PATH = '/kikx/plugin/paths';
 export const KIKX_PLUGIN_SIGNATURE_MODE_PATH = '/kikx/plugin/signature/mode';
 export const KIKX_PLUGIN_SIGNING_PUBLIC_KEYS_PATH = '/kikx/plugin/signing/public/keys';
 export const KIKX_CONTEXT_WINDOW_TOKENS_PATH = '/kikx/context/window/tokens';
+// Properties-store envelope key (plan: properties-store P1/P8): base key
+// material sealing secret property values (aes-256-gcm). Fail-closed: absent
+// or unusable means secret reads/writes are refused — never plaintext.
+export const KIKX_PROPERTIES_ENCRYPTION_KEY_PATH = '/kikx/properties/encryption/key';
 export const KIKX_COMPACTION_AGENT_ID_PATH = '/kikx/compaction/agent/id';
 export const KIKX_COMPACTION_AGENT_CONTEXT_TOKENS_PATH = '/kikx/compaction/agent/context/tokens';
 export const KIKX_CONTEXT_PROMPT_RESERVE_TOKENS_PATH = '/kikx/context/prompt/reserve/tokens';

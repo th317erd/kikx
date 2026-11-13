@@ -69,6 +69,7 @@ import { PluginAuthority } from '../core/plugins/plugin-authority.mjs';
 import { PluginEventBus } from '../core/plugins/plugin-events.mjs';
 import { getPluginMigrations } from '../core/plugins/plugin-migrations.mjs';
 import { loadPlugins } from '../core/plugins/plugin-loader.mjs';
+import { ensurePropertiesStore } from './properties-boot.mjs';
 import { mergePluginPaths } from '../core/plugins/plugin-paths.mjs';
 import { registerCoreClasses, resolveCoreClass } from '../core/plugins/core-classes.mjs';
 import { FrameRouter } from '../core/routing/index.mjs';
@@ -264,6 +265,12 @@ export async function createServer(options = {}) {
     let RouterClass = resolveCoreClass(context.require('pluginRegistry'), 'FrameRouter', FrameRouter);
     context.set('frameRouter', new RouterClass());
   }
+
+  // Properties store must exist BEFORE plugins load (setup()/onInit() write
+  // properties inside the boot load below). Own connection + DDL — the
+  // document driver resolves only after the load. Plan: properties-store P1
+  // (seam extracted to properties-boot.mjs to stay under the line cap).
+  await ensurePropertiesStore({ context, options, config, databaseURL, databasePath });
 
   if (!context.has('pluginLoadPromise')) {
     context.set('pluginLoadPromise', (async () => {
