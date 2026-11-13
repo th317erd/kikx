@@ -72,7 +72,13 @@ properties (
   empty segments, lowercase, bounded length (e.g. 256). ` /a/b`, `/a/b` and
   `/a//b` must never be three keys.
 - **Value bounds:** JSON-only (JSONB enforces), app-side size cap (default
-  64KB) and per-namespace quotas (see Open #4).
+  64KB). **NO per-namespace quotas** (owner, 2026-11-13): "Kikx plugins
+ naturally have an immense amount of power, and are a 'trusted space'. Since
+ plugins tie directly into system classes (by design), a malicious plugin
+ author can do anything they want, including bypassing safety mechanisms. We
+ are going to the trouble we are already going to _just to provide sane
+ guardrails_ for healthy plugins." Guardrails serve healthy plugins; the
+ flood-cap was defending against an adversary who is already omnipotent.
 - **JSONB always (owner's rule):** even scalars live as `{"value": …}` so the
   store can target any NoSQL / NoSQL-shaped backend — including AeorDB "whenever
   we decide to return to it". The interface never learns which backend it is.
@@ -127,8 +133,9 @@ properties (
   ALWAYS read/write ITS OWN namespace (relative keys) with NO declaration.
   The static-manifest gate was protecting validation and bounds, not security —
   and it made dynamic per-item keys impossible. Own-namespace is already
-  isolated (forced FQID prefix + no ambient rights), so the remaining risks are
-  bounded by quotas (Open #4) and optional validation:
+  isolated (forced FQID prefix + no ambient rights), so the remaining risk
+  (storage flood) is accepted under the trust doctrine quoted in §1 — plugins
+  are a guarded-for-health, not contained-for-malice, space:
   - declared own keys get their schema validated server-side,
   - undeclared own keys (dynamic) are accepted within bounds,
   - **any absolute/foreign key requires the `access` grant — undeclared = denied.**
@@ -150,9 +157,10 @@ the two byte-identical in shape.
 ### 6. Migration of the first two members (clean cuts, no dual-storage)
 
 - **Theme:** key `/core/user/theme/primary_color`, scope `(account, uid)`.
-  One-time client import (POST the old `localStorage` value once, then delete
-  the key) so nobody loses their pick; after that localStorage is dead code.
-- **Email:** key `/core/kikx/email/configuration`, scope `global`, password
+  **Hard cut (owner: "I am the only user in the world currently")** — no
+  localStorage import: localStorage becomes dead code immediately; new/default
+  blue until a choice is made. Email: key `/core/kikx/email/configuration`,
+  scope `global`, password
   under the envelope columns. Boot reads properties only; **no import from
   `.kikx/mailer.json`** (owner: single configured-DB location; there is no
   production file to migrate) — `mailer-settings.mjs` is rewritten onto the
@@ -171,17 +179,17 @@ the two byte-identical in shape.
   `grants.mjs` (prefix matching, deny-wins, `/*`). Tests: every rule row of
   §3, plugin caller denied undeclared absolute read/write, `/*` grant allows
   subtree only, deny-precedence matrix, own-namespace unrestricted (dynamic
-  keys) inside quotas, quota exceeded -> 400/507-style refusal.
+  keys), and **deny-attempt LOGGING** (owner 2026-11-13: "we do want to log
+  such things") — structured line with key, caller, decision.
 - **P3 — HTTP surface.** `properties-routes.mjs`: GET/PUT/DELETE scoped by
   identity (own-account + global read; global write = identity bar; secrets
   → `hasValue` only), optimistic `version` → 409. Tests: scope matrix incl.
   hostile cross-account reads, 401/503 gate parity with the auth family.
 - **P4 — theme migration.** server endpoint (thin, over P3), client
-  `lib/theme.mjs` → fetch/store through account scope, one-time
-  localStorage import + delete, `initTheme` waits for fetch with default-blue
-  paint-first. Tests: store round-trip, import fires once then clears,
-  unknown id -> default, puppeteer: pick purple → reload on a NEW profile
-  equivalent (account fetch) restores.
+  `lib/theme.mjs` → fetch/store through account scope, **hard cut — no
+  import** (owner ruling), `initTheme` paints default blue first, swaps when
+  the fetch lands. Tests: store round-trip, unknown id -> default, puppeteer:
+  pick purple → reload restores from the ACCOUNT (the follow-you property).
 - **P5 — email migration.** `mailer-settings.mjs` onto the store (secret
   envelope for password), boot reads store (async before authService),
   save/test endpoints unchanged outside storage, `.kikx/mailer.json` writer
@@ -190,6 +198,9 @@ the two byte-identical in shape.
 - **P6 — plugin manifests + disclosure.** Loader parses `properties`/`access`,
   registers into grants registry (signed-manifest → grants), inventory
   exposes grants, settings card + install/Browse cards render the disclosure.
+  Internal plugins obey the SAME contract — full modules with `package.json`
+  like every plugin (owner: not loose JS files); internal signing follows
+  once the system stands up, automated via tooling (`--all-bundled`).
   Tests: undeclared absolute access denied at the facade, disclosure text
   from signed bytes, loader refuses malformed grant shapes.
 - **P7 — AeorDB implementation** + driver-parity suite (same specs run
@@ -202,42 +213,35 @@ Working rules (standing): failing-first everywhere; suites before commits;
 push at green milestones; never touch `kikx2`/`:3001`; no deploy without the
 owner; source caps 500 soft / 800 hard; light-DOM only.
 
-## Genuinely open concerns (owner asked to keep talking — each with a recommendation)
+## Genuely open concerns ledger — RESOLVED by owner rulings (2026-11-13)
 
-1. **Session-scoped plugin access.** v1: plugins get own-namespace + granted
-   absolute keys only; `session`-scope rows stay core/user-side. If a plugin
-   needs session data later, bind scope through the facade's request context
-   with an explicit grant to the session subtree. *Recommend defer to demand.*
-2. **Deny-attempt audit.** A refused absolute read/write is alert-worthy.
-   *Recommend:* structured log line now (key, caller, decision), audit ROWS
-   when the campaign's audit seam (§10.7) grows past `updated_by`.
-3. **Optimistic concurrency.** Two operators editing email config will
-   silently lose one write. *Recommend:* keep `version` in P1 schema, 409 in
-   P3, form re-fetches on conflict.
-4. **Quotas (new this round — the cost of relaxing own-namespace).** A plugin
-   with unrestricted dynamic own-keys can flood rows. *Recommend:*
-   per-namespace caps (row count + total bytes) with config defaults
-   (`KIKX_PROPERTIES_MAX_ROWS_PER_NAMESPACE`, `…_MAX_BYTES_PER_NAMESPACE`),
-   exceeded -> refused + logged; core scope unbounded (operator-owned).
-5. **Theme import.** One-time localStorage POST vs hard cut (everyone resets
-   to blue). *Recommend:* keep the tiny import — it's 10 lines and nobody
-   loses their pick.
-6. **Later migrations** (candidates, not commitments): debug flag,
-   raw-markdown flag (both then follow the account), session-preferences (the
-   biggest remaining ununified surface — touches live session behavior, so
-   its own pass).
-7. **Loader runtime files stay files** (`.kikx/plugin-paths.json`,
-   `plugin-disabled.json`): the loader reads them at boot BEFORE migrations
-   create tables. v2 option: property-table early-ensure before plugin load;
-   until then, files are honest and boot-order-safe.
-8. **Internal-plugin signing** (owner: "soon"): `--all-bundled` signing
-   already exists in `scripts/sign-plugin.mjs`; wire it into boot/CI when P6
-   manifests start carrying `properties`/`access`.
-9. **Uninstall retains the plugin namespace** (durable-data ruling); an
-   explicit purge action stays future, like plugin data.
-10. **Scope vocabulary closed by CHECK** — adding a scope type later is a
-    migration; `plugin` scope rows are reserved for facade-managed namespaces
-    (HTTP never writes them directly).
+1. **Session-scoped plugin access —** DECIDED: defer to demand; v1 =
+   own-namespace + granted absolute keys only.
+2. **Deny-attempt audit —** DECIDED: yes, log now (P2 structured line:
+   key, caller, decision); audit rows later when §10.7 grows past `updated_by`.
+3. **Optimistic concurrency —** DECIDED: yes; `version` in P1, 409 in P3,
+   form re-fetches on conflict.
+4. **Quotas —** DECIDED: **NO.** Owner trust doctrine (quoted in §1):
+   plugins are a trusted space; guardrails are for healthy plugins; a
+   malicious author bypasses everything by design (they plug into system
+   classes). Value size cap stays (protocol sanity), flood-caps do not.
+5. **Theme import —** DECIDED: hard cut (owner is the only user; no import).
+6. **Debug/raw flags —** owner correction: these are **system settings, not
+   plugin concerns** — "a plugin is in development mode if the system itself
+   is in development mode." If they ever migrate, they are GLOBAL-scope
+   properties; they do not follow the account and plugins never manage them.
+7. **Loader runtime files —** DECIDED: stay files (boot-before-migrations);
+   not stuffing everything into the DB — just refusing "JSON file hell" for
+   CONFIG, especially with third-parties leaning on our storage.
+8. **Internal-plugin signing —** DECIDED: after the system stands up enough
+   for signatures to work, automated with tooling; internal plugins are full
+   modules with `package.json`, exactly like every other plugin.
+9. **Uninstall retains namespaces —** DECIDED: yes (durable-data ruling).
+10. **Scope vocabulary —** "CHECK-closed" meant only: `scope_type` is
+    constrained by a SQL CHECK inside the table DDL, so adding a scope kind
+    (e.g. 'agent') later needs an ALTER migration, not just app code — a
+    deliberate integrity-vs-flexibility trade. Nothing else follows from it;
+    the CHECK stays (it is what makes the PRIMARY KEY trustworthy).
 
 ## Test inventory (planned)
 
