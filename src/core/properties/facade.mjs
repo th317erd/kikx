@@ -18,6 +18,7 @@
 import { normalizePropertyKey, normalizePropertyPrefix, isAbsolutePropertyKey } from './keys.mjs';
 import { normalizeScope, PropertyStoreError } from './store.mjs';
 import { normalizePluginID, GrantsRegistry } from './grants.mjs';
+import { validateDeclaredValue } from './schemas.mjs';
 import { CorePropertyRegistry } from './registry.mjs';
 
 const GLOBAL_SCOPE = Object.freeze({ type: 'global', id: '' });
@@ -67,10 +68,14 @@ export function createPropertiesFacade({ store, registry = null, grants = null, 
       // scope argument is ignored — isolation, not preference. The FQID
       // already carries its leading slash, so '/plugins' + id is canonical
       // (store normalization would collapse a double slash anyway).
-      return { key: `/plugins${caller.pluginID}/${key}`, scope: { type: 'plugin', id: caller.pluginID } };
+      return {
+        key: `/plugins${caller.pluginID}/${key}`,
+        scope: { type: 'plugin', id: caller.pluginID },
+        declaredKey: key, // the RELATIVE name — schema lookup on writes
+      };
     }
     if (caller.isCore)
-      return { key, scope: normalizeScope(scopeArg || GLOBAL_SCOPE) };
+      return { key, scope: normalizeScope(scopeArg || GLOBAL_SCOPE), declaredKey: null };
 
     // Absolute + plugin: core-owned sensitivity + grants.
     const level = sensitivityRegistry.lookup(key);
@@ -86,7 +91,20 @@ export function createPropertiesFacade({ store, registry = null, grants = null, 
     // GLOBAL-scoped. Grants gate the key; account/session rows stay on the
     // core + HTTP-identity paths, so a granted plugin can never read another
     // user's rows by naming their scope.
-    return { key, scope: GLOBAL_SCOPE };
+    return { key, scope: GLOBAL_SCOPE, declaredKey: null };
+  }
+
+  // Plan §4: a DECLARED own key validates its value server-side on writes;
+  // undeclared dynamic keys never hit this path (the relaxation).
+  function assertSchemaAllows(caller, target, value) {
+    if (caller.isCore || target.declaredKey === null)
+      return;
+    const schemas = typeof grantsRegistry.getSchemas === 'function'
+      ? grantsRegistry.getSchemas(caller.pluginID)
+      : null;
+    const schema = schemas ? schemas[target.declaredKey] : null;
+    if (schema)
+      validateDeclaredValue(schema, value, target.declaredKey);
   }
 
   return {
@@ -99,6 +117,7 @@ export function createPropertiesFacade({ store, registry = null, grants = null, 
     write(callerRaw, scope, key, value, options = {}) {
       const caller = parseCaller(callerRaw);
       const target = resolve(caller, 'write', scope, key);
+      assertSchemaAllows(caller, target, value);
       return store.put(target.scope, target.key, value, {
         ...options,
         updatedBy: options.updatedBy ?? caller.token, // audit seam (plan §10.7)

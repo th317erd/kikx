@@ -62,6 +62,14 @@ const GOOD_ENTRY = `
       await props.write({ type: 'global', id: '' }, '/probe/granted', 'nope');
       proof.deniedWrite = 'NOT-THROWN';
     } catch (error) { proof.deniedWrite = error?.code || String(error); }
+    try {
+      await props.write(null, 'last_run', 7);
+      proof.declaredNumber = 'ok';
+    } catch (error) { proof.declaredNumber = error?.code || String(error); }
+    try {
+      await props.write(null, 'last_run', 'seven');
+      proof.schemaRefused = 'NOT-THROWN';
+    } catch (error) { proof.schemaRefused = error?.code || String(error); }
     globalThis.__kikxPropertiesE2EProof = proof;
   }
 `;
@@ -96,6 +104,7 @@ test('real loader E2E: signed-manifest grants register, bind, deny, log — malf
       read: { allow: [ '/probe/granted' ] },
       write: { deny: [ '*' ], allow: [] },
     },
+    properties: { last_run: { type: 'number' } },
   }, GOOD_ENTRY);
   writePlugin(pluginsRoot, 'props-e2e-bad', {
     pluginID: '/spec/props/bad',
@@ -105,6 +114,11 @@ test('real loader E2E: signed-manifest grants register, bind, deny, log — malf
     pluginID: '/spec/props/rollback',
     access: { read: { allow: [ '/*' ] } },
   }, ROLLBACK_ENTRY);
+  // Malformed `properties` (P6): refused before setup, named in load errors.
+  writePlugin(pluginsRoot, 'props-e2e-badschema', {
+    pluginID: '/spec/props/badschema',
+    properties: 'nope',
+  }, `\n  export const pluginName = 'props-e2e-badschema';\n  export async function setup(provide) {\n    provide((ctx) => {});\n    globalThis.__kikxPropertiesE2EBadSchemaSetupRan = true;\n  }\n`);
 
   const dbFile = path.join(tmp, 'properties.db');
   delete globalThis[PROOF_KEY];
@@ -130,6 +144,9 @@ test('real loader E2E: signed-manifest grants register, bind, deny, log — malf
   assert.equal(proof.ownWrite, 'ok', 'relative write through ctx.properties lands in own namespace');
   assert.equal(proof.grantedRead, 'ok-null', 'granted absolute READ passes the facade (row never set -> null)');
   assert.equal(proof.deniedWrite, 'property_denied', 'undeclared absolute WRITE is denied (deny:*)');
+  assert.equal(proof.declaredNumber, 'ok', 'declared key of the right type writes (plan §4)');
+  assert.equal(proof.schemaRefused, 'property_schema_invalid',
+    'declared key of the WRONG type refuses — server-side schema');
 
   // 2. The deny was structured-logged by the boot logger.
   const denies = warnings.filter((line) => line.includes('[properties-deny]'));
@@ -144,6 +161,9 @@ test('real loader E2E: signed-manifest grants register, bind, deny, log — malf
   const row = await reader.get({ type: 'plugin', id: '/spec/props/good' }, '/plugins/spec/props/good/e2e_key');
   assert.deepEqual(row?.value, { ok: true });
   assert.equal(row.updatedBy, 'plugin:/spec/props/good', 'audit seam records the bound caller');
+  const declared = await reader.get({ type: 'plugin', id: '/spec/props/good' },
+    '/plugins/spec/props/good/last_run');
+  assert.equal(declared?.value, 7, 'the declared-key write is durable');
 
   // 4. A malformed access block REFUSES the load and setup never runs.
   assert.equal(globalThis.__kikxPropertiesE2EBadSetupRan, undefined,
@@ -151,6 +171,11 @@ test('real loader E2E: signed-manifest grants register, bind, deny, log — malf
   const failures = registry._pluginLoadErrors || [];
   assert.ok(failures.some((entry) => /grant|access|pluginID/i.test(entry.message || '')),
     `load error must name the malformed block: ${JSON.stringify(failures)}`);
+  // …and a malformed `properties` block refuses TOO (P6), named as such.
+  assert.equal(globalThis.__kikxPropertiesE2EBadSchemaSetupRan, undefined,
+    'the malformed-properties fixture must never reach setup');
+  assert.ok(failures.some((entry) => /properties|schema/i.test(entry.message || '')),
+    `load error must name the malformed properties block: ${JSON.stringify(failures)}`);
 
   // 5. Rollback: grants registered before setup are RELEASED when the load
   // fails afterwards — a plugin that never loaded must not keep permissions.
@@ -158,4 +183,8 @@ test('real loader E2E: signed-manifest grants register, bind, deny, log — malf
   assert.ok(grants.get('/spec/props/good'), 'the successful plugin keeps its grants');
   assert.equal(grants.get('/spec/props/rollback'), null,
     'the failed fixture\u2019s grants were rolled back at load failure');
+  // The disclosure SOURCE for the inventory (plan P6): schemas ride the entry.
+  const goodEntry = grants.get('/spec/props/good');
+  assert.ok(goodEntry?.schemas?.last_run,
+    'declared schemas ride the grants entry — signed-sourced disclosure data');
 });

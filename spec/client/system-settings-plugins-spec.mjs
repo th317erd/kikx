@@ -243,6 +243,54 @@ test('Installed Plugins cards render inventory, notices and actions honestly', a
   assert.ok(installField, 'Install from path has a field to type into');
 });
 
+test('plugin cards disclose properties grants from signed bytes (plan P6)', async () => {
+  let { buildPluginsSection } = await import('../../src/client/components/kikx-settings-plugins-section.mjs');
+  let state = {
+    systemSettingsPlugins: {
+      inventory: [
+        {
+          name: 'granted-plugin', location: '/srv/plugs/gr', managed: true,
+          manifest: { version: '1.0.0' },
+          mounted: false, mount: null, subscriptions: null,
+          properties: {
+            pluginID: '/org/cat/granted',
+            read: [ '/core/kikx/email/configuration' ],
+            write: [ '/audit/*' ],
+            declaredKeys: [ 'last_run' ],
+          },
+        },
+        {
+          name: 'plain-plugin', location: '/srv/plugs/plain', managed: true,
+          manifest: { version: '1.0.0' },
+          mounted: false, mount: null, subscriptions: null,
+        },
+      ],
+      failures: [], restartRequired: [],
+      loading: false, error: null, loaded: true,
+      signatureMode: 'required',
+    },
+  };
+  let app = makeApp(state);
+  let built = buildPluginsSection(app);
+  let node = typeof built.build === 'function' ? built.build(document) : built;
+
+  let text = '';
+  (function walk(current) {
+    if (!current) return;
+    if (current.nodeType === 3) text += `${current.textContent || ''} `;
+    for (const child of current.childNodes || []) walk(child);
+  })(node);
+
+  assert.match(text, /\/org\/cat\/granted/, 'the FQID is disclosed');
+  assert.match(text, /\/core\/kikx\/email\/configuration/, 'READ grants are disclosed');
+  assert.match(text, /\/audit\/\*/, 'WRITE grants are disclosed — including the /* idiom');
+  assert.match(text, /last_run/, 'declared keys are visible to the operator');
+  assert.match(text, /Properties:/, 'the line carries a clear label');
+  // The plain plugin (no properties block) renders NO properties line.
+  const lines = text.split('Properties:').length - 1;
+  assert.equal(lines, 1, 'only the declaring plugin wears a properties line');
+});
+
 test('the inventory error state renders its message instead of a blank column', async () => {
   let { buildPluginsSection } = await import('../../src/client/components/kikx-settings-plugins-section.mjs');
   let app = makeApp({

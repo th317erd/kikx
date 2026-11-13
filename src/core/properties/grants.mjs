@@ -11,6 +11,7 @@
 
 import { normalizePropertyPrefix } from './keys.mjs';
 import { PropertyStoreError } from './store.mjs';
+import { normalizeDeclaredSchemas } from './schemas.mjs';
 
 // FQID = fully-qualified plugin identifier, Java-style path form, at least
 // three segments (plan §2: '/org/category/name'). Never a filesystem path.
@@ -107,15 +108,31 @@ export class GrantsRegistry {
     this._byID = new Map(); // pluginID -> { access, pluginPath }
   }
 
-  register(pluginID, access, pluginPath) {
+  // `schemas` (plan P6) rides the SAME entry — one lifecycle for everything
+  // the signed manifest declares: normalized atomically (a malformed
+  // properties block registers NOTHING), collision/path rules shared.
+  register(pluginID, access, pluginPath, schemas = null) {
     const id = normalizePluginID(pluginID);
     const normalizedAccess = normalizeAccess(access);
+    const normalizedSchemas = schemas === null || schemas === undefined
+      ? null
+      : normalizeDeclaredSchemas(schemas);
     const existing = this._byID.get(id);
     if (existing && existing.pluginPath !== pluginPath)
       throw new PropertyStoreError('property_grant_duplicate',
         `pluginID ${id} is already registered from ${existing.pluginPath} — ${pluginPath} collides`);
-    this._byID.set(id, { access: normalizedAccess, pluginPath });
+    this._byID.set(id, { access: normalizedAccess, pluginPath, schemas: normalizedSchemas });
     return id;
+  }
+
+  // Declared own-key schemas for a plugin (null = nothing declared — the
+  // facade's dynamic-keys relaxation path).
+  getSchemas(pluginID) {
+    try {
+      return this._byID.get(normalizePluginID(pluginID))?.schemas ?? null;
+    } catch {
+      return null;
+    }
   }
 
   // Path-guarded: an impostor path cannot release a legitimate plugin's

@@ -195,6 +195,29 @@ test('deny logging can never throw into the request path', async (t) => {
     error.code === 'property_denied', 'the DENIAL still propagates even if the logger throws');
 });
 
+test('declared own-key schemas validate server-side; dynamic keys stay free (plan §4)', async (t) => {
+  const { facade, grants } = await setup(t);
+  // Declare on the SAME registry the loader writes (schemas ride the grants
+  // entry — one lifecycle, signed-source).
+  grants.register(FQID, {}, '/path/demo', { last_run: { type: 'number' }, label: { type: 'string' } });
+
+  await facade.write(PLUGIN, null, 'last_run', 42);
+  assert.equal((await facade.read(PLUGIN, null, 'last_run')).value, 42, 'declared key, right type');
+  assert.throws(() => facade.write(PLUGIN, null, 'last_run', 'seven'), (error) =>
+    error.code === 'property_schema_invalid', 'declared key, WRONG type refuses');
+
+  await facade.write(PLUGIN, null, 'label', 'ok');
+  assert.throws(() => facade.write(PLUGIN, null, 'label', 9), (error) =>
+    error.code === 'property_schema_invalid');
+
+  // The RELAXATION: undeclared dynamic keys are free within bounds.
+  await facade.write(PLUGIN, null, 'totally/dynamic', { anything: true });
+  assert.deepEqual((await facade.read(PLUGIN, null, 'totally/dynamic')).value, { anything: true });
+
+  // Schemas are an OWN-namespace concept: core's absolute writes never hit them.
+  await facade.write('core', GLOBAL, '/probe/internal', 'any-type-is-fine');
+});
+
 test('pluginPropertiesAPI: the setup-context binding, both failure branches included', async (t) => {
   const { facade } = await setup(t);
 

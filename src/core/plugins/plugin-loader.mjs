@@ -196,13 +196,17 @@ export async function loadPlugins(options = {}) {
           grantsRegistry = context.has('propertiesGrants') ? context.require('propertiesGrants') : null;
         const propertiesManifest = await readPluginManifestDocument(pluginPath);
         if (propertiesManifest
-          && (propertiesManifest.access !== undefined || propertiesManifest.pluginID !== undefined)) {
+          && (propertiesManifest.access !== undefined || propertiesManifest.pluginID !== undefined
+            || propertiesManifest.properties !== undefined)) {
           if (propertiesManifest.pluginID === undefined)
             throw new PropertyStoreError('property_plugin_id_invalid',
-              'manifest.json declares access but no pluginID — grants need an owner');
+              'manifest.json declares access/properties but no pluginID — grants need an owner');
           manifestPluginID = normalizePluginID(propertiesManifest.pluginID);
           if (grantsRegistry) {
-            grantsRegistry.register(manifestPluginID, propertiesManifest.access, pluginPath);
+            // Schemas normalize ATOMICALLY with access (P6): a malformed
+            // `properties` block registers nothing and refuses the load.
+            grantsRegistry.register(manifestPluginID, propertiesManifest.access, pluginPath,
+              propertiesManifest.properties ?? null);
             grantsRegistered = true;
           }
         }

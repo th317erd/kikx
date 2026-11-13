@@ -47,6 +47,9 @@ export async function handlePluginRoutes({ request, response, url, context, json
     await requireOperator(context, request, PLUGIN_ADMIN_ACTIONS.INVENTORY);
 
     let registry = context.has?.('pluginRegistry') ? context.require('pluginRegistry') : null;
+    // P6 disclosure (plan §4): grants/schemas ride the registry populated from
+    // the SIGNED manifest.json parse at admission — never a re-read of disk.
+    let grantsRegistry = context.has?.('propertiesGrants') ? context.require('propertiesGrants') : null;
     let map = registry?._pluginRegistrations;
     let records = map instanceof Map ? [...map.values()] : [];
     let bus = context.has?.('pluginEventBus') ? context.require('pluginEventBus') : null;
@@ -140,6 +143,18 @@ export async function handlePluginRoutes({ request, response, url, context, json
             : null,
           subscriptions: bus?.list?.().find((s) => s.pluginId === r.pluginName) || null,
           manifest: r.manifest || null,
+          properties: r.pluginID && grantsRegistry
+            ? (() => {
+              const entry = grantsRegistry.get(r.pluginID);
+              if (!entry) return null;
+              return {
+                pluginID: r.pluginID,
+                read: entry.access.read.allow.slice(),
+                write: entry.access.write.allow.slice(),
+                declaredKeys: entry.schemas ? Object.keys(entry.schemas) : [],
+              };
+            })()
+            : null,
         }))),
         // Disabled plugins (9.1.2): name + display token + managed flag — the
         // section renders Enable/Uninstall cards from this list.

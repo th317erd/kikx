@@ -203,6 +203,19 @@ function buildPluginCard(app, plugin, store) {
         ? `Mounted: yes${mount && mount.auth ? ` (${mount.auth})` : ''}${plugin.subscriptions ? ' · subscribed' : ''}`
         : `Mounted: no${plugin && plugin.subscriptions ? ' · subscribed' : ''}`,
     ),
+    // P6 disclosure (plan §4): what this plugin can REACH over properties,
+    // from the signed manifest — same reviewability bar as the mount auth
+    // line above. Plugins without a properties block render no line at all.
+    plugin && plugin.properties
+      ? p.class('kikx-settings-plugin-card__mounts')(
+        `Properties: ${plugin.properties.pluginID}`
+          + ` · reads ${(plugin.properties.read || []).length ? plugin.properties.read.join(', ') : 'nothing'}`
+          + ` · writes ${(plugin.properties.write || []).length ? plugin.properties.write.join(', ') : 'nothing'}`
+          + ((plugin.properties.declaredKeys || []).length
+            ? ` · declares ${plugin.properties.declaredKeys.join(', ')}`
+            : ''),
+      )
+      : null,
     cardFailures.length > 0
       ? div.class('kikx-settings-plugin-card__failures')(
         ...cardFailures.map((failure) => p.class('kikx-settings-plugin-card__failure')(
