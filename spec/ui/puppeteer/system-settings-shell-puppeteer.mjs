@@ -388,9 +388,9 @@ test('primary theme: swatch applies instantly, themes framework accents, survive
     page.on('pageerror', (error) => pageErrors.push(String(error?.message || error)));
     await page.evaluateOnNewDocument(() => {
       sessionStorage.setItem('kikx.auth.session', JSON.stringify({ token: 'identity-token', refresh_token: 'identity-refresh' }));
-      // NOTE: do NOT clear kikx.theme here — evaluateOnNewDocument runs on
-      // RELOAD too, and wiping it there destroyed the persistence assertion.
-      // Puppeteer's fresh profile starts with clean localStorage anyway.
+      // Plan P4 hard cut: kikx.theme is DEAD — the choice lives in the
+      // account property server-side. Nothing to seed or protect in
+      // localStorage; puppeteer's fresh profile starts clean anyway.
     });
 
     await page.goto(`http://127.0.0.1:${port}/?view=settings`, { waitUntil: 'domcontentloaded', timeout: 15000 });
@@ -419,7 +419,7 @@ test('primary theme: swatch applies instantly, themes framework accents, survive
 
     const after = await page.evaluate(() => ({
       accent: getComputedStyle(document.documentElement).getPropertyValue('--kikx-accent').trim(),
-      stored: localStorage.getItem('kikx.theme'),
+      storedLocal: localStorage.getItem('kikx.theme'),
       pressed: document.querySelector('.kikx-theme-picker__swatch--purple')?.getAttribute('aria-pressed'),
       bluePressed: document.querySelector('.kikx-theme-picker__swatch--blue')?.getAttribute('aria-pressed'),
       // vendor tab-view follows via the --accent alias: active tab border = accent
@@ -431,12 +431,24 @@ test('primary theme: swatch applies instantly, themes framework accents, survive
 
     assert.notEqual(after.accent, before, 'the accent variable CHANGED on click — instant, no reload');
     assert.equal(after.accent.toLowerCase(), '#9a55d6', 'purple hex is what the stylesheet receives');
-    assert.equal(after.stored, 'purple', 'persisted to localStorage');
+    assert.equal(after.storedLocal, null, 'localStorage stays dead — nothing browser-local (hard cut)');
     assert.equal(after.pressed, 'true', 'the clicked swatch reads pressed');
     assert.equal(after.bluePressed, 'false', 'the previous selection released');
     const expected = 'rgb(154, 85, 214)';
     assert.equal(after.tabBorder, expected,
       `vendor tab-view accent follows via --accent alias (got ${after.tabBorder})`);
+
+    // Hard-cut proof: the choice reached the SERVER — query the account
+    // property directly with the page's bearer token.
+    const persisted = await page.evaluate(async () => {
+      const res = await fetch(`/api/v1/properties?key=${encodeURIComponent('/core/user/theme/primary_color')}`,
+        { headers: { Authorization: 'Bearer identity-token' } });
+      const body = await res.json().catch(() => null);
+      return { status: res.status, value: body?.data?.value ?? null, hasValue: body?.data?.hasValue ?? null };
+    });
+    assert.equal(persisted.status, 200, `account property readable over HTTP (got ${persisted.status})`);
+    assert.equal(persisted.value, 'purple', 'the PUT persisted to the account scope');
+    assert.equal(persisted.hasValue, true);
 
     // persistence: a real reload keeps the choice
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
@@ -445,7 +457,7 @@ test('primary theme: swatch applies instantly, themes framework accents, survive
       accent: getComputedStyle(document.documentElement).getPropertyValue('--kikx-accent').trim(),
       pressed: document.querySelector('.kikx-theme-picker__swatch--purple')?.getAttribute('aria-pressed'),
     }));
-    assert.equal(reloaded.accent.toLowerCase(), '#9a55d6', 'the choice survives a reload');
+    assert.equal(reloaded.accent.toLowerCase(), '#9a55d6', 'the choice survives a reload — from the ACCOUNT fetch');
     assert.equal(reloaded.pressed, 'true', 'and the picker renders it selected');
 
     assert.deepEqual(pageErrors, [], 'no page errors across the theme flow');

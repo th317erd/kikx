@@ -201,7 +201,7 @@ function buildThemePicker(state, app) {
         .ariaLabel(`Primary color: ${color.label}`)
         .ariaPressed(String(state?.themeID === color.id))
         .onClick((event) => {
-          setPrimaryTheme(app?._state || state, color.id);
+          setPrimaryTheme(app || state, color.id);
           const swatches = event?.currentTarget?.parentElement
             ? [...event.currentTarget.parentElement.children]
             : [];

@@ -15,6 +15,7 @@ import { installScrollDebugLogger } from '../lib/scroll-debug-logger.mjs';
 import { hasSessionDeepLink } from './kikx-app-helpers.mjs';
 import { toggleDebugMode } from '../lib/debug-mode.mjs';
 import { loadServerVersion } from '../state/server-version.mjs';
+import { loadAccountTheme } from '../lib/theme.mjs';
 import { startScrollTelemetry } from '../lib/scroll-telemetry.mjs';
 import { toggleRawMarkdown } from '../lib/raw-markdown.mjs';
 import { flushComposerDraft, flushLocalComposerDraft } from './composer-drafts.mjs';
@@ -536,6 +537,11 @@ export class KikxApp extends HTMLElement {
       }
 
       let startupLoads = [
+        // Account theme (plan P4, hard cut from localStorage): fetch AFTER
+        // auth, inside the startup set so browser probes wait for the accent
+        // to land before driving the UI. Swallows its own errors like the
+        // rest — default blue simply holds on any failure.
+        loadAccountTheme(this),
         this._loadClientComponents(),
         this._loadAccount(),
         this._loadAgents(),
