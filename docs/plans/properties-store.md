@@ -171,31 +171,67 @@ the two byte-identical in shape.
 - **P1 — core store.** `src/core/properties/` : `store.mjs` (interface +
   factory by driver), `store-sql.mjs` + migration DDL, `envelope.mjs`
   (seal/open, allowlist, key match), `keys.mjs` (normalization).
-  Tests: normalization matrix (`..`, `//`, case, length), PK/scope round-trip,
-  envelope seal/open + alg/kid mismatch refusal + missing-key fail-closed,
-  secret write refused without `KIKX_PROPERTIES_ENCRYPTION_KEY`, size cap.
+  **DDL EXECUTION POINT (map_territory finding):** the properties table is
+  created by the CORE schema bootstrap BEFORE `pluginLoadPromise` — plugins
+  may write properties during `setup()`/`onInit()`, and both run INSIDE the
+  boot load (create-server ~262), before plugin migrations (~278). Boot-order
+  test required: a fixture plugin writing a property during setup at boot
+  succeeds.
+  **Unit dialect (test_check finding):** the SQL store unit-tests against
+  **sqlite** (file-backed, in-lane — the unit lane must never need a live
+  PostgreSQL); the aeordb store uses the fake-`db` object pattern tags already
+  uses. Real-PostgreSQL/AeorDB parity = P7, env-skipped with a documented
+  bound.
+  Tests: normalization matrix (`..`, `//`, case, length) PLUS a
+  property-style hostile-string sweep, PK/scope round-trip, envelope
+  seal/open + alg/kid mismatch refusal + missing-key fail-closed, secret
+  write refused without `KIKX_PROPERTIES_ENCRYPTION_KEY`, size cap,
+  boot-order fixture-plugin test.
 - **P2 — facade + rules.** `facade.mjs` (relative/absolute resolution,
   caller classes), `registry.mjs` (core sensitivity definitions),
   `grants.mjs` (prefix matching, deny-wins, `/*`). Tests: every rule row of
   §3, plugin caller denied undeclared absolute read/write, `/*` grant allows
   subtree only, deny-precedence matrix, own-namespace unrestricted (dynamic
   keys), and **deny-attempt LOGGING** (owner 2026-11-13: "we do want to log
-  such things") — structured line with key, caller, decision.
+  such things") — structured line with key, caller, decision. Plus ONE
+  end-to-end through the REAL loader (cynic pass: hand-built grants give false
+  confidence): `loadPlugins` registers a manifest's `access` block, then the
+  facade enforces it against a live plugin caller.
 - **P3 — HTTP surface.** `properties-routes.mjs`: GET/PUT/DELETE scoped by
   identity (own-account + global read; global write = identity bar; secrets
-  → `hasValue` only), optimistic `version` → 409. Tests: scope matrix incl.
+  → `hasValue` only), optimistic `version` → 409. Boot/harness precedence
+  pinned here: `create-server options.*` > properties > env defaults — tests
+  and embedders keep overriding without touching the store.
+  Tests: scope matrix incl.
   hostile cross-account reads, 401/503 gate parity with the auth family.
 - **P4 — theme migration.** server endpoint (thin, over P3), client
-  `lib/theme.mjs` → fetch/store through account scope, **hard cut — no
-  import** (owner ruling), `initTheme` paints default blue first, swaps when
-  the fetch lands. Tests: store round-trip, unknown id -> default, puppeteer:
-  pick purple → reload restores from the ACCOUNT (the follow-you property).
+  `lib/theme.mjs` → account-scoped store, **hard cut — no import** (owner
+  ruling). **Kick point (map_territory finding):** `initTheme()` runs at state
+  MODULE init — no app, no fetch helper, no identity yet — so it keeps
+  painting default blue, and the account fetch is kicked at APP BOOT after
+  auth resolves (mirror the `loadServerVersion` pattern); the var swaps on
+  arrival (one-time blue→chosen flash on cold load — accepted). Signed-out or
+  fetch-failed → default blue, no error surface. theme-spec note: its
+  localStorage tests DIE with the hard cut and are rewritten as
+  account-fetch tests; palette/validation/apply tests stay verbatim.
+  Tests: store round-trip over the injected fetcher, unknown id -> default,
+  fetch-fail -> default blue held, puppeteer: pick purple → reload restores
+  from the ACCOUNT (the follow-you property).
 - **P5 — email migration.** `mailer-settings.mjs` onto the store (secret
-  envelope for password), boot reads store (async before authService),
-  save/test endpoints unchanged outside storage, `.kikx/mailer.json` writer
-  deleted. Tests: port the 5+5 specs onto the store, hot-swap still proven,
-  password never returned (hasValue), legacy file ignored (clean cut).
-- **P6 — plugin manifests + disclosure.** Loader parses `properties`/`access`,
+  envelope for password), boot reads store (async before authService, under
+  the P3 precedence), save/test endpoints unchanged outside storage,
+  `.kikx/mailer.json` writer deleted. **Undecryptable-secret boot (finding):**
+  key absent or `key_ref` mismatch on existing rows → LOUD warn + treat as
+  unconfigured (log-mode fallback), GET surfaces an error flag — never a boot
+  crash, never a silent plaintext fallback.
+  Tests: port the 5+5 specs onto the store, hot-swap still proven, password
+  never returned (hasValue), undecryptable-row boot behavior, legacy file
+  ignored (clean cut).
+- **P6 — plugin manifests + disclosure.** **First task = premise recon
+  (map_territory):** confirm WHICH file `.kikx-sig` actually signs (it signs
+  "manifest bytes" — kikx-plugin.json vs package.json vs directory list);
+  grants must parse from exactly that file, after admission. Then: Loader
+  parses `properties`/`access`,
   registers into grants registry (signed-manifest → grants), inventory
   exposes grants, settings card + install/Browse cards render the disclosure.
   Internal plugins obey the SAME contract — full modules with `package.json`
@@ -204,7 +240,9 @@ the two byte-identical in shape.
   Tests: undeclared absolute access denied at the facade, disclosure text
   from signed bytes, loader refuses malformed grant shapes.
 - **P7 — AeorDB implementation** + driver-parity suite (same specs run
-  against both backends).
+  against both backends). Sequencing freedom: may TRAIL P6 — no caller needs
+  the aeordb backend until an aeordb deployment returns; P1–P6 must not
+  import it eagerly.
 - **P8 — docs.** `.env.example` (`KIKX_PROPERTIES_ENCRYPTION_KEY` with the
   fail-closed note), properties reference page + README index, authoring-guide
   manifest section, HANDOFF/MEMORY update.
@@ -245,12 +283,32 @@ owner; source caps 500 soft / 800 hard; light-DOM only.
 
 ## Test inventory (planned)
 
-- `spec/core/properties/keys-spec.mjs`, `envelope-spec.mjs`,
-  `store-sql-spec.mjs`, `store-aeordb-spec.mjs` (P1/P7 parity).
+- `spec/core/properties/keys-spec.mjs` (incl. hostile-string sweep),
+  `envelope-spec.mjs`, `store-sql-spec.mjs` (sqlite dialect),
+  `store-aeordb-spec.mjs` (fake-db pattern; real parity = P7, env-skipped).
 - `spec/core/properties/facade-spec.mjs`, `grants-spec.mjs` (P2 — the rule
-  matrix is the heart).
-- `spec/server/properties-routes-spec.mjs` (P3 — scope/hostile-read matrix).
-- Client: `spec/client/theme-spec.mjs` extended (P4), email specs ported
-  (P5), disclosure assertions in system-settings-plugins (P6).
+  matrix is the heart; incl. the REAL-loader E2E and the deny-log assertion).
+- `spec/server/properties-routes-spec.mjs` (P3 — scope/hostile-read matrix,
+  409 version conflict, secrets → hasValue).
+- Boot-order fixture-plugin test (DDL before pluginLoadPromise) — P1.
+- Client: `spec/client/theme-spec.mjs` rewritten around the account fetch
+  (P4 — localStorage tests die with the hard cut), email specs ported (P5),
+  disclosure assertions in system-settings-plugins (P6).
 - `spec/ui/puppeteer/system-settings-shell-puppeteer.mjs` extended for theme
   account round-trip.
+- Watchdogs (test_check): lanes already bound via node `--test-timeout`
+  (60s); no test in this plan touches the network (all local store); hang
+  classes named — sqlite handles closed in after-hooks, theme fetch bounded,
+  deny-log I/O must never throw into the request path, P7 parity env-skipped
+  with a documented bound.
+
+## NEXT ACTION after compact
+
+P1, in this order: 1) recon where core schema DDL executes relative to
+`pluginLoadPromise` (search, don't recall); 2) write
+`spec/core/properties/keys-spec.mjs` + `envelope-spec.mjs` (RED);
+3) `keys.mjs` + `envelope.mjs` green; 4) `store.mjs` interface +
+`store-sql.mjs` (sqlite) + DDL at the boot-safe point + boot-order fixture
+test; 5) full unit lane green → commit → push. Standing rules apply
+(failing-first, lane before commits, no deploys, never touch
+kikx2/:3001, 500/800 caps, light DOM only).
