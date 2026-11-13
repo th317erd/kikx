@@ -403,3 +403,16 @@ refetch, no repaint), S6 docs 179cf5f6. Suite at close: 3,480/0/30.
 Owner-deferred: favorites, audit log, community mode. Wake port on this
 host: systemd kikx-wake.timer (single sender), bot-common 5f6e999+80de0a4+
 2dcf096, fixtures/tools/kikx-wake-*, first live fire 2026-11-10T04:20:02Z.
+
+### §8 addendum — unified properties store (2026-11-13)
+Plan `docs/plans/properties-store.md` (design-locked 92330325, AGIS pass
+bedcc82a, ten owner rulings ff09266f). P1 546a8a91, P2 f64587a0, P3 8dd0dc08,
+P4 4ed7eaba, P5 3b2dac1e, P6 fe06250f, P7 4e6c750a, P8 docs (this record's
+commit). One store, three drivers (sqlite unit dialect / PostgreSQL live /
+aeordb putFile retired-host); presence-implies-secret envelopes
+(aes-256-gcm, fail-closed on KIKX_PROPERTIES_ENCRYPTION_KEY); caller classes
+with core = server code ONLY; grants deny-wins flat from signed
+manifest.json; deny-logging `[properties-deny] …`; HTTP own-account default
++ hasValue secrets + 409; theme & email migrated as hard cuts (no
+localStorage / no mailer.json import — the file writer is DELETED).
+Suite at close: 3,595/0/32. Records: HANDOFF ★ entry.

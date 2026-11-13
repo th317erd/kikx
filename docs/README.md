@@ -49,6 +49,7 @@ as current merely because it appears in the archive.
 | Add or change a tool | [Tools/processes/scheduling](./architecture/tools-processes-scheduling.md) | [Tool reference](./reference/tools.md) |
 | Author a plugin | [Plugin authoring](./guides/plugin-authoring.md) | [Plugin reference](./reference/plugins.md) |
 | Change persistence | [Database drivers](./reference/database-drivers.md) | [Storage](./reference/storage.md), [database operations](./operations/database.md) |
+| Store user or plugin settings | [Properties store](./reference/properties.md) | [Plan](./plans/properties-store.md), [plugin authoring](./guides/plugin-authoring.md) |
 | Change authentication | [Authentication](./reference/authentication.md) | [HTTP API](./reference/http-api.md), [configuration](./reference/configuration.md) |
 | Change the browser UI | [Frontend guide](./guides/frontend.md) | [HTTP API](./reference/http-api.md), project `AGENTS.md` |
 | Develop or test locally | [Development guide](./guides/development.md) | [Testing guide](./guides/testing.md) |
@@ -101,6 +102,8 @@ as current merely because it appears in the archive.
   environment variables, and precedence.
 - [Database drivers](./reference/database-drivers.md) — contract, capabilities,
   selection, PostgreSQL primary, SQLite, and AeorDB compatibility.
+- [Properties store](./reference/properties.md) — unified settings home:
+  scopes, envelopes/secrets, caller rules, grants, HTTP surface, backends.
 - [HTTP and SSE API](./reference/http-api.md) — route families, auth, and live
   runtime events.
 - [Plugins](./reference/plugins.md) — discovery, registration surfaces,

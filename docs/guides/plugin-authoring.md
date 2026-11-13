@@ -167,6 +167,47 @@ The mount is served below `/api/v1/plugins/<pluginID>/`. Use
 `{ auth: 'public' }` only for a route that is deliberately unauthenticated, and
 document why. The authenticated identity is passed to the handler.
 
+## Properties (manifest.json: pluginID, access, properties)
+
+`manifest.json` beside the entry is the file the **signature envelope signs**
+(`.kikx-sig.payload = its exact bytes`), so everything it declares is
+tamper-proof by admission — grants, disclosure text and schemas are parsed
+from those bytes at load, before any plugin code runs.
+
+```jsonc
+{
+  "pluginID": "/org/category/name",      // FQID: >=3 segments, registry-UNIQUE
+  "access": {                             // FOREIGN (absolute) keys — mandatory to touch
+    "read":  { "deny": "/other/*", "allow": ["/core/kikx/email/configuration"] },
+    "write": { "deny": "*", "allow": [] }
+  },
+  "properties": {                         // OWN keys — optional; schema-checked on write
+    "last_run": { "type": "number" },
+    "label":     { "type": "string", "default": "" }
+  }
+}
+```
+
+Rules (reference: [Properties store](../reference/properties.md)):
+
+- **`pluginID` is required** whenever `access` or `properties` appears.
+  Relative keys resolve into your own namespace
+  (`my_key` → `/plugins/org/category/name/my_key`, forced scope
+  `(plugin, <fqid>)`) with **no declaration** — dynamic per-item keys are
+  supported; declared keys are type-checked server-side (`string`, `number`,
+  `boolean`, `object`, `array`, `null`); undeclared keys stay free within the
+  64KB value cap.
+- Grants are read/write SEPARATE maps; **deny beats allow (flat)**; default
+  is deny; wildcards are prefix-only (`/core/*`, or bare `*` = the whole
+  absolute tree). Carve-out idiom: an allow under a *covering* deny is dead —
+  use a non-covering deny plus the allow you mean.
+- Denied absolute attempts are logged once, structured:
+  `[properties-deny] caller=… action=… key=… decision=deny reason=…`.
+- A malformed `access`/`properties` block **refuses the load** (nothing
+  half-registers); failed loads and unloads release what was registered.
+- The Settings → Plugins card discloses your grants from those signed bytes:
+  `Properties: /org/category/name · reads … · writes … · declares …`.
+
 ## Frame indexes and migrations
 
 Declare which database drivers an index supports:
