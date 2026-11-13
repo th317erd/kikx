@@ -60,8 +60,12 @@ export async function openPropertiesStore(options = {}) {
     const { openPostgresqlPropertiesStore } = await import('./store-sql.mjs');
     return openPostgresqlPropertiesStore(options);
   }
+  if (driver === 'aeordb') {
+    const { openAeordbPropertiesStore } = await import('./store-aeordb.mjs');
+    return openAeordbPropertiesStore(options);
+  }
   throw new PropertyStoreError('property_store_driver',
-    `unknown properties driver ${JSON.stringify(driver)} (supported: sqlite, postgresql)`);
+    `unknown properties driver ${JSON.stringify(driver)} (supported: sqlite, postgresql, aeordb)`);
 }
 
 // Key material is decoded ONCE at the trust boundary (store open); an
