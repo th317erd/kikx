@@ -124,13 +124,13 @@ test('plugin absolute: undeclared internal AND secret access are denied and LOGG
   assert.equal(logger.warnings.length, 3, 'success is silent');
 });
 
-test('plan §4 manifest example: allow grants the secret read; deny "*" flat-wins on write', async (t) => {
+test('plan §4 literal example works as written; deny "*" still refuses the rest', async (t) => {
   const { facade, logger } = await setup(t, {
     access: {
-      // FLAT deny-wins (§4 prose: "deny beats allow") — so the carve-out idiom
-      // is allow-under-no-covering-deny. An allow sitting UNDER a covering
-      // deny is dead; P8 docs note the pattern next to the example.
-      read: { allow: [ '/core/kikx/email/configuration' ] },
+      // Owner Q2 (2026-11-13): AeorDB-inspired evaluation — nearest
+      // declaration wins, deny decides ties. The §4 LITERAL shape (deny "*"
+      // + one exact allow) now grants exactly that key.
+      read: { deny: '*', allow: [ '/core/kikx/email/configuration' ] },
       write: { deny: '*', allow: [] },
     },
   });
@@ -138,11 +138,11 @@ test('plan §4 manifest example: allow grants the secret read; deny "*" flat-win
   // Secret reads by a granted plugin return the REAL value server-side
   // (the HTTP hasValue restriction is P3's identity-layer rule).
   const row = await facade.read(PLUGIN, GLOBAL, '/core/kikx/email/configuration');
-  assert.deepEqual(row.value, { host: 'smtp' }, 'grant covers the secret read (plan §4 intent)');
+  assert.deepEqual(row.value, { host: 'smtp' }, 'grant covers the secret read (plan §4, as written)');
   expectDenial(() => facade.write(PLUGIN, GLOBAL, '/core/kikx/email/configuration', { host: 'evil' }),
     'write denied by deny:* with empty allow');
   expectDenial(() => facade.read(PLUGIN, GLOBAL, '/other/key'),
-    'no grant on this key = default deny');
+    'the "*" deny still covers every key without a nearer allow');
   assert.equal(logger.warnings.length, 2, 'both denies logged');
 });
 
@@ -216,6 +216,37 @@ test('declared own-key schemas validate server-side; dynamic keys stay free (pla
 
   // Schemas are an OWN-namespace concept: core's absolute writes never hit them.
   await facade.write('core', GLOBAL, '/probe/internal', 'any-type-is-fine');
+});
+
+test('{current} resolves in the calculate step from the identity — never for plugins', async (t) => {
+  const { facade, store } = await setup(t);
+
+  // An HTTP identity (passed by the P3 route) resolves {current} to its uid.
+  await facade.write('core', GLOBAL, '/core/user/{current}/prefs', { theme: 'purple' },
+    { identity: 'operator-1' });
+  const concrete = await facade.read('core', GLOBAL, '/core/user/operator-1/prefs',
+    { identity: 'operator-1' });
+  assert.deepEqual(concrete.value, { theme: 'purple' }, 'stored under the CONCRETE substituted key');
+  assert.equal(await store.get(GLOBAL, '/core/user/{current}/prefs'), null,
+    'the template itself is never a row');
+  const viaTemplate = await facade.read('core', GLOBAL, '/core/user/{current}/prefs',
+    { identity: 'operator-1' });
+  assert.deepEqual(viaTemplate.value, { theme: 'purple' }, 'reads back through the template too');
+
+  // No identity → the token cannot resolve: refused, fail-closed.
+  assert.throws(() => facade.read('core', GLOBAL, '/core/user/{current}/prefs'), (error) =>
+    error.code === 'property_token_unresolved', 'core without identity refuses the token');
+  // Plugins have NO user identity — {current} refuses for them, always.
+  assert.throws(() => facade.read(PLUGIN, GLOBAL, '/core/user/{current}/prefs'), (error) =>
+    error.code === 'property_token_unresolved', 'plugin caller refuses {current}');
+  // A hostile identity containing a path is refused, not spliced.
+  assert.throws(() => facade.read('core', GLOBAL, '/core/user/{current}/prefs',
+    { identity: '../escape' }), (error) => error.code === 'property_token_unresolved',
+  'identity must be a single segment');
+  // list() resolves the token too (calculate step is shared):
+  assert.deepEqual(await facade.list('core', GLOBAL, '/core/user/{current}',
+    { identity: 'operator-1' }), [ '/core/user/operator-1/prefs' ],
+  'prefix token resolves and matches the concrete row');
 });
 
 test('pluginPropertiesAPI: the setup-context binding, both failure branches included', async (t) => {

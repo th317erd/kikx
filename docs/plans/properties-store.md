@@ -140,6 +140,12 @@ properties (
   - undeclared own keys (dynamic) are accepted within bounds,
   - **any absolute/foreign key requires the `access` grant — undeclared = denied.**
 - Grants are read/write SEPARATE maps; deny beats allow; `/*` allowed.
+  **Superseded reading (owner Q2, 2026-11-13):** evaluation is
+  AeorDB-inspired — NEAREST/most-specific declaration wins, deny decides
+  equal-specificity ties, no match = no opinion = default deny (cf. aeordb
+  `permission_resolver.rs`). The §4 example above works as written under
+  these rules. `{uuid}` segments are legal in patterns; `{current}` is
+  identity-resolved in the calculate step only (owner Q1, 2026-11-13).
 - Grants ride the manifest, which `.kikx-sig` already signs → **tamper-proof
   by the existing S4 machinery**, disclosed at install time from signed bytes
   ("This plugin can write to /core/* properties") — same pattern as the

@@ -75,6 +75,7 @@ function mapStoreError(error) {
     case 'property_value_too_large':
     case 'property_grant_invalid':
     case 'property_registry_invalid':
+    case 'property_token_unresolved':
       status = 400;
       break;
     case 'property_denied':
@@ -124,7 +125,7 @@ export async function handlePropertiesRoutes({ request, response, url, context }
     const scope = authorizeScope(identity, url.searchParams.get('scope_type'), url.searchParams.get('scope_id'));
     let row;
     try {
-      row = await facade.read('core', scope, key);
+      row = await facade.read('core', scope, key, { identity: identity.id });
     } catch (error) {
       throw mapStoreError(error) ?? error;
     }
@@ -155,6 +156,7 @@ export async function handlePropertiesRoutes({ request, response, url, context }
         secret: body.secret === true,
         expectedVersion,
         updatedBy: identity.id, // audit seam (plan §10.7): WHO wrote over HTTP
+        identity: identity.id,  // calculate step: {current} resolves to the caller
       });
     } catch (error) {
       throw mapStoreError(error) ?? error;
@@ -180,6 +182,7 @@ export async function handlePropertiesRoutes({ request, response, url, context }
       deleted = await facade.remove('core', scope, key, {
         expectedVersion,
         updatedBy: identity.id,
+        identity: identity.id,
       });
     } catch (error) {
       throw mapStoreError(error) ?? error;

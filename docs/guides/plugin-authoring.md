@@ -197,10 +197,16 @@ Rules (reference: [Properties store](../reference/properties.md)):
   supported; declared keys are type-checked server-side (`string`, `number`,
   `boolean`, `object`, `array`, `null`); undeclared keys stay free within the
   64KB value cap.
-- Grants are read/write SEPARATE maps; **deny beats allow (flat)**; default
-  is deny; wildcards are prefix-only (`/core/*`, or bare `*` = the whole
-  absolute tree). Carve-out idiom: an allow under a *covering* deny is dead —
-  use a non-covering deny plus the allow you mean.
+- Grants are read/write SEPARATE maps; wildcards are prefix-only
+  (`/core/*`, or bare `*` = the whole absolute tree) plus `{uuid}` segments
+  (exactly one segment — `{UUID}` spelling folds to `{uuid}`). Evaluation is
+  AeorDB-inspired (owner 2026-11-13, cf. `permission_resolver.rs`): the
+  NEAREST/most specific matching declaration wins, **deny decides
+  equal-specificity ties**, and nothing matching = no opinion = default deny —
+  so `"deny": "*"` plus one exact allow grants exactly that key.
+- Path tokens: `{uuid}` is legal in grant patterns (above); `{current}` is
+  **identity-resolved at request time by users' HTTP calls** — it never
+  appears in a manifest, because grants are evaluated without an identity.
 - Denied absolute attempts are logged once, structured:
   `[properties-deny] caller=… action=… key=… decision=deny reason=…`.
 - A malformed `access`/`properties` block **refuses the load** (nothing

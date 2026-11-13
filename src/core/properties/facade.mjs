@@ -23,6 +23,37 @@ import { CorePropertyRegistry } from './registry.mjs';
 
 const GLOBAL_SCOPE = Object.freeze({ type: 'global', id: '' });
 
+// CALCULATE step (owner Q1, inspired by AeorDB's "paths are calculated FOR
+// the permission system first"): {current} is the ONE server-interpreted
+// token — resolved from the authenticated identity (P3 routes pass it) — and
+// it refuses wherever no identity exists (plugins always; core unless one is
+// passed). A hostile identity is refused, never spliced. ({UUID} is NOT
+// server-interpreted: the requester substitutes a real id before the request;
+// grant PATTERNs may use {uuid} segments — grants.mjs.)
+function resolveTokens(key, { caller, identity }) {
+  if (!key.includes('{current}'))
+    return key;
+  if (!caller.isCore || typeof identity !== 'string' || identity === '')
+    throw new PropertyStoreError('property_token_unresolved', caller.isCore
+      ? '{current} needs an identity — pass one, or request a concrete key'
+      : 'plugin callers have no user identity — {current} cannot resolve');
+  let segment;
+  try {
+    segment = normalizePropertyKey(identity);
+  } catch (error) {
+    throw new PropertyStoreError('property_token_unresolved',
+      `identity ${JSON.stringify(identity)} is not a usable path segment: ${error.message}`);
+  }
+  if (segment.includes('/'))
+    throw new PropertyStoreError('property_token_unresolved',
+      `identity ${JSON.stringify(identity)} is not a single path segment`);
+  const resolved = normalizePropertyKey(key.split('{current}').join(segment));
+  if (resolved.includes('{current}'))
+    throw new PropertyStoreError('property_token_unresolved',
+      'identity itself contained the token — refusing to recurse');
+  return resolved;
+}
+
 function parseCaller(caller) {
   if (caller === 'core')
     return { token: 'core', isCore: true, pluginID: null };
@@ -57,9 +88,14 @@ export function createPropertiesFacade({ store, registry = null, grants = null, 
       `properties ${action} denied: ${caller} on ${key} (${reason})`);
   }
 
-  // Returns the FINAL {key, scope} the store will see.
-  function resolve(caller, action, scopeArg, keyRaw) {
-    const key = normalizePropertyKey(keyRaw);
+  // Returns the FINAL {key, scope} the store will see — tokens resolved,
+  // then the form (relative/absolute) decided.
+  function resolve(caller, action, scopeArg, keyRaw, options = {}) {
+    const requested = normalizePropertyKey(keyRaw);
+    const key = normalizePropertyKey(resolveTokens(requested, {
+      caller,
+      identity: options.identity,
+    }));
     if (!isAbsolutePropertyKey(key)) {
       if (caller.isCore)
         throw new PropertyStoreError('property_caller_invalid',
@@ -108,15 +144,15 @@ export function createPropertiesFacade({ store, registry = null, grants = null, 
   }
 
   return {
-    read(callerRaw, scope, key) {
+    read(callerRaw, scope, key, options = {}) {
       const caller = parseCaller(callerRaw);
-      const target = resolve(caller, 'read', scope, key);
+      const target = resolve(caller, 'read', scope, key, options);
       return store.get(target.scope, target.key);
     },
 
     write(callerRaw, scope, key, value, options = {}) {
       const caller = parseCaller(callerRaw);
-      const target = resolve(caller, 'write', scope, key);
+      const target = resolve(caller, 'write', scope, key, options);
       assertSchemaAllows(caller, target, value);
       return store.put(target.scope, target.key, value, {
         ...options,
@@ -126,16 +162,20 @@ export function createPropertiesFacade({ store, registry = null, grants = null, 
 
     remove(callerRaw, scope, key, options = {}) {
       const caller = parseCaller(callerRaw);
-      const target = resolve(caller, 'write', scope, key); // deletion is a write-class action
+      const target = resolve(caller, 'write', scope, key, options); // deletion is a write-class action
       return store.delete(target.scope, target.key, {
         expectedVersion: options.expectedVersion ?? null,
         updatedBy: options.updatedBy ?? caller.token,
       });
     },
 
-    list(callerRaw, scope, prefixRaw) {
+    list(callerRaw, scope, prefixRaw, options = {}) {
       const caller = parseCaller(callerRaw);
-      const prefix = normalizePropertyPrefix(prefixRaw);
+      const requestedPrefix = normalizePropertyPrefix(prefixRaw);
+      const prefix = normalizePropertyPrefix(resolveTokens(requestedPrefix, {
+        caller,
+        identity: options.identity,
+      }));
       if (!caller.isCore) {
         // Absolute listing would leak key names past per-key grants (v1):
         // plugins list their own namespace only; the attempt is denied AND logged.
@@ -176,9 +216,9 @@ export function pluginPropertiesAPI(facade, pluginID) {
   return {
     // Block bodies on purpose: `facade.read(guard(), …)` would dereference
     // `facade` (null in a direct-load harness) BEFORE guard() could refuse.
-    read: (scope, key) => { const caller = guard(); return facade.read(caller, scope, key); },
+    read: (scope, key, options) => { const caller = guard(); return facade.read(caller, scope, key, options); },
     write: (scope, key, value, options) => { const caller = guard(); return facade.write(caller, scope, key, value, options); },
     remove: (scope, key, options) => { const caller = guard(); return facade.remove(caller, scope, key, options); },
-    list: (scope, prefix) => { const caller = guard(); return facade.list(caller, scope, prefix); },
+    list: (scope, prefix, options) => { const caller = guard(); return facade.list(caller, scope, prefix, options); },
   };
 }

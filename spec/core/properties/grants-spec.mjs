@@ -52,19 +52,21 @@ test('access shapes: both maps optional, string-or-array forms, prefix-only wild
   assert.equal(decision.reason, 'no-grant');
 
   // Plan §4's LITERAL example shape: bare '*' as a STRING, allow as array.
-  // FLAT deny-wins (§4 prose: "deny beats allow"): an allow UNDER a covering
-  // deny is DEAD — the example demonstrates SHAPE; a carve-out needs a
-  // non-covering deny (P8 docs note this beside the example).
+  // Evaluation = AeorDB-inspired (owner Q2, 2026-11-13; cf. aeordb
+  // permission_resolver.rs "nearest level with an opinion wins, deny wins at
+  // the same level"): the exact allow is NEARER than the root deny, so the
+  // example works as written.
   registry.register('/org/test/plan-literal', {
     read: { deny: '*', allow: [ '/core/kikx/email/configuration' ] },
     write: { deny: '*', allow: [] },
   }, '/path/plan');
   assert.equal(registry.evaluate('plugin:/org/test/plan-literal', 'read', '/core/kikx/email/configuration').allowed,
-    false, 'flat deny-wins: deny "*" covers even its own allow');
+    true, 'specific allow beats the broad "*" deny — the §4 example works as written');
   assert.equal(registry.evaluate('plugin:/org/test/plan-literal', 'read', '/core/kikx/email/configuration').reason,
-    'deny');
+    'allow');
   assert.equal(registry.evaluate('plugin:/org/test/plan-literal', 'read', '/other/key').allowed, false,
-    'string deny "*" covers everything else too');
+    'the "*" deny still covers everything without a nearer allow');
+  assert.equal(registry.evaluate('plugin:/org/test/plan-literal', 'read', '/other/key').reason, 'deny');
   // A bare string where an array is expected also works (single entry).
   registry.register('/org/test/string-entry', { read: { allow: '/core/y' } }, '/path/str');
   assert.equal(registry.evaluate('plugin:/org/test/string-entry', 'read', '/core/y').allowed, true);
@@ -87,26 +89,43 @@ test('access shapes: both maps optional, string-or-array forms, prefix-only wild
     'property_grant_invalid', 'non-object access');
 });
 
-test('deny beats allow; default is deny; /* covers the whole absolute tree', () => {
+test('nearest declaration wins, deny decides ties, default deny, /* covers the tree', () => {
   const registry = new GrantsRegistry();
   registry.register('/org/test/demo', FULL_ACCESS, '/path/demo');
 
-  // deny /core/kikx/email/* COVERS the sibling allow beneath it — FLAT
-  // deny-wins kills it (the allow is dead while the deny stands).
+  // AeorDB-inspired specificity: the EXACT allow is nearer than the prefix
+  // deny, so "deny inside the subtree, allow this one key" expresses as written.
   const coveredAllow = registry.evaluate('plugin:/org/test/demo', 'read', '/core/kikx/email/configuration');
-  assert.equal(coveredAllow.allowed, false, 'flat deny-wins over a covered allow');
-  assert.equal(coveredAllow.reason, 'deny', 'deny wins over the sibling allow');
+  assert.equal(coveredAllow.allowed, true, 'nearest (most specific) declaration wins');
+  assert.equal(coveredAllow.reason, 'allow');
 
   // The allow OUTSIDE the denied subtree holds.
   const allowed = registry.evaluate('plugin:/org/test/demo', 'read', '/other/x');
   assert.equal(allowed.allowed, true, 'sibling allow outside any deny');
   assert.equal(allowed.reason, 'allow');
 
+  // TIE at equal specificity → deny (AeorDB's same-level rule, deny writes last).
+  registry.register('/org/test/tie', {
+    read: { deny: [ '/core/x' ], allow: [ '/core/x' ] },
+  }, '/path/tie');
+  const tie = registry.evaluate('plugin:/org/test/tie', 'read', '/core/x');
+  assert.equal(tie.allowed, false, 'equal-specificity conflict → deny');
+  assert.equal(tie.reason, 'deny');
+
+  // Longer prefix beats shorter prefix (nearest-level analogue).
+  registry.register('/org/test/depth', {
+    read: { deny: [ '/core/*' ], allow: [ '/core/allowed/*' ] },
+  }, '/path/depth');
+  assert.equal(registry.evaluate('plugin:/org/test/depth', 'read', '/core/allowed/deep/key').allowed, true,
+    'nearer prefix wins over the broader deny');
+  assert.equal(registry.evaluate('plugin:/org/test/depth', 'read', '/core/other/key').allowed, false,
+    'only the denied/no-opinion side stays denied');
+
   // write.deny '*' + empty allow = nothing writable.
   assert.equal(registry.evaluate('plugin:/org/test/demo', 'write', '/core/x').allowed, false);
   assert.equal(registry.evaluate('plugin:/org/test/demo', 'write', '/anything').allowed, false);
 
-  // Unregistered absolute key = default deny.
+  // Unregistered absolute key = default deny (no opinion anywhere).
   const never = registry.evaluate('plugin:/org/test/demo', 'read', '/totally/new');
   assert.equal(never.allowed, false);
   assert.equal(never.reason, 'no-grant');
@@ -154,5 +173,34 @@ test('evaluation never throws: malformed caller strings are a non-match, not a c
   for (const caller of [ null, undefined, '', 'core', 'plugin:', 'plugin:nope', 42, 'user:x' ]) {
     const decision = registry.evaluate(caller, 'read', '/core/x');
     assert.equal(decision.allowed, false, `caller ${JSON.stringify(caller)} must not match`);
+  }
+});
+
+test('{uuid} grant-segment token: matches exactly one segment; other tokens refused', () => {
+  const registry = new GrantsRegistry();
+  registry.register('/org/test/users', {
+    read: { allow: [
+      '/core/user/{UUID}/theme/primary_color',   // any user, this key only
+      '/core/user/{uuid}/notes/*',               // any user, subtree (prefix+token)
+    ] },
+  }, '/path/users');
+  // Manifest spelling {UUID} normalizes to {uuid} (lowercase fold).
+  const user = 'plugin:/org/test/users';
+  assert.equal(registry.evaluate(user, 'read', '/core/user/abc-123/theme/primary_color').allowed, true,
+    'one segment substituted');
+  assert.equal(registry.evaluate(user, 'read', '/core/user/abc-123/notes/today').allowed, true,
+    'token inside a prefix form');
+  assert.equal(registry.evaluate(user, 'read', '/core/user/abc-123/theme/accent').allowed, false,
+    'literal tail still binds');
+  assert.equal(registry.evaluate(user, 'read', '/core/user/abc-123/notes').allowed, false,
+    'prefix form never matches the bare node');
+  assert.equal(registry.evaluate(user, 'read', '/core/user/a/b/theme/primary_color').allowed, false,
+    'the token is exactly ONE segment — no multi-segment swallow');
+
+  // Tokens other than {uuid} are refused at registration; {current} is an
+  // identity token — it belongs to the calculate step, never a grant pattern.
+  for (const badPattern of [ '/core/{current}/x', '/core/{foo}/x', '/core/{uuid' ]) {
+    expectCode(() => registry.register('/org/test/badtoken', { read: { allow: [ badPattern ] } }, '/path/bad'),
+      'property_grant_invalid', `pattern ${badPattern}`);
   }
 });

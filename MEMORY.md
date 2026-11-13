@@ -416,3 +416,17 @@ manifest.json; deny-logging `[properties-deny] …`; HTTP own-account default
 + hasValue secrets + 409; theme & email migrated as hard cuts (no
 localStorage / no mailer.json import — the file writer is DELETED).
 Suite at close: 3,595/0/32. Records: HANDOFF ★ entry.
+
+### §8 addendum — properties Q1/Q2: AeorDB-inspired tokens + evaluation (2026-11-13)
+Owner research task (aeordb permission_resolver.rs read in full) + two
+decisions: (Q1) {current} token resolved in the facade CALCULATE step from
+the authenticated identity — refuses property_token_unresolved with no
+identity (plugins always), hostile identity never spliced; {UUID} is
+requester-side, grant patterns accept {uuid} one-segment tokens (other
+braces refused at register); scope-forcing kept, theme key unchanged.
+(Q2) grants evaluation = AeorDB-inspired specificity — nearest/most-specific
+declaration wins (exact > {uuid} > longer prefix > /*), deny decides
+equal-specificity ties, no match = no opinion = default deny; plan §4
+literal example now works as written. Docs: reference/properties.md,
+plugin-authoring.md, plan §4 (superseding decision), HANDOFF entry.
+Focused 81/81; FULL LANE 3,598/0/32; docs gates 6/0 (this entry's commit).

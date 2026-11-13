@@ -53,6 +53,18 @@ function normalizeEntry(entry, where) {
     throw invalidGrant(`wildcards are prefix-only ('/prefix/*' or '*'): ${JSON.stringify(entry)}`);
   if (!normalized.startsWith('/'))
     throw invalidGrant(`grant entries must be absolute property keys: ${JSON.stringify(entry)}`);
+  // Path tokens in PATTERNS: only {uuid} (owner Q1 — one-segment substitution
+  // notation; {UUID} folds to it via lowercase). {current} is an IDENTITY
+  // token handled in the facade's calculate step — never a grant — and any
+  // other brace is a typo we refuse rather than match literally.
+  for (const segment of normalized.split('/')) {
+    if (segment === '{uuid}')
+      continue; // the one legal pattern token (owner Q1)
+    if (segment.includes('{'))
+      throw invalidGrant(`path token ${JSON.stringify(segment)} is not allowed — patterns accept only {uuid} segments`);
+    if (segment.includes('}'))
+      throw invalidGrant(`unbalanced brace in pattern segment ${JSON.stringify(segment)}`);
+  }
   return normalized;
 }
 
@@ -95,12 +107,43 @@ function normalizeAccess(access) {
   };
 }
 
+// Segment matcher (unified): literal segments bind exactly; '{uuid}'
+// substitutes exactly ONE segment; the terminal '*' form is the prefix /
+// subtree rule (strictly BELOW the node — '/core/*' never matches '/core').
+// This is the AeorDB level-walk shape flattened into one pattern set
+// (cf. aeordb permission_resolver.rs path_levels + path_pattern applicability).
 function matches(pattern, key) {
+  const patternSegments = pattern.split('/');
+  const keySegments = key.split('/');
+  const prefixForm = patternSegments[patternSegments.length - 1] === '*';
+  if (prefixForm)
+    patternSegments.pop();
+  else if (pattern.includes('*'))
+    return false; // unreachable post-validation — defensive
+  if (prefixForm ? keySegments.length <= patternSegments.length : keySegments.length !== patternSegments.length)
+    return false;
+  for (let index = 0; index < patternSegments.length; index += 1) {
+    const segment = patternSegments[index];
+    if (segment === '{uuid}')
+      continue; // exactly one segment, by construction of the length checks
+    if (segment !== keySegments[index])
+      return false;
+  }
+  return true;
+}
+
+// Specificity — the "nearest level with an opinion wins" rule (AeorDB):
+// full-literal exact > {uuid} full match > longer prefix > the root '/*'.
+const EXACT_SCORE = Number.MAX_SAFE_INTEGER;
+const TOKEN_SCORE_BASE = 500_000_000;
+function specificity(pattern) {
   if (pattern === '/*')
-    return true; // caller already established key is absolute
+    return 1;
   if (pattern.endsWith('/*'))
-    return key.startsWith(pattern.slice(0, -1)); // subtree only, bare node excluded
-  return pattern === key;
+    return pattern.length;
+  if (pattern.includes('{uuid}'))
+    return TOKEN_SCORE_BASE + pattern.length;
+  return EXACT_SCORE;
 }
 
 export class GrantsRegistry {
@@ -161,8 +204,10 @@ export class GrantsRegistry {
     }
   }
 
-  // Deny wins; default is deny. Never throws — evaluation is on the request
-  // path, and a crash here would be a 500 where a 403 belongs.
+  // Nearest declaration wins; DENY decides equal specificity — AeorDB's
+  // same-level rule where allow writes true and deny writes false after it
+  // (permission_resolver.rs:180-185). Absent from both maps = no opinion =
+  // default deny (state starts false).
   evaluate(caller, action, key) {
     if (typeof caller !== 'string' || !caller.startsWith('plugin:'))
       return { allowed: false, reason: 'caller' };
@@ -180,12 +225,16 @@ export class GrantsRegistry {
       return { allowed: false, reason: 'no-grant' };
     if (typeof key !== 'string' || !key.startsWith('/'))
       return { allowed: false, reason: 'key' };
+    let bestAllow = -1;
+    let bestDeny = -1;
     for (const pattern of map.deny)
-      if (matches(pattern, key))
-        return { allowed: false, reason: 'deny' };
+      if (matches(pattern, key)) bestDeny = Math.max(bestDeny, specificity(pattern));
     for (const pattern of map.allow)
-      if (matches(pattern, key))
-        return { allowed: true, reason: 'allow' };
-    return { allowed: false, reason: 'no-grant' };
+      if (matches(pattern, key)) bestAllow = Math.max(bestAllow, specificity(pattern));
+    if (bestDeny < 0 && bestAllow < 0)
+      return { allowed: false, reason: 'no-grant' };
+    if (bestDeny >= bestAllow)
+      return { allowed: false, reason: 'deny' };
+    return { allowed: true, reason: 'allow' };
   }
 }

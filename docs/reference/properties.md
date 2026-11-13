@@ -55,16 +55,28 @@ import — a leftover file is ignored by design.
   a plugin's `foo` → `/plugins/<fqid>/foo`, forced scope `(plugin, fqid)` —
   unrestricted and **dynamic** (no declaration), with declared own keys
   schema-validated (`string | number | boolean | object | array | null`).
+- **Path tokens — the calculate step (owner Q1, 2026-11-13):** paths are
+  calculated FOR the permission system first, then evaluated — the AeorDB
+  discipline. `{current}` is the ONE server-interpreted token: resolved from
+  the authenticated identity at the facade's resolve step; it refuses
+  wherever no identity exists (plugins always; core unless one is passed),
+  and a hostile identity is refused, never spliced. `{UUID}` is NOT
+  server-interpreted — the requester substitutes a real id before the
+  request; in grant PATTERNS a `{uuid}` segment (any spelling, lowercased)
+  matches exactly one segment (`/core/user/{uuid}/theme/primary_color`).
 - **Absolute keys** (leading `/`): `core` (server code only — bundled
   plugins get **no** ambient rights) has ambient access; every
   `plugin:<fqid>` caller runs the gauntlet: core-owned sensitivity registry
   (`public | internal | secret`, unmatched defaults `internal`) + manifest
-  grants. **Deny wins, default deny**, prefix-only wildcards (`/core/*`,
-  `/*`). Public reads are free unless manifest-denied.
-- **Flat deny-wins note (plan §4 example):** `"deny": "*"` beats its own
-  sibling `allow` — an allow under a covering deny is dead. Carve-outs use a
-  NON-covering deny (e.g. `deny: "/other/*"` + `allow: [target]`); the bare
-  `*` idiom is accepted and means the whole absolute tree.
+  grants. Prefix-only wildcards (`/core/*`, `/*`) plus `{uuid}` segments.
+  Public reads are free unless manifest-denied.
+- **Evaluation — AeorDB-inspired (owner Q2, 2026-11-13; cf. aeordb
+  `permission_resolver.rs`: "nearest level with an opinion wins, deny wins at
+  the same level"):** the NEAREST (most specific) matching declaration wins —
+  full-literal exact > `{uuid}` match > longer prefix > the root `/*` — and
+  **deny decides equal-specificity ties**; no matching declaration = no
+  opinion = **default deny**. So plan §4's literal example
+  (`"deny": "*"` + one exact allow) grants exactly that key, as written.
 - Denied absolute attempts emit one structured line:
   `[properties-deny] caller=… action=… key=… decision=deny reason=…`
   (logging can never throw into the request path).

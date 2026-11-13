@@ -245,6 +245,34 @@ test('validation: missing value, hostile key, bad version, bad secret flag', asy
   }
 });
 
+test('{current} over HTTP: resolved from the identity in the calculate step', async (t) => {
+  const { context, store } = await makeContext(t);
+  const template = '/core/user/{current}/theme/primary_color';
+
+  const put = await call(context, {
+    method: 'PUT',
+    body: { key: template, value: 'purple' },  // default scope = own account
+  });
+  assert.equal(put.status, 200, JSON.stringify(put.data));
+
+  // The ROW is stored under the CONCRETE substituted key, never the template.
+  const concrete = await store.get({ type: 'account', id: OPERATOR.id },
+    '/core/user/operator-1/theme/primary_color');
+  assert.equal(concrete.value, 'purple');
+  assert.equal(await store.get({ type: 'account', id: OPERATOR.id }, template), null,
+    'no row exists under the literal template');
+
+  const get = await call(context, { query: `?key=${encodeURIComponent(template)}` });
+  assert.equal(get.status, 200);
+  assert.equal(get.data.data.value, 'purple', 'reads back through the template');
+
+  // Scope rules are untouched: the hostile cross-account form still 403s.
+  const cross = await call(context, {
+    query: `?key=${encodeURIComponent(template)}&scope_type=account&scope_id=${OTHER_USER.id}`,
+  });
+  assert.equal(cross.status, 403, 'token resolution never bypasses the scope rules');
+});
+
 test('soft delete: cleared reads 200 with hasValue false; never-set DELETE is 404', async (t) => {
   const { context } = await makeContext(t);
   await call(context, { method: 'PUT', body: { key: '/core/kikx/tmp', value: 'here', scope_type: 'global' } });
