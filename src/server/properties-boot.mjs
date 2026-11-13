@@ -15,6 +15,9 @@
 // under the 800-line hard cap.
 
 import { openPropertiesStore } from '../core/properties/store.mjs';
+import { createPropertiesFacade } from '../core/properties/facade.mjs';
+import { CorePropertyRegistry } from '../core/properties/registry.mjs';
+import { GrantsRegistry } from '../core/properties/grants.mjs';
 import { KIKX_PROPERTIES_ENCRYPTION_KEY_PATH } from '../core/config/index.mjs';
 
 export async function ensurePropertiesStore({
@@ -42,5 +45,23 @@ export async function ensurePropertiesStore({
     logger: options.logger || console,
   });
   context.set('propertiesStore', store);
+
+  // P2: grants + facade also exist BEFORE plugins load — setup() may use
+  // ctx.properties, and the loader registers each manifest's `access` block
+  // during its own load. The registry stash gives unloadPlugin (reload,
+  // disable, uninstall) the only handle every unload path already shares.
+  if (!context.has('propertiesGrants'))
+    context.set('propertiesGrants', new GrantsRegistry());
+  const grants = context.require('propertiesGrants');
+  if (context.has('pluginRegistry'))
+    context.require('pluginRegistry')._propertiesGrants = grants;
+  if (!context.has('propertiesFacade'))
+    context.set('propertiesFacade', createPropertiesFacade({
+      store,
+      registry: new CorePropertyRegistry(),
+      grants,
+      logger: options.logger || console,
+    }));
+
   return store;
 }

@@ -9,6 +9,9 @@ import { AgentInterface } from './agent-interface.mjs';
 import { invalidatePluginModules, registerReloadablePluginRoot } from './plugin-module-cache.mjs';
 import { PluginInterface } from './plugin-interface.mjs';
 import { admitPluginDirectory, parseSigningPublicKeys } from './plugin-signature.mjs';
+import { normalizePluginID } from '../properties/grants.mjs';
+import { pluginPropertiesAPI } from '../properties/facade.mjs';
+import { PropertyStoreError } from '../properties/store.mjs';
 import { snapshotEnvironment } from '../config/env-loader.mjs';
 
 const SETUP_TIMEOUT_MS = Number(globalThis.__KIKX_PLUGIN_SETUP_TIMEOUT_MS) || 15000;
@@ -155,6 +158,12 @@ export async function loadPlugins(options = {}) {
       let pluginName = null;
       let record = null;
       let ownedBefore = 0;
+      // Plan P2 — properties grants: parsed from manifest.json (the file the
+      // S4 envelope signs), registered BEFORE import/setup, rolled back in the
+      // catch below if the load dies afterwards.
+      let manifestPluginID = null;
+      let grantsRegistry = null;
+      let grantsRegistered = false;
       try {
         // HARD BOUNDARY: nothing a plugin does may escape this iteration.
         // Not a throw, not a rejection, not a timer that never fires.
@@ -176,6 +185,26 @@ export async function loadPlugins(options = {}) {
             .slice(-50);
           logger.warn?.(`Refused plugin at ${pluginPath}: ${signatureRefusal}`);
           continue;
+        }
+
+        // Plan P2 — properties grants. manifest.json is the EXACT file the S4
+        // signature envelope signs (payload = its bytes), so pluginID/access
+        // parsed here are tamper-proof by admission. Parsed + registered BEFORE
+        // import/setup: setup may use ctx.properties, and a malformed block
+        // refuses before any plugin code runs.
+        if (context && typeof context.has === 'function' && typeof context.require === 'function')
+          grantsRegistry = context.has('propertiesGrants') ? context.require('propertiesGrants') : null;
+        const propertiesManifest = await readPluginManifestDocument(pluginPath);
+        if (propertiesManifest
+          && (propertiesManifest.access !== undefined || propertiesManifest.pluginID !== undefined)) {
+          if (propertiesManifest.pluginID === undefined)
+            throw new PropertyStoreError('property_plugin_id_invalid',
+              'manifest.json declares access but no pluginID — grants need an owner');
+          manifestPluginID = normalizePluginID(propertiesManifest.pluginID);
+          if (grantsRegistry) {
+            grantsRegistry.register(manifestPluginID, propertiesManifest.access, pluginPath);
+            grantsRegistered = true;
+          }
         }
 
         let modulePath = await resolvePluginModule(pluginPath);
@@ -226,7 +255,7 @@ export async function loadPlugins(options = {}) {
           let loc = pluginLocation(pluginPath);
           registry._pluginLoadErrors = registry._pluginLoadErrors.filter((e) => e.location !== loc);
         }
-        record = { pluginPath, pluginName, modulePath, pluginLocation: pluginLocation(pluginPath), callbacks: [], teardown: null };
+        record = { pluginPath, pluginName, modulePath, pluginLocation: pluginLocation(pluginPath), callbacks: [], teardown: null, pluginID: manifestPluginID };
         record.manifest = await readPluginManifest(pluginPath);
         let providerIDsBefore = agentProviderIDs(registry);
         // Everything the plugin registers during setup belongs to it.
@@ -245,6 +274,7 @@ export async function loadPlugins(options = {}) {
             context,
             pluginPath,
             pluginName,
+            pluginID: manifestPluginID,
             onProvide: (callback) => record.callbacks.push(callback),
           }))),
           SETUP_TIMEOUT_MS,
@@ -324,6 +354,11 @@ export async function loadPlugins(options = {}) {
         // uses.
         if (pluginName)
           await rollbackPartialLoad(registry, pluginName, { record, since: ownedBefore, logger });
+
+        // Grants were registered BEFORE setup (P2), so a load that dies later
+        // must release them — a plugin that never loaded keeps no permissions.
+        if (grantsRegistered && grantsRegistry && manifestPluginID)
+          grantsRegistry.unregister(manifestPluginID, pluginPath);
 
         logger.warn?.(`Failed to load plugin at ${pluginPath}: ${error.message}`);
         // Keep the failure so the inventory can report it. Omission would make
@@ -422,6 +457,13 @@ export async function unloadPlugin(registry, pluginName, { logger = console } = 
   let record = removePluginRecord(registry, pluginName);
   if (!record)
     return false;
+
+  // Plan P2: release this record's grants — covers reload, disable AND
+  // uninstall (a lingering entry would also make a reinstall collide with a
+  // ghost). Path-guarded inside unregister(), so an impostor path cannot
+  // release a legitimate plugin's grants.
+  if (record.pluginID && registry._propertiesGrants)
+    registry._propertiesGrants.unregister(record.pluginID, record.pluginPath);
 
   // onShutdown first, and it is not optional.
   //
@@ -552,7 +594,23 @@ function pluginNameFromPath(pluginPath) {
   return base.replace(/\.[^.]+$/, '');
 }
 
-function createPluginSetupContext({ registry, commandRegistry, context, pluginPath, pluginName = null, onProvide = null }) {
+// The S4 signature covers manifest.json BYTES (plugin-signature.mjs); this
+// reads the same file for the properties grants block (plan P2). Absent file
+// = null (legacy plugins load unchanged); a malformed file refuses the load.
+// ENOTDIR too: a configured plugin path may be a SINGLE FILE module
+// (expandPluginPathSites), which has no manifest.json beside it.
+async function readPluginManifestDocument(pluginPath) {
+  try {
+    return JSON.parse(await fs.readFile(path.join(pluginPath, 'manifest.json'), 'utf8'));
+  } catch (error) {
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR')
+      return null;
+    throw new PropertyStoreError('property_grant_invalid',
+      `plugin manifest.json is unreadable or malformed: ${error.message}`);
+  }
+}
+
+function createPluginSetupContext({ registry, commandRegistry, context, pluginPath, pluginName = null, pluginID = null, onProvide = null }) {
   // Attribute class registrations to the loading plugin so overrides can be
   // popped by unregisterPlugin / unloadPlugin.
   let registerClass = (...args) => registry.registerClass(...attributeToPlugin(args, pluginName));
@@ -563,6 +621,14 @@ function createPluginSetupContext({ registry, commandRegistry, context, pluginPa
     context,
     pluginPath,
     pluginName,
+    // Plan P2: the ONLY non-core path to properties, bound to this plugin's
+    // caller class. A null facade (direct loadPlugins harnesses) or an
+    // undeclared pluginID refuses PER CALL, never at context creation — so
+    // neither can break a load.
+    properties: pluginPropertiesAPI(
+      context && typeof context.has === 'function' && typeof context.require === 'function'
+      && context.has('propertiesFacade') ? context.require('propertiesFacade') : null,
+      pluginID),
     PluginInterface,
     AgentInterface,
     registerClass,
