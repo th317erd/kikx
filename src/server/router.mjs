@@ -14,6 +14,7 @@ import { handleImageProxyRoute } from './routes/image-proxy-route.mjs';
 import { handleDatabaseRoutes } from './routes/database-routes.mjs';
 import { handleTeamRoutes } from './routes/team-routes.mjs';
 import { handleAuthRoutes } from './routes/auth-routes.mjs';
+import { handlePropertiesRoutes } from './routes/properties-routes.mjs';
 
 export async function routeRequest({ request, response, context, staticRoots }) {
   if (context.has('pluginLoadPromise'))
@@ -38,6 +39,7 @@ export async function routeRequest({ request, response, context, staticRoots }) 
     handleDatabaseRoutes,
     handleTeamRoutes,
     handleAuthRoutes,
+    handlePropertiesRoutes,
   ];
 
   for (let handler of handlers) {
