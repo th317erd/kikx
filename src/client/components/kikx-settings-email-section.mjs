@@ -94,13 +94,20 @@ export function buildEmailSection(app) {
         .onInput((event) => setDraft(key, event?.target?.value ?? ''))(),
     )),
 
-    div.class('kikx-settings-email__actions')(
+    // Owner (2026-11-13): the configuration half and the test half are
+    // separate BLOCKS with a horizontal divider between them — Save never
+    // shares a line with the test input — and the test half owns its result
+    // lines too.
+    div.class('kikx-settings-email__save-row')(
       button.type('button')['data-action']('save-email')
         .class('kikx-settings-email__save')
         .disabled(store.saving)
         .onClick(() => runSave(app))(
         store.saving ? 'Saving…' : 'Save',
       ),
+    ),
+    div.class('kikx-settings-email__divider')(),
+    div.class('kikx-settings-email__test-row')(
       input.type('text')
         .class('kikx-settings-email__input kikx-settings-email__test-to')
         .name('testTo')
@@ -113,16 +120,15 @@ export function buildEmailSection(app) {
         .onClick(() => runTest(app))(
         store.testing ? 'Sending…' : 'Send Test Email',
       ),
+      store.testResult && store.testResult.ok
+        ? p.class('kikx-settings-email__result kikx-settings-email__result--ok')(
+          `Test email sent (${store.testResult.mode} mode).`,
+        )
+        : null,
+      store.testResult && !store.testResult.ok
+        ? p.class('kikx-settings-email__result kikx-settings-email__result--fail')('Test email failed.')
+        : null,
     ),
-
-    store.testResult && store.testResult.ok
-      ? p.class('kikx-settings-email__result kikx-settings-email__result--ok')(
-        `Test email sent (${store.testResult.mode} mode).`,
-      )
-      : null,
-    store.testResult && !store.testResult.ok
-      ? p.class('kikx-settings-email__result kikx-settings-email__result--fail')('Test email failed.')
-      : null,
   );
 }
 

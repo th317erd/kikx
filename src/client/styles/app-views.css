@@ -375,9 +375,9 @@
 .kikx-settings-plugins__install-btn,
 .kikx-settings-plugin-card__action {
   appearance: none;
-  border: 1px solid #39444d;
+  border: 1px solid var(--kikx-btn-border);
   border-radius: 8px;
-  background: #1b2027;
+  background: var(--kikx-btn-bg);
   color: #e8edf2;
   font: inherit;
   font-size: calc(12px * 1.25);
@@ -389,8 +389,8 @@
 .kikx-browse-card__install:hover:not(:disabled),
 .kikx-settings-plugins__install-btn:hover:not(:disabled),
 .kikx-settings-plugin-card__action:hover:not(:disabled) {
-  background: #232a31;
-  border-color: #4a5560;
+  background: var(--kikx-btn-bg-hover);
+  border-color: var(--kikx-accent);
 }
 .kikx-settings-plugins__search-btn:disabled,
 .kikx-browse-card__install:disabled,
@@ -538,18 +538,28 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--kikx-accent) 30%, transparent);
 }
 .kikx-settings-email__field aeor-select { flex: 1 1 auto; min-width: 0; }
-.kikx-settings-email__actions {
+/* Owner (2026-11-13): config half and test half are separate BLOCKS with a
+   horizontal divider between them; the test half owns its input, button and
+   result lines (each result wraps to its own full-width line). The button
+   colors reference the ONE app-wide recipe in app-base-shell. */
+.kikx-settings-email__save-row {
+  display: flex;
+  margin-top: 4px;
+}
+.kikx-settings-email__divider {
+  border-top: 1px solid #2a3138;
+}
+.kikx-settings-email__test-row {
   display: flex;
   gap: 8px;
   align-items: center;
   flex-wrap: wrap;
-  margin-top: 4px;
 }
 .kikx-settings-email__save {
   appearance: none;
-  border: 1px solid var(--kikx-accent);
+  border: 1px solid var(--kikx-btn-border);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--kikx-accent) 16%, #171c21);
+  background: var(--kikx-btn-bg);
   color: #f5f7fa;
   font: inherit;
   font-size: calc(12px * 1.25);
@@ -557,10 +567,11 @@
   cursor: pointer;
 }
 .kikx-settings-email__save:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--kikx-accent) 30%, #171c21);
+  background: var(--kikx-btn-bg-hover);
+  border-color: var(--kikx-accent);
 }
 .kikx-settings-email__save:disabled { opacity: 0.5; cursor: default; }
 .kikx-settings-email__test-to { flex: 1 1 220px; }
-.kikx-settings-email__result { margin: 0; font-size: calc(13px * 1.25); }
+.kikx-settings-email__result { flex: 1 1 100%; margin: 0; font-size: calc(13px * 1.25); }
 .kikx-settings-email__result--ok { color: #3fb950; }
 .kikx-settings-email__result--fail { color: #ff7b72; }

@@ -111,7 +111,7 @@ kikx-overflow-popup {
 .kikx-overflow__panel .kikx-window__add:focus-visible,
 .kikx-overflow__panel .kikx-participants__button:hover,
 .kikx-overflow__panel .kikx-participants__button:focus-visible {
-  background: #242a30;
+  background: var(--kikx-btn-bg-hover);
   color: #f5f7fa;
   outline: none;
 }

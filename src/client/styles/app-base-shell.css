@@ -511,4 +511,28 @@ button.kikx-brand__mark:focus-visible {
   --kikx-accent: #3d6cff;
   --accent: var(--kikx-accent);
   --accent-hover: color-mix(in srgb, var(--kikx-accent) 84%, #000);
+  /* App-wide action-button recipe (owner: "all button colors app-wide", the
+     Email tab's look generalized). Defined ONCE on <html> — where the inline
+     theme var lives — so every consumer inherits the mixed result and ONE
+     knob moves the whole app. Semantic exceptions (STOP, error chips, palette
+     swatches) keep their class rules, which outrank the element defaults. */
+  --kikx-btn-bg: color-mix(in srgb, var(--kikx-accent) 14%, #171c21);
+  --kikx-btn-bg-hover: color-mix(in srgb, var(--kikx-accent) 32%, #171c21);
+  --kikx-btn-border: color-mix(in srgb, var(--kikx-accent) 55%, #2a3138);
+}
+
+/* Every button starts from the themed recipe (owner, 2026-11-13). This sheet
+   loads AFTER the vendor aeor-button sheet (index.html order), so the element
+   rule wins at equal specificity — transparent vendor buttons finally show
+   the chosen color at rest, not only on hover. Class rules keep identity. */
+aeor-button,
+button {
+  border: 1px solid var(--kikx-btn-border);
+  background: var(--kikx-btn-bg);
+  color: #f5f7fa;
+}
+aeor-button:hover:not([disabled]),
+button:hover:not(:disabled) {
+  background: var(--kikx-btn-bg-hover);
+  border-color: var(--kikx-accent);
 }

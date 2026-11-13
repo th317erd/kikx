@@ -353,24 +353,24 @@
   height: 30px;
   padding: 0;
   place-items: center;
-  border: 1px solid #2f373f;
+  border: 1px solid var(--kikx-btn-border);
   border-radius: 7px;
-  background: #151a1f;
+  background: var(--kikx-btn-bg);
   color: #9aa6b2;
   cursor: pointer;
 }
 
 .kikx-session-toolbar__button:hover,
 .kikx-session-toolbar__button:focus-visible {
-  border-color: #4b5864;
+  border-color: var(--kikx-accent);
   color: #e8edf2;
   outline: none;
 }
 
 .kikx-session-toolbar__button[aria-pressed="true"] {
-  border-color: #3c6b8f;
-  background: #122431;
-  color: #9ed8ff;
+  border-color: var(--kikx-accent);
+  background: color-mix(in srgb, var(--kikx-accent) 30%, #171c21);
+  color: #f5f7fa;
 }
 
 .kikx-session-toolbar__button svg {

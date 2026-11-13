@@ -130,9 +130,9 @@ kikx-frame-filter-popup {
   gap: 6px;
   min-height: 34px;
   padding: 0 11px;
-  border: 1px solid #3c444d;
+  border: 1px solid var(--kikx-btn-border);
   border-radius: 6px;
-  background: transparent;
+  background: var(--kikx-btn-bg);
   color: #cdd6df;
   cursor: pointer;
   font: inherit;
@@ -142,6 +142,7 @@ kikx-frame-filter-popup {
 .kikx-frame-filter__button:focus-visible,
 kikx-frame-filter-popup.is-open .kikx-frame-filter__button {
   border-color: var(--kikx-accent);
+  background: var(--kikx-btn-bg-hover);
   color: #f5f7fa;
   outline: none;
 }
@@ -278,8 +279,8 @@ kikx-frame-filter-popup:not(.is-all-on) .kikx-frame-filter__button {
 
 .kikx-frame-filter__action:hover,
 .kikx-frame-filter__action:focus-visible {
-  background: #1e262e;
-  border-color: #3d4a58;
+  background: var(--kikx-btn-bg-hover);
+  border-color: var(--kikx-accent);
 }
 
 /* Expanded OCR frame: question above the image(s), OCR response below. */

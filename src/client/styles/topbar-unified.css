@@ -241,7 +241,7 @@
 
 .kikx-breadcrumb__editor .kikx-breadcrumb__editor-action:hover {
   color: #f5f7fa;
-  background: #22272d;
+  background: var(--kikx-btn-bg-hover);
 }
 
 /* Save reads as the affirmative action; Cancel stays neutral so a mis-click on
@@ -348,7 +348,7 @@
 
 .kikx-session-objects .kikx-sign-out-button:hover,
 .kikx-session-objects .kikx-sign-out-button:focus-visible {
-  background: #22272d;
+  background: var(--kikx-btn-bg-hover);
 }
 
 /* The sidebar is a column so `margin-top: auto` on the footer cluster has slack

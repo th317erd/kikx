@@ -111,8 +111,8 @@
 .kikx-question-card__submit:hover,
 .kikx-inbox__submit:hover,
 .kikx-question-frame__submit:hover {
-  border-color: #5b84ff;
-  background: #5b84ff;
+  border-color: var(--kikx-accent);
+  background: color-mix(in srgb, var(--kikx-accent) 76%, #ffffff);
 }
 
 /* --- Submission feedback ------------------------------------------------ */
@@ -127,8 +127,8 @@
 .kikx-question-frame__submit[disabled] {
   cursor: progress;
   border-color: var(--kikx-accent);
-  background: #2b4aad;
-  color: #c9d4ff;
+  background: color-mix(in srgb, var(--kikx-accent) 65%, #000000);
+  color: color-mix(in srgb, var(--kikx-accent) 30%, #ffffff);
 }
 
 /* The row itself cools down while busy, so the change is visible even when the
@@ -205,22 +205,22 @@
   border: 1px solid var(--kikx-accent);
   border-radius: 7px;
   background: transparent;
-  color: #7fa0ff;
+  color: var(--kikx-accent);
   font: inherit;
   font-size: calc(13px * 1.25);
   cursor: pointer;
 }
 
 .kikx-question-frame__confirm:hover {
-  border-color: #5b84ff;
-  background: rgba(61, 108, 255, 0.12);
-  color: #a8bdff;
+  border-color: var(--kikx-accent);
+  background: color-mix(in srgb, var(--kikx-accent) 12%, transparent);
+  color: color-mix(in srgb, var(--kikx-accent) 55%, #ffffff);
 }
 
 .kikx-question-frame__confirm[disabled] {
   cursor: progress;
-  border-color: #2b4aad;
-  color: #5a6b9e;
+  border-color: color-mix(in srgb, var(--kikx-accent) 60%, #000000);
+  color: color-mix(in srgb, var(--kikx-accent) 40%, #5a6b9e);
 }
 
 /* A sent (or previously answered) question shows the answer where the form was.

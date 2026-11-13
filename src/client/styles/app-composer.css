@@ -49,9 +49,9 @@
 .kikx-send-button,
 .kikx-inline-action {
   min-height: 34px;
-  border: 1px solid #3c444d;
+  border: 1px solid var(--kikx-btn-border);
   border-radius: 6px;
-  background: #242a30;
+  background: var(--kikx-btn-bg);
   color: #f5f7fa;
   cursor: pointer;
 }
@@ -73,9 +73,9 @@
 
 .kikx-sign-out-button {
   min-height: 34px;
-  border: 1px solid #3c444d;
+  border: 1px solid var(--kikx-btn-border);
   border-radius: 6px;
-  background: transparent;
+  background: var(--kikx-btn-bg);
   color: #cdd6df;
   cursor: pointer;
 }
@@ -130,19 +130,19 @@
 
 .kikx-composer__actions .kikx-send-button:hover,
 .kikx-composer__actions .kikx-send-button:focus-visible {
-  border-color: #5b84ff;
-  background: #5b84ff;
+  border-color: var(--kikx-accent);
+  background: color-mix(in srgb, var(--kikx-accent) 76%, #ffffff);
   outline: none;
 }
 
 .kikx-composer__actions .kikx-send-button:active {
-  border-color: #2b4aad;
-  background: #2b4aad;
+  border-color: color-mix(in srgb, var(--kikx-accent) 60%, #000000);
+  background: color-mix(in srgb, var(--kikx-accent) 65%, #000000);
 }
 
 .kikx-composer__actions .kikx-send-button:disabled {
-  border-color: #2b4aad;
-  background: #2b4aad;
+  border-color: color-mix(in srgb, var(--kikx-accent) 60%, #000000);
+  background: color-mix(in srgb, var(--kikx-accent) 65%, #000000);
   color: #c9d4ff;
 }
 

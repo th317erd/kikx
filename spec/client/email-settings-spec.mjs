@@ -136,6 +136,59 @@ test('the Email section renders the reference form even when the GET failed', as
   assert.ok(buttons.includes('test-email'), 'Send Test Email exists');
 });
 
+test('layout: config half, divider, and test half are separate blocks (owner 2026-11-13)', async () => {
+  const { buildEmailSection } = await import('../../src/client/components/kikx-settings-email-section.mjs');
+  const app = makeApp();
+  const built = buildEmailSection(app);
+  const node = typeof built.build === 'function' ? built.build(document) : built;
+
+  const walk = (root, visit) => {
+    (function go(current) {
+      if (!current) return;
+      visit(current);
+      for (const child of current.childNodes || []) go(child);
+    })(root);
+  };
+  const has = (n, cls) => Boolean(n && ((n.classList && n.classList.contains(cls))
+    || (typeof n.className === 'string' && n.className.split(/\s+/).includes(cls))));
+  const findAll = (cls) => { const hits = []; walk(node, (n) => { if (has(n, cls)) hits.push(n); }); return hits; };
+  // Containment proven DOWNWARD from each block (the mini-dom harness wires
+  // childNodes reliably; this also asserts the block OWNS its controls).
+  const containsAction = (block, name) => {
+    let found = false;
+    walk(block, (n) => { if (n.getAttribute?.('data-action') === name) found = true; });
+    return found;
+  };
+  const containsName = (block, name) => {
+    let found = false;
+    walk(block, (n) => { if (n.getAttribute?.('name') === name) found = true; });
+    return found;
+  };
+
+  const saveRow = findAll('kikx-settings-email__save-row')[0];
+  const divider = findAll('kikx-settings-email__divider')[0];
+  const testRow = findAll('kikx-settings-email__test-row')[0];
+  assert.ok(saveRow && divider && testRow, 'all three blocks render');
+  assert.equal(findAll('kikx-settings-email__actions').length, 0, 'the old shared row is gone');
+
+  assert.ok(containsAction(saveRow, 'save-email'), 'the Save block owns the Save button');
+  assert.equal(containsAction(saveRow, 'test-email'), false, 'Save shares nothing with the test half');
+  assert.equal(containsName(saveRow, 'testTo'), false, 'Save shares nothing with the test input');
+  assert.ok(containsAction(testRow, 'test-email'), 'the test block owns Send Test Email');
+  assert.ok(containsName(testRow, 'testTo'), 'the test block owns its input');
+  assert.equal(containsAction(testRow, 'save-email'), false, 'Save is not in the test block');
+
+  // The divider is a DIRECT child of the section, strictly between the blocks.
+  const children = node.childNodes || [];
+  assert.ok(children.includes(divider), 'the divider is a direct sibling, not nested in a block');
+  const saveIndex = children.indexOf(saveRow);
+  const dividerIndex = children.indexOf(divider);
+  const testIndex = children.indexOf(testRow);
+  assert.ok(saveIndex !== -1 && testIndex !== -1, 'both blocks are direct siblings');
+  assert.ok(saveIndex < dividerIndex && dividerIndex < testIndex,
+    'order: config half → divider → test half');
+});
+
 test('the sections model now carries General / Email / Plugins', async () => {
   const { settingsSections, SETTINGS_SECTIONS } = await import('../../src/client/components/kikx-system-settings-view.mjs');
   assert.deepEqual(SETTINGS_SECTIONS, [ 'General', 'Email', 'Plugins' ], 'Email joins the base trio (Xenocept order, minus Destinations)');
