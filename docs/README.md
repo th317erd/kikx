@@ -147,6 +147,7 @@ roadmap item is shipped.
 
 - [Plugin extensibility campaign](./roadmap/plugin-extensibility.md)
 - [Plugin platform campaign](./plans/plugin-platform-campaign.md)
+- [Unified properties store (theme, email, plugin access)](./plans/properties-store.md)
 - [Scrollview campaign](./plans/scrollview-campaign.md)
 - [System Settings shell + Xenocept plugin parity](./plans/system-settings-xenocept-plugins-campaign.md)
 - [Client user-state integrity](./plans/client-user-state-integrity.md)
