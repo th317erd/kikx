@@ -2,23 +2,16 @@
 
 import '../../support/test-env.mjs';
 
-// Email settings persistence (owner, 2026-11-13): the Settings → Email form
-// needs a durable, WRITABLE home for the mailer config. ConfigStore is
-// read-only (S3 finding), so the home is the established runtime seam:
-// <service root>/.kikx/mailer.json, mode 0600 (it holds a password),
-// atomic tmp+rename, FILE OVERRIDES env field-by-field (env stays the boot
-// default; .env stays owner-owned). Corrupt file = absent = env defaults.
+// Email settings resolution (owner, 2026-11-13; plan P5 — CLEAN CUT):
+// resolve/validate/sanitize/compose are PURE mappings over env defaults +
+// STORED values (the properties store, one global secret property — see
+// mailer-properties.mjs and email-settings-routes-spec). The .kikx/mailer.json
+// reader/writer no longer exists anywhere; nothing in this spec touches a file.
 
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import test from 'node:test';
 
 import {
-  mailerSettingsFile,
-  readMailerSettings,
-  writeMailerSettings,
   resolveMailerSettings,
   validateMailerSettings,
   sanitizeMailerSettings,
@@ -32,12 +25,7 @@ function tmpCwd(t) {
   return dir;
 }
 
-const FULL_FILE_SETTINGS = {
-  provider: 'smtp', host: 'smtp.example.com', port: 465, username: 'u@example.com',
-  password: 'hunter2', fromAddress: 'no@reply.example', fromName: 'Kikx Bot', tls: 'SSL',
-};
-
-test('file settings override env field-by-field; empty file fields never clobber', () => {
+test('stored settings override env field-by-field; empty stored fields never clobber', () => {
   // Env arrives in the LEGACY shape the server actually carries (mode +
   // smtp URL + From string) — resolve derives structured fields from it.
   const env = {
@@ -50,16 +38,16 @@ test('file settings override env field-by-field; empty file fields never clobber
   assert.equal(derived.host, 'env-host');
   assert.equal(derived.fromName, 'Env Name');
 
-  const merged = resolveMailerSettings({ env, file: { host: 'file-host', port: 587 } });
-  assert.equal(merged.host, 'file-host', 'file wins');
-  assert.equal(merged.port, 587, 'file wins numerically too');
-  assert.equal(merged.username, 'env-user', 'unset file field keeps the env-derived value');
+  const merged = resolveMailerSettings({ env, stored: { host: 'stored-host', port: 587 } });
+  assert.equal(merged.host, 'stored-host', 'stored wins');
+  assert.equal(merged.port, 587, 'stored wins numerically too');
+  assert.equal(merged.username, 'env-user', 'unset stored field keeps the env-derived value');
   assert.equal(merged.password, 'env-pass');
   assert.equal(merged.tls, 'STARTTLS', 'plain smtp:// means STARTTLS');
-  assert.equal(merged.fromName, 'Env Name', 'the From string survives a file overlay');
+  assert.equal(merged.fromName, 'Env Name', 'the From string survives a stored overlay');
 
-  const empty = resolveMailerSettings({ env, file: {} });
-  assert.deepEqual(empty, derived, 'an empty file changes nothing');
+  const empty = resolveMailerSettings({ env, stored: {} });
+  assert.deepEqual(empty, derived, 'an empty stored object changes nothing');
 
   assert.deepEqual(resolveMailerSettings({ env: {} }), {
     provider: 'log', host: '', port: 587, username: '', password: '',
@@ -88,21 +76,6 @@ test('legacy env smtpUrl parses into structured fields (smtps => SSL, else START
     'bare address passes through');
 });
 
-test('write: atomic, 0600 (password lives here), round-trips; read: corrupt = absent', async (t) => {
-  const cwd = tmpCwd(t);
-  assert.equal(await readMailerSettings(cwd), null, 'absent file reads as null (env defaults)');
-
-  await writeMailerSettings(cwd, FULL_FILE_SETTINGS);
-  const stat = fs.statSync(mailerSettingsFile(cwd));
-  assert.equal(stat.mode & 0o777, 0o600, 'owner-only — the file holds a password');
-
-  const back = await readMailerSettings(cwd);
-  assert.deepEqual(back, FULL_FILE_SETTINGS, 'exact round-trip');
-
-  fs.writeFileSync(mailerSettingsFile(cwd), '{nope');
-  assert.equal(await readMailerSettings(cwd), null, 'corrupt degrades to env defaults, never throws');
-});
-
 test('validate accepts the form shape and rejects hostile input with 400s', () => {
   const good = validateMailerSettings({
     provider: 'smtp', host: 'smtp.example.com', port: 587,
@@ -123,6 +96,13 @@ test('validate accepts the form shape and rejects hostile input with 400s', () =
       `rejects ${JSON.stringify(bad)}`);
   }
 });
+
+// A complete settings object for the mapping assertions below (the old file
+// round-trip test that shared it moved to the store-side specs, P5).
+const FULL_FILE_SETTINGS = {
+  provider: 'smtp', host: 'smtp.example.com', port: 465, username: 'u@example.com',
+  password: 'hunter2', fromAddress: 'no@reply.example', fromName: 'Kikx Bot', tls: 'SSL',
+};
 
 test('sanitize never echoes the password; composeFrom and nodemailer mapping', () => {
   const safe = sanitizeMailerSettings(FULL_FILE_SETTINGS);

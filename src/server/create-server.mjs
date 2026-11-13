@@ -9,7 +9,8 @@ import { AppContext } from '../core/app/app-context.mjs';
 import { AccountStore } from '../core/account/index.mjs';
 import { createAuthService } from '../core/auth/index.mjs';
 import { createMailer } from '../core/auth/mailer.mjs';
-import { readMailerSettings, resolveMailerSettings, mailerFactoryOptions } from '../core/auth/mailer-settings.mjs';
+import { resolveMailerSettings, mailerFactoryOptions } from '../core/auth/mailer-settings.mjs';
+import { readStoredMailerSettings } from '../core/auth/mailer-properties.mjs';
 import {
   AEORDB_TOKEN_PATH,
   AEORDB_URL_PATH,
@@ -364,15 +365,14 @@ export async function createServer(options = {}) {
 
   if (!context.has('authService')) {
     let logger = options.logger || console;
-    // Settings → Email (owner 2026-11-13): .kikx/mailer.json overlays the env
-    // defaults (file wins field-by-field) so a form save survives restarts
-    // WITHOUT touching .env — and the mailer sits in a HOLDER: authService
-    // captures getMailer(), so saves hot-swap sends without a rebuild.
-    const { runtimeRootForConfig } = await import('../core/config/runtime-plugin-paths.mjs');
-    const mailerFile = await readMailerSettings(await runtimeRootForConfig(config));
+    // Settings → Email (plan P5, CLEAN CUT): ONE global SECRET property — no
+    // .kikx/mailer.json anywhere. Undecryptable = loud warn + env/log fallback
+    // (never a boot crash, never plaintext). Holder: saves hot-swap via getMailer.
+    const mailerFacade = context.has('propertiesFacade') ? context.require('propertiesFacade') : null;
+    const { stored: mailerStored } = await readStoredMailerSettings(mailerFacade, { logger });
     const mailerSettings = resolveMailerSettings({
       env: { mode: authMailerMode, smtpUrl: authMailerSMTPURL, from: authMailerFrom },
-      file: mailerFile,
+      stored: mailerStored,
     });
     const mailerSlot = {
       current: createMailer(mailerFactoryOptions(mailerSettings, { log: logger, logPath: authMailerLogPath })),

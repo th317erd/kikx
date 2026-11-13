@@ -118,45 +118,57 @@ export async function handleAuthRoutes({ request, response, url, context }) {
   }
 
   // Settings → Email (owner 2026-11-13; reference: the Xenocept Email tab).
-  // The mailer-config surface: identity-gated like the rest of this family,
-  // password is WRITE-ONLY (0600 file; GET reports passwordSet only), save
-  // hot-swaps the mailer holder, and Send Test Email proves the live path.
+  // The mailer-config surface: identity-gated like the rest of this family;
+  // P5 (plan §6) the durable home is the properties store (ONE global SECRET
+  // property — clean cut from .kikx/mailer.json); password is WRITE-ONLY (GET
+  // reports passwordSet only); save hot-swaps the mailer holder; Send Test
+  // Email proves the live path. An undecryptable row surfaces as an `error`
+  // flag with env defaults — never a 500.
   if ((request.method === 'GET' || request.method === 'POST') && url.pathname === '/api/v1/auth/mailer/settings') {
-    await requireIdentity(context, request);
+    const identity = await requireIdentity(context, request);
     const config = context.has('config') ? context.require('config') : null;
     const cfg = async (key) => (config && typeof config.get === 'function' ? await config.get(key) : undefined);
-    const { runtimeRootForConfig } = await import('../../core/config/runtime-plugin-paths.mjs');
     const { KIKX_AUTH_MAILER_MODE_PATH, KIKX_AUTH_MAILER_SMTP_URL_PATH, KIKX_AUTH_MAILER_FROM_PATH, KIKX_AUTH_MAILER_LOG_PATH } =
       await import('../../core/config/config-paths.mjs');
-    const cwd = await runtimeRootForConfig(config);
     const {
-      readMailerSettings, writeMailerSettings, resolveMailerSettings, validateMailerSettings,
+      resolveMailerSettings, validateMailerSettings,
       sanitizeMailerSettings, mailerFactoryOptions,
     } = await import('../../core/auth/mailer-settings.mjs');
+    const { readStoredMailerSettings, writeStoredMailerSettings } =
+      await import('../../core/auth/mailer-properties.mjs');
+    const facade = context.has('propertiesFacade') ? context.require('propertiesFacade') : null;
     const env = {
       mode: await cfg(KIKX_AUTH_MAILER_MODE_PATH),
       smtpUrl: await cfg(KIKX_AUTH_MAILER_SMTP_URL_PATH),
       from: await cfg(KIKX_AUTH_MAILER_FROM_PATH),
     };
-    const file = await readMailerSettings(cwd);
+    const { stored, error: storageError } = await readStoredMailerSettings(facade, { logger: console });
 
     if (request.method === 'GET') {
-      const settings = resolveMailerSettings({ env, file });
+      const settings = resolveMailerSettings({ env, stored });
       const safe = sanitizeMailerSettings(settings);
-      writeJSON(response, 200, { data: { settings: safe, passwordSet: safe.passwordSet } });
+      writeJSON(response, 200, {
+        data: {
+          settings: safe,
+          passwordSet: safe.passwordSet,
+          ...(storageError ? { error: storageError } : {}),
+        },
+      });
       return true;
     }
 
     const body = (await readJSON(request)) || {};
     // The body acts as the overlay: env fills holes, body fields win, then
     // strict validation — operator typos are 400s, never 500s.
-    const candidate = resolveMailerSettings({ env, file: body });
+    const candidate = resolveMailerSettings({ env, stored: body });
     const validated = validateMailerSettings(candidate);
     const password = typeof body.password === 'string' && body.password !== ''
       ? body.password
-      : ((file && file.password) || candidate.password || '');
+      : ((stored && stored.password) || candidate.password || '');
     const toWrite = { ...validated, password };
-    await writeMailerSettings(cwd, toWrite);
+    if (!facade)
+      throw httpError(503, 'properties store unavailable');
+    await writeStoredMailerSettings(facade, toWrite, { updatedBy: identity.id });
 
     // Hot swap: rebuild from the SAME factory mapping boot uses (they cannot
     // drift) and replace what future sends use.
@@ -188,15 +200,18 @@ export async function handleAuthRoutes({ request, response, url, context }) {
     if (!mailer) {
       const config2 = context.has('config') ? context.require('config') : null;
       const cfg2 = async (key) => (config2 && typeof config2.get === 'function' ? await config2.get(key) : undefined);
-      const { runtimeRootForConfig: rootOf } = await import('../../core/config/runtime-plugin-paths.mjs');
       const { KIKX_AUTH_MAILER_MODE_PATH: M, KIKX_AUTH_MAILER_SMTP_URL_PATH: S, KIKX_AUTH_MAILER_FROM_PATH: F, KIKX_AUTH_MAILER_LOG_PATH: L } =
         await import('../../core/config/config-paths.mjs');
-      const { readMailerSettings: readS, resolveMailerSettings: resolveS, mailerFactoryOptions: factoryS } =
+      const { resolveMailerSettings: resolveS, mailerFactoryOptions: factoryS } =
         await import('../../core/auth/mailer-settings.mjs');
+      const { readStoredMailerSettings: readStored } =
+        await import('../../core/auth/mailer-properties.mjs');
       const { createMailer: make } = await import('../../core/auth/mailer.mjs');
+      const { stored } = await readStored(
+        context.has('propertiesFacade') ? context.require('propertiesFacade') : null, { logger: console });
       const settings = resolveS({
         env: { mode: await cfg2(M), smtpUrl: await cfg2(S), from: await cfg2(F) },
-        file: await readS(await rootOf(config2)),
+        stored,
       });
       mailer = make(factoryS(settings, { log: console, logPath: await cfg2(L) }));
     }

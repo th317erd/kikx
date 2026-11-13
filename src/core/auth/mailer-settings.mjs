@@ -1,17 +1,15 @@
 'use strict';
 
-// Settings → Email persistence (owner, 2026-11-13; reference UI: the
-// Xenocept Email tab). ConfigStore is read-only (S3 finding), so the durable
-// home for the form is the established runtime seam:
-// <service root>/.kikx/mailer.json — mode 0600 (it holds a password), atomic
-// tmp+rename, FILE WINS FIELD-BY-FIELD over env (env stays the boot default;
-// .env remains owner-owned and untouched). Corrupt file = absent = env
-// defaults. The password is write-only end to end: sanitize strips it, the
-// GET reports only passwordSet.
-
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
+// Settings → Email resolution (owner, 2026-11-13; reference UI: the
+// Xenocept Email tab). P5 CLEAN CUT (plan §6): the durable home is the
+// properties store — ONE global SECRET property
+// (/core/kikx/email/configuration, envelope-sealed password). The
+// .kikx/mailer.json reader/writer is GONE: nothing reads or writes that
+// file anymore (a leftover file is ignored by design — single configured-DB
+// location, owner ruling). STORED VALUES WIN FIELD-BY-FIELD over env (env
+// stays the boot default; .env remains owner-owned). The password stays
+// write-only end to end: sanitize strips it, GET reports passwordSet.
+// Storage IO lives in mailer-properties.mjs; this module is pure mapping.
 
 import { authError } from './auth-error.mjs';
 
@@ -27,35 +25,6 @@ const DEFAULTS = Object.freeze({
   fromName: '',
   tls: 'STARTTLS',
 });
-
-export function mailerSettingsFile(cwd = os.homedir()) {
-  return path.join(cwd, '.kikx', 'mailer.json');
-}
-
-export async function readMailerSettings(cwd = os.homedir()) {
-  try {
-    const file = mailerSettingsFile(cwd);
-    const stat = await fs.stat(file);
-    if (!stat.isFile() || stat.size > 64 * 1024)
-      return null;
-    const parsed = JSON.parse(await fs.readFile(file, 'utf8'));
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
-  } catch (_error) {
-    return null; // absent or corrupt = "nothing configured here"
-  }
-}
-
-export async function writeMailerSettings(cwd, settings) {
-  const file = mailerSettingsFile(cwd);
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp-${process.pid}`;
-  await fs.writeFile(tmp, `${JSON.stringify(settings, null, 2)}\n`, { mode: 0o600 });
-  await fs.rename(tmp, file);
-  // rename keeps the tmp file's mode on a fresh write; chmod covers overwrite
-  // of a pre-existing file with different permissions.
-  await fs.chmod(file, 0o600).catch(() => {});
-  return settings;
-}
 
 function splitFromHeader(value) {
   const text = String(value ?? '').trim();
@@ -89,12 +58,13 @@ function settingsFromLegacyEnv(env) {
 }
 
 // The resolved view the form, the mailer factory and the endpoints all read:
-// defaults <- env-derived <- file (field-by-field, non-empty file values win).
-export function resolveMailerSettings({ env = {}, file = null } = {}) {
+// defaults <- env-derived <- STORED (field-by-field, non-empty stored values
+// win — the same overlay rule the legacy file had, now over the property).
+export function resolveMailerSettings({ env = {}, stored = null } = {}) {
   const merged = { ...DEFAULTS, ...settingsFromLegacyEnv(env) };
-  if (file && typeof file === 'object' && !Array.isArray(file)) {
+  if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
     for (const key of Object.keys(DEFAULTS)) {
-      const value = file[key];
+      const value = stored[key];
       const present = key === 'port'
         ? Number.isInteger(value) && value > 0
         : typeof value === 'string' && value !== '';
