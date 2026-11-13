@@ -13,7 +13,8 @@
 //      `settings` is refused — core wins, with the conflict observable here).
 //   2. Dispatch goes through the CORE_VIEW_BUILDERS table, never a new
 //      `viewName ===` branch in the shell (the P7 grep gate).
-//   3. The sections model: ['General', 'Plugins'] per the S2 model, local
+//   3. The sections model: ['General', 'Email', 'Plugins'] base trio (Email
+//      joined owner 2026-11-13) ∪ plugin sections, local
 //      choice in state.settingsSection, defaulting to 'General', with the
 //      §9.3.12 clamp — a section whose plugin was unloaded live must fall
 //      back to 'General' rather than a blank body.
@@ -147,7 +148,7 @@ test('resolveViewSurface renders the settings view through the core table', asyn
     if (node.localName === 'aeor-tab') labels.push(node.getAttribute('label'));
     for (const child of node.childNodes || []) walkTabs(child);
   })(tabView);
-  assert.deepEqual(labels, [ 'General', 'Plugins' ], 'both sections declared, in order');
+  assert.deepEqual(labels, [ 'General', 'Email', 'Plugins' ], 'all three base sections declared, in order');
 });
 
 test('grep gate: the shell gains no viewName branch for settings', async () => {
@@ -170,7 +171,7 @@ test('the sections model is General + Plugins, default General', async () => {
   let { SETTINGS_SECTIONS, getSettingsSection, setSettingsSection } =
     await import('../../src/client/components/kikx-system-settings-view.mjs');
 
-  assert.deepEqual(SETTINGS_SECTIONS, [ 'General', 'Plugins' ]);
+  assert.deepEqual(SETTINGS_SECTIONS, [ 'General', 'Email', 'Plugins' ]);
 
   let state = { account: { name: 'Wyatt', email: 'w@example.com' } };
   assert.equal(getSettingsSection(state), 'General', 'unset means General');

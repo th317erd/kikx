@@ -81,15 +81,15 @@ test('sections model unions plugin sections: base first, extras stable by surfac
     pluginPanel('unsectioned'),          // defaults to General — no duplicate
   ], state);
 
-  assert.deepEqual(SETTINGS_SECTIONS, [ 'General', 'Plugins' ], 'the base pair is unchanged');
+  assert.deepEqual(SETTINGS_SECTIONS, [ 'General', 'Email', 'Plugins' ], 'the base trio (Email joined, owner 2026-11-13)');
   assert.deepEqual(
     settingsSections(state),
-    [ 'General', 'Plugins', 'Notes', 'Zebra Mail' ],
+    [ 'General', 'Email', 'Plugins', 'Notes', 'Zebra Mail' ],
     'extras are sorted by surfaceID (aaa before zebra) and de-duplicated against the base',
   );
 
   setClientComponents([], state);
-  assert.deepEqual(settingsSections(state), [ 'General', 'Plugins' ], 'unload shrinks the set again');
+  assert.deepEqual(settingsSections(state), [ 'General', 'Email', 'Plugins' ], 'unload shrinks the set again');
 });
 
 test('the unload clamp follows the LIVE section set (§9.3.12)', async () => {
@@ -359,7 +359,7 @@ test('the settings view mounts a plugin panel inside its section tab', async () 
     for (const child of node.childNodes || []) walk(child);
   })(view);
 
-  assert.deepEqual(labels, [ 'General', 'Plugins', 'Zebra Mail' ],
+  assert.deepEqual(labels, [ 'General', 'Email', 'Plugins', 'Zebra Mail' ],
     'the tab row comes from the LIVE sections model');
   assert.ok(tags.includes('general-panel'),
     'the General section mounts its panel next to the Account block');

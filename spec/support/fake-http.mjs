@@ -14,10 +14,10 @@ export function fakeResponse() {
   };
 }
 
-export function fakeRequest({ method = 'GET', url = '/', body = '' } = {}) {
+export function fakeRequest({ method = 'GET', url = '/', body = '', headers = {} } = {}) {
   const chunks = body ? [Buffer.from(body)] : [];
   return {
-    method, url, headers: {},
+    method, url, headers,
     async *[Symbol.asyncIterator]() { for (const chunk of chunks) yield chunk; },
   };
 }

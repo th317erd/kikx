@@ -35,6 +35,15 @@ export function createLogMailer({ log, logPath } = {}) {
       await appendToFile(message);
       return { to, url, code, expiresAt };
     },
+
+    // Settings → Email "Send Test Email" in log mode: the proof line lands
+    // in the same log/file the magic links do — the dev-visible equivalent.
+    async sendTest({ to }) {
+      let message = `[kikx-test] test email to ${to} at ${new Date().toISOString()}`;
+      write(message);
+      await appendToFile(message);
+      return { ok: true, mode: 'log', to };
+    },
   };
 }
 
@@ -42,7 +51,7 @@ export function createLogMailer({ log, logPath } = {}) {
 // nodemailer lazily on first send so the package stays optional and a missing
 // package surfaces as a clear authError instead of a boot failure.
 export function createMailer(options = {}) {
-  let { mode = 'log', log, logPath, smtpUrl, from = '' } = options;
+  let { mode = 'log', log, logPath, smtpUrl, smtp, from = '' } = options;
 
   if (mode === 'log')
     return createLogMailer({ log, logPath });
@@ -50,7 +59,9 @@ export function createMailer(options = {}) {
   if (mode !== 'smtp')
     throw authError(400, 'invalid_mailer_mode', `Unknown mailer mode: ${mode}`);
 
-  if (!smtpUrl)
+  // Settings → Email (owner 2026-11-13): a structured transport object from
+  // the form (host/port/TLS/auth) OR the legacy smtp:// URL — same factory.
+  if (!smtpUrl && !smtp)
     throw authError(500, 'smtp_unavailable', 'SMTP mailer requires smtpUrl');
 
   let transportPromise = null;
@@ -58,7 +69,7 @@ export function createMailer(options = {}) {
     if (!transportPromise) {
       transportPromise = import('nodemailer').then((module) => {
         let nodemailer = module.default || module;
-        return nodemailer.createTransport(smtpUrl);
+        return nodemailer.createTransport(smtp || smtpUrl);
       }).catch(() => {
         throw authError(500, 'smtp_unavailable', 'nodemailer is not installed');
       });
@@ -79,6 +90,21 @@ export function createMailer(options = {}) {
       });
 
       return { to, url, code, expiresAt };
+    },
+
+    // Settings → Email "Send Test Email": proves the transport end-to-end.
+    // Transport failures THROW (the endpoint maps them to a clear 502 — never
+    // a fake success), and nodemailer stays optional/lazy.
+    async sendTest({ to }) {
+      let transport = await loadTransport();
+      await transport.sendMail({
+        from,
+        to,
+        subject: 'Kikx test email',
+        text: 'This is a test email from Kikx — your email settings work.',
+        html: '<p>This is a test email from Kikx — your email settings work.</p>',
+      });
+      return { ok: true, mode: 'smtp', to };
     },
   };
 }

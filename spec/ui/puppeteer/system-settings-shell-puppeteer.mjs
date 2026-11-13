@@ -294,6 +294,74 @@ test('gear writes ?view=settings, reload restores the mode, and Plugins loading 
   }
 });
 
+test('Settings → Email: the reference form renders with all three tabs (owner 2026-11-13)', async (t) => {
+  let chromePath = findChromeExecutable();
+  if (!chromePath) {
+    t.skip('Email settings coverage requires Chrome');
+    return;
+  }
+
+  const fixture = await startStagehandUIServer({
+    sessions: [ { id: 'session_identity', title: 'Identity Session', messageCount: 5 } ],
+    agents: [ { id: 'agent_1', name: 'Identity Agent', pluginID: 'test-agent', enabled: true } ],
+  });
+  const port = new URL(fixture.baseURL).port;
+
+  const browser = await puppeteer.launch({
+    executablePath: chromePath,
+    headless: process.env.KIKX_PUPPETEER_HEADLESS === '0' ? false : 'new',
+    args: [ '--no-sandbox', '--disable-setuid-sandbox' ],
+  });
+
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1440, height: 900 });
+    const pageErrors = [];
+    page.on('pageerror', (error) => pageErrors.push(String(error?.message || error)));
+    await page.evaluateOnNewDocument(() => {
+      sessionStorage.setItem('kikx.auth.session', JSON.stringify({ token: 'identity-token', refresh_token: 'identity-refresh' }));
+    });
+
+    await page.goto(`http://127.0.0.1:${port}/?view=settings`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.waitForSelector('.kikx-system-settings__body', { timeout: 10000 });
+
+    const labels = await page.$$eval('.kikx-system-settings__body aeor-tab',
+      (tabs) => tabs.map((tab) => tab.getAttribute('label')));
+    assert.deepEqual(labels, [ 'General', 'Email', 'Plugins' ], 'all three tabs in Xenocept order');
+
+    // click the Email tab
+    const clicked = await page.evaluate(() => {
+      const tab = [...document.querySelectorAll('.kikx-system-settings__body aeor-tab')]
+        .find((el) => el.getAttribute('label') === 'Email');
+      if (!tab) return false;
+      tab.click();
+      return true;
+    });
+    assert.equal(clicked, true, 'the Email tab exists');
+    await page.waitForSelector('.kikx-settings-email', { timeout: 10000 });
+
+    const form = await page.evaluate(() => ({
+      heading: document.querySelector('.kikx-settings-email h3')?.textContent || '',
+      names: [...document.querySelectorAll('.kikx-settings-email [name]')].map((n) => n.getAttribute('name')),
+      selects: [...document.querySelectorAll('.kikx-settings-email aeor-select')].map((n) => n.getAttribute('name')),
+      actions: [...document.querySelectorAll('.kikx-settings-email [data-action]')].map((n) => n.getAttribute('data-action')),
+      desc: document.querySelector('.kikx-settings-email__desc')?.textContent || '',
+    }));
+
+    assert.match(form.heading, /Email Configuration/, 'the reference heading');
+    assert.match(form.desc, /magic/i, 'the description mentions magic links');
+    for (const field of [ 'host', 'port', 'username', 'password', 'fromAddress', 'fromName' ])
+      assert.ok(form.names.includes(field), `field ${field} renders (fixture has no GET route — fields must still show)`);
+    assert.ok(form.selects.includes('provider') && form.selects.includes('tls'), 'both selects render');
+    assert.ok(form.actions.includes('save-email') && form.actions.includes('test-email'), 'Save + Send Test Email exist');
+
+    assert.deepEqual(pageErrors, [], 'no page errors across the Email form flow');
+  } finally {
+    await browser.close();
+    fixture.close();
+  }
+});
+
 test('primary theme: swatch applies instantly, themes framework accents, survives reload (owner 2026-11-11)', async (t) => {
   let chromePath = findChromeExecutable();
   if (!chromePath) {

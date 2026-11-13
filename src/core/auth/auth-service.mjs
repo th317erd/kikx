@@ -23,6 +23,10 @@ export function createAuthService(options = {}) {
   let magicLinkTTLSeconds = options.magicLinkTTLSeconds ?? 900;
   let publicURL = options.publicURL || '';
   let mailer = options.mailer || createLogMailer({ log: logger });
+  // Settings → Email hot-swap (owner 2026-11-13): the server owns a holder;
+  // a settings save replaces what FUTURE sends use — the service itself is
+  // never rebuilt (it holds db, TTLs and the magic-link store).
+  const activeMailer = () => (typeof options.getMailer === 'function' && options.getMailer()) || mailer;
 
   // Fail fast on a malformed base URL: otherwise only known-email requests would
   // hit `new URL()` and throw, making the magic-link endpoint an existence
@@ -65,7 +69,7 @@ export function createAuthService(options = {}) {
       });
       try {
         let url = buildMagicLinkURL({ publicURL, code, redirectTo });
-        await mailer.sendMagicLink({ to: user.email, url, code, expiresAt });
+        await activeMailer().sendMagicLink({ to: user.email, url, code, expiresAt });
       } catch (error) {
         logger?.error?.(`Failed to send magic link for ${user.email}: ${error?.message || error}`);
       }

@@ -496,3 +496,71 @@
 .kikx-theme-picker__swatch--blue { background: #3d6cff; }
 .kikx-theme-picker__swatch--purple { background: #9a55d6; }
 .kikx-theme-picker__swatch--pink { background: #d8558f; }
+
+/* Settings → Email (owner, 2026-11-13): the Xenocept-parity form. Fields
+   stack as label/row pairs; inputs reuse the themed dark-field language
+   established for the plugins surface. */
+.kikx-settings-email {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.kikx-settings-email__desc {
+  margin: 0;
+  color: #aab4bf;
+  font-size: calc(13px * 1.25);
+}
+.kikx-settings-email__error { color: #ff7b72; margin: 0; }
+.kikx-settings-email__loading { color: #8b949e; margin: 0; }
+.kikx-settings-email__field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.kikx-settings-email__label {
+  flex: 0 0 140px;
+  color: #f5f7fa;
+  font-size: calc(13px * 1.25);
+}
+.kikx-settings-email__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: #0d1014;
+  border: 1px solid #2a3138;
+  border-radius: 8px;
+  color: #e8edf2;
+  padding: 7px 10px;
+  font-size: calc(13px * 1.25);
+}
+.kikx-settings-email__input:focus {
+  outline: none;
+  border-color: var(--kikx-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--kikx-accent) 30%, transparent);
+}
+.kikx-settings-email__field aeor-select { flex: 1 1 auto; min-width: 0; }
+.kikx-settings-email__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.kikx-settings-email__save {
+  appearance: none;
+  border: 1px solid var(--kikx-accent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--kikx-accent) 16%, #171c21);
+  color: #f5f7fa;
+  font: inherit;
+  font-size: calc(12px * 1.25);
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.kikx-settings-email__save:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--kikx-accent) 30%, #171c21);
+}
+.kikx-settings-email__save:disabled { opacity: 0.5; cursor: default; }
+.kikx-settings-email__test-to { flex: 1 1 220px; }
+.kikx-settings-email__result { margin: 0; font-size: calc(13px * 1.25); }
+.kikx-settings-email__result--ok { color: #3fb950; }
+.kikx-settings-email__result--fail { color: #ff7b72; }

@@ -117,6 +117,102 @@ export async function handleAuthRoutes({ request, response, url, context }) {
     return true;
   }
 
+  // Settings → Email (owner 2026-11-13; reference: the Xenocept Email tab).
+  // The mailer-config surface: identity-gated like the rest of this family,
+  // password is WRITE-ONLY (0600 file; GET reports passwordSet only), save
+  // hot-swaps the mailer holder, and Send Test Email proves the live path.
+  if ((request.method === 'GET' || request.method === 'POST') && url.pathname === '/api/v1/auth/mailer/settings') {
+    await requireIdentity(context, request);
+    const config = context.has('config') ? context.require('config') : null;
+    const cfg = async (key) => (config && typeof config.get === 'function' ? await config.get(key) : undefined);
+    const { runtimeRootForConfig } = await import('../../core/config/runtime-plugin-paths.mjs');
+    const { KIKX_AUTH_MAILER_MODE_PATH, KIKX_AUTH_MAILER_SMTP_URL_PATH, KIKX_AUTH_MAILER_FROM_PATH, KIKX_AUTH_MAILER_LOG_PATH } =
+      await import('../../core/config/config-paths.mjs');
+    const cwd = await runtimeRootForConfig(config);
+    const {
+      readMailerSettings, writeMailerSettings, resolveMailerSettings, validateMailerSettings,
+      sanitizeMailerSettings, mailerFactoryOptions,
+    } = await import('../../core/auth/mailer-settings.mjs');
+    const env = {
+      mode: await cfg(KIKX_AUTH_MAILER_MODE_PATH),
+      smtpUrl: await cfg(KIKX_AUTH_MAILER_SMTP_URL_PATH),
+      from: await cfg(KIKX_AUTH_MAILER_FROM_PATH),
+    };
+    const file = await readMailerSettings(cwd);
+
+    if (request.method === 'GET') {
+      const settings = resolveMailerSettings({ env, file });
+      const safe = sanitizeMailerSettings(settings);
+      writeJSON(response, 200, { data: { settings: safe, passwordSet: safe.passwordSet } });
+      return true;
+    }
+
+    const body = (await readJSON(request)) || {};
+    // The body acts as the overlay: env fills holes, body fields win, then
+    // strict validation — operator typos are 400s, never 500s.
+    const candidate = resolveMailerSettings({ env, file: body });
+    const validated = validateMailerSettings(candidate);
+    const password = typeof body.password === 'string' && body.password !== ''
+      ? body.password
+      : ((file && file.password) || candidate.password || '');
+    const toWrite = { ...validated, password };
+    await writeMailerSettings(cwd, toWrite);
+
+    // Hot swap: rebuild from the SAME factory mapping boot uses (they cannot
+    // drift) and replace what future sends use.
+    const slot = context.has('mailerSlot') ? context.require('mailerSlot') : null;
+    if (slot) {
+      const { createMailer } = await import('../../core/auth/mailer.mjs');
+      slot.current = createMailer(mailerFactoryOptions(toWrite, {
+        log: console,
+        logPath: await cfg(KIKX_AUTH_MAILER_LOG_PATH),
+      }));
+    }
+    const safe = sanitizeMailerSettings(toWrite);
+    writeJSON(response, 200, { data: { settings: safe, passwordSet: safe.passwordSet } });
+    return true;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/v1/auth/mailer/test') {
+    await requireIdentity(context, request);
+    const body = (await readJSON(request)) || {};
+    const to = typeof body.to === 'string' ? body.to.trim() : '';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to))
+      throw httpError(400, 'a valid email address is required');
+
+    // The LIVE mailer from the holder; when the holder is absent (bare
+    // embedders/tests) build from the current resolved settings so the test
+    // button still proves the configured path.
+    const slot = context.has('mailerSlot') ? context.require('mailerSlot') : null;
+    let mailer = slot?.current || null;
+    if (!mailer) {
+      const config2 = context.has('config') ? context.require('config') : null;
+      const cfg2 = async (key) => (config2 && typeof config2.get === 'function' ? await config2.get(key) : undefined);
+      const { runtimeRootForConfig: rootOf } = await import('../../core/config/runtime-plugin-paths.mjs');
+      const { KIKX_AUTH_MAILER_MODE_PATH: M, KIKX_AUTH_MAILER_SMTP_URL_PATH: S, KIKX_AUTH_MAILER_FROM_PATH: F, KIKX_AUTH_MAILER_LOG_PATH: L } =
+        await import('../../core/config/config-paths.mjs');
+      const { readMailerSettings: readS, resolveMailerSettings: resolveS, mailerFactoryOptions: factoryS } =
+        await import('../../core/auth/mailer-settings.mjs');
+      const { createMailer: make } = await import('../../core/auth/mailer.mjs');
+      const settings = resolveS({
+        env: { mode: await cfg2(M), smtpUrl: await cfg2(S), from: await cfg2(F) },
+        file: await readS(await rootOf(config2)),
+      });
+      mailer = make(factoryS(settings, { log: console, logPath: await cfg2(L) }));
+    }
+    if (!mailer || typeof mailer.sendTest !== 'function')
+      throw httpError(503, 'mailer is not configured in this deployment');
+    try {
+      const result = await mailer.sendTest({ to });
+      writeJSON(response, 200, { data: result });
+      return true;
+    } catch (error) {
+      // Transport failures are the WHOLE point of a test button: surface the
+      // real cause as 502 — never a fake success, never a hang.
+      throw httpError(502, `test email failed: ${error?.message || error}`);
+    }
+  }
+
   return false;
 }
 

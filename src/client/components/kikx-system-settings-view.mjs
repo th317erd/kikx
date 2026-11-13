@@ -26,6 +26,7 @@ import { THEME_PALETTE, setPrimaryTheme } from '../lib/theme.mjs';
 import { buildViewBackButton } from './kikx-view-chrome.mjs';
 import { buildSettingsPanelNodes, listSettingsPanels } from './kikx-settings-panel.mjs';
 import { buildPluginsSection } from './kikx-settings-plugins-section.mjs';
+import { buildEmailSection } from './kikx-settings-email-section.mjs';
 import { maybeLoadSystemSettingsPlugins } from '../state/system-settings-plugins.mjs';
 
 const { button, div, h3, h2, header, p, section } = elements;
@@ -33,7 +34,7 @@ const { button, div, h3, h2, header, p, section } = elements;
 // The base sections, in tab order. S2 unions plugin-contributed sections on
 // top (stable by surfaceID); General is always present because it is the
 // clamp target.
-export const SETTINGS_SECTIONS = Object.freeze([ 'General', 'Plugins' ]);
+export const SETTINGS_SECTIONS = Object.freeze([ 'General', 'Email', 'Plugins' ]);
 
 export const SETTINGS_DEFAULT_SECTION = 'General';
 
@@ -155,6 +156,11 @@ function buildSettingsSectionBody(active, state, app) {
     // The S2 card layout (Installed Plugins + Browse placeholder). The honest
     // empty/error/loading states live inside it — a blank body reads as a bug.
     return buildPluginsSection(app);
+
+  if (active === 'Email')
+    // Owner (2026-11-13): the Xenocept-parity mailer configuration form —
+    // fields render even when the load failed (error rides above them).
+    return buildEmailSection(app);
 
   // Sections other than General host only their own panels.
   let panels = buildSettingsPanelNodes(state, app, active);
