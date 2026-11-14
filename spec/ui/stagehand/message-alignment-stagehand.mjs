@@ -11,7 +11,7 @@ import {
   startStagehandUIServer,
 } from './stagehand-test-utils.mjs';
 
-test('Stagehand aligns user messages left and agent messages right, with compact status frames spanning the thread', async (t) => {
+test('Stagehand aligns user messages RIGHT and agent messages LEFT, with compact status frames spanning the items area', async (t) => {
   let chromePath = findChromeExecutable();
   if (!chromePath) {
     t.skip('Stagehand local mode requires Chrome');
@@ -119,6 +119,11 @@ test('Stagehand aligns user messages left and agent messages right, with compact
 
     let layout = await page.evaluate(() => {
       let list = document.querySelector('.kikx-frame-list').getBoundingClientRect();
+      // Flush edges live against the ITEMS container — .kikx-frame-list
+      // includes the 72px quick-action gutter + stream padding on its right
+      // (~106px measured 2026-11-14), so list-relative flush checks were
+      // measuring the gutter, not the design.
+      let items = document.querySelector('.aeor-scrollview__items').getBoundingClientRect();
       let frames = {};
       for (let id of [ 'user_msg_1', 'agent_msg_1', 'command_result_1' ]) {
         let rect = document.querySelector(`kikx-frame-item[data-frame-id="${id}"]`).getBoundingClientRect();
@@ -135,21 +140,32 @@ test('Stagehand aligns user messages left and agent messages right, with compact
           right: list.right,
           width: list.width,
         },
+        items: {
+          left: items.left,
+          right: items.right,
+          width: items.width,
+        },
         frames,
       };
     });
 
     let maxMessageWidth = layout.list.width * 0.80;
     let edgeTolerance = 3;
-    assert.equal(layout.frames.user_msg_1.left <= layout.list.left + edgeTolerance, true);
-    assert.equal(layout.frames.user_msg_1.right < layout.list.right - layout.list.width * 0.10, true);
-    assert.equal(layout.frames.agent_msg_1.right >= layout.list.right - edgeTolerance, true);
-    assert.equal(layout.frames.agent_msg_1.left > layout.list.left + layout.list.width * 0.10, true);
+    // Current DELIBERATE design (dfd642ab bounded centred column — owner:
+    // "I think I actually like it!"): UserMessage justify-self:end (RIGHT),
+    // AgentMessage justify-self:start (LEFT, max 78%), CommandResult stretch
+    // across the items area. The old expectations (user left / agent right /
+    // flush-to-list-edge) pinned the pre-bounded-column layout AND measured
+    // against the list edge including its action gutter.
+    assert.equal(layout.frames.user_msg_1.right >= layout.items.right - edgeTolerance, true);
+    assert.equal(layout.frames.user_msg_1.left > layout.list.left + layout.list.width * 0.10, true);
+    assert.equal(layout.frames.agent_msg_1.left <= layout.items.left + edgeTolerance, true);
+    assert.equal(layout.frames.agent_msg_1.right < layout.list.right - layout.list.width * 0.10, true);
 
-    // CommandResult is now a compact status line: it spans the thread instead
-    // of using the wide message bubble.
-    assert.equal(layout.frames.command_result_1.left <= layout.list.left + edgeTolerance, true);
-    assert.equal(layout.frames.command_result_1.right >= layout.list.right - edgeTolerance, true);
+    // CommandResult is a compact status line: it stretches across the ITEMS
+    // area (justify-self:stretch, capped at min(100%, 960px)).
+    assert.equal(layout.frames.command_result_1.left <= layout.items.left + edgeTolerance, true);
+    assert.equal(layout.frames.command_result_1.right >= layout.items.right - edgeTolerance, true);
 
     for (let id of [ 'user_msg_1', 'agent_msg_1' ])
       assert.equal(layout.frames[id].width <= maxMessageWidth, true);
