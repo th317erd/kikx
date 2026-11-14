@@ -11,7 +11,14 @@ export const MAX_COMPACTION_BOTS = 3;
 
 export function rankMasters(agents = []) {
   let list = Array.isArray(agents) ? agents : [];
-  let tagged = rankByTag(list, 'leadership_score', MAX_MASTER_AGENTS);
+  // Tie-break for EQUAL tag values: the crown clock is the recency authority
+  // (measured 2026-11-14: every crown PUTs the same constant priority value,
+  // so the id-asc fallback ranked [Alpha,Bravo,Charlie] — "newest is #1" was
+  // violated while the distinct legacy clocks sat right there).
+  let tagged = rankByTag(list, 'leadership_score', MAX_MASTER_AGENTS, (a, b) => (
+    String(b.crownedClock || '').localeCompare(String(a.crownedClock || ''))
+    || (Number(b.crownedAt || 0) - Number(a.crownedAt || 0))
+  ));
   if (tagged.length > 0)
     return tagged;
 
@@ -28,7 +35,12 @@ export function rankMasters(agents = []) {
 // Parallel to rankMasters, over the independent compaction-bot fields.
 export function rankCompactionBots(agents = []) {
   let list = Array.of(...(Array.isArray(agents) ? agents : []));
-  let tagged = rankByTag(list, 'compaction_score', MAX_COMPACTION_BOTS);
+  // Same tie-break as rankMasters, over the compaction clock (the bot twin of
+  // the measured leadership_score tie).
+  let tagged = rankByTag(list, 'compaction_score', MAX_COMPACTION_BOTS, (a, b) => (
+    String(b.compactionCrownedClock || '').localeCompare(String(a.compactionCrownedClock || ''))
+    || (Number(b.compactionCrownedAt || 0) - Number(a.compactionCrownedAt || 0))
+  ));
   if (tagged.length > 0)
     return tagged;
 
@@ -42,11 +54,15 @@ export function rankCompactionBots(agents = []) {
     .slice(0, MAX_COMPACTION_BOTS);
 }
 
-function rankByTag(agents, name, limit) {
+function rankByTag(agents, name, limit, tiebreak) {
   return agents
     .map((agent) => ({ agent, value: tagNumber(agent, name) }))
     .filter((entry) => entry.value > 0)
-    .sort((a, b) => b.value - a.value || String(a.agent.id).localeCompare(String(b.agent.id)))
+    .sort((a, b) => (
+      b.value - a.value
+      || (tiebreak ? tiebreak(a.agent, b.agent) : 0)
+      || String(a.agent.id).localeCompare(String(b.agent.id))
+    ))
     .slice(0, limit)
     .map((entry) => entry.agent);
 }

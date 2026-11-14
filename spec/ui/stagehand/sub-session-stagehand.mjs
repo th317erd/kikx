@@ -131,12 +131,12 @@ test('Stagehand enters a sub-session card and collapses a session to a sub-sessi
     // Open the popup and isolate Child Sessions.
     await page.evaluate(() => document.querySelector('kikx-frame-filter-popup .kikx-frame-filter__button').click());
     await page.evaluate(() => {
-      let row = document.querySelector('[data-filter-key="child-sessions"] .kikx-frame-filter__checkbox');
+      let row = document.querySelector('[data-filter-key="session"] .kikx-frame-filter__checkbox');
       row.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true }));
     });
 
     let isolated = await page.evaluate(() => document.querySelector('kikx-app')?._state?.frameFilters);
-    assert.equal(isolated['child-sessions'], true, 'Child Sessions stays on');
+    assert.equal(isolated['session'], true, 'Child Sessions stays on');
     assert.equal(isolated.user, false, 'Ctrl+Click cleared the other categories');
 
     // The thread still shows the child-session card, and nothing else.
@@ -149,7 +149,7 @@ test('Stagehand enters a sub-session card and collapses a session to a sub-sessi
     });
     let restored = await page.evaluate(() => document.querySelector('kikx-app')?._state?.frameFilters);
     assert.equal(restored.user, true, 'Shift+Click turned the categories back on');
-    assert.equal(restored.hidden, false, 'and did not switch the Hidden gate on');
+    assert.equal(restored.deleted, false, 'and did not switch the Hidden (key: deleted) gate on');
     assert.equal(await page.evaluate(() => Boolean(document.querySelector('.kikx-window__close'))), true);
   } finally {
     await stagehand.close().catch(() => {});

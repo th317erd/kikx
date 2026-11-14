@@ -101,7 +101,11 @@ test('Stagehand renders agent message labels with configured agent names', async
     let rendered = await readRenderedAgentMessages(page);
 
     assert.deepEqual(rendered.labels, [ 'Mr. Bennett', 'Mr. Bennett' ]);
-    assert.deepEqual(rendered.secondary, [ 'AgentMessage', 'AgentMessage' ]);
+    // The status label now reads "Message" (frame-labels contract), and the
+    // meta also carries timestamp/debug spans — scope secondary to the status
+    // label element so timestamps can never pollute it (measured live dump
+    // 2026-11-14: strong=[Mr. Bennett ×2], status=Message).
+    assert.deepEqual(rendered.secondary, [ 'Message', 'Message' ]);
     assert.deepEqual(rendered.bodies, [
       'A legacy answer without embedded display data.',
       'A civil answer from a configured agent.',
@@ -136,7 +140,7 @@ function delay(ms) {
 async function readRenderedAgentMessages(page) {
   return await page.evaluate(() => ({
     labels: Array.from(document.querySelectorAll('.kikx-frame--AgentMessage .kikx-frame__meta strong')).map((node) => node.textContent),
-    secondary: Array.from(document.querySelectorAll('.kikx-frame--AgentMessage .kikx-frame__meta span')).map((node) => node.textContent),
+    secondary: Array.from(document.querySelectorAll('.kikx-frame--AgentMessage .kikx-frame__meta-status-label')).map((node) => node.textContent),
     bodies: Array.from(document.querySelectorAll('.kikx-frame--AgentMessage .kikx-frame__content')).map((node) => node.textContent),
   }));
 }

@@ -78,13 +78,13 @@ test('Stagehand filters sessions, reveals soft-deleted ones with the eye, and re
     assert.equal(await page.locator('kikx-session-card .kikx-session-card.is-deleted').count(), 0, 'no deleted session is shown by default');
 
     // 1) Typing filters by title as you go.
-    await page.fill('.kikx-session-search__input', 'beta');
+    await page.locator('.kikx-session-search__input').fill('beta');
     await waitForCardTitles(page, [ 'Beta Session' ]);
 
-    await page.fill('.kikx-session-search__input', 'alpha');
+    await page.locator('.kikx-session-search__input').fill('alpha');
     await waitForCardTitles(page, [ 'Alpha Session' ]);
 
-    await page.fill('.kikx-session-search__input', '');
+    await page.locator('.kikx-session-search__input').fill('');
     await waitForCardTitles(page, [ 'Alpha Session', 'Beta Session' ]);
 
     // 2) The eye reveals the soft-deleted session, tinted, with a Recycle action.
@@ -114,7 +114,16 @@ test('Stagehand filters sessions, reveals soft-deleted ones with the eye, and re
     await page.evaluate(() => {
       let card = Array.from(document.querySelectorAll('kikx-session-card'))
         .find((candidate) => candidate.querySelector('.kikx-session-card__title')?.textContent === 'Gamma Deleted');
-      card.querySelector('.kikx-session-card__action--delete .aeor-progress-btn')?.click();
+      // The progress button activates on POINTER flow (the vendor listens
+      // pointerdown + window pointerup; confirm fires immediately at
+      // duration<=0) — a programmatic .click() never reaches it (measured
+      // 2026-11-14: silent no-op, then the card-title wait timed out).
+      let control = card?.querySelector('.kikx-session-card__action--delete .aeor-progress-btn')
+        || card?.querySelector('.kikx-session-card__action--delete');
+      if (control) {
+        control.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+        control.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+      }
     });
 
     await waitForCardTitles(page, [ 'Gamma Deleted', 'Alpha Session', 'Beta Session' ]);

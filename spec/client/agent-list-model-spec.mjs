@@ -107,3 +107,38 @@ test('role score tags override the legacy crown/compaction ranks', () => {
   assert.deepEqual(rankMasters(agents).map((agent) => agent.id), [ 'lead9', 'lead5' ]);
   assert.deepEqual(rankCompactionBots(agents).map((agent) => agent.id), [ 'compact8', 'compact2' ]);
 });
+
+test('TIED rank tags fall back to the crown clock — newest first, never id order (stagehand crown/bot 2026-11-14)', () => {
+  // Measured live: every crown click PUTs leadership_score {"value":10} —
+  // the priority is per-agent constant, so all tagged values TIE, the id-asc
+  // tie-break wins, and the rendered ranks come out [Alpha,Bravo,Charlie]
+  // (rank-1..3) instead of "newest is #1". The distinct clocks from the
+  // legacy POST /crown are the authority on recency — they must break the tie
+  // BEFORE the id fallback. Same shape for the compaction-bot list.
+  let agents = [
+    { id: 'agent_a', crownedClock: '0000000001000001-0000000-test', tags: [ { target_type: 'agent', name: 'leadership_score', value: 10 } ] },
+    { id: 'agent_b', crownedClock: '0000000001000002-0000000-test', tags: [ { target_type: 'agent', name: 'leadership_score', value: 10 } ] },
+    { id: 'agent_c', crownedClock: '0000000001000003-0000000-test', tags: [ { target_type: 'agent', name: 'leadership_score', value: 10 } ] },
+  ];
+  assert.deepEqual(rankMasters(agents).map((agent) => agent.id),
+    [ 'agent_c', 'agent_b', 'agent_a' ],
+    'equal tag values rank by crown clock desc — newest is #1');
+
+  let bots = [
+    { id: 'agent_a', compactionCrownedClock: '0000000001000011-0000000-test', tags: [ { target_type: 'agent', name: 'compaction_score', value: 10 } ] },
+    { id: 'agent_b', compactionCrownedClock: '0000000001000012-0000000-test', tags: [ { target_type: 'agent', name: 'compaction_score', value: 10 } ] },
+  ];
+  assert.deepEqual(rankCompactionBots(bots).map((agent) => agent.id),
+    [ 'agent_b', 'agent_a' ],
+    'equal bot tag values rank by compaction clock desc');
+
+  // UNTIED tags stay value-primary (the existing override test guards this —
+  // clocks must never outrank a higher score).
+  let untied = [
+    { id: 'old_high', crownedClock: '0000000001000009-test', tags: [ { target_type: 'agent', name: 'leadership_score', value: 9 } ] },
+    { id: 'new_low', crownedClock: '0000000001000099-test', tags: [ { target_type: 'agent', name: 'leadership_score', value: 5 } ] },
+  ];
+  assert.deepEqual(rankMasters(untied).map((agent) => agent.id),
+    [ 'old_high', 'new_low' ],
+    'a higher tag value still wins over a newer clock');
+});

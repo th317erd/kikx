@@ -52,14 +52,15 @@ export async function loadStagehandOpenAIAPIKey(options = {}) {
   if (cachedOpenAIAPIKey)
     return cachedOpenAIAPIKey;
 
-  // Keyless fallback (owner ruling, 2026-11-14: "Please use the MiMo 2.6
-  // Flash model via Ollama for Stagehand"): default the model so every
-  // test's `KIKX_STAGEHAND_MODEL || 'openai/gpt-4.1-mini'` picks it up (this
-  // loader runs before any `new Stagehand(...)`) and its empty-key skip guard
-  // sees a non-empty placeholder instead of skipping. MiMo is the Stagehand
-  // choice; bot-ocr keeps Inkling as ITS default — different jobs.
+  // Keyless fallback — owner ruling (2026-11-14, supersedes the earlier MiMo
+  // pick after side-by-side controls): "Let's stick with DeepSeek then.
+  // Proceed with fixing all the tests on this model." DeepSeek measured
+  // 11/28 vs MiMo 7/28 with ZERO empty responses in the lane, and it passes
+  // the structured-JSON tests MiMo failed. Default set BEFORE any
+  // `new Stagehand(...)` so every test's env-read picks it up, and its
+  // empty-key skip guard sees a non-empty placeholder instead of skipping.
   if (!String(process.env.KIKX_STAGEHAND_MODEL || '').trim())
-    process.env.KIKX_STAGEHAND_MODEL = 'ollama/mimo-v2.6-flash:cloud';
+    process.env.KIKX_STAGEHAND_MODEL = 'ollama/deepseek-v4.1-flash:cloud';
   ensureOllamaHost();
   return 'ollama-keyless';
 }
@@ -677,6 +678,16 @@ function createAuthStub() {
         email: accountState.email,
         name: accountState.name,
       };
+    },
+    async ensureAdmin({ email, name = '' } = {}) {
+      // create-server boot calls this when an admin email is configured (it
+      // became reachable once lanes source .env.dev). Mirror the real
+      // signature: { user, created }.
+      if (email)
+        accountState.email = email;
+      if (name)
+        accountState.name = name;
+      return { user: { ...accountState }, created: false };
     },
     async exchangeAPIKey() {
       return {

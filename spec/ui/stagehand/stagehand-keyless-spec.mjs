@@ -69,8 +69,8 @@ test('no key anywhere: the loader DEGRADES to keyless Ollama instead of throwing
   const key = await loadStagehandOpenAIAPIKey({ force: true });
   assert.ok(key && key.length > 0,
     'non-empty: an empty string would skip every stagehand test (the old failure)');
-  assert.equal(process.env.KIKX_STAGEHAND_MODEL, 'ollama/mimo-v2.6-flash:cloud',
-    'the default model is MiMo 2.6 Flash per owner ruling, set BEFORE any new Stagehand()');
+  assert.equal(process.env.KIKX_STAGEHAND_MODEL, 'ollama/deepseek-v4.1-flash:cloud',
+    'the default model is DeepSeek 4.1 Flash per owner ruling (controls: 11/28 vs MiMo 7/28, 2/2 on JSON), set BEFORE any new Stagehand()');
 }));
 
 test('a real environment key keeps absolute precedence — no forced Ollama', () => withEnv({
@@ -82,6 +82,6 @@ test('a real environment key keeps absolute precedence — no forced Ollama', ()
   const { loadStagehandOpenAIAPIKey } = await loadUtils();
   const key = await loadStagehandOpenAIAPIKey({ force: true });
   assert.equal(key, 'sk-real-key', 'env key wins untouched');
-  assert.notEqual(process.env.KIKX_STAGEHAND_MODEL, 'ollama/mimo-v2.6-flash:cloud',
+  assert.notEqual(process.env.KIKX_STAGEHAND_MODEL, 'ollama/deepseek-v4.1-flash:cloud',
     'the ollama default is NOT forced onto a keyed host');
 }));
