@@ -114,3 +114,25 @@ test('our rails force FULL corner radii on tabs — the vendor square-right rail
   assert.match(rule[0], /border-right:\s*1px solid transparent/u,
     'the fourth border side is restored so the active accent completes the chip');
 });
+
+test('rail footer buttons (Account / Sign out) wear the app-wide button recipe — colors, border, hover (owner 2026-11-14)', async () => {
+  // The scoped rule in topbar-unified (specificity 0,2,0) used to beat the
+  // recipe-based .kikx-sign-out-button rule in app-composer and forced
+  // `border: 0; background: transparent` — flat rows with no colors, no
+  // border and a hover nothing like the rest of the app (owner annotation).
+  const topbar = await read('topbar-unified.css');
+  const base = topbar.match(/\.kikx-session-objects \.kikx-sign-out-button\s*\{[^}]*\}/u);
+  assert.ok(base, 'the scoped footer-button rule exists');
+  assert.match(base[0], /border:\s*1px solid var\(--kikx-btn-border\)/u,
+    'border comes from the shared recipe');
+  assert.match(base[0], /background:\s*var\(--kikx-btn-bg\)/u,
+    'fill comes from the shared recipe');
+  assert.ok(!/background:\s*transparent/u.test(base[0]),
+    'the transparent override is gone');
+  const hover = topbar.match(/\.kikx-session-objects \.kikx-sign-out-button:hover,\s*\n\.kikx-session-objects \.kikx-sign-out-button:focus-visible\s*\{[^}]*\}/u);
+  assert.ok(hover, 'the hover/focus rule exists');
+  assert.match(hover[0], /background:\s*var\(--kikx-btn-bg-hover\)/u,
+    'hover fill from the recipe');
+  assert.match(hover[0], /border-color:\s*var\(--kikx-accent\)/u,
+    'hover border completes the accent, like every other button');
+});

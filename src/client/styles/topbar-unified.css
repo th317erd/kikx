@@ -368,10 +368,10 @@
   width: 100%;
   text-align: left;
   padding: 6px 8px;
-  border: 0;
+  border: 1px solid var(--kikx-btn-border);
   border-radius: 6px;
-  background: transparent;
-  color: #d7dde4;
+  background: var(--kikx-btn-bg);
+  color: #f5f7fa;
   font: inherit;
   font-size: calc(12px * 1.25);
   cursor: pointer;
@@ -380,6 +380,7 @@
 .kikx-session-objects .kikx-sign-out-button:hover,
 .kikx-session-objects .kikx-sign-out-button:focus-visible {
   background: var(--kikx-btn-bg-hover);
+  border-color: var(--kikx-accent);
 }
 
 /* The sidebar is a column so `margin-top: auto` on the footer cluster has slack
