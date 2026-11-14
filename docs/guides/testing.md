@@ -73,13 +73,17 @@ npm run test:ui:stagehand
 
 A separate Puppeteer canvas benchmark lives under `spec/ui/spike/` and is not part of the package glob.
 
-Current package UI commands run through `scripts/with-aeordb-token.mjs`. This is legacy test-harness coupling: local browser fixtures inject a native auth-service double, but the wrapper still requires an AeorDB token/root-key path. Do not document that coupling as a product requirement.
-
-**The wrapper exits 2 when AeorDB is unreachable, before any spec runs.** That makes `npm run test:ui:playwright` fail for an environment reason rather than a product reason. The Playwright lane needs no database at all — each spec starts its own fixture server and skips itself when Chrome is absent — so prefer the direct command, which `scripts/run-test-lanes.mjs` uses:
-
-```bash
-npm run test:ui:playwright:direct
-```
+**Legacy AeorDB coupling removed 2026-11-14.** The `test:ui:*` package
+commands used to run through `scripts/with-aeordb-token.mjs`, which fetched a
+live token before any spec — and exited 2 before a single test when AeorDB was
+unreachable (measured: `fetch failed` against `127.0.0.1:6830`). AeorDB is
+retired by owner ruling, so that path could never succeed: the three commands
+now run the specs directly, exactly as the runner does, each through
+`--env-file-if-exists=.env.dev` — preserving the one useful thing the wrapper
+side-effected (plugin signature mode for fixture plugins; without it the two
+plugin-shell specs fail with `signature:no-configured-key`). The wrapper
+script is kept for reference only; local browser fixtures still inject their
+own native auth-service double, and no lane needs a database.
 
 Database-neutral direct commands are available when their actual prerequisites are supplied:
 

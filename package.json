@@ -19,10 +19,10 @@
     "test:unit": "timeout 300 node scripts/run-test-lanes.mjs unit",
     "test:all": "node scripts/run-test-lanes.mjs --all",
     "test:lanes": "node scripts/run-test-lanes.mjs",
-    "test:ui:playwright": "timeout 120 node scripts/with-aeordb-token.mjs node --test --test-timeout=60000 'spec/ui/playwright/*-playwright.mjs'",
-    "test:ui:playwright:direct": "timeout 120 node --test --test-timeout=60000 'spec/ui/playwright/*-playwright.mjs'",
-    "test:ui:stagehand": "timeout 120 node scripts/with-aeordb-token.mjs node --test --test-timeout=60000 'spec/ui/stagehand/*-stagehand.mjs'",
-    "test:ui:puppeteer": "timeout 120 node scripts/with-aeordb-token.mjs node --test --test-timeout=60000 'spec/ui/puppeteer/*-puppeteer.mjs'"
+    "test:ui:playwright": "timeout 120 node --env-file-if-exists=.env.dev --test --test-timeout=60000 'spec/ui/playwright/*-playwright.mjs'",
+    "test:ui:playwright:direct": "timeout 120 node --env-file-if-exists=.env.dev --test --test-timeout=60000 'spec/ui/playwright/*-playwright.mjs'",
+    "test:ui:stagehand": "timeout 120 node --env-file-if-exists=.env.dev --test --test-timeout=60000 'spec/ui/stagehand/*-stagehand.mjs'",
+    "test:ui:puppeteer": "timeout 120 node --env-file-if-exists=.env.dev --test --test-timeout=60000 'spec/ui/puppeteer/*-puppeteer.mjs'"
   },
   "engines": {
     "node": ">=22"
