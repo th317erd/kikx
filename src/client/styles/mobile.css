@@ -99,6 +99,24 @@
 
   .kikx-thread__body {
     grid-template-columns: minmax(0, 1fr);
+    /* Owner (2026-11-14): "View cuts off prematurely on mobile." The
+       scrollview is height:100%, but an implicit AUTO row resolves that
+       against content — the list stopped ~36px short of the composer and the
+       annotated void opened up. One explicit row makes the percentage resolve
+       against the BODY, so the list fills to the dock/composer. */
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  /* Owner (2026-11-14): "Massive padding around all edges on mobile." Phone
+     values off the desktop 12px/10px (app-workspace) — the hidden dock row
+     still contributes TWO row gaps, so 6px keeps the void thumb-small. */
+  .kikx-thread {
+    padding: 8px;
+    gap: 6px;
+  }
+
+  .kikx-composer {
+    padding: 0 8px 8px;
   }
 
   .kikx-thread-scrollview,
@@ -304,6 +322,11 @@
   .kikx-menu-toggle {
     display: grid;
     flex: 0 0 auto;
+    /* Owner (2026-11-14): "Hamburger menu button is supposed to be on the
+       RIGHT SIDE on mobile, NOT the left-side." Inside the lead row: ordered
+       last and pushed to the row end; desktop (base rule) keeps leading. */
+    order: 9;
+    margin-left: auto;
   }
 
   /* The work area is the only flow row; the drawer is out of flow, so it can

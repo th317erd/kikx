@@ -205,6 +205,15 @@ kikx-overflow-popup {
     display: none;
   }
 
+  /* Owner (2026-11-14): "The '+ Add Session' button should be in the
+     triple-dot menu." addButton() already rides buildTopbarOverflowActionNodes
+     (the ⋮ carries it at every level), so the visible trailing copy yields
+     here — the same DIRECT-child/ancestor swap, same sheet-order guarantee as
+     the rules above. */
+  .kikx-topbar.kikx-window__header .kikx-topbar__trailing-actions {
+    display: none;
+  }
+
   .kikx-topbar__search-group kikx-overflow-popup {
     display: block;
   }
