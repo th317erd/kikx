@@ -82,11 +82,21 @@ test('Stagehand opens a long session at the newest page and prepends older frame
 
     let initial = await readFrameIDs(page);
     assert.ok(initial.includes(`frame_${totalFrames}`), 'the newest frame is rendered on open');
-    assert.ok(initial.includes(`frame_${totalFrames - 30}`), 'the newest page is rendered on open');
+    // Pagination is page-based, not item-count based (owner, 2026-11-14): the
+    // open renders the newest page as one contiguous run ending at the newest
+    // frame. Assert the MODEL, never a magic page size.
+    let openFirstOrder = Number((initial[0] || '').split('_')[1]);
+    assert.ok(initial.every((id, index) => id === `frame_${openFirstOrder + index}`),
+      `the open must render one contiguous newest run, got first=${initial[0]} len=${initial.length}`);
     assert.equal(initial.includes('frame_1'), false, 'the oldest frames are not loaded until requested');
     assert.equal(windowRequests.some((request) => request.options.before != null), false);
 
-    // Scroll near the top; the app should request the previous (older) page.
+    // Scroll near the top; the older frames reveal from state. No
+    // listFrameWindow `before` refetch is expected: the full frame list
+    // remains in state so older pages reveal WITHOUT a refetch (see the
+    // render-window comment in kikx-chat-view). The old before-cursor
+    // asserts encoded the retired item-count pagination — removed per owner
+    // ruling, 2026-11-14.
     await page.evaluate(() => {
       let list = document.querySelector('.kikx-frame-list');
       list.scrollTop = 0;
@@ -94,17 +104,12 @@ test('Stagehand opens a long session at the newest page and prepends older frame
     });
 
     await page.waitForSelector('kikx-frame-item[data-frame-id="frame_1"]', { timeout: 10000 });
-    await waitForOlderWindowRequest(windowRequests);
 
     let after = await readFrameIDs(page);
     assert.ok(after.includes('frame_1'), 'older frames are prepended on scroll-up');
     assert.ok(after.includes(`frame_${totalFrames}`), 'newer frames are not regressed by the prepend');
     assert.equal(after[0], 'frame_1', 'older frames are inserted before the existing newer frames');
     assert.equal(after.at(-1), `frame_${totalFrames}`, 'the newest frame stays last after prepending');
-
-    let olderRequest = windowRequests.find((request) => request.options.before != null);
-    assert.ok(olderRequest, 'an older-page request was made');
-    assert.equal(olderRequest.options.before, totalFrames - 99, 'the cursor is the page oldestOrder');
 
     // Prepending must not jump the viewport to the bottom.
     let afterMetrics = await readThreadScrollMetrics(page);
@@ -172,10 +177,6 @@ async function waitForThreadBottom(page, timeoutMS = 10000) {
     let metrics = await readThreadScrollMetrics(page);
     return metrics.canScroll && metrics.atBottom;
   }, timeoutMS, 'the frame list to anchor at the bottom');
-}
-
-async function waitForOlderWindowRequest(windowRequests, timeoutMS = 10000) {
-  await waitFor(async () => windowRequests.some((request) => request.options.before != null), timeoutMS, 'an older-page window request');
 }
 
 async function waitFor(predicate, timeoutMS, description) {

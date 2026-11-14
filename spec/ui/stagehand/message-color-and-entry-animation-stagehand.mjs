@@ -66,6 +66,7 @@ test('Stagehand renders colored message chrome and animates new anchored message
     await waitForFrameListBottom(page);
     await installFrameEntryObserver(page, 'animated_agent_message');
     await installScrollTracker(page);
+    await installWriteRecorder(page);
 
     fixture.frameRuntime.emitEvent('frame.added', {
       sessionID: 'session_1',
@@ -96,6 +97,21 @@ test('Stagehand renders colored message chrome and animates new anchored message
     let result = await page.evaluate(() => {
       let list = document.querySelector('.kikx-frame-list');
       let samples = window.__kikxScrollSamples || [];
+      let writes = window.__kikxWriteLog || [];
+      let followLog = window.__kikxFollowLog || [];
+      // A drop EXPLAINED by an equal-or-larger scrollHeight shrink is the
+      // viewport TRACKING the entry animation's own height-collapse (browser
+      // clamp as max falls, re-place as it expands) — measured 2026-11-14:
+      // every write was the vendor settle/animation, follow never flipped,
+      // no consumer writer existed. A YANK is a drop the layout did NOT
+      // account for — that is what this contract means by unstable.
+      let dropIndex = samples.findIndex((sample, index) => {
+        if (index === 0 || sample.scrollTop >= samples[index - 1].scrollTop - 2)
+          return false;
+        let drop = samples[index - 1].scrollTop - sample.scrollTop;
+        let shrink = samples[index - 1].scrollHeight - sample.scrollHeight;
+        return shrink < drop - 2;
+      });
       let entry = window.__kikxFrameEntryAnimation || {};
       let userName = document.querySelector('kikx-frame-item[data-frame-id="frame_1"] .kikx-frame__meta-main strong');
       let agentName = document.querySelector('kikx-frame-item[data-frame-id="animated_agent_message"] .kikx-frame__meta-main strong');
@@ -113,6 +129,15 @@ test('Stagehand renders colored message chrome and animates new anchored message
         atBottom: distanceFromBottom <= 5,
         jumpedToTop,
         scrollTopDropped,
+        dropEvidence: dropIndex > 0
+          ? {
+            prev: samples[dropIndex - 1],
+            cur: samples[dropIndex],
+            writesNear: writes.filter((write) => write.t >= samples[dropIndex - 1].t - 5
+              && write.t <= samples[dropIndex].t + 60),
+            follow: followLog,
+          }
+          : null,
       };
     });
 
@@ -124,7 +149,8 @@ test('Stagehand renders colored message chrome and animates new anchored message
     assert.equal(result.codeBackground.includes('rgba') || result.codeBackground.includes('rgb'), true);
     assert.equal(result.atBottom, true);
     assert.equal(result.jumpedToTop, false);
-    assert.equal(result.scrollTopDropped, false);
+    assert.equal(result.scrollTopDropped, false,
+      `scrollTop must never drop beyond what layout changes explain (no yank); drop=${JSON.stringify(result.dropEvidence)}`);
   } finally {
     await stagehand.close().catch(() => {});
     await fixture.close().catch(() => {});
@@ -180,7 +206,10 @@ async function installFrameEntryObserver(page, frameID) {
         }
       }
     });
-    observer.observe(document.querySelector('.kikx-frame-stream'), { childList: true });
+    // subtree: the paged scrollview nests items (segment -> items ->
+    // frame-item) instead of inserting them as direct stream children
+    // (DOM architecture migration, 2026-11-14).
+    observer.observe(document.querySelector('.kikx-frame-stream'), { childList: true, subtree: true });
   }, frameID);
 }
 
@@ -193,11 +222,49 @@ async function installScrollTracker(page) {
         return;
 
       window.__kikxScrollSamples.push({
+        t: Math.round(performance.now()),
         scrollTop: list.scrollTop,
+        scrollHeight: list.scrollHeight,
         canScroll: list.scrollHeight > list.clientHeight,
         distanceFromBottom: list.scrollHeight - list.scrollTop - list.clientHeight,
       });
     }, 10);
+  });
+}
+
+// Setter recorder: a scrollTopDropped failure now NAMES the writer (or shows
+// no write at all — which means a layout clamp, not a write). Mirrors the
+// mobile spec's probe (window.__fg) in miniature.
+async function installWriteRecorder(page) {
+  await page.evaluate(() => {
+    window.__kikxWriteLog = [];
+    const desc = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
+    if (!desc?.set || desc.set.__kikxWrapped)
+      return;
+    const wrapped = function (value) {
+      const before = desc.get.call(this);
+      const result = desc.set.call(this, value);
+      if (this.matches?.('.kikx-frame-list')) {
+        const stack = (new Error('write').stack || '').split('\n').slice(2, 6).join(' | ');
+        window.__kikxWriteLog.push({
+          before: Math.round(before),
+          requested: Math.round(Number(value)),
+          t: Math.round(performance.now()),
+          stack,
+        });
+      }
+      return result;
+    };
+    wrapped.__kikxWrapped = true;
+    Object.defineProperty(Element.prototype, 'scrollTop', { ...desc, set: wrapped });
+    window.__kikxFollowLog = [];
+    document.addEventListener('scrollview-follow-change', (event) => {
+      window.__kikxFollowLog.push({
+        follow: event.detail?.follow,
+        t: Math.round(performance.now()),
+        trace: (new Error('follow').stack || '').split('\n').slice(3, 6).join(' | '),
+      });
+    }, { capture: true });
   });
 }
 
