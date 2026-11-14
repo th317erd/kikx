@@ -96,3 +96,21 @@ test('semantic exceptions survive the global rule (class rules outrank it)', asy
     'palette swatches keep their chips (they are the palette, not actions)');
   assert.match(views, /#3fb950/u, 'Installed/success green is untouched');
 });
+
+test('our rails force FULL corner radii on tabs — the vendor square-right rail reads as cut-off here (owner 2026-11-14)', async () => {
+  // Vendor design note (owner, decoded annotation): left-rail tabs have NO
+  // right-side corner radius by design — correct generically, "terribly
+  // ugly" in our scenario, where it reads as the item being clipped by the
+  // divider. Ruling: force full-corner-radiuses for OUR scenario — consumer
+  // override scoped to kikx-view-container rails; the vendor default stays.
+  const base = await read('app-base-shell.css');
+  const rule = base.match(
+    /aeor-tab-view\.kikx-view-container\[tab-bar-position="left"\]\s+\.tab\s*\{[^}]*\}/u,
+  );
+  assert.ok(rule,
+    'a consumer override rule exists for our left-rail tabs');
+  assert.match(rule[0], /border-radius:\s*0\.375rem\s*;/u,
+    'every corner is rounded (radius on all four sides, not left-only)');
+  assert.match(rule[0], /border-right:\s*1px solid transparent/u,
+    'the fourth border side is restored so the active accent completes the chip');
+});

@@ -300,6 +300,18 @@ aeor-tab-view.kikx-view-container--projects > aeor-tab {
   min-height: 0;
 }
 
+/* Owner ruling (2026-11-14, decoded annotation): the vendor's left-rail tabs
+   carry NO right-side corner radius BY DESIGN — correct generically, but in
+   our scenario it reads as the item being clipped by the divider ("terribly
+   ugly … we need to force full-corner-radiuses"). Consumer override, scoped
+   to OUR rails only: every corner rounded, and the fourth border side
+   restored as transparent so .tab.active's accent completes the chip on all
+   four sides. The vendor default stays untouched for generic consumers. */
+aeor-tab-view.kikx-view-container[tab-bar-position="left"] .tab {
+  border-radius: 0.375rem;
+  border-right: 1px solid transparent;
+}
+
 .kikx-startup-loading {
   display: grid;
   min-height: 0;
