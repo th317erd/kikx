@@ -86,11 +86,20 @@ Database-neutral direct commands are available when their actual prerequisites a
 ```bash
 timeout 120 node --test --test-timeout=60000 'spec/ui/playwright/*-playwright.mjs'
 timeout 120 node --test --test-timeout=60000 'spec/ui/puppeteer/*-puppeteer.mjs'
-KIKX_STAGEHAND_OPENAI_API_KEY='<test credential>' \
-  timeout 120 node --test --test-timeout=60000 'spec/ui/stagehand/*-stagehand.mjs'
+timeout 120 node --test --test-timeout=60000 'spec/ui/stagehand/*-stagehand.mjs'
 ```
 
-Do not put the Stagehand credential in a command transcript, tracked file, or documentation. If no explicit model key is present, the Stagehand utility currently attempts a legacy AeorDB lookup for an agent secret.
+The Stagehand lane is **keyless since 2026-11-14**: it defaults to
+`ollama/deepseek-v4.1-flash:cloud` through the local Ollama relay (override
+with `KIKX_STAGEHAND_MODEL`, documented in `.env.example`). An explicit
+`KIKX_STAGEHAND_OPENAI_API_KEY` / `OPENAI_API_KEY` is still honored first
+when present, and a missing or unreachable key source now **degrades to the
+keyless default** instead of blocking the lane. Never put a credential in a
+command transcript, tracked file, or documentation. Prefer the runner
+(`scripts/run-test-lanes.mjs` / `npm test`): it passes `.env.dev` to the
+browser lanes per spawn (plugin signature verification needs it), sweeps
+stale `/tmp` scratch dirs, and caps `ui:stagehand` concurrency at 4 because
+all tests share one model endpoint.
 
 Chrome is located by `findChromeExecutable()` in `spec/ui/stagehand/stagehand-test-utils.mjs`, which checks `KIKX_STAGEHAND_CHROME_PATH`, then `CHROME_PATH`, then `/opt/google/chrome/chrome`, `/usr/bin/google-chrome`, `/usr/bin/chromium`, and `/usr/bin/chromium-browser`. It does **not** read `CHROME_BIN`; setting that variable has no effect on these specs. When no candidate exists the browser specs report as skipped, not failed — a skip here means the browser contract was never exercised.
 
