@@ -90,8 +90,8 @@ test('Stagehand renders plugin-declared agent provider fields including a dynami
       timeout: 10000,
     });
 
-    await page.waitForSelector('.kikx-session-objects button', { timeout: 10000 });
-    await clickButtonByText(page, 'Agents', '.kikx-session-objects');
+    await page.waitForSelector('.kikx-session-objects button, .kikx-view-container .tab', { timeout: 10000 });
+    await clickButtonByText(page, 'Agents', '.kikx-view-container');
     await waitForPagePredicate(page, () => Boolean(document.querySelector('.kikx-agent-manager')));
 
     await clickButtonByText(page, '+ Add Agent', '.kikx-agent-view');

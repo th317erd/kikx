@@ -28,6 +28,7 @@ export function resetSeamCalls() {
 
 export function buildSidebarSessionObjects(app, options = {}) {
   seamCalls.push({
+    kind: 'build',
     group: options.group ?? null,
     scopeFilter: typeof options.scopeFilter === 'function' ? options.scopeFilter : null,
   });
@@ -35,8 +36,29 @@ export function buildSidebarSessionObjects(app, options = {}) {
   return real.buildSidebarSessionObjects(app, options);
 }
 
+/**
+ * P2 (Shell Views): the rail filters its OWN item list through this function
+ * (imported from this module, so the loader redirect lands here). Recorded the
+ * same way — one entry per production call — so the spec can prove the shell
+ * reaches the seam from BOTH paths: the footer cluster build and the rail
+ * filter. Internal calls inside the real module do NOT record (it binds its
+ * own reference), which is exactly the boundary this shim exists at.
+ */
+export function filterSessionObjectItems(items, scopeFilter = null, appState = null) {
+  seamCalls.push({
+    kind: 'filter',
+    group: 'rail',
+    scopeFilter: typeof scopeFilter === 'function' ? scopeFilter : null,
+    size: Array.isArray(items) ? items.length : 0,
+  });
+
+  return real.filterSessionObjectItems(items, scopeFilter, appState);
+}
+
 export const SESSION_OBJECT_GROUPS = real.SESSION_OBJECT_GROUPS;
 export const GLOBAL_SESSION_OBJECT_IDS = real.GLOBAL_SESSION_OBJECT_IDS;
 export const buildSessionObjectItems = real.buildSessionObjectItems;
-export const filterSessionObjectItems = real.filterSessionObjectItems;
+// filterSessionObjectItems is deliberately NOT a passthrough here: the
+// recording wrapper above supersedes it (P2 — the rail's filter call is one of
+// the two production paths the spec observes).
 export const sidebarScopePredicateFor = real.sidebarScopePredicateFor;

@@ -437,12 +437,21 @@ test('the settings view mounts plugin panels, and the SIDEBAR carries the live s
   assert.ok(tags.includes('general-panel'),
     'the General section mounts its panel next to the Account block');
 
-  // Owner screenshot 1 (2026-11-13): the tab row is GONE — the section list
-  // reaches the user through the SIDEBAR now, still driven by the LIVE
-  // sections model (plugin-contributed sections included, in order).
+  // Shell Views P1/P2: the in-view tab row AND the sidebar section rows are
+  // both GONE — the section list reaches the user through the Settings
+  // container's RAIL, still driven by the LIVE sections model
+  // (plugin-contributed sections included, in order).
+  let { resolveViewContainer } =
+    await import('../../src/client/components/kikx-view-containers.mjs');
+  const railHost = resolveViewContainer('settings', app);
+  const railTabs = [...railHost.querySelectorAll('aeor-tab')]
+    .map((tab) => tab.getAttribute('label'));
+  assert.deepEqual(railTabs, [ 'General', 'Email', 'Plugins', 'Zebra Mail' ],
+    'the settings rail tab comes from the LIVE sections model');
+
   const viewRows = buildSessionObjectItems(app).filter((item) => item.group === 'view');
-  assert.deepEqual(viewRows.map((row) => row.label), [ 'General', 'Email', 'Plugins', 'Zebra Mail' ],
-    'the sidebar section row comes from the LIVE sections model');
+  assert.deepEqual(viewRows.map((row) => row.label), [ 'Agents', 'Teams' ],
+    'and the ordinary rows never carry sections');
 
   setClientComponents([], state);
 });

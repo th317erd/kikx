@@ -83,14 +83,14 @@ test('Stagehand wrapper reads Codex guts values and blocks invalid default-endpo
       timeout: 10000,
     });
 
-    await page.waitForSelector('.kikx-session-objects button', { timeout: 10000 });
+    await page.waitForSelector('.kikx-session-objects button, .kikx-view-container .tab', { timeout: 10000 });
 
     // Open the Agents view.
     await waitForPagePredicate(page, () => {
       if (document.querySelector('.kikx-agent-manager'))
         return true;
 
-      Array.from(document.querySelectorAll('.kikx-session-objects button'))
+      Array.from(document.querySelectorAll('.kikx-session-objects button, .kikx-view-container .tab'))
         .find((candidate) => candidate.textContent.trim() === 'Agents')?.click();
       return false;
     });

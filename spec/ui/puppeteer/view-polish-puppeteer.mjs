@@ -129,7 +129,7 @@ test('Puppeteer view polish: header span, view-header centering, pointer cursor,
 
     // 2. Agents view header: back button, title and count share one center line.
     await desktop.evaluate(() => {
-      const agents = [ ...document.querySelectorAll('.kikx-sidebar__view') ]
+      const agents = [ ...document.querySelectorAll('.kikx-view-container .tab') ]
         .find((button) => button.textContent.trim() === 'Agents');
       agents?.click();
     });

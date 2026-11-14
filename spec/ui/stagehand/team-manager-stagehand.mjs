@@ -63,8 +63,8 @@ test('Stagehand creates, edits, and deletes teams from the topbar Teams view', a
       timeout: 10000,
     });
 
-    await page.waitForSelector('.kikx-session-objects button', { timeout: 10000 });
-    await clickButtonByText(page, 'Teams', '.kikx-session-objects');
+    await page.waitForSelector('.kikx-session-objects button, .kikx-view-container .tab', { timeout: 10000 });
+    await clickButtonByText(page, 'Teams', '.kikx-view-container');
     await waitForPagePredicate(page, () => document.querySelector('.kikx-team-view')?.textContent?.includes('+ Add Team'));
     await clickButtonByText(page, '+ Add Team', '.kikx-team-view');
     await waitForPagePredicate(page, () => Boolean(document.querySelector('.kikx-team-form')));

@@ -47,7 +47,7 @@ import {
 import { buildSidebarSessionObjects, sidebarScopePredicateFor } from './kikx-sidebar-session-objects.mjs';
 import { buildInboxSidebarEntry } from './kikx-inbox-view.mjs';
 import { resolveViewSurface } from './client-view-surfaces.mjs';
-import { resolveViewContainer } from './kikx-view-containers.mjs';
+import { buildProjectsContainer, resolveViewContainer } from './kikx-view-containers.mjs';
 import { STATUSBAR_STAT_LABELS, buildStatusBarStats } from '../state/statusbar-stats.mjs';
 import {
   SIDEBAR_MENU_ELEMENT_ID,
@@ -329,25 +329,10 @@ export function buildEditableTitle(app, title, sessionID) {
 export function buildRunnerShell(app) {
   let entry = getCurrentEntry(app._state);
 
-  // The sidebar scope seam is WIRED HERE -- this is its only production call
-  // site. `filterSessionObjectItems` grants everything when handed no filter, so
-  // before this line existed the entire session-scoping layer
-  // (createSessionScope / filterItemsInScope / filterSessionsInScope) had zero
-  // production callers and nothing noticed: the sidebar rendered identically
-  // either way.
-  //
-  // `scopeFilter` is built from the VIEWED session (getScopeSessionID), which is
-  // the session the sidebar is showing and the one its descriptors are stamped
-  // with. That is what makes the seam answerable: an item owned by a session
-  // outside `visible = {viewed} + ancestors(viewed)` is denied.
-  //
-  // What this wiring must NOT be trusted to do: change the sidebar's appearance
-  // today. Every non-chip descriptor carries the viewed session's own id, so a
-  // correct predicate grants all of them and the cluster looks the same. The
-  // reachability and the decisions are pinned in
-  // spec/client/sidebar-shell-scope-spec.mjs; a visible difference needs a row
-  // owned by a DIFFERENT session, which no builder emits yet.
-  let scopeFilter = sidebarScopePredicateFor(getScopeSessionID(app._state), getSessions(app._state));
+  // Shell Views P2: the sidebar scope seam moved WITH the rail —
+  // buildProjectsContainer computes the predicate and feeds both the rail
+  // tabs and the footer cluster. Pinned in spec/client/sidebar-shell-scope-
+  // spec.mjs, which drives this shell through the container.
   // A view entry displaces the work area; the stack decides which one is on top
   // (plan §6: Inbox). Activities was removed at the owner's request
   // (2026-10-28): its counts now live in the status bar.
@@ -359,51 +344,27 @@ export function buildRunnerShell(app) {
   // Shell Views P1 (plan docs/plans/shell-views-campaign.md): a View
   // CONTAINER replaces sidebar + surface as ONE unit — table lookup, never a
   // branch on the view name (the P7 grep gate scans raw source, comments
-  // included). null falls through to the Projects layout exactly as today.
+  // included). null falls through to the Projects CONTAINER (P2).
   const container = resolveViewContainer(viewName, app);
   if (container)
     return [ main.class('kikx-main')( container ) ];
 
+  // Shell Views P2: the everyday shell IS the Projects container (rail +
+  // chrome rows) with the work-area surface as its own marked grid cell. The
+  // marker class places the surface — col 2, spanning the rail's chrome rows
+  // — WITHOUT wrapping it, so every existing direct-child rule keeps matching.
+  // Dispatch stays a lookup (resolveViewSurface): core table first, plugin
+  // descriptors second, null falls to the session window — no name chain.
+  const surface = resolveViewSurface(viewName, app._state, app) || buildWindow(app, entry);
+  if (surface && typeof surface.setAttribute === 'function') {
+    surface.setAttribute('class',
+      `${surface.getAttribute('class') || ''} kikx-view-container__surface`.trim());
+  }
+
   return [
     main.class('kikx-main')(
-      section
-        .class('kikx-sessions')
-        // The drawer's aria-controls target, and the delegated close: any click
-        // inside the sidebar (navigate or not) shuts the mobile menu, so it can
-        // never stay open over the view the click just revealed.
-        .id(SIDEBAR_MENU_ELEMENT_ID)
-        .onClick(() => closeSidebarMenu(app))(
-        div.class('kikx-sessions__header')(
-          h2('Workspace'),
-        ),
-        // Pinned at the top of the sidebar header (plan §6.1): the Inbox is the
-        // one thing that must be visible from anywhere, above the project tree.
-        buildInboxSidebarEntry(app),
-        // Owner item 2 (2026-10-27): "Agents and Teams should go up into the
-        // 'Session View' items. They are views into the session tree, so
-        // they render here with Inbox and Activities, above the tree.
-        buildSidebarSessionObjects(app, { group: 'view', scopeFilter }),
-        // §9.1.4 (campaign S1): plugin-owned rows cluster under their own
-        // PLUGINS heading; the builder returns null while none exist, so no
-        // orphan heading and no empty box. Same scope filter as every cluster.
-        buildSidebarSessionObjects(app, { group: 'plugins', scopeFilter }),
-        // Owner points 2, 5, 6: the identity controls stay at the FOOT of the
-        // session-tree pane (CSS pushes them down with `margin-top: auto`). All
-        // five are session objects, so they live in this pane and nowhere else --
-        // the top bar renders none of them.
-        buildSidebarSessionObjects(app, { group: 'footer', scopeFilter }),
-      ),
-      // A view replaces the work area while it is the top stack entry; Back pops
-      // to whatever window was underneath.
-      //
-      // Dispatch is a lookup, not a chain of comparisons on the name. Campaign P4
-      // requires a plugin view to render with no core shell edit and P7 makes it a
-      // grep gate ("No new `viewName ===` branch"); a ternary chain can only
-      // re-break that gate, so the name is resolved against the client descriptors
-      // first and the core surfaces second. null means "not a renderable view", and
-      // rendering the window is the safe answer: a view entry that renders nothing
-      // is a blank work area.
-      resolveViewSurface(viewName, app._state, app) || buildWindow(app, entry),
+      buildProjectsContainer(app, { entry, viewName }),
+      surface,
     ),
   ];
 }

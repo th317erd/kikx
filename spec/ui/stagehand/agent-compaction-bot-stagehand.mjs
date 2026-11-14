@@ -65,10 +65,10 @@ test('Stagehand designates compaction bots from the Agents view with a distinct 
     await stagehand.init();
     let page = stagehand.context.pages()[0];
     await page.goto(`${fixture.baseURL}/?code=stagehand-test`, { waitUntil: 'domcontentloaded', timeout: 10000 });
-    await page.waitForSelector('.kikx-session-objects button', { timeout: 10000 });
+    await page.waitForSelector('.kikx-session-objects button, .kikx-view-container .tab', { timeout: 10000 });
 
     await page.evaluate(() => {
-      let button = Array.from(document.querySelectorAll('.kikx-session-objects button'))
+      let button = Array.from(document.querySelectorAll('.kikx-session-objects button, .kikx-view-container .tab'))
         .find((candidate) => candidate.textContent.trim() === 'Agents');
       button.click();
     });

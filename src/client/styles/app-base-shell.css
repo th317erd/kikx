@@ -251,6 +251,55 @@ aeor-tab-view.kikx-view-container[tab-bar-position="left"] > aeor-tab {
   min-height: 0;
 }
 
+/* Shell Views P2: the Projects container. The host still rides .kikx-main's
+   own tracks via display:contents (P1 rule above), but it now carries rail
+   CHROME, so the grid gains three rows — head, rail, foot — sized
+   auto 1fr auto via :has (the sidebar column's own proportions: header on
+   top, footer pinned at the bottom, tabs flexible between). The surface keeps
+   its direct-child slot through the marker class and spans all three rows.
+   Same columns, same chrome colors as .kikx-sessions: no shift by
+   construction. */
+.kikx-main:has(> aeor-tab-view.kikx-view-container--projects) {
+  grid-template-rows: auto 1fr auto;
+}
+
+aeor-tab-view.kikx-view-container--projects[tab-bar-position="left"] > .kikx-view-container__rail-head {
+  grid-column: 1;
+  grid-row: 1;
+  background: #131619;
+  border-right: 1px solid #2f3439;
+  padding: 18px 18px 6px;
+  min-width: 0;
+}
+
+/* P1 put the rail at row 1; with chrome present it moves to row 2 (higher
+   specificity wins over the P1 rule). */
+aeor-tab-view.kikx-view-container--projects[tab-bar-position="left"] > .tab-bar {
+  grid-row: 2;
+}
+
+aeor-tab-view.kikx-view-container--projects[tab-bar-position="left"] > .kikx-view-container__rail-foot {
+  grid-column: 1;
+  grid-row: 3;
+  background: #131619;
+  border-right: 1px solid #2f3439;
+  padding: 12px 18px 18px;
+  min-width: 0;
+}
+
+/* Projects panels stay empty by design (the surface is its own grid cell) —
+   hide them so an active button never overlaps the real content. */
+aeor-tab-view.kikx-view-container--projects > aeor-tab {
+  display: none;
+}
+
+.kikx-view-container__surface {
+  grid-column: 2;
+  grid-row: 1 / -1;
+  min-width: 0;
+  min-height: 0;
+}
+
 .kikx-startup-loading {
   display: grid;
   min-height: 0;

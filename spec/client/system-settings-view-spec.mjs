@@ -151,7 +151,7 @@ test('resolveViewSurface renders the settings view through the core table', asyn
     'the subtitle is gone from the view (the breadcrumb reads "Settings › …")');
 });
 
-test('settings mode swaps the sidebar view cluster for section navigation (owner screenshot 1)', async () => {
+test('the sidebar rows are mode-blind — sections live only in the Settings container rail (Shell Views P1/P2)', async () => {
   const { buildSessionObjectItems } = await import('../../src/client/components/kikx-sidebar-session-objects.mjs');
   const { buildInboxSidebarEntry } = await import('../../src/client/components/kikx-inbox-view.mjs');
   const { pushSystemSettings } = await import('../../src/client/state/navigation-stack.mjs');
@@ -160,30 +160,17 @@ test('settings mode swaps the sidebar view cluster for section navigation (owner
     app._state.navigationStack || [ { sessionID: null, collapsed: true } ]);
 
   const viewRows = buildSessionObjectItems(app).filter((item) => item.group === 'view');
-  assert.deepEqual(viewRows.map((row) => row.label), [ 'General', 'Email', 'Plugins' ],
-    'the settings navigation items REPLACE Agents/Teams (owner: "Sidebar content gets replaced with Settings navigation items")');
-  assert.equal(viewRows[0].active, true, 'General is active by default');
+  assert.deepEqual(viewRows.map((row) => row.label), [ 'Agents', 'Teams' ],
+    'the settings branch is GONE: rows never swap for sections anymore — the Settings container\u2019s rail owns sections (pinned in kikx-view-containers-spec)');
+  assert.ok(viewRows.every((row) => typeof row.view === 'string'),
+    'each row names its destination view, which is what lets the rail turn it into a tab');
   assert.equal(buildInboxSidebarEntry(app), null,
-    'Inbox belongs to the replaced content — the builder bows out');
+    'the Inbox builder still bows out inside the mode');
 
   const labels = buildSessionObjectItems(app).map((item) => item.label);
   assert.ok(labels.includes('Account') && labels.includes('Sign out'), 'the footer stays');
-
-  // A row click goes through the ONE seam (persist + publish + render).
-  app._syncURLFromStack = () => { app.__synced = true; };
-  app._requestRender = () => { app.__rendered = true; };
-  viewRows.find((row) => row.label === 'Email').onSelect();
-  assert.equal(app._state.settingsSection, 'Email', 'persisted');
-  assert.equal(app.__synced, true, 'URL published');
-  assert.equal(app.__rendered, true, 'render requested');
-  const after = buildSessionObjectItems(app).filter((item) => item.group === 'view');
-  assert.equal(after.find((row) => row.label === 'Email').active, true, 'active follows the switch');
-
-  // Leaving the mode restores the normal view rows.
-  app._state.navigationStack = [ { sessionID: null, collapsed: true } ];
-  const normal = buildSessionObjectItems(app).filter((item) => item.group === 'view')
-    .map((row) => row.label);
-  assert.deepEqual(normal, [ 'Agents', 'Teams' ], 'outside the mode the view rows come back');
+  assert.ok(!labels.some((label) => label === 'General' || label === 'Email' || label === 'Plugins'),
+    'no section label ever leaks back into the rows');
 });
 
 test('the settings breadcrumb is ONE "< Exit Settings" control; the sidebar owns sections (owner 2026-11-13)', async () => {

@@ -30,12 +30,23 @@
 //     for known sections only.
 
 import { scheduleAnimationFrame } from './kikx-app-helpers.mjs';
+import { elements } from '../lib/aeor-ui.mjs';
+import { getScopeSessionID, getSessions, navigateInbox } from '../state/kikx-state.mjs';
+import {
+  buildSessionObjectItems,
+  buildSidebarSessionObjects,
+  filterSessionObjectItems,
+  sidebarScopePredicateFor,
+} from './kikx-sidebar-session-objects.mjs';
+import { SIDEBAR_MENU_ELEMENT_ID, closeSidebarMenu } from './sidebar-menu.mjs';
 import {
   activateSettingsSection,
   buildSystemSettingsView,
   getSettingsSection,
   settingsSections,
 } from './kikx-system-settings-view.mjs';
+
+const { div, h2 } = elements;
 
 // The registry. Key = the view id the stack carries.
 const VIEW_CONTAINERS = new Map([
@@ -89,6 +100,95 @@ function buildSettingsContainer(app) {
         'aeor-tab-view.kikx-view-container .tab[aria-selected="true"]',
       )?.focus?.();
     });
+  });
+
+  return tabView;
+}
+
+// ---------------------------------------------------------------------------
+// Projects container (Shell Views P2): the everyday shell.
+// ---------------------------------------------------------------------------
+// The rail IS the old sidebar's view/plugins clusters turned into tabs — fed
+// through the SAME scope seam (sidebarScopePredicateFor ->
+// filterSessionObjectItems), so a denied row is a tab that never exists. The
+// header and footer chrome ride the host as children (the component only
+// touches .tab-bar and > aeor-tab, so foreign children survive its rebuilds)
+// and land in grid rows 1 and 3 beside the rail's row 2 — the geometry the
+// sidebar column used to own.
+//
+// Panels stay EMPTY here on purpose: the work-area surface (view surface or
+// session window) renders as its own grid cell, marked by the caller with
+// .kikx-view-container__surface. An active tab therefore switches navigation
+// via tab-change -> the row's own onSelect (the exact handler the sidebar
+// button had), and the render that follows rebuilds this container fresh.
+// When the stack tops no rail view (grid/thread), active="none" — the
+// component keeps every panel hidden and no button claims selection.
+//
+// Drawer parity (mobile): the host carries the sidebar's drawer id and the
+// delegated close, so a tap anywhere in the rail still shuts the menu.
+export function buildProjectsContainer(app, { entry = null, viewName = null } = {}) {
+  const state = app?._state || {};
+  const scopeFilter = sidebarScopePredicateFor(getScopeSessionID(state), getSessions(state));
+  const items = filterSessionObjectItems(
+    buildSessionObjectItems(app),
+    scopeFilter,
+    state,
+  );
+  const railRows = items.filter((item) =>
+    item.kind === 'button'
+    && (item.group === 'view' || item.group === 'plugins')
+    && typeof item.view === 'string' && item.view.trim() !== '');
+
+  const railTabs = [
+    {
+      name: 'inbox',
+      label: 'Inbox',
+      onSelect: () => {
+        navigateInbox(state);
+        app._requestRender?.('rail-tab');
+      },
+    },
+    ...railRows.map((item) => ({ name: item.view, label: item.label, onSelect: item.onSelect })),
+  ];
+  const active = viewName && railTabs.some((tab) => tab.name === viewName)
+    ? viewName
+    : 'none';
+
+  const tabView = document.createElement('aeor-tab-view');
+  tabView.setAttribute('class', 'kikx-view-container kikx-view-container--projects');
+  tabView.setAttribute('tab-bar-position', 'left');
+  tabView.setAttribute('active', active);
+  tabView.id = SIDEBAR_MENU_ELEMENT_ID;
+  // The rail chrome as foreign children, grid-placed by CSS (head row 1,
+  // tab-bar row 2 via the P1 rule + --projects override, foot row 3).
+  tabView.appendChild(
+    div.class('kikx-view-container__rail-head')(
+      div.class('kikx-sessions__header')(h2('Workspace')),
+    ).build(document),
+  );
+  tabView.appendChild(
+    div.class('kikx-view-container__rail-foot')(
+      buildSidebarSessionObjects(app, { group: 'footer', scopeFilter }),
+    ).build(document),
+  );
+
+  for (const tab of railTabs) {
+    const node = document.createElement('aeor-tab');
+    node.setAttribute('name', tab.name);
+    node.setAttribute('label', tab.label);
+    tabView.appendChild(node);
+  }
+
+  tabView.addEventListener('click', () => closeSidebarMenu(app));
+  tabView.addEventListener('tab-change', (event) => {
+    const next = event && event.detail ? event.detail.tab : null;
+    const tab = railTabs.find((candidate) => candidate.name === next);
+    if (!tab)
+      return;
+    // Each onSelect is the handler the sidebar button already had (rows use
+    // the state seams, inbox paints via its own requestRender) — no second
+    // render here, or every tab click would paint twice.
+    tab.onSelect();
   });
 
   return tabView;

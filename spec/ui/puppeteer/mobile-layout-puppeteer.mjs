@@ -48,7 +48,8 @@ async function mobileMetrics(page) {
   return await page.evaluate(() => {
     let app = document.querySelector('kikx-app');
     let topbar = document.querySelector('.kikx-topbar');
-    let sessions = document.querySelector('.kikx-sessions');
+    let sessions = document.querySelector('#kikx-sidebar-menu > .tab-bar')
+      || document.querySelector('#kikx-sidebar-menu');
     let thread = document.querySelector('.kikx-thread');
     let body = document.querySelector('.kikx-thread__body');
     let list = document.querySelector('.kikx-frame-list');
@@ -158,7 +159,7 @@ test('Puppeteer mobile emulation keeps the shell inside phone viewports and touc
       // Main views replace the thread; they must not reintroduce horizontal
       // overflow through their own cards/forms.
       await page.evaluate(() => {
-        let agents = [ ...document.querySelectorAll('.kikx-sidebar__view') ]
+        let agents = [ ...document.querySelectorAll('.kikx-view-container .tab') ]
           .find((button) => button.textContent.trim() === 'Agents');
         agents?.click();
       });

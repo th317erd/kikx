@@ -347,6 +347,78 @@
     transition: transform 220ms ease, visibility 0s;
   }
 
+  /* Shell Views P2: the rail IS the drawer. The container host carries the
+     sidebar's drawer id (#kikx-sidebar-menu), so these mirror the .kikx-sessions
+     rules above onto it — display:contents (desktop) flips to a real box, and
+     order puts head above rail above foot despite the component inserting the
+     tab-bar first. The surface stays in flow as the single grid row. */
+  /* Specificity must beat the desktop display:contents rule
+     (aeor-tab-view.kikx-view-container[attr] = 0,2,1) or the host never
+     becomes a box on phones — measured: rail chrome leaked into the grid and
+     pushed the thread down 250px. Full class+attr stack = 0,3,1. */
+  aeor-tab-view.kikx-view-container.kikx-view-container--projects[tab-bar-position="left"] {
+    display: flex;
+    flex-direction: column;
+    /* The vendor rail rule sets align-items: flex-start (designed for its row
+       layout) — in the drawer's column that shrink-wraps every child to label
+       width (measured: 99px tab-bar in a 315px drawer). Stretch, and drop the
+       row gap. */
+    align-items: stretch;
+    gap: 0;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 50;
+    width: min(84vw, 300px);
+    padding: 14px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 0;
+    border-right: 1px solid #2f3439;
+    background: #131619;
+    box-shadow: 16px 0 38px rgba(0, 0, 0, 0.5);
+    transform: translateX(-103%);
+    visibility: hidden;
+    transition: transform 220ms ease, visibility 0s linear 220ms;
+  }
+
+  .kikx-shell--menu-open aeor-tab-view.kikx-view-container.kikx-view-container--projects[tab-bar-position="left"] {
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform 220ms ease, visibility 0s;
+  }
+
+  aeor-tab-view.kikx-view-container.kikx-view-container--projects[tab-bar-position="left"] > .kikx-view-container__rail-head {
+    order: 1;
+    padding: 0 0 8px;
+    border-right: 0;
+  }
+
+  aeor-tab-view.kikx-view-container.kikx-view-container--projects[tab-bar-position="left"] > .tab-bar {
+    order: 2;
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 0;
+    border-right: 0;
+    background: transparent;
+  }
+
+  aeor-tab-view.kikx-view-container.kikx-view-container--projects[tab-bar-position="left"] > .kikx-view-container__rail-foot {
+    order: 3;
+    padding: 12px 0 0;
+    border-right: 0;
+  }
+
+  /* Single-column grid on phones: the surface must not ask for the desktop
+     rail track. The extra .kikx-shell class raises specificity above the
+     desktop rule so load order cannot decide it. */
+  .kikx-shell .kikx-view-container__surface {
+    grid-column: 1;
+    grid-row: 1 / -1;
+  }
+
   /* Only painted while open: a fixed sheet over the whole shell, so a tap
      anywhere outside the drawer dismisses the menu. */
   .kikx-shell--menu-open .kikx-sessions-scrim {

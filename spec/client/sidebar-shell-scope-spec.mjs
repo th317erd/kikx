@@ -129,26 +129,30 @@ function buildShellAt(sessionID) {
 
 // --- the seam is reached from a production entry point ---------------------
 
-test('buildRunnerShell passes a real scope predicate to ALL sidebar clusters', () => {
+test('the shell reaches the scope seam from BOTH production paths: rail filter + footer cluster', () => {
+  // Shell Views P2: the view/plugins clusters became rail TABS, filtered by
+  // the container through filterSessionObjectItems — the SAME seam, one
+  // predicate source. The footer cluster still builds through the cluster
+  // builder. Both are recorded by the spy at the module boundary.
   let { calls } = buildShellAt('G');
 
-  assert.equal(calls.length, 3,
-    'the shell builds exactly three session-object clusters (view + plugins + footer)');
+  let builds = calls.filter((call) => call.kind === 'build');
+  let filters = calls.filter((call) => call.kind === 'filter');
 
-  let byGroup = Object.fromEntries(calls.map((call) => [ call.group, call ]));
-  assert.ok(byGroup.view, 'the view cluster was built');
-  assert.ok(byGroup.plugins, 'the plugins cluster was built (§9.1.4)');
-  assert.ok(byGroup.footer, 'the footer cluster was built');
+  assert.equal(builds.length, 1, 'exactly one cluster build remains (the footer chrome)');
+  assert.equal(builds[0].group, 'footer', 'and it is the footer');
+  assert.equal(filters.length, 1, 'the rail filters its item list through the seam');
+  assert.equal(filters[0].group, 'rail', 'marked as the rail path');
 
-  for (let group of [ 'view', 'plugins', 'footer' ]) {
-    assert.equal(typeof byGroup[group].scopeFilter, 'function',
-      `the ${group} cluster must be handed a scope filter, not left to grant-all`);
+  for (let call of [ ...builds, ...filters ]) {
+    assert.equal(typeof call.scopeFilter, 'function',
+      'every production path must be handed a scope filter, not left to grant-all');
   }
 
   // Not just "some function": the thing handed over must actually scope.
-  assert.equal(byGroup.view.scopeFilter({ id: 'agents', scopeSessionID: 'S' }, 'S'), false,
-    'a row owned by an unrelated sibling session must be denied');
-  assert.equal(byGroup.footer.scopeFilter({ id: 'account-chip', scopeSessionID: null }, null), true,
+  assert.equal(filters[0].scopeFilter({ id: 'agents', scopeSessionID: 'S' }, 'S'), false,
+    'a row owned by an unrelated sibling session must be denied — and a denied row is a tab that never exists');
+  assert.equal(filters[0].scopeFilter({ id: 'account-chip', scopeSessionID: null }, null), true,
     'the global account chip survives at every level');
 });
 
@@ -157,7 +161,7 @@ test('the predicate the shell hands over is the one this module defines', () => 
   // these two cases: the shipped predicate is the single source of truth, so a
   // change to its rules must be a change in one place.
   let { calls } = buildShellAt('G');
-  let shellPredicate = calls.find((call) => call.group === 'view').scopeFilter;
+  let shellPredicate = calls.find((call) => call.kind === 'filter').scopeFilter;
 
   let reference = sidebarScopePredicateFor('G', SESSIONS);
 
@@ -178,7 +182,7 @@ test('the predicate the shell hands over is the one this module defines', () => 
 
 test('root grants the whole cluster, chip included -- it owns everything below it', () => {
   let { calls } = buildShellAt(null);
-  let scopeFilter = calls.find((call) => call.group === 'view').scopeFilter;
+  let scopeFilter = calls.find((call) => call.kind === 'filter').scopeFilter;
 
   let items = buildSessionObjectItems(appAt(null));
   let kept = filterSessionObjectItems(items, scopeFilter);
@@ -197,7 +201,7 @@ test('the account chip is granted by IDENTITY, not by its null scope id', () => 
   // viewer, so granting them proves nothing about the null case; the chip is the
   // only row whose scope id is null, and it must still pass.
   let { calls } = buildShellAt('G');
-  let scopeFilter = calls.find((call) => call.group === 'view').scopeFilter;
+  let scopeFilter = calls.find((call) => call.kind === 'filter').scopeFilter;
 
   assert.equal(scopeFilter({ id: 'account-chip', scopeSessionID: null }, null), true,
     'the global chip is granted because of what it IS');
@@ -210,7 +214,7 @@ test('the account chip is granted by IDENTITY, not by its null scope id', () => 
 
 test('a viewer sees its own rows and is denied a foreign one', () => {
   let { calls } = buildShellAt('G');
-  let scopeFilter = calls.find((call) => call.group === 'view').scopeFilter;
+  let scopeFilter = calls.find((call) => call.kind === 'filter').scopeFilter;
 
   assert.equal(scopeFilter({ id: 'agents', scopeSessionID: 'G' }, 'G'), true, 'own row');
   assert.equal(scopeFilter({ id: 'teams', scopeSessionID: 'C' }, 'C'), true,
@@ -223,7 +227,7 @@ test('a viewer sees its own rows and is denied a foreign one', () => {
 
 test('the seam this spec drives is the one the shell builds, and it keeps order', () => {
   let { calls } = buildShellAt('G');
-  let scopeFilter = calls.find((call) => call.group === 'view').scopeFilter;
+  let scopeFilter = calls.find((call) => call.kind === 'filter').scopeFilter;
 
   let items = buildSessionObjectItems(appAt('G'));
   let kept = filterSessionObjectItems(items, scopeFilter);

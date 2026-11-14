@@ -25,7 +25,8 @@ function probeMenu(page) {
     let shell = document.querySelector('.kikx-shell');
     let toggle = document.querySelector('.kikx-menu-toggle');
     let scrim = document.querySelector('.kikx-sessions-scrim');
-    let sessions = document.querySelector('.kikx-sessions');
+    let sessions = document.querySelector('#kikx-sidebar-menu');
+    let sessionsBox = document.querySelector('#kikx-sidebar-menu > .tab-bar') || sessions;
     let topbar = document.querySelector('.kikx-topbar');
     let thread = document.querySelector('.kikx-thread') || document.querySelector('.kikx-workspace');
     let rect = (node) => {
@@ -45,7 +46,7 @@ function probeMenu(page) {
       },
       scrimDisplay: style(scrim)?.display || null,
       sidebar: {
-        rect: rect(sessions),
+        rect: rect(sessionsBox),
         visibility: style(sessions)?.visibility || null,
         position: style(sessions)?.position || null,
         hasID: sessions?.id || null,
@@ -84,7 +85,7 @@ function frames(count) {
 async function waitForClosed(page) {
   await page.waitForFunction(() => {
     let shell = document.querySelector('.kikx-shell');
-    let sessions = document.querySelector('.kikx-sessions');
+    let sessions = document.querySelector('#kikx-sidebar-menu');
     return shell && !shell.classList.contains('kikx-shell--menu-open')
       && sessions && getComputedStyle(sessions).visibility === 'hidden';
   }, { timeout: 5000 });
@@ -93,7 +94,7 @@ async function waitForClosed(page) {
 async function waitForOpen(page) {
   await page.waitForFunction(() => {
     let shell = document.querySelector('.kikx-shell');
-    let sessions = document.querySelector('.kikx-sessions');
+    let sessions = document.querySelector('#kikx-sidebar-menu');
     if (!shell || !sessions || !shell.classList.contains('kikx-shell--menu-open'))
       return false;
     if (getComputedStyle(sessions).visibility !== 'visible')
@@ -174,7 +175,7 @@ test('Puppeteer mobile view uses a hamburger + floating drawer for the sidebar',
     await page.click('.kikx-menu-toggle');
     await waitForOpen(page);
     await page.evaluate(() => {
-      let agents = [ ...document.querySelectorAll('.kikx-sidebar__view') ]
+      let agents = [ ...document.querySelectorAll('.kikx-view-container .tab') ]
         .find((button) => button.textContent.trim() === 'Agents');
       agents?.click();
     });

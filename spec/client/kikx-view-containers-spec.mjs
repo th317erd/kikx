@@ -48,6 +48,9 @@ function makeApp(overrides = {}) {
     _state: {
       account: { name: 'Wyatt', email: 'wegreenway@taraani.org' },
       navigationStack: [ { sessionID: null, collapsed: true } ],
+      sessions: [],
+      sessionIDs: [],
+      sessionDetailsByID: {},
       ...overrides.state,
     },
     syncCalls: 0,
@@ -197,4 +200,91 @@ test('no viewName === branch: container module and shell stay table-driven (P7)'
     'the shell must not branch on the view name (P7 grep gate)');
   assert.match(shellSource, /resolveViewContainer\(/,
     'the shell resolves a container before building sidebar + surface');
+});
+
+// ---------------------------------------------------------------------------
+// P2: the Projects container — rail tabs, chrome, surface contract
+// ---------------------------------------------------------------------------
+
+test('projects container: rail tabs = Inbox + view/plugins rows, chrome rides, drawer id kept', async () => {
+  const { buildProjectsContainer } =
+    await import('../../src/client/components/kikx-view-containers.mjs');
+
+  const app = makeApp({
+    state: {
+      clientSidebarItems: {
+        notes: { surfaceID: 'notes', view: 'notes', label: 'Notes' },
+      },
+    },
+  });
+  app._openAgentManager = () => { app.agentOpens = (app.agentOpens || 0) + 1; };
+  app._openTeamManager = () => { app.teamOpens = (app.teamOpens || 0) + 1; };
+
+  const host = buildProjectsContainer(app, { entry: { sessionID: null }, viewName: null });
+  const tag = String(host.localName || host.tagName || '').toLowerCase();
+  assert.equal(tag, 'aeor-tab-view', 'the Projects container is a TabbedView too');
+  const classes = host.getAttribute('class') || '';
+  assert.ok(classes.includes('kikx-view-container--projects'), 'marked as the projects container');
+  assert.equal(host.getAttribute('tab-bar-position'), 'left', 'left rail');
+  assert.equal(host.id, 'kikx-sidebar-menu', 'the drawer id rides the host (mobile parity)');
+  assert.equal(host.getAttribute('active'), 'none',
+    'grid/thread tops no rail view: no tab claims selection');
+
+  const tabs = [...host.querySelectorAll('aeor-tab')];
+  assert.deepEqual(tabs.map((t) => t.getAttribute('name')),
+    [ 'inbox', 'agents', 'teams', 'notes' ],
+    'tabs = Inbox + view rows + plugin destinations, in order');
+  assert.deepEqual(tabs.map((t) => t.getAttribute('label')),
+    [ 'Inbox', 'Agents', 'Teams', 'Notes' ],
+    'labels mirror the stagehand click-by-text contract');
+
+  assert.ok(host.querySelector('.kikx-view-container__rail-head .kikx-sessions__header'),
+    'the Workspace header is rail chrome');
+  const foot = host.querySelector('.kikx-view-container__rail-foot .kikx-session-objects--footer');
+  assert.ok(foot, 'the footer cluster rides as rail chrome (class kept for account-page)');
+  const footText = foot ? [...foot.querySelectorAll('button')].map((b) => b.textContent.trim()) : [];
+  assert.ok(footText.includes('Account') && footText.includes('Sign out'),
+    `footer buttons intact (got ${JSON.stringify(footText)})`);
+
+  const withView = buildProjectsContainer(app, { entry: {}, viewName: 'agents' });
+  assert.equal(withView.getAttribute('active'), 'agents',
+    'an open rail view maps to the active tab');
+});
+
+test('rail tab-change runs the row handler exactly once — no second render from the glue', async () => {
+  const { buildProjectsContainer } =
+    await import('../../src/client/components/kikx-view-containers.mjs');
+
+  const app = makeApp();
+  app._openAgentManager = () => { app.agentOpens = (app.agentOpens || 0) + 1; };
+  const host = buildProjectsContainer(app, { entry: {}, viewName: null });
+
+  host.dispatchEvent(new CustomEvent('tab-change', { bubbles: true, detail: { tab: 'agents' } }));
+  assert.equal(app.agentOpens, 1, 'the row handler fired once');
+  assert.deepEqual(app.renderReasons, [],
+    'the glue adds no render — each onSelect owns its own paint');
+
+  host.dispatchEvent(new CustomEvent('tab-change', { bubbles: true, detail: { tab: 'ghost' } }));
+  host.dispatchEvent(new CustomEvent('tab-change', { bubbles: true }));
+  assert.equal(app.agentOpens, 1, 'unknown/malformed events are ignored');
+
+  host.dispatchEvent(new CustomEvent('tab-change', { bubbles: true, detail: { tab: 'inbox' } }));
+  assert.ok(app.renderReasons.includes('rail-tab'),
+    'the inbox tab paints through its own requestRender path');
+});
+
+test('P2 wiring: shell builds the projects container + marked surface, scope seam reached (source pins)', async () => {
+  const shellSource = await source('src/client/components/kikx-shell-builders.mjs');
+  assert.match(shellSource, /buildProjectsContainer\(/,
+    'the everyday shell renders the projects container');
+  assert.match(shellSource, /kikx-view-container__surface/,
+    'the work-area surface gets its grid marker class');
+  assert.ok(!/viewName\s*===/.test(shellSource), 'still no viewName branch (P7)');
+
+  const containerSource =
+    await source('src/client/components/kikx-view-containers.mjs');
+  assert.match(containerSource, /filterSessionObjectItems\(/,
+    'the rail filters through the ONE scope seam (denied row = no tab)');
+  assert.match(containerSource, /sidebarScopePredicateFor\(/,
+    'with the module predicate, not a hand-rolled lambda');
 });
