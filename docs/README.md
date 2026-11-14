@@ -151,8 +151,8 @@ roadmap item is shipped.
 - [Plugin extensibility campaign](./roadmap/plugin-extensibility.md)
 - [Plugin platform campaign](./plans/plugin-platform-campaign.md)
 - [Unified properties store (theme, email, plugin access)](./plans/properties-store.md)
-- [Shell Views containers](./plans/shell-views-campaign.md) — Projects and Settings as TabbedView containers (current).
-- [Scrollview campaign](./plans/scrollview-campaign.md)
+- [Shell Views containers](./plans/shell-views-campaign.md) — Projects and Settings as TabbedView containers (shipped P1–P4, 2026-11-14; closure record: [estate recovery report](./reports/2026-11-14-shell-views-test-estate-recovery.md)).
+- [Scrollview campaign](./plans/scrollview-campaign.md) (open: the owner-gated design-A anchor/latch ruling — see `.pi/HANDOFF.md` evidence package).
 - [System Settings shell + Xenocept plugin parity](./plans/system-settings-xenocept-plugins-campaign.md)
 - [Client user-state integrity](./plans/client-user-state-integrity.md)
 - [Client targeted-update layer](./plans/client-targeted-update-layer.md)
