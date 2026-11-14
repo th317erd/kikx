@@ -267,8 +267,26 @@ function itemsForGroup(items, group) {
 // `clickButtonByText`'s `textContent.trim() === text` assertion needs (seven
 // stagehand specs click these by text).
 //
-// The footer branch below is unchanged and still emits `kikx-sign-out-button`:
-// Account and Sign out ARE bar-style controls, and that styling is correct there.
+// The footer branch below is unchanged and still emits `kikx-sign-out-button`.
+//
+// RE-RULED (2026-11-14, owner, screenshot session-2026-11-14-02-58-23.786):
+// "for the SIDEBAR SPECIFICALLY, I actually prefer the gray buttons WITHOUT a
+// border, and the primary color + highlight on hover. Please change the
+// 'Account' and 'Sign Out' buttons to match other sidebar buttons."
+//
+// This supersedes the earlier sentence here that said Account and Sign out
+// "ARE bar-style controls, and that styling is correct there". They are still
+// bar-style controls; the owner simply wants them presented as ROWS in the
+// sidebar, matching Inbox / Agents / Teams.
+//
+// The class is kept -- it is the handle seven stagehand specs and
+// sidebar-view-grouping-spec.mjs select on -- and the LOOK is changed in
+// topbar-unified.css (`.kikx-session-objects .kikx-sign-out-button`), scoped
+// to the sidebar cluster. Scoping is load-bearing: the same class is the
+// Cancel/Delete control in kikx-modals.mjs, where the app-wide button recipe
+// is still correct. See spec/ui/puppeteer/
+// sidebar-border-and-footer-buttons-puppeteer.mjs, whose third test pins that
+// boundary so a future global restyle cannot leak into dialogs.
 function renderItem(item) {
   if (item.kind === 'chip')
     return span.class('kikx-account-chip')(item.label);

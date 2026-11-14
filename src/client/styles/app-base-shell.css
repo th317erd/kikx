@@ -304,12 +304,37 @@ aeor-tab-view.kikx-view-container--projects > aeor-tab {
    carry NO right-side corner radius BY DESIGN — correct generically, but in
    our scenario it reads as the item being clipped by the divider ("terribly
    ugly … we need to force full-corner-radiuses"). Consumer override, scoped
-   to OUR rails only: every corner rounded, and the fourth border side
-   restored as transparent so .tab.active's accent completes the chip on all
-   four sides. The vendor default stays untouched for generic consumers. */
+   to OUR rails only: every corner rounded. The vendor default stays untouched
+   for generic consumers.
+
+   CORRECTION (2026-11-14, later annotation). The earlier version of this rule
+   ended with "border-right: 1px solid transparent" and claimed that let
+   ".tab.active's accent complete the chip on all four sides". It did the
+   OPPOSITE, and the comment was wrong. Measured on a SELECTED Inbox tab: top
+   and left resolved to rgb(61,108,255) while right and bottom resolved to
+   rgba(0,0,0,0) — a chip drawn on two sides of four. That is exactly the
+   owner's report, "the border-width appears to be fully missing from the
+   right-side border (or it is transparent?)".
+
+   Two specificity traps caused it, and both are why each side now has to be
+   declared explicitly rather than left to the vendor:
+     - this rule (0,2,1) set border-right, so .tab.active's
+       "border-color: var(--accent)" (0,2,0) could never reach that side;
+     - the vendor's own left-rail rule (0,2,1) sets "border-bottom:
+       transparent", which likewise outranks .tab.active.
+   So: a real 1px on all four sides here, and ONE rule below that paints all
+   four sides with the accent while selected. */
 aeor-tab-view.kikx-view-container[tab-bar-position="left"] .tab {
   border-radius: 0.375rem;
-  border-right: 1px solid transparent;
+  border: 1px solid transparent;
+}
+
+/* (0,3,1) so it outranks both the rule above and the vendor's rail rule.
+   The border SHORTHAND is deliberate: naming only border-color would leave
+   the width/style of the two defeated sides as the vendor left them
+   (transparent), which is the bug this rule exists to close. */
+aeor-tab-view.kikx-view-container[tab-bar-position="left"] .tab.active {
+  border: 1px solid var(--kikx-accent);
 }
 
 .kikx-startup-loading {

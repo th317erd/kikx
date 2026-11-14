@@ -473,24 +473,58 @@
 
 /* Sidebar rows, not toolbar buttons: full width, left aligned, flat until
  * hover. The existing `.kikx-sign-out-button` rule is a pill meant for a
- * horizontal bar; it is overridden here rather than in app.css. */
+ * horizontal bar; it is overridden here rather than in app.css.
+ *
+ * RE-RULED (2026-11-14, owner, SIDEBAR SPECIFICALLY): "I actually prefer the
+ * gray buttons WITHOUT a border, and the primary color + highlight on hover.
+ * Please change the 'Account' and 'Sign out' buttons to match other sidebar
+ * buttons."
+ *
+ * This supersedes the earlier ruling that Account and Sign out "ARE bar-style
+ * controls, and that styling is correct there" (kikx-sidebar-session-objects
+ * .mjs) and the recipe border/fill that button-theme-spec.mjs used to pin.
+ * MEASURED CORRECTION (this is why the values look borrowed). The first
+ * version of this restyle reused `.kikx-sidebar__view`'s palette (#171c21 /
+ * #dce3ea, questions-inbox.css). That class does NOT render any more: since
+ * Shell Views P2 the sidebar cluster IS the aeor-tab rail, so the buttons the
+ * owner is comparing against are `.tab` entries. Reusing the dead class's
+ * grey would have matched a control that is not on screen. Before this change
+ * the two were the only tinted controls in the column: background
+ * color(srgb .111 .154 .251) with a 55%-accent border, beside tabs at
+ * rgb(22,27,34) with fully transparent borders.
+ *
+ * So every value below is the TAB's own value, and the spec asserts equality
+ * against a live tab's computed style rather than against these literals — if
+ * the rail is retuned, that test fails instead of silently drifting.
+ *
+ * Transparent 1px at rest, not 0: a 0-width border would make the rows 2px
+ * shorter AND jump them on hover. Hover is where the owner's "primary color"
+ * lands — accent border plus the lightened fill. Hover reuses the vendor's own
+ * formula (mix fill 80% with white) so the two families cannot drift apart;
+ * text colour is deliberately NOT changed, because the tabs do not change it
+ * either.
+ *
+ * Scope is the sidebar cluster, never the class globally: the SAME
+ * .kikx-sign-out-button is the Cancel/Delete control in kikx-modals.mjs, and a
+ * dialog button IS genuinely bar-style. It keeps the app-wide recipe. */
 .kikx-session-objects .kikx-sign-out-button {
   width: 100%;
   text-align: left;
-  padding: 6px 8px;
-  border: 1px solid var(--kikx-btn-border);
-  border-radius: 6px;
-  background: var(--kikx-btn-bg);
-  color: #f5f7fa;
+  padding: 0.5rem 1rem;
+  border: 1px solid transparent;
+  border-radius: 0.375rem;
+  background: #161b22;
+  color: #8b949e;
   font: inherit;
-  font-size: calc(12px * 1.25);
+  font-size: 0.875rem;
   cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
 }
 
 .kikx-session-objects .kikx-sign-out-button:hover,
 .kikx-session-objects .kikx-sign-out-button:focus-visible {
-  background: var(--kikx-btn-bg-hover);
   border-color: var(--kikx-accent);
+  background: color-mix(in srgb, #161b22 80%, #fff);
 }
 
 /* The sidebar is a column so `margin-top: auto` on the footer cluster has slack
