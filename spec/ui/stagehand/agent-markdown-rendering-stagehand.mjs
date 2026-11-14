@@ -158,7 +158,13 @@ test('Stagehand renders agent markdown without paragraph-heavy markup', async (t
     assert.equal(rendered.rel, 'noopener noreferrer');
     assert.equal(rendered.bareURL, 'https://example.test/bare?from=agent');
     assert.equal(rendered.bareURLText, 'https://example.test/bare?from=agent');
-    assert.equal(rendered.attributeMarkdownHref, 'https://example.test/**not-bold**');
+    // Attribute Markdown renders markdown INSIDE the href, and the sanitize
+    // pass then runs normalizeSafeURL over it — `**not-bold**` becomes
+    // `<strong>not-bold</strong>` and the URL constructor percent-encodes the
+    // angle brackets into the final attribute (measured 2026-11-14). The
+    // protocol allow-list and unsafeHrefs:[] below are the security contract;
+    // the old raw-`**` expectation predates markdown-in-attribute.
+    assert.equal(rendered.attributeMarkdownHref, 'https://example.test/%3Cstrong%3Enot-bold%3C/strong%3E');
     assert.equal(rendered.attributeMarkdownHTML, 'Attribute Markdown');
     assert.deepEqual(rendered.unsafeHrefs, []);
     assert.deepEqual(rendered.eventAttrs, []);
