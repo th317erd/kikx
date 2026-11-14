@@ -18,9 +18,12 @@ import '../../support/test-env.mjs';
 // guards read-modify-write within the document, last-writer-wins beyond it.
 //
 // LIVE parity bounds (documented per test_check): opt-in only, 60s lane
-// watchdog covers them; default SKIPPED — this host has no PostgreSQL
-// opt-in and AeorDB is permanently retired (owner ruling), so the skips ARE
-// the honest state here.
+// watchdog covers them; default SKIPPED (the unit lane is hermetic by
+// contract). PostgreSQL parity was EXERCISED GREEN on this host
+// (2026-11-14: KIKX_PROPERTIES_PARITY_URL sourced from .env.dev -> 7 pass,
+// isolated /core/parity/probe put/get/delete against live :5434). AeorDB is
+// permanently retired (owner ruling), so that skip is the honest state
+// forever.
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
