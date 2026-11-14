@@ -16,7 +16,7 @@ const STREAM_PAGE_SIZE = DIRECTORY_PAGE_LIMIT;
 export class AeorDBConnection extends DatabaseConnectionBase {
   static driverID = 'aeordb';
   static displayName = 'AeorDB';
-  static description = 'Document store backed by an AeorDB server.';
+  static description = 'Document store backed by an AeorDB server — RETIRED by owner ruling: this backend is no longer available, do not select it (the config-less default is SQLite).';
   static capabilities = {
     read: true,
     write: true,
