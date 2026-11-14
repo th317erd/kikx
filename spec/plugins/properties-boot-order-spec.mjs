@@ -90,3 +90,43 @@ test('boot order: a fixture plugin writes a property DURING setup — the table 
   assert.equal(row.value.from, 'setup');
   assert.equal(row.updatedBy, 'boot-order-fixture');
 });
+
+test('injection: an injected propertiesStore registers the FULL aside — facade + grants (503 root)', async (t) => {
+  // Red-first: observed in the browser (theme fixture answered 503
+  // property_store unavailable with a store-only injection — the P1 seam
+  // predates the P2 facade, 2026-11-14); this is the fast unit pin so the
+  // seam can never regress without Chrome. Signature-free assertions on
+  // purpose — the HTTP 200 end-to-end lives in the theme puppeteer spec.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kikx-inject-aside-'));
+  t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+  const store = await openPropertiesStore({
+    driver: 'sqlite', filename: path.join(tmp, 'injected.db'), logger: silent,
+  });
+  t.after(() => store.close());
+
+  // Pre-seed BEFORE boot: the HTTP layer reads through the facade, so the
+  // aside must exist for any injected-server read to work at all.
+  await store.put({ type: 'global', id: '' }, '/fixtures/boot/injected',
+    { ok: true }, { updatedBy: 'injection-test' });
+
+  const context = new AppContext({ aeordb: {} });
+  const server = await createServer({
+    context,
+    aeordb: {},
+    logger: silent,
+    propertiesStore: store,
+  });
+  t.after(() => new Promise((resolve) => server.close(() => resolve())));
+
+  assert.equal(context.has('propertiesStore'), true, 'the injected store is registered');
+  assert.equal(context.require('propertiesStore'), store,
+    'and it is THE injected instance — not a second opened store');
+  assert.ok(context.has('propertiesFacade'),
+    'the FACADE is registered — the HTTP routes only talk to it (the 503 root)');
+  assert.ok(context.has('propertiesGrants'), 'grants register alongside the facade');
+  const facade = context.require('propertiesFacade');
+  assert.equal(typeof facade.read, 'function', 'the facade exposes reads (caller-first API)');
+  const row = await facade.read('core', { type: 'global', id: '' }, '/fixtures/boot/injected');
+  assert.deepEqual(row?.value, { ok: true },
+    'and a pre-seeded row is readable THROUGH the facade — exactly the path the HTTP 503 was missing');
+});
