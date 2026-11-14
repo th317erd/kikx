@@ -48,8 +48,12 @@ function frames(count) {
 
 const SHELL_SELECTORS = [
   '.kikx-main',
-  '#kikx-sidebar-menu',
-  '#kikx-sidebar-menu .kikx-sessions__header',
+  // Shell Views P1 (plan docs/plans/shell-views-campaign.md): only the FRAME
+  // rides this list. The sidebar column's nodes (the #kikx-sidebar-menu id,
+  // the Workspace header) do not exist in container mode — the rail replaces
+  // them (breaking pin #3, predicted by map_territory). The identity
+  // invariant is .kikx-main across BOTH switches, grafted by shell-skeleton's
+  // frame path; the rail's presence is pinned in chromeProbe below.
 ];
 
 test('System Settings mode switch keeps shell root + sidebar node identity (§9.3.13)', async (t) => {
@@ -112,9 +116,13 @@ test('System Settings mode switch keeps shell root + sidebar node identity (§9.
       header: Boolean(document.querySelector('.kikx-system-settings .kikx-view-header')),
       tabs: Boolean(document.querySelector('.kikx-system-settings aeor-tab-view')),
       body: Boolean(document.querySelector('.kikx-system-settings__body')),
+      container: Boolean(document.querySelector(
+        '.kikx-main aeor-tab-view.kikx-view-container[tab-bar-position="left"]')),
+      sidebar: Boolean(document.querySelector('.kikx-sessions')),
     }));
-    assert.deepEqual(chromeProbe, { header: false, tabs: false, body: true },
-      'the view renders ONLY its body — no subtitle/Back header, no tabbed view');
+    assert.deepEqual(chromeProbe,
+      { header: false, tabs: false, body: true, container: true, sidebar: false },
+      'the view renders ONLY its body inside the left-rail CONTAINER (P1) — no subtitle/Back header, no in-view tab strip, no sidebar column');
 
     for (const selector of SHELL_SELECTORS)
       await identityStays(selector, 'after entering System Settings');
@@ -196,13 +204,13 @@ test('gear writes ?view=settings, reload restores the mode, and Plugins loading 
     assert.equal(settled, true, 'the inventory settles unaided on entry (owner bug 4)');
 
     const clicked = await page.evaluate(() => {
-      const row = [...document.querySelectorAll('.kikx-session-objects button')]
+      const row = [...document.querySelectorAll('.kikx-view-container .tab')]
         .find((el) => (el.textContent || '').trim() === 'Plugins');
       if (!row) return false;
       row.click();
       return true;
     });
-    assert.equal(clicked, true, 'the sidebar offers a Plugins section row');
+    assert.equal(clicked, true, 'the rail offers a Plugins section tab');
     await page.waitForSelector('.kikx-settings-plugins', { timeout: 10000 });
     await new Promise((resolve) => setTimeout(resolve, 400)); // let the queued rAF render land
 
@@ -214,9 +222,9 @@ test('gear writes ?view=settings, reload restores the mode, and Plugins loading 
     assert.ok(crumbsAfterTab.includes('< Exit Settings'),
       `the breadcrumb IS the Exit control (got ${JSON.stringify(crumbsAfterTab)})`);
     const activeRow1 = await page.evaluate(() =>
-      document.querySelector('.kikx-sidebar__view--active')?.textContent?.trim() || null);
+      document.querySelector('.kikx-view-container .tab[aria-selected="true"]')?.textContent?.trim() || null);
     assert.equal(activeRow1, 'Plugins',
-      'the sidebar row carries the active section (owner: crumbs are useless here)');
+      'the rail tab carries the active section (owner: crumbs are useless here)');
 
     // ---- Owner #1 (second half): reload reopens THE TAB IN VIEW, unaided. ---
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
@@ -226,18 +234,19 @@ test('gear writes ?view=settings, reload restores the mode, and Plugins loading 
     assert.ok(restoredSearch.includes('view=settings') && restoredSearch.includes('section=Plugins'),
       `the URL survives the reload complete (got "${restoredSearch}")`);
     const activeRow2 = await page.evaluate(() =>
-      document.querySelector('.kikx-sidebar__view--active')?.textContent?.trim() || null);
+      document.querySelector('.kikx-view-container .tab[aria-selected="true"]')?.textContent?.trim() || null);
     assert.equal(activeRow2, 'Plugins',
-      'the restored section shows WITHOUT any click — the active sidebar row carries it');
+      'the restored section shows WITHOUT any click — the active rail tab carries it');
 
-    // Owner screenshot 1: the SIDEBAR carries the settings navigation now.
-    const sidebarLabels = await page.$$eval('.kikx-session-objects button',
+    // Owner screenshot 1: the container RAIL carries the settings navigation
+    // now (P1: sidebar column swapped for the TabbedView's left rail).
+    const sidebarLabels = await page.$$eval('.kikx-view-container .tab',
       (nodes) => nodes.map((node) => node.textContent.trim()));
     for (const name of [ 'General', 'Email', 'Plugins' ])
       assert.ok(sidebarLabels.includes(name),
-        `settings nav row '${name}' in the sidebar (got ${JSON.stringify(sidebarLabels)})`);
+        `settings rail tab '${name}' (got ${JSON.stringify(sidebarLabels)})`);
     assert.equal(sidebarLabels.includes('Agents'), false,
-      'the session view rows are replaced by settings navigation');
+      'the session view rows are replaced by the container rail');
 
     const sectionText = await page.$eval('.kikx-settings-plugins', (node) => node.textContent);
     assert.ok(sectionText.includes('Installed Plugins'), 'the section reached its terminal content');
@@ -257,8 +266,8 @@ test('gear writes ?view=settings, reload restores the mode, and Plugins loading 
     assert.ok(crumbs.includes('< Exit Settings'),
       `the breadcrumb IS the Exit control (got ${JSON.stringify(crumbs)})`);
     const activeRow3 = await page.evaluate(() =>
-      document.querySelector('.kikx-sidebar__view--active')?.textContent?.trim() || null);
-    assert.equal(activeRow3, 'Plugins', 'and the sidebar row shows the live section');
+      document.querySelector('.kikx-view-container .tab[aria-selected="true"]')?.textContent?.trim() || null);
+    assert.equal(activeRow3, 'Plugins', 'and the rail tab shows the live section');
 
     // ---- Owner item 1: the view scrolls itself (.kikx-main is overflow:
     // hidden). A tall spacer proves the container, not just the CSS text. ---
@@ -345,20 +354,20 @@ test('Settings → Email: the reference form renders via the sidebar sections (o
     await page.goto(`http://127.0.0.1:${port}/?view=settings`, { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.waitForSelector('.kikx-system-settings__body', { timeout: 10000 });
 
-    const labels = await page.$$eval('.kikx-session-objects button',
+    const labels = await page.$$eval('.kikx-view-container .tab',
       (rows) => rows.map((row) => row.textContent.trim()));
     assert.deepEqual(labels.slice(0, 3), [ 'General', 'Email', 'Plugins' ],
-      'the sidebar carries the three sections in Xenocept order (tabs are gone)');
+      'the rail carries the three sections in Xenocept order (the in-view strip stays gone)');
 
     // click the Email SECTION (sidebar row — owner screenshot 1)
     const clicked = await page.evaluate(() => {
-      const row = [...document.querySelectorAll('.kikx-session-objects button')]
+      const row = [...document.querySelectorAll('.kikx-view-container .tab')]
         .find((el) => (el.textContent || '').trim() === 'Email');
       if (!row) return false;
       row.click();
       return true;
     });
-    assert.equal(clicked, true, 'the sidebar Email row exists');
+    assert.equal(clicked, true, 'the rail Email tab exists');
     await page.waitForSelector('.kikx-settings-email', { timeout: 10000 });
 
     const form = await page.evaluate(() => ({
@@ -521,13 +530,13 @@ test('?view=settings deep-links into the mode on a sessionless entry (§9.3.10)'
     // stay inert rather than guessing at an id.
     const state = await page.evaluate(() => ({
       hash: location.hash,
-      sidebarThere: Boolean(document.querySelector('#kikx-sidebar-menu')),
-      workspaceThere: Boolean(document.querySelector('#kikx-sidebar-menu .kikx-sessions__header')),
+      frameThere: Boolean(document.querySelector('.kikx-main')),
+      railThere: Boolean(document.querySelector('.kikx-main aeor-tab-view.kikx-view-container')),
     }));
     assert.doesNotMatch(state.hash, /message=/,
       'a sessionless settings entry must not synthesise a message hash');
-    assert.ok(state.sidebarThere && state.workspaceThere,
-      'the mode reuses the sidebar exactly as annotated');
+    assert.ok(state.frameThere && state.railThere,
+      'the deep link boots the container: frame + rail (P1: the rail replaces the sidebar column; the drawer re-homes in P4)');
     assert.deepEqual(pageErrors, [], 'the deep link must boot without page errors');
   } finally {
     await browser.close();

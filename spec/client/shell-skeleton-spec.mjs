@@ -200,3 +200,39 @@ test('transplant refuses a structural mismatch (returns false, touches nothing)'
   assert.equal(transplanted, false, 'mismatched structure must not graft');
   assert.deepEqual(app.childNodes, before, 'the live DOM is untouched on refusal');
 });
+
+test('transplant grafts the FRAME when the column is gone (Shell Views container mode, plan P1)', () => {
+  // Container mode renders a left rail INSTEAD of sidebar > header inside
+  // .kikx-main. Requiring the full four-node chain there would fall back to
+  // empty-and-append on EVERY settings paint — fresh shell root, torn-down
+  // bindings, re-run custom-element lifecycles — exactly the pathology this
+  // module exists to prevent (§9.3.13, plan breaking pin #3).
+  const previousBuilt = buildTree();
+  const app = makeApp(previousBuilt);
+  const previous = captureShellChain(app);
+
+  const fresh = buildTree();
+  fresh.sidebar.remove(); // the paint has no column: rail mode
+  const next = captureTreeChain(fresh.shell);
+  assert.equal(next.sidebar, null, 'precondition: container mode has no column');
+  assert.equal(next.header, null, 'and no header');
+
+  const discarded = [];
+  const transplanted = transplantShellSkeleton({
+    app, tree: fresh.shell, previous, next, onDiscard: (node) => discarded.push(node),
+  });
+
+  assert.equal(transplanted, true, 'the FRAME grafts even without a column');
+  assert.equal(captureShellChain(app).shell, previous.shell, 'shell root identity kept');
+  assert.equal(captureShellChain(app).main, previous.main, 'main identity kept');
+  const mainNow = captureShellChain(app).main;
+  assert.ok(Array.from(mainNow.childNodes).includes(fresh.workarea),
+    'the fresh column content took main\u2019s slot');
+  assert.ok(!Array.from(mainNow.childNodes).includes(previous.sidebar),
+    'the old column is gone');
+  assert.ok(discarded.includes(previous.sidebar),
+    'the old column reports for teardown');
+  assert.ok(discarded.includes(previousBuilt.topbar), 'old topbar still discarded');
+  assert.ok(!discarded.includes(previous.shell) && !discarded.includes(previous.main),
+    'the frame is never reported for teardown');
+});

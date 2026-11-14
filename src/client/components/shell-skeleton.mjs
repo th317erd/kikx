@@ -10,13 +10,22 @@
 //
 // The contract, in one paragraph: a paint builds a COMPLETE new tree (fresh
 // leaves — that is what keeps every static onClick closure current), then
-// this module grafts the four-node preserved chain (shell > main > sidebar >
-// header) out of the live DOM into the new tree, moves the fresh children
-// into those preserved containers, and reports the replaced old leaves so the
-// caller can run binding teardown on them. Anything that does not line up —
-// no previous shell, a non-shell root (auth screen), a missing level — makes
-// it return false and touch nothing; the caller then falls back to the
-// historical empty-and-append path.
+// this module grafts the preserved FRAME (shell > main) out of the live DOM
+// into the new tree, plus the sidebar COLUMN (sidebar > header) when BOTH
+// sides have one, moves the fresh children into those preserved containers,
+// and reports the replaced old leaves so the caller can run binding teardown
+// on them. Anything that does not line up at the FRAME level — no previous
+// shell, a non-shell root (auth screen), a missing main — makes it return
+// false and touch nothing; the caller then falls back to the historical
+// empty-and-append path.
+//
+// The column is optional since Shell Views P1
+// (plan docs/plans/shell-views-campaign.md): container mode renders a left
+// rail instead of sidebar > header. Demanding four nodes there would fall
+// back to empty-and-append on EVERY settings paint — the identity/perf
+// pathology this module was written to end (the §9.3.13 identity gate caught
+// it the moment P1 landed). With no column on one or both sides the FRAME
+// still grafts and column content enters as fresh leaves.
 //
 // Deliberate limits: it preserves IDENTITY, not content. The Workspace header
 // is static text today; the moment its text changes between paints the
@@ -92,16 +101,23 @@ export function transplantShellSkeleton({ app, tree, previous, next, onDiscard =
   if (!app || !tree || !previous || !next) return false;
   const { shell: prevShell, main: prevMain, sidebar: prevSidebar, header: prevHeader } = previous;
   const { shell: nextShell, main: nextMain, sidebar: nextSidebar, header: nextHeader } = next;
-  if (!prevShell || !prevMain || !prevSidebar || !prevHeader) return false;
-  if (!nextShell || !nextMain || !nextSidebar || !nextHeader) return false;
+  // The FRAME (shell > main) is the invariant; the column (sidebar > header)
+  // grafts only when BOTH sides have one — container mode has no column
+  // (Shell Views P1).
+  if (!prevShell || !prevMain || !nextShell || !nextMain) return false;
   // The preserved nodes must still be where we found them.
   if (prevShell.parentNode !== app) return false;
+  const columnKept = Boolean(prevSidebar && prevHeader && nextSidebar && nextHeader);
 
   // Old leaves = the direct children being replaced at each preserved level.
   const discardedRoots = [
     ...elementChildren(prevShell).filter((node) => node !== prevMain),
-    ...elementChildren(prevMain).filter((node) => node !== prevSidebar),
-    ...elementChildren(prevSidebar).filter((node) => node !== prevHeader),
+    ...(columnKept
+      ? [
+        ...elementChildren(prevMain).filter((node) => node !== prevSidebar),
+        ...elementChildren(prevSidebar).filter((node) => node !== prevHeader),
+      ]
+      : elementChildren(prevMain)),
   ];
 
   // Detach the preserved chain FIRST and graft entirely OFF-DOCUMENT. Fresh
@@ -115,17 +131,20 @@ export function transplantShellSkeleton({ app, tree, previous, next, onDiscard =
   // leaves disconnect here too — exactly what the old empty() did.
   prevShell.remove();
 
-  // Header first (it sits deepest): identical text keeps the old node, so the
-  // gate's third selector holds; changed text keeps the FRESH one instead of
-  // freezing stale content.
-  const headerKept = textOf(prevHeader) === textOf(nextHeader);
-  if (headerKept) {
-    onDiscard(nextHeader);
-    nextHeader.replaceWith(prevHeader);
-  }
+  const headerKept = columnKept && textOf(prevHeader) === textOf(nextHeader);
+  if (columnKept) {
+    // Header first (it sits deepest): identical text keeps the old node, so the
+    // gate's third selector holds; changed text keeps the FRESH one instead of
+    // freezing stale content.
+    if (headerKept) {
+      onDiscard(nextHeader);
+      nextHeader.replaceWith(prevHeader);
+    }
 
-  prevSidebar.replaceChildren(...elementChildren(nextSidebar));
-  nextSidebar.replaceWith(prevSidebar);
+    prevSidebar.replaceChildren(...elementChildren(nextSidebar));
+    nextSidebar.replaceWith(prevSidebar);
+    onDiscard(nextSidebar); // the scaffolding shell is spent
+  }
 
   prevMain.replaceChildren(...elementChildren(nextMain));
   nextMain.replaceWith(prevMain);
@@ -137,12 +156,13 @@ export function transplantShellSkeleton({ app, tree, previous, next, onDiscard =
   app.appendChild(prevShell);
 
   for (const root of discardedRoots) onDiscard(root);
-  if (!headerKept) onDiscard(prevHeader);
+  if (headerKept)
+    onDiscard(nextHeader);
+  else if (columnKept)
+    onDiscard(prevHeader);
   // The graft shells themselves are spent scaffolding.
   onDiscard(nextShell);
   onDiscard(nextMain);
-  onDiscard(nextSidebar);
-  if (headerKept) onDiscard(nextHeader);
 
   return true;
 }

@@ -220,6 +220,37 @@ button.kikx-brand__mark:focus-visible {
   overflow: hidden;
 }
 
+/* Shell Views P1 (plan docs/plans/shell-views-campaign.md): the Settings
+   container rides THIS grid instead of sidebar + surface. display:contents
+   drops the TabbedView itself out of layout so its children become .kikx-main's
+   OWN grid items: the rail takes column 1 — the sidebar's cell, same
+   minmax(220px,280px) track — and the panels take column 2. The rail cannot
+   drift from the column it replaces; the no-shift guarantee is structural,
+   not measured. The rail chrome mirrors .kikx-sessions exactly (the sidebar
+   it stands in for), and the vendor's host-attribute rail styling still
+   applies to .tab-bar underneath this. */
+aeor-tab-view.kikx-view-container[tab-bar-position="left"] {
+  display: contents;
+}
+
+aeor-tab-view.kikx-view-container[tab-bar-position="left"] > .tab-bar {
+  grid-column: 1;
+  grid-row: 1;
+  background: #131619;
+  border-right: 1px solid #2f3439;
+  padding: 18px;
+  overflow-y: auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+aeor-tab-view.kikx-view-container[tab-bar-position="left"] > aeor-tab {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
 .kikx-startup-loading {
   display: grid;
   min-height: 0;

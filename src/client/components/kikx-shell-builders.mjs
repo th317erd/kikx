@@ -47,6 +47,7 @@ import {
 import { buildSidebarSessionObjects, sidebarScopePredicateFor } from './kikx-sidebar-session-objects.mjs';
 import { buildInboxSidebarEntry } from './kikx-inbox-view.mjs';
 import { resolveViewSurface } from './client-view-surfaces.mjs';
+import { resolveViewContainer } from './kikx-view-containers.mjs';
 import { STATUSBAR_STAT_LABELS, buildStatusBarStats } from '../state/statusbar-stats.mjs';
 import {
   SIDEBAR_MENU_ELEMENT_ID,
@@ -354,6 +355,14 @@ export function buildRunnerShell(app) {
   // parser drops it (`navigation-stack.mjs:204`, VIEW_NAMES), so this falls
   // through to a normal window rather than a blank surface.
   let viewName = entry.view || null;
+
+  // Shell Views P1 (plan docs/plans/shell-views-campaign.md): a View
+  // CONTAINER replaces sidebar + surface as ONE unit — table lookup, never a
+  // branch on the view name (the P7 grep gate scans raw source, comments
+  // included). null falls through to the Projects layout exactly as today.
+  const container = resolveViewContainer(viewName, app);
+  if (container)
+    return [ main.class('kikx-main')( container ) ];
 
   return [
     main.class('kikx-main')(
