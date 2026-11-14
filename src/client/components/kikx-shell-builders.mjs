@@ -44,15 +44,12 @@ import {
   syncSessionNameEdit,
 } from './kikx-navigation.mjs';
 // Owner point 2: User / Account / Agents / Teams / Sign out as sidebar session objects.
-import { buildSidebarSessionObjects, sidebarScopePredicateFor } from './kikx-sidebar-session-objects.mjs';
-import { buildInboxSidebarEntry } from './kikx-inbox-view.mjs';
+// Shell Views P2: the shell no longer builds sidebar clusters or rows —
+// those imports left with the old path (the container owns them now).
 import { resolveViewSurface } from './client-view-surfaces.mjs';
 import { buildProjectsContainer, resolveViewContainer } from './kikx-view-containers.mjs';
 import { STATUSBAR_STAT_LABELS, buildStatusBarStats } from '../state/statusbar-stats.mjs';
-import {
-  SIDEBAR_MENU_ELEMENT_ID,
-  closeSidebarMenu,
-} from './sidebar-menu.mjs';
+import { closeSidebarMenu } from './sidebar-menu.mjs';
 
 const { div, main, nav, section, header, h2, p, span, button, form, input, label, textarea } = elements;
 const aeorInput = elements['aeor-input'];
