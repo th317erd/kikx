@@ -211,9 +211,12 @@ test('gear writes ?view=settings, reload restores the mode, and Plugins loading 
       `the section switch writes section= to the URL (got "${afterTab}")`);
     const crumbsAfterTab = await page.$$eval('.kikx-breadcrumb__crumb, .kikx-window__title',
       (nodes) => nodes.map((node) => node.textContent.trim()));
-    assert.ok(crumbsAfterTab.includes('Settings'), `crumb shows the mode (got ${JSON.stringify(crumbsAfterTab)})`);
-    assert.ok(crumbsAfterTab.includes('Plugins'),
-      'the breadcrumb FOLLOWS the tab — owner saw it frozen on General');
+    assert.ok(crumbsAfterTab.includes('< Exit Settings'),
+      `the breadcrumb IS the Exit control (got ${JSON.stringify(crumbsAfterTab)})`);
+    const activeRow1 = await page.evaluate(() =>
+      document.querySelector('.kikx-sidebar__view--active')?.textContent?.trim() || null);
+    assert.equal(activeRow1, 'Plugins',
+      'the sidebar row carries the active section (owner: crumbs are useless here)');
 
     // ---- Owner #1 (second half): reload reopens THE TAB IN VIEW, unaided. ---
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
@@ -222,10 +225,10 @@ test('gear writes ?view=settings, reload restores the mode, and Plugins loading 
     const restoredSearch = await page.evaluate(() => location.search);
     assert.ok(restoredSearch.includes('view=settings') && restoredSearch.includes('section=Plugins'),
       `the URL survives the reload complete (got "${restoredSearch}")`);
-    const crumbsRestored = await page.$$eval('.kikx-breadcrumb__crumb, .kikx-window__title',
-      (nodes) => nodes.map((node) => node.textContent.trim()));
-    assert.ok(crumbsRestored.includes('Plugins'),
-      'the restored tab shows WITHOUT any click — breadcrumb matches it');
+    const activeRow2 = await page.evaluate(() =>
+      document.querySelector('.kikx-sidebar__view--active')?.textContent?.trim() || null);
+    assert.equal(activeRow2, 'Plugins',
+      'the restored section shows WITHOUT any click — the active sidebar row carries it');
 
     // Owner screenshot 1: the SIDEBAR carries the settings navigation now.
     const sidebarLabels = await page.$$eval('.kikx-session-objects button',
@@ -247,11 +250,15 @@ test('gear writes ?view=settings, reload restores the mode, and Plugins loading 
     assert.deepEqual(chromeProbe2, { header: false, tabs: false },
       'no view header (subtitle+Back) and no tabbed view — owner removal, pinned');
 
-    // ---- Owner screenshot 2: breadcrumb reads Settings › live section. -----
+    // ---- Owner follow-up: the breadcrumb is the Exit control; the active
+    // section lives on the sidebar row. ----
     const crumbs = await page.$$eval('.kikx-breadcrumb__crumb, .kikx-window__title',
       (nodes) => nodes.map((node) => node.textContent.trim()));
-    assert.ok(crumbs.includes('Settings'), `breadcrumb shows the mode (got ${JSON.stringify(crumbs)})`);
-    assert.ok(crumbs.includes('Plugins'), 'and the live section as the active crumb');
+    assert.ok(crumbs.includes('< Exit Settings'),
+      `the breadcrumb IS the Exit control (got ${JSON.stringify(crumbs)})`);
+    const activeRow3 = await page.evaluate(() =>
+      document.querySelector('.kikx-sidebar__view--active')?.textContent?.trim() || null);
+    assert.equal(activeRow3, 'Plugins', 'and the sidebar row shows the live section');
 
     // ---- Owner item 1: the view scrolls itself (.kikx-main is overflow:
     // hidden). A tall spacer proves the container, not just the CSS text. ---

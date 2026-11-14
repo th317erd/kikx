@@ -186,7 +186,7 @@ test('settings mode swaps the sidebar view cluster for section navigation (owner
   assert.deepEqual(normal, [ 'Agents', 'Teams' ], 'outside the mode the view rows come back');
 });
 
-test('the Settings crumb targets General — it never stack-pops (owner item 3, 2026-11-13)', async () => {
+test('the settings breadcrumb is ONE "< Exit Settings" control; the sidebar owns sections (owner 2026-11-13)', async () => {
   const { buildCrumbModel } = await import('../../src/client/components/kikx-topbar.mjs');
   const { pushSystemSettings } = await import('../../src/client/state/navigation-stack.mjs');
   const { activateSettingsSection, getSettingsSection } =
@@ -196,18 +196,19 @@ test('the Settings crumb targets General — it never stack-pops (owner item 3, 
     app._state.navigationStack || [ { sessionID: null, collapsed: true } ]);
 
   const crumbs = buildCrumbModel(app);
-  assert.equal(crumbs[0].label, 'Settings');
-  assert.equal(crumbs[0].settingsRoot, true,
-    'the mode crumb carries its General target instead of a stack depth');
-  assert.equal(crumbs[1].active, true, 'the section crumb stays the active title');
+  assert.equal(crumbs.length, 1, 'the breadcrumb collapses to a single control');
+  assert.equal(crumbs[0].label, '< Exit Settings', "the owner's literal label");
+  assert.equal(crumbs[0].exitSettings, true, 'it carries the exit marker');
+  assert.equal(crumbs[0].active, false, 'a real button, never a passive span');
+  assert.equal('settingsRoot' in crumbs[0], false,
+    'the earlier Settings→General crumb idea is superseded by the exit control');
 
-  // The seam the crumb click binds (kikx-app _activateSettingsSection):
+  // The SECTION seam stays for the sidebar rows (persist + publish + render).
   app._syncURLFromStack = () => { app.__synced = true; };
   app._requestRender = () => { app.__rendered = true; };
-  app._activateSettingsSection = (name) => activateSettingsSection(app, name);
   app._state.settingsSection = 'Plugins';
-  app._activateSettingsSection('General');
-  assert.equal(app._state.settingsSection, 'General', 'the click lands on General');
+  activateSettingsSection(app, 'General');
+  assert.equal(app._state.settingsSection, 'General', 'persisted');
   assert.equal(getSettingsSection(app._state), 'General');
   assert.equal(app.__synced && app.__rendered, true, 'URL + render published');
 });
@@ -399,40 +400,25 @@ function findNode(node, predicate) {
   return null;
 }
 
-test('buildCrumbModel reads "Settings › <section>" while the mode is open (owner screenshot 2)', async () => {
-  let { buildCrumbModel } = await import('../../src/client/components/kikx-topbar.mjs');
-  let { pushSystemSettings } = await import('../../src/client/state/navigation-stack.mjs');
-
-  // Mode stacked over a session — the exact shape the screenshot showed
-  // (breadcrumb wrongly read "Projects › Session 1 › Session" instead).
-  const stack = pushSystemSettings([
+// Superseded (owner follow-up, 2026-11-13): "The Breadcrumb is pretty useless
+// in this Settings area. All navigation items are single-level, and are
+// already all present on the sidebar… swap out the breadcrumb for a
+// '< Exit Settings' button." This replaces screenshot 2's
+// "Settings › <section>" test — same guarantee (the mode never leaks the
+// session path behind it), one control instead of two crumbs.
+test('buildCrumbModel in the mode is ONLY the exit control — never the session path (owner 2026-11-13)', async () => {
+  const { buildCrumbModel } = await import('../../src/client/components/kikx-topbar.mjs');
+  const { pushSystemSettings } = await import('../../src/client/state/navigation-stack.mjs');
+  const app = makeApp();
+  // A session UNDERNEATH the mode — the ?session=…&view=settings URL shape.
+  app._state.navigationStack = pushSystemSettings([
     { sessionID: null, collapsed: true },
-    { sessionID: 'session_1', collapsed: false },
+    { sessionID: 'session_identity', collapsed: false },
   ]);
-
-  const app = { _state: { navigationStack: stack, settingsSection: 'Plugins', sessions: [] } };
-  const crumbs = buildCrumbModel(app);
-  assert.deepEqual(crumbs.map((c) => c.label), [ 'Settings', 'Plugins' ],
-    'mode first, live section second — never the session path behind it');
-  assert.equal(crumbs[1].active, true, 'the section carries the active crumb');
-  assert.equal(crumbs[0].sessionID, null, 'mode crumbs carry no session, so no pencil');
-
-  const defaulted = { _state: { navigationStack: stack, sessions: [] } };
-  assert.deepEqual(buildCrumbModel(defaulted).map((c) => c.label), [ 'Settings', 'General' ],
-    'an unset section falls back to General');
-
-  // The reload case: fresh state, tab only on the stack entry — crumb and
-  // body must agree without any click (puppeteer pins the pair end-to-end).
-  const withEntrySection = pushSystemSettings([ { sessionID: null, collapsed: true } ]);
-  withEntrySection[withEntrySection.length - 1] = {
-    ...withEntrySection[withEntrySection.length - 1],
-    section: 'Plugins',
-  };
-  assert.deepEqual(
-    buildCrumbModel({ _state: { navigationStack: withEntrySection, sessions: [] } }).map((c) => c.label),
-    [ 'Settings', 'Plugins' ],
-    'a restored entry.section feeds the crumb when app state is fresh',
-  );
+  app._state.settingsSection = 'Plugins';
+  const labels = buildCrumbModel(app).map((crumb) => crumb.label);
+  assert.deepEqual(labels, [ '< Exit Settings' ],
+    `one control, no section crumbs, no session path leaked (got ${JSON.stringify(labels)})`);
 });
 
 test('getSettingsSection prefers live state, falls back to the URL-restored entry, clamps junk (owner 2026-11-12)', async () => {

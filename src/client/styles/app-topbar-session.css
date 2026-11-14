@@ -454,3 +454,14 @@ button.kikx-window__title:focus-visible {
   background: rgba(199, 205, 212, 0.08);
   opacity: 0.82;
 }
+
+/* Owner follow-up (2026-11-13): in Settings the whole breadcrumb is this one
+   exit control — it reads as an action (subtle label, accent on hover) and
+   pops the mode via app._minimizeCurrent, like the removed view Back. */
+.kikx-breadcrumb__exit-settings {
+  cursor: pointer;
+  color: var(--text-secondary, #aab4bf);
+}
+.kikx-breadcrumb__exit-settings:hover {
+  color: var(--kikx-accent);
+}

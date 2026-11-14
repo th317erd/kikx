@@ -283,15 +283,20 @@ export function buildBreadcrumb(app) {
 // one) navigates to that depth. Renaming happens on the window header title,
 // which is where users expect to click.
 export function buildBreadcrumbCrumb(app, crumb) {
+  // Owner follow-up (2026-11-13): in Settings the breadcrumb is ONE '< Exit
+  // Settings' control (section navigation lives on the sidebar); it pops the
+  // mode through the app's own handler, like the removed view Back did.
+  if (crumb.exitSettings)
+    return button.type('button')
+      .class('kikx-breadcrumb__crumb kikx-breadcrumb__exit-settings')
+      .title('Exit Settings')
+      .ariaLabel('Exit Settings')
+      .onClick(() => app._minimizeCurrent?.())(crumb.label);
+
   if (crumb.active)
     return span.class('kikx-breadcrumb__crumb kikx-breadcrumb__crumb--active')(crumb.label);
 
-  // settingsRoot (owner item 3): in the Settings mode this crumb goes to
-  // GENERAL settings; elsewhere it pops the stack to that depth.
-  return button.type('button').class('kikx-breadcrumb__crumb')
-    .onClick(() => crumb.settingsRoot
-      ? app._activateSettingsSection?.('General')
-      : app._navigateToDepth(crumb.depth))(crumb.label);
+  return button.type('button').class('kikx-breadcrumb__crumb').onClick(() => app._navigateToDepth(crumb.depth))(crumb.label);
 }
 
 // Editable window title: click the session name to rename it in place. This is

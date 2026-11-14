@@ -81,18 +81,13 @@ export function buildCrumbModel(app) {
   // meaningless there, and its stale crumbs made the mode feel detached from
   // the bar. Mode first, live section second (active).
   if (currentViewName(stack) === 'settings') {
-    // Live state wins; a freshly reloaded page adopts the tab the URL named
-    // (the stack entry carries `section`) — same fallback as
-    // getSettingsSection, so crumb and body can never disagree.
-    let top = stack[stack.length - 1];
-    let section = typeof app._state?.settingsSection === 'string' && app._state.settingsSection.trim()
-      ? app._state.settingsSection.trim()
-      : (top && typeof top.section === 'string' && top.section.trim() ? top.section : 'General');
+    // Owner follow-up (2026-11-13): "The Breadcrumb is pretty useless in this
+    // Settings area. All navigation items are single-level, and are already
+    // all present on the sidebar." — the crumbs collapse to ONE explicit
+    // exit: '< Exit Settings', which pops the mode through the same handler
+    // the old view Back used (app._minimizeCurrent: stack + selection + URL).
     return [
-      // settingsRoot (owner item 3, 2026-11-13): clicking "Settings" while the
-      // mode is open goes to GENERAL settings — never pops to Sessions.
-      { label: 'Settings', depth: 1, active: false, sessionID: null, settingsRoot: true },
-      { label: section, depth: 2, active: true, sessionID: null },
+      { label: '< Exit Settings', depth: 1, active: false, sessionID: null, exitSettings: true },
     ];
   }
   let sessions = getSessions(app._state);
@@ -169,13 +164,22 @@ export function buildTopbarCrumb(app, crumb) {
     );
   }
 
+  if (crumb.exitSettings) {
+    // Owner follow-up: the ONE control in the settings breadcrumb slot. Pops
+    // the mode via the app's own handler — stack, selection and URL stay in
+    // sync (view-chrome's Back used the same call).
+    return button.type('button')
+      .class('kikx-breadcrumb__crumb kikx-breadcrumb__exit-settings')
+      .title('Exit Settings')
+      .ariaLabel('Exit Settings')
+      .onClick(() => app._minimizeCurrent?.())(crumb.label);
+  }
+
   if (!crumb.sessionID) {
     return crumb.active
       ? span.class(crumb.active ? ACTIVE_CRUMB_CLASS : 'kikx-breadcrumb__crumb')(crumb.label)
       : button.type('button').class('kikx-breadcrumb__crumb')
-        .onClick(() => crumb.settingsRoot
-          ? app._activateSettingsSection?.('General')
-          : app._navigateToDepth(crumb.depth))(crumb.label);
+        .onClick(() => app._navigateToDepth(crumb.depth))(crumb.label);
   }
 
   // A session crumb: just the label. The rename is a GESTURE now, not a button
