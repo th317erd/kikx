@@ -25,13 +25,51 @@ export async function loadStagehandOpenAIAPIKey(options = {}) {
   if (envKey)
     return envKey;
 
+  // Ollama mode (owner, 2026-11-14: "Is it possible to use Ollama for
+  // Stagehand?") — YES, natively: Stagehand routes `ollama/<model>` through
+  // getAISDKLanguageModel and lists ollama in providersWithoutApiKey, so no
+  // credential exists to fetch. An explicitly configured ollama model takes
+  // the keyless path immediately (no AeorDB round-trip at all).
+  if (String(process.env.KIKX_STAGEHAND_MODEL || '').trim().startsWith('ollama/')) {
+    ensureOllamaHost();
+    return 'ollama-keyless';
+  }
+
   // Memoize across tests in one process: exchanging the AeorDB root key on every
   // test trips AeorDB auth rate limiting when many UI tests run together.
   if (cachedOpenAIAPIKey != null && !options.force)
     return cachedOpenAIAPIKey;
 
-  cachedOpenAIAPIKey = await resolveStagehandOpenAIAPIKey(options);
-  return cachedOpenAIAPIKey;
+  // The AeorDB key source is DEAD by owner ruling (:6830 retired) — a dead
+  // resolver must degrade, not take the whole lane down with ECONNREFUSED
+  // (measured 2026-11-14: all 28 stagehand tests died at infra level).
+  try {
+    cachedOpenAIAPIKey = await resolveStagehandOpenAIAPIKey(options);
+  } catch (error) {
+    console.warn(`[stagehand] key source unreachable (${String(error?.message || error).slice(0, 120)}) — falling back to keyless Ollama`);
+    cachedOpenAIAPIKey = '';
+  }
+  if (cachedOpenAIAPIKey)
+    return cachedOpenAIAPIKey;
+
+  // Keyless fallback (owner ruling, 2026-11-14: "Please use the MiMo 2.6
+  // Flash model via Ollama for Stagehand"): default the model so every
+  // test's `KIKX_STAGEHAND_MODEL || 'openai/gpt-4.1-mini'` picks it up (this
+  // loader runs before any `new Stagehand(...)`) and its empty-key skip guard
+  // sees a non-empty placeholder instead of skipping. MiMo is the Stagehand
+  // choice; bot-ocr keeps Inkling as ITS default — different jobs.
+  if (!String(process.env.KIKX_STAGEHAND_MODEL || '').trim())
+    process.env.KIKX_STAGEHAND_MODEL = 'ollama/mimo-v2.6-flash:cloud';
+  ensureOllamaHost();
+  return 'ollama-keyless';
+}
+
+function ensureOllamaHost() {
+  // The SDK's ollama provider reads OLLAMA_HOST; pin the IPv4 loopback —
+  // `localhost` resolving to ::1 is a classic silent-refused against a v4-only
+  // service.
+  if (!String(process.env.OLLAMA_HOST || '').trim())
+    process.env.OLLAMA_HOST = 'http://127.0.0.1:11434';
 }
 
 async function resolveStagehandOpenAIAPIKey(options = {}) {
@@ -420,6 +458,13 @@ class StagehandFrameRuntime extends EventEmitter {
     return session;
   }
 
+  // Composer drafts route (GET .../composer/drafts): the real method landed in
+  // frame-runtime-composer and this fixture stub never grew it — the route 500s
+  // (measured 2026-11-14). An empty, honest fixture answer.
+  async listComposerDrafts() {
+    return { entries: [], drafts: [], hasMore: false };
+  }
+
   // Soft delete: stamp deletedAt, emit session.saved. Mirrors FrameRuntime so
   // the restore flow is exercised end to end.
   async deleteSession(sessionID) {
@@ -560,8 +605,31 @@ function createAuthStub() {
     return error;
   };
   let clone = (value) => JSON.parse(JSON.stringify(value));
+  // Mutable account: PATCH /api/v1/account goes accountStore -> this.updateUser,
+  // and getUser/verifyAccessToken read through it — without this the Save 500s
+  // (measured 2026-11-14) and the chip never changes, which is exactly the
+  // page predicate the account stagehand test waits on.
+  let accountState = {
+    id: 'stagehand-test-user',
+    name: 'Stagehand Test User',
+    email: 'stagehand@test.invalid',
+  };
   return {
     files,
+    async list() {
+      // aeordb.list (questions store): this stub doubles as the aeordb alias,
+      // and an empty listing is the honest fixture answer — no questions here.
+      return { items: [] };
+    },
+    async updateUser(id, patch) {
+      if (patch && typeof patch === 'object') {
+        if (typeof patch.name === 'string' && patch.name.trim())
+          accountState.name = patch.name;
+        if (typeof patch.email === 'string' && patch.email.trim())
+          accountState.email = patch.email;
+      }
+      return { ...accountState, id: id || accountState.id };
+    },
     eventsURL() {
       return 'http://127.0.0.1/system/events';
     },
@@ -597,17 +665,17 @@ function createAuthStub() {
     },
     async verifyAccessToken(token) {
       return {
-        id: 'stagehand-test-user',
+        id: accountState.id,
         token: token || 'stagehand-test-token',
-        email: 'stagehand@test.invalid',
-        name: 'Stagehand Test User',
+        email: accountState.email,
+        name: accountState.name,
       };
     },
     async getUser(userID) {
       return {
-        id: userID || 'stagehand-test-user',
-        email: 'stagehand@test.invalid',
-        name: 'Stagehand Test User',
+        id: userID || accountState.id,
+        email: accountState.email,
+        name: accountState.name,
       };
     },
     async exchangeAPIKey() {

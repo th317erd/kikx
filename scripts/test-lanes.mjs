@@ -34,7 +34,12 @@ export const LANES = [
     globs: [ 'spec/ui/stagehand/*-stagehand.mjs' ],
     testTimeout: '60000',
     timeoutMs: 900000,
-    // Needs a live model credential; not safe to run unattended.
+    // Keyless Ollama since 2026-11-14 (owner: use MiMo 2.6 Flash) — no
+    // credential needed anymore, but each test drives a real browser against
+    // ONE shared model endpoint, so cap the fan-out: at Node's default
+    // (one-per-CPU) 28 parallel browsers blew every 10s page wait (measured
+    // 6/28). 4 keeps waits honest without serializing the lane into the mud.
+    concurrency: 4,
     hermetic: false,
   },
   {

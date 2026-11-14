@@ -49,6 +49,11 @@ function runLane(lane) {
     let child = spawn(process.execPath, [
       '--test',
       `--test-timeout=${lane.testTimeout}`,
+      // Optional per-lane cap: Node defaults to one file per CPU, which
+      // thrashes lanes whose tests each launch a browser AND call a shared
+      // cloud model endpoint (measured: stagehand 6/28 at default, waits
+      // blowing at 10s under 28-way contention against ONE Ollama relay).
+      ...(lane.concurrency ? [ `--test-concurrency=${lane.concurrency}` ] : []),
       ...lane.globs,
     ], { stdio: [ 'ignore', 'pipe', 'pipe' ] });
 

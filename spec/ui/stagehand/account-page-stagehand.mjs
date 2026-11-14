@@ -89,8 +89,36 @@ test('Stagehand updates account profile and uses the display name on user messag
     });
     await waitForPagePredicate(page, () => document.querySelector('.kikx-account-chip')?.textContent?.includes('Stagehand User'));
 
-    await page.locator('.kikx-composer textarea').fill('This should render with my account name.');
-    await page.locator('.kikx-composer .kikx-send-button').click();
+    // The account Save lands a paint (state.account changes -> the shell
+    // rebuilds its leaves, composer included — the standing rebuild doctrine),
+    // and stagehand's locator resolves non-atomically against it: measured
+    // `notconnected` on every run (2026-11-14). Retry the detached-node race
+    // instead of failing the run on scheduler timing.
+    let filled = false;
+    for (let attempt = 0; attempt < 6 && !filled; attempt++) {
+      try {
+        await page.locator('.kikx-composer textarea').fill('This should render with my account name.');
+        filled = true;
+      } catch (error) {
+        if (!String(error?.message || error).includes('notconnected'))
+          throw error;
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+    }
+    assert.ok(filled, 'the composer accepted the fill after retrying the detached-node race');
+
+    let sent = false;
+    for (let attempt = 0; attempt < 6 && !sent; attempt++) {
+      try {
+        await page.locator('.kikx-composer .kikx-send-button').click();
+        sent = true;
+      } catch (error) {
+        if (!String(error?.message || error).includes('notconnected'))
+          throw error;
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+    }
+    assert.ok(sent, 'the send click landed after retrying the detached-node race');
     await page.waitForSelector('.kikx-frame--UserMessage', { timeout: 10000 });
 
     let result = await page.evaluate(() => {
