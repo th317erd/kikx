@@ -105,12 +105,12 @@ sed -i 's/^KIKX_IMAGE_TAG=.*/KIKX_IMAGE_TAG=<new_sha>/' .env
 KIKX_IMAGE_TAG=<new_sha> docker compose up -d --no-deps kikx
 ```
 
-## Two failures that are silent, and how to catch them first
+## Three failures that are silent, and how to catch them first
 
 Both were caught on 2026-11-14 *before* restarting kikx3. Neither shows up as a
 build error, and neither is visible in a health check afterwards.
 
-### 1. A plugin can vanish from the image
+### 1. A plugin can vanish from the image — and presence is not parity
 
 `deploy.sh` stages each plugin from a repo path and only logs a `skipping` line
 when a repo is absent — the build still succeeds. The Dockerfile then bakes
@@ -136,6 +136,25 @@ KIKX_PLUGIN_DISCORD_REF=master
 Note the staging step prints `local master is <x> but origin/master is <y>;
 staging the published commit` — it stages `origin/master`, not the local branch.
 
+**A plugin being present is not enough.** On 2026-11-14 the first real deploy
+`9310da89` shipped an image whose `/opt/plugins` listed all seven plugins — so the
+`ls -1` check above passed — and the container still crash-looped. What was wrong
+was the *contents* of two plugin directories. Compare migration files, not
+directory names, against the last-good image:
+
+```sh
+ssh wyatt-laptop 'docker exec kikx sh -c "for d in /opt/plugins/*/; do
+  n=$(find \"$d\" -name \"*.sql\" | wc -l)
+  echo \"$(basename $d) sql=$n $(find \"$d\" -name \"*.sql\" -printf \"%f \")\"
+done" | sort'
+# 2026-11-14 baseline, measured from the working image aad7743c:
+#   miri    sql=3  001-actor-character.sql 002-capabilities.sql 003-notes.sql
+#   discord sql=5  001-channel-session.sql 002-message-frame.sql 003-edit-audit.sql
+#                  004-inbound-capability.sql 005-channel-bot-key.sql
+#   every other plugin sql=0
+```
+
+
 ### 2. The plugin signature gate can refuse everything
 
 `src/core/plugins/plugin-loader.mjs` is **fail-closed**: if neither the config
@@ -158,6 +177,63 @@ ssh wyatt-laptop 'docker logs kikx 2>&1 | grep -i signature | tail -2'
 that was added in `10bba61` ("compose: declare KIKX_PLUGIN_SIGNATURE_MODE so
 .env can reach the container"). Keep the target's `compose.yml` in sync with the
 repo before restarting.
+
+### 3. Plugin migrations can abort every route, `/health` included
+
+This is the failure that took kikx3 down on 2026-11-14, and it is the most
+insidious of the three because the container **starts**, the healthcheck command
+runs, and the log is dominated by unrelated Chrome/dbus noise.
+
+`src/core/plugins/plugin-migrations.mjs` refuses to finish startup when the
+ledger records a migration as applied but the file is no longer in the image:
+
+```
+[plugin-migrations] startup aborted: plugin "miri" has migration 2 recorded as
+applied (002-capabilities.sql) but the file is missing. Restore it or write a
+new migration.
+[plugin-load] continuing with whatever loaded: plugin "miri" has migration 2 ...
+```
+
+The abort is global rather than per-plugin: `/health` stopped answering while the
+container sat `health=unhealthy`, so the deploy looked like a bad kikx build
+rather than a bad plugin stage.
+
+What produced it: `deploy.sh:127` defaults each plugin source to
+`${WORKSPACE}/kikx-plugin-<name>`. On this desktop `kikx-plugin-miri` is a
+**divergent fork** — no `origin` remote, `6ea3a85` versus the laptop's `4c226af`,
+4498 B versus 9238 B `index.mjs` — and there is no local `kikx-plugin-discord` at
+all. Building without pins therefore baked the fork's single-migration `miri`
+tree into an image whose PostgreSQL ledger already had `002` applied.
+
+The fix that works: pin every plugin repo **and** ref, and stage from the
+target's own checkouts through the sshfs mount
+`/home/public/wyatt-laptop/Projects/kikx-workspace/kikx-plugin-*`. Verified
+2026-11-14 — all seven pinned refs resolve to migration sets identical to the
+`aad7743c` baseline above (`miri` 3, `discord` 5, the rest 0):
+
+```sh
+M=/home/public/wyatt-laptop/Projects/kikx-workspace
+for spec in codex:6a2247d claude:d5d7a92 ollama:dca2f5c google:3b47c77 \
+            puppeteer:52103c9 miri:4c226af discord:5984a87; do
+  n=${spec%%:*}; r=${spec##*:}
+  printf '%-10s ' "$n"
+  git -C "$M/kikx-plugin-$n" ls-tree -r --name-only "$r" \
+    | grep -i '\.sql$' | xargs -r -n1 basename | tr '\n' ' '
+  echo
+done
+```
+
+`check-vendor-coverage.mjs` does not catch this. It validates that every vendor
+import resolves and has no knowledge of the plugin migration ledger, so a build
+can pass that gate and still be undeployable. Gate on the sql manifest instead.
+
+### Do not reuse an app commit sha as an image tag
+
+`KIKX_IMAGE_TAG` here is the *app* short sha (`9310da89`), so rebuilding after a
+failed deploy silently **overwrites** the previous tag and destroys the evidence.
+The broken image was preserved by hand as `kikx/kikx:9310da89-badplugins`. When a
+deploy fails: retag the bad image before rebuilding, and keep the last-good tag
+(`aad7743c`) resident as the rollback anchor.
 
 ## Architecture
 
