@@ -8,6 +8,20 @@ Kikx adapter that now consume it.** The original testbed under
 source projects each page into display heads with a one-page look-ahead for
 boundary tool pairs.
 
+**Known implementation deviation (2026-11-14, owner-gated).** The anchor
+invariant below (viewport offset change ≤ 1 CSS px on prepend/measure) is
+currently VIOLATED at initial bottom placement: `kikx-frame-scroll` pins
+against the scrollview's *estimated placeholder height* before real layout
+(measured: scrollTop 3066 = 3500 − 434, while `sh` later grew 3500 → 7231),
+the paged mount starts `follow: false`, and the scroll-event recompute flips
+`_frameListAnchoredToBottom` false — consuming the one-shot force flag. The
+proposed design-A fix (provisional-bottom latch + snap on first
+`scrollview-page-loaded`, plus a missing 200-item window clamp) awaits the
+owner's ruling; evidence package and 13-site writer map live in
+`.pi/HANDOFF.md`. Exactly five stagehand tests are red on this chain
+(phantom-burst, window-cap, thread-scroll anchor, history paging,
+color/entry anchor) — the estate's only reds.
+
 Revision 3 keeps native browser flow but sharpens it into a **container
 projection**: consecutive real messages and blank page ranges share containers;
 containers always stay in the DOM and merge/split as state changes. Only item
