@@ -27,6 +27,16 @@ import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
 import { LANES, resolveSelection, unknownLaneNames } from './test-lanes.mjs';
+import { sweepOnce } from './kikx-tmp-sweep.mjs';
+
+// One age-gated sweep of stale test-scratch dirs per invocation (14k+
+// accumulated — specs mkdtemp without teardown). See kikx-tmp-sweep.mjs for
+// the name+age gates; a concurrent run's fresh dirs are never touched.
+try {
+  sweepOnce();
+} catch (_error) {
+  // A sweep failure must never block the lanes.
+}
 
 // Non-hermetic lanes (stagehand) inherit the dev environment — plugin
 // signature mode, DB creds — the way every scripts/ entry point does via
