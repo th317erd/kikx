@@ -7,7 +7,7 @@ import { createIcon } from '../lib/icons.mjs';
 export { buildStatusBar } from './kikx-statusbar.mjs';
 import { stateHasFilters } from '../lib/frame-filters.mjs';
 import { buildScrollLockFloatingButton } from './kikx-scroll-lock.mjs';
-import { createKikxPageContext } from './kikx-chat-scrollview.mjs';
+import { createKikxPageContext } from './kikx-page-context.mjs';
 import { activateComposerDraftSession } from './composer-drafts.mjs';
 import { installComposerValueCapture } from './composer-value-capture.mjs';
 import './kikx-composer-history.mjs';

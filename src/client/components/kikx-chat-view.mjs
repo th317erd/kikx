@@ -7,8 +7,7 @@ import { miniPreviewFrames, miniScale, MINI_DESIGN_WIDTH, MINI_DESIGN_HEIGHT } f
 import { countRebuild } from './render-stats.mjs';
 import { captureFrameListAnchor, restoreFrameListAnchor } from './frame-scroll-anchor.mjs';
 import { KikxChatScrollView } from './kikx-chat-scrollview.mjs';
-
-const FRAME_ENTER_ANIMATION_MS = 220;
+import { prepareFrameEntryAnimation, startFrameEntryAnimation } from './frame-entry-animation.mjs';
 
 // Keep the live thread bounded. The full frame list remains in state (so older
 // pages can be revealed without a refetch), but only a recent window is kept in
@@ -618,37 +617,6 @@ export class KikxChatView extends HTMLElement {
     item.updateFrame(frame, this._appState);
     return item;
   }
-}
-
-function prepareFrameEntryAnimation(item) {
-  if (!item || prefersReducedMotion())
-    return;
-
-  item.classList.add('kikx-frame--animating', 'kikx-frame--entering');
-}
-
-function startFrameEntryAnimation(item) {
-  if (!item || prefersReducedMotion())
-    return;
-
-  scheduleAnimationFrame(() => {
-    item.classList.remove('kikx-frame--entering');
-    let finish = () => item.classList.remove('kikx-frame--animating');
-    item.addEventListener('transitionend', finish, { once: true });
-    setTimeout(finish, FRAME_ENTER_ANIMATION_MS + 80);
-  });
-}
-
-function prefersReducedMotion() {
-  return typeof matchMedia === 'function'
-    && matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
-
-function scheduleAnimationFrame(callback) {
-  if (typeof requestAnimationFrame === 'function')
-    return requestAnimationFrame(callback);
-
-  return setTimeout(callback, 0);
 }
 
 if (typeof customElements !== 'undefined' && !customElements.get('kikx-chat-view'))

@@ -8,36 +8,12 @@ import { captureFrameListAnchor, frameItemTopWithinList, restoreFrameListAnchor 
 import { markFrameListProgrammaticWrite } from './frame-scroll-programmatic.mjs';
 import { KikxThreadPageSource } from './kikx-thread-page-source.mjs';
 import { frameMatchesWindowFilters } from '../../shared/frame-window-filters.mjs';
+import { defaultFrameFilters, normalizeFrameFilters, windowFiltersAreDefault } from '../lib/frame-filters.mjs';
 import { promoteTailResponse } from './thread-display-order.mjs';
-import { getSessionPaging } from '../state/kikx-state.mjs';
+import { prepareFrameEntryAnimation, startFrameEntryAnimation } from './frame-entry-animation.mjs';
+import { PAGE_SIZE, pageCount } from './kikx-page-context.mjs';
 
 const CSS_ESCAPE = globalThis.CSS?.escape || ((value) => String(value).replace(/["\\]/g, '\\$&'));
-const PAGE_SIZE = 120;
-
-function pageCount(frames, pageSize = PAGE_SIZE) {
-  return Math.max(1, Math.ceil(frames.length / pageSize));
-}
-
-export function createKikxPageContext(app, sessionID) {
-  let paging = getSessionPaging(app?._state, sessionID);
-  let total = Number(paging.total);
-  if (!Number.isFinite(total) || total <= 0)
-    return null;
-  return {
-    key: `${sessionID}:${JSON.stringify(app?._state?.frameFilters || null)}:${app?._state?.sessionSearch || ''}`,
-    sessionID,
-    totalRawFrames: total,
-    pageSize: PAGE_SIZE,
-    loadPage: (pageIndex, pageSize) => app._loadFramePage(sessionID, pageIndex, pageSize),
-    getFilters: () => app?._state?.frameFilters || null,
-    getQuery: () => app?._state?.sessionSearch || '',
-    getTotalRawFrames: () => Number(getSessionPaging(app?._state, sessionID).total) || total,
-    getStartPage: () => {
-      let offset = Number(getSessionPaging(app?._state, sessionID).startOffset);
-      return Number.isInteger(offset) && offset >= 0 ? Math.floor(offset / PAGE_SIZE) : null;
-    },
-  };
-}
 
 export class KikxChatScrollView {
   constructor({ host, pageSize, createFrameItem, getAppState }) {
@@ -108,23 +84,56 @@ export class KikxChatScrollView {
         node.updateFrame?.(item.frame, this.getAppState(), { force: false });
       },
     });
-    this.pageSource.renderItem = (item) => this.createFrameItem(item.frame);
+    this.pageSource.renderItem = (item) => {
+      let node = this.createFrameItem(item.frame);
+      // Live-append only: the entering/animating classes must exist AT
+      // insertion (the vendor appends this node synchronously right after
+      // renderItem returns). Page renders must not animate.
+      if (this._preparingLiveAppend === true)
+        prepareFrameEntryAnimation(node);
+      return node;
+    };
     this.source = this.pageSource;
-    this.element.setSource(this.source, { follow: false });
-    // Sparse filtered pages can be much shorter than their raw-page estimate.
-    // Preserve the segment under the viewport when a page loads above it;
-    // otherwise a filtered load clamps the viewport to the new bottom.
-    this.element.behavior = { preserveViewportOnPageLoad: true };
+    // Compute the open target BEFORE setSource so bottom mounts can ride the
+    // vendor's own follow model (design A, owner-approved 2026-11-14):
+    // setSource defaults follow=true, loads the newest page, and CONVERGES to
+    // the true bottom once real heights arrive — the old blanket follow:false
+    // pinned against the estimated placeholder (measured 3066 = 3500-434 while
+    // sh grew to 5428+) and never recovered. Narrowed views (active query or
+    // non-default filters) keep follow:false so the sparse filtered
+    // preserve-viewport path (2bd0985c) is untouched.
     let last = Math.max(0, this.source.totalPages - 1);
     let startPage = this.pageContext?.getStartPage?.();
     let target = Number.isInteger(startPage)
       ? Math.max(0, Math.min(last, startPage))
       : last;
+    this.element.setSource(this.source, { follow: target === last && !this._viewIsNarrowed() });
+    // Sparse filtered pages can be much shorter than their raw-page estimate.
+    // Preserve the segment under the viewport when a page loads above it;
+    // otherwise a filtered load clamps the viewport to the new bottom.
+    this.element.behavior = { preserveViewportOnPageLoad: true };
     this.windowStart = target * this.pageSize;
     this.windowEnd = this.frames.length;
     this._pendingPage = target;
     this._pendingAnchor = null;
-    this.element.scrollToPage(target, { align: target === last ? 'end' : 'start', animate: false });
+    // Riding the vendor's follow model: setSource already loads the NEWEST
+    // page and its settle tick converges to the true bottom. Calling
+    // scrollToPage() here would force follow=false (scrollToPage is a
+    // deliberate un-pin) and freeze the view at its estimated placement
+    // — measured: stuck 1928px above the bottom forever, 2026-11-14).
+    // Explicit non-tail opens (deep-link/restore) keep the jump.
+    if (!(target === last && !this._viewIsNarrowed()))
+      this.element.scrollToPage(target, { align: target === last ? 'end' : 'start', animate: false });
+  }
+
+  // A view is narrowed when a search query is present or the frame filters
+  // differ from the defaults — exactly the cases the filtered-preservation
+  // campaign (2bd0985c) needs follow:false for. windowFiltersAreDefault is
+  // the canonical predicate (handles query + filters together).
+  _viewIsNarrowed() {
+    let filters = this.pageContext?.getFilters?.() || null;
+    let query = this.pageContext?.getQuery?.() || '';
+    return !windowFiltersAreDefault(filters, query);
   }
 
   // Re-scope the mounted page source after a filter/query change. The source
@@ -646,8 +655,21 @@ export class KikxChatScrollView {
       // appendItem is idempotent for a key already present in any page; this
       // covers the live-append/page-load race that previously produced
       // duplicate rows.
-      if (this.element.appendItem({ key, index: index++, frame }))
+      this._preparingLiveAppend = true;
+      let appended = false;
+      try {
+        appended = this.element.appendItem({ key, index: index++, frame });
+      } finally {
+        this._preparingLiveAppend = false;
+      }
+      if (appended) {
         inserted = true;
+        // Kick the entry transition on the frame that just landed (prepare ran
+        // inside renderItem above).
+        startFrameEntryAnimation(this.frameList?.querySelector(
+          `kikx-frame-item[data-frame-id="${CSS_ESCAPE(key)}"]`,
+        ));
+      }
       this._pendingLiveFrames.delete(key);
     }
     return inserted;

@@ -31,7 +31,7 @@ import {
   updateMessageHash,
   updateMessageHashFromScroll,
 } from './kikx-frame-scroll-lock.mjs';
-import { createKikxPageContext } from './kikx-chat-scrollview.mjs';
+import { createKikxPageContext } from './kikx-page-context.mjs';
 import { syncComposerDraft } from './composer-drafts.mjs';
 import { captureFormFocus, restoreFormFocus } from './frame-form-focus.mjs';
 import { captureViewSurfaceFocus, restoreViewSurfaceFocus, viewSurfaceHost } from './frame-view-focus.mjs';

@@ -207,6 +207,17 @@ export function alignLastFrameFocus(app, frameList, options = {}) {
   if (!frameID)
     return false;
 
+  // Follow owns vertical placement — the same rule alignBottomFocus already
+  // follows. With the shared scrollview following, the settle tick places the
+  // viewport; the last-frame TOP aim pulls scrollTop DOWN (numeric decrease)
+  // and would fight it. Measured both ways after bottom mounts started riding
+  // follow (2026-11-14): a mobile write under a live finger, and a
+  // scrollTopDropped sample in the color/entry spec. Deferred focus bookkeeping
+  // resumes on the first align once follow releases, exactly like the
+  // bottom-align path.
+  if (sharedFollowActive(frameList))
+    return false;
+
   let previous = app._scrollFocusFrameID || '';
   let initial = options.initial === true;
   let changed = previous !== frameID;
