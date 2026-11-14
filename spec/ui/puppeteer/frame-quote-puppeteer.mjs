@@ -67,6 +67,18 @@ test('Puppeteer can move from a frame into the quote gutter and click Quote', as
     await page.goto(`${fixture.baseURL}/?session=session_quote`, { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.waitForSelector('kikx-frame-item[data-frame-id="quote_1"]', { timeout: 15000 });
 
+    // Reveal FIRST, then measure: quick actions can be laid out at zero/hidden
+    // until the pointer is inside the card (owner's "wrap INSIDE their card"
+    // change) — measuring before reveal yielded a (0,0) center whose
+    // elementFromPoint landed outside the frame (measured 2026-11-14).
+    let revealPoint = await page.evaluate(() => {
+      let item = document.querySelector('kikx-frame-item[data-frame-id="quote_1"]');
+      let r = item.getBoundingClientRect();
+      return { x: r.x + 80, y: r.y + 50 };
+    });
+    await page.mouse.move(revealPoint.x, revealPoint.y);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+
     let geometry = await page.evaluate(() => {
       let item = document.querySelector('kikx-frame-item[data-frame-id="quote_1"]');
       let itemRect = item.getBoundingClientRect();

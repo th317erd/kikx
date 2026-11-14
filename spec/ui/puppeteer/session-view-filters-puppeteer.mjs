@@ -166,7 +166,20 @@ test('per-session view filters: a child session opens with its own filters, not 
     assert.ok(rendered > 0, `the child thread rendered frames, not an empty view (saw ${rendered})`);
 
     // --- 5. The popup's checkboxes agree with the child's state (it was repainted).
-    await page.click('.kikx-frame-filter__button');
+    // The shell repaints after a child-session open (previews/questions
+    // loads); a single resolved handle can be detached by that repaint before
+    // the dispatch lands (measured: "Node is detached from document" in lane
+    // AND solo, 2026-11-14). Retry with a fresh handle each attempt.
+    for (let attempt = 0; attempt < 6; attempt++) {
+      try {
+        await page.click('.kikx-frame-filter__button');
+        break;
+      } catch (error) {
+        if (attempt === 5)
+          throw error;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }
     await page.waitForSelector('.kikx-frame-filter__row', { timeout: 10000 });
     let rows = await page.evaluate(() => Array.from(document.querySelectorAll('.kikx-frame-filter__row[data-filter-key]'))
       .map((row) => ({
