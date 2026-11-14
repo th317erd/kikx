@@ -273,6 +273,46 @@ test('rail tab-change runs the row handler exactly once — no second render fro
     'the inbox tab paints through its own requestRender path');
 });
 
+test('P2 real DOM: the shell MARKS the work-area surface (live regression: unmarked = 3em rail + bottom gap)', async () => {
+  // Caught by owner annotation 2026-11-14: the marker never landed because
+  // buildWindow returns a DSL BUILDER (no setAttribute), so the thread
+  // auto-placed into grid row 1 — stretching row 1 to 613px, squeezing the
+  // rail's tab-bar into a ~3em scroller (annotation 1), and leaving rows 2-3
+  // of the main column empty below the thread (annotation 2's huge gap).
+  const { buildRunnerShell } = await import('../../src/client/components/kikx-shell-builders.mjs');
+  const app = makeApp({
+    state: {
+      // Thread entry (the owner's annotated case: a session view).
+      navigationStack: [ { sessionID: 's1', collapsed: true } ],
+      sessions: [ { id: 's1', title: 'Rail Review' } ],
+      sessionIDs: [ 's1' ],
+      sessionDetailsByID: { s1: { id: 's1', title: 'Rail Review' } },
+      deletedSessionIDs: [],
+      deletedSessionDetailsByID: {},
+      sessionPreviews: {},
+      filterState: {},
+      frames: {},
+      thinkingState: {},
+      openViewNames: [],
+      questionsState: { questions: [], counts: {}, loaded: true },
+    },
+  }); // thread path: no view -> window path (buildThreadSection builder)
+
+  const nodes = buildRunnerShell(app);
+  assert.equal(nodes.length, 1, 'one shell root');
+  const shell = typeof nodes[0].build === 'function' ? nodes[0].build(document) : nodes[0];
+  assert.ok(shell && shell.matches && shell.matches('.kikx-main'), 'the root is the main grid');
+
+  const marked = shell.querySelector('.kikx-view-container__surface');
+  assert.ok(marked && Array.from(shell.childNodes).includes(marked),
+    'the surface is a DIRECT child of the main grid and carries its marker class — without it the column layout collapses exactly as annotated');
+  const host = shell.querySelector('aeor-tab-view.kikx-view-container--projects');
+  assert.ok(host && Array.from(shell.childNodes).includes(host),
+    'and the container is its sibling, not its parent');
+  assert.ok(host && !host.querySelector('.kikx-view-container__surface'),
+    'the surface never rides inside the tab-view (panels stay empty by design)');
+});
+
 test('P2 wiring: shell builds the projects container + marked surface, scope seam reached (source pins)', async () => {
   const shellSource = await source('src/client/components/kikx-shell-builders.mjs');
   assert.match(shellSource, /buildProjectsContainer\(/,

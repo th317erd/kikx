@@ -352,8 +352,17 @@ export function buildRunnerShell(app) {
   // — WITHOUT wrapping it, so every existing direct-child rule keeps matching.
   // Dispatch stays a lookup (resolveViewSurface): core table first, plugin
   // descriptors second, null falls to the session window — no name chain.
-  const surface = resolveViewSurface(viewName, app._state, app) || buildWindow(app, entry);
-  if (surface && typeof surface.setAttribute === 'function') {
+  let surface = resolveViewSurface(viewName, app._state, app) || buildWindow(app, entry);
+  // Finalize BEFORE marking: core/window builders are DSL callables whose
+  // property access returns MORE builders — `surface.nodeType` is a function
+  // on them, so truthiness guards pass while nothing gets built or marked.
+  // An unmarked surface then auto-placed into grid row 1: the owner's
+  // annotated "3em rail + huge bottom gap" regression (2026-11-14). Only a
+  // real ELEMENT (numeric nodeType) gets the marker; plugin surfaces arrive
+  // as elements already.
+  if (surface && typeof surface.build === 'function' && typeof surface.nodeType !== 'number')
+    surface = surface.build(document);
+  if (surface && surface.nodeType === 1 && typeof surface.setAttribute === 'function') {
     surface.setAttribute('class',
       `${surface.getAttribute('class') || ''} kikx-view-container__surface`.trim());
   }
