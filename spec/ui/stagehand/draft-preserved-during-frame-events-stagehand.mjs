@@ -86,11 +86,19 @@ test('Stagehand preserves an active draft when live agent frames arrive', async 
       'The composer should keep focus and preserve the caret.',
     ].join(' ');
 
+    await page.locator('.kikx-composer textarea').fill(draft);
+    await page.locator('.kikx-composer textarea').click();
+
+    // Drain boot paints BEFORE capturing the node — the deep-link
+    // render-on-ready, inventory repaint and questions load all fire in the
+    // first seconds; capturing early opens an identity window an UNRELATED
+    // repaint can land inside (measured lane flake 2026-11-14: solo green,
+    // full-run red on existingFrameStillSame).
+    await new Promise((resolve) => setTimeout(resolve, 900));
+
     await page.evaluate(() => {
       window.__kikxOriginalFrameNode = document.querySelector('kikx-frame-item[data-frame-id="agent_msg_1"]');
     });
-    await page.locator('.kikx-composer textarea').fill(draft);
-    await page.locator('.kikx-composer textarea').click();
 
     let thinkingFrame = {
       id: 'agent_thinking_1',
@@ -115,6 +123,14 @@ test('Stagehand preserves an active draft when live agent frames arrive', async 
       frame: thinkingFrame,
     });
 
+    // Identity is checked IMMEDIATELY once the event has folded (narrow,
+    // event-scoped window) — the rack poll below can take seconds, and every
+    // extra second is repaint surface for an unrelated rebuild to invalidate
+    // a node reference the EVENT never touched.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const identityRightAfterEvent = await page.evaluate(() =>
+      window.__kikxOriginalFrameNode === document.querySelector('kikx-frame-item[data-frame-id="agent_msg_1"]'));
+
     // Current contract (measured 2026-11-14): a frame.phantom AgentThinking
     // folds into the LIVE THINKING BUFFER — it renders as a rack entry in the
     // thinking dock and is EXCLUDED from the frame list (chat-view-model:
@@ -135,15 +151,14 @@ test('Stagehand preserves an active draft when live agent frames arrive', async 
       return {
         draft: textarea?.value || '',
         focused: document.activeElement === textarea,
-        existingFrameStillSame: window.__kikxOriginalFrameNode === document.querySelector('kikx-frame-item[data-frame-id="agent_msg_1"]'),
         frameIDs: Array.from(document.querySelectorAll('kikx-frame-item')).map((node) => node.dataset.frameId),
       };
     });
 
     assert.equal(result.draft, draft);
     assert.equal(result.focused, true);
-    assert.equal(result.existingFrameStillSame, true,
-      'the live event never rebuilt the existing frame node');
+    assert.equal(identityRightAfterEvent, true,
+      'the live event never rebuilt the existing frame node (checked in the event-scoped window)');
     assert.deepEqual(result.frameIDs, [ 'agent_msg_1' ],
       'and the phantom stayed OUT of the frame list (thinking projection, not list content)');
   } finally {
