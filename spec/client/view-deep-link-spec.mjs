@@ -42,6 +42,15 @@ import {
   syncViewNames,
 } from '../../src/client/state/view-name-registry.mjs';
 
+// The render-on-ready test below dynamically imports kikx-navigation, which
+// reaches aeor-ui (/vendor/*) — the same shim + mini-DOM bootstrap every other
+// client spec uses. Registered here (module scope, before the test runs); the
+// plain-Node URL tests above never touch it.
+import { register } from 'node:module';
+register(new URL('./support/frame-item-loader.mjs', import.meta.url).href, import.meta.url);
+const { installDom } = await import('./support/mini-dom.mjs');
+installDom();
+
 // The registry is module-level state (one writer: setClientComponents). Every
 // test that touches it restores it, so test order cannot matter.
 function withRegisteredViews(names, run) {
@@ -131,4 +140,56 @@ test('registerViewNames is the same writer as syncViewNames', () => {
   } finally {
     registerViewNames(null);
   }
+});
+
+test('applySessionDeepLink requests a RENDER when it flips _deepLinkReady (the loading screen must not strand)', async () => {
+  // Product bug found by the stagehand triage (2026-11-14): the finally block
+  // set _deepLinkReady = true with NO repaint, so "Loading page…" persisted
+  // forever unless an unrelated event happened to repaint (lean fixtures
+  // starved; fixtures with extra API chatter got lucky). The state flip and
+  // the paint that shows it must be one step.
+  const { applySessionDeepLink } = await import('../../src/client/components/kikx-navigation.mjs');
+
+  const previousLocation = globalThis.location;
+  globalThis.location = {
+    href: 'http://kikx.test/?session=session_1',
+    search: '?session=session_1',
+    pathname: '/',
+    hash: '',
+    origin: 'http://kikx.test',
+  };
+
+  const renders = [];
+  const app = {
+    _state: {
+      navigationStack: [ { sessionID: null, collapsed: true } ],
+      sessions: [ { id: 'session_1', title: 'S' } ],
+      sessionIDs: [ 'session_1' ],
+      sessionDetailsByID: { session_1: { id: 'session_1', title: 'S' } },
+      deletedSessionIDs: [],
+      deletedSessionDetailsByID: {},
+      sessionPreviews: {},
+      frames: {},
+      frameFilters: null,
+      sessionSearch: '',
+      account: { name: 'W' },
+    },
+    _loadFrames: async () => ({ frames: [] }),
+    _render: () => renders.push('render'),
+    _requestRender: (reason) => renders.push(String(reason || 'request')),
+    _syncURLFromStack: () => {},
+  };
+
+  try {
+    await applySessionDeepLink(app);
+  } finally {
+    if (previousLocation === undefined)
+      delete globalThis.location;
+    else
+      globalThis.location = previousLocation;
+  }
+
+  assert.equal(app._deepLinkReady, true, 'the gate resolves');
+  assert.ok(renders.length > 0,
+    'and the shell repaints so the loading screen actually clears — ready-without-render is the strand bug');
 });

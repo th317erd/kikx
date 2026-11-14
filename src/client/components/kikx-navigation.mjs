@@ -590,6 +590,15 @@ export async function applySessionDeepLink(app) {
   } catch (_error) {} finally {
     app._deepLinkReady = true;
     app._loadQuestions?.({ complete: true });
+    // The flip above is invisible until a paint shows it: without this the
+    // startup loading screen can persist FOREVER unless an unrelated event
+    // happens to repaint (measured 2026-11-14: lean fixtures stranded on
+    // "Loading page…" with the frame store already full — the event-rich
+    // fixtures only got lucky). Ready and repaint are one step.
+    if (typeof app._requestRender === 'function')
+      app._requestRender('deeplink-ready');
+    else if (typeof app._render === 'function')
+      app._render();
   }
 }
 

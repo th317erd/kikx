@@ -155,7 +155,12 @@ test('Stagehand collapses tool start and result frames into one plugin-rendered 
         success: item?.classList.contains('kikx-frame--status-success') === true,
       };
     });
-    assert.equal(compactShell.description, 'Command completed');
+    // Compact wording is DELIBERATELY the command's focus word for tool
+    // frames (frameHeaderStatus: "a shell command's focus word, todo verbs,
+    // file names") — the old "Command completed" expectation predates that
+    // design; the result CARD's body still carries "Command completed."
+    // (asserted above at the resultText check).
+    assert.equal(compactShell.description, 'ls');
     assert.equal(compactShell.command, 'ls /tmp');
     assert.equal(compactShell.secondaryCount, 0);
     assert.equal(compactShell.icon, 'gear');
@@ -664,28 +669,61 @@ export function createUpdatedResponseToolFrames() {
 
 async function expandCompactFrames(page) {
   await page.evaluate(async () => {
-    let deadline = Date.now() + 10000;
+    let deadline = Date.now() + 12000;
     while (!document.querySelector('kikx-app')?._state?.clientToolComponentsByName?.exec) {
       if (Date.now() > deadline)
         throw new Error('client tool components did not load');
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
 
-    // Frames render ASYNC (fetch -> render): opening details that exist right
-    // now raced the empty list in the lane (measured 2026-11-14: zero details
-    // opened, then every custom-element wait timed out). Wait for the compact
-    // details to ARRIVE first, open them all, then let the custom content mount.
-    while (document.querySelectorAll('details.kikx-frame__compact').length === 0) {
-      if (Date.now() > deadline)
-        throw new Error('no compact frame details rendered');
-      await new Promise((resolve) => setTimeout(resolve, 50));
+    // Frames render ASYNC and the INVENTORY repaint (~1-2s) REBUILDS them
+    // with details closed again — measured 2026-11-14: expand-immediately
+    // passed the first two waits in the pre-repaint window, then every later
+    // mount wait timed out. Strategy: wait for the frame count to STABILIZE
+    // (repaints done), open everything, then keep re-opening until the custom
+    // content is mounted AND stays mounted across one quiet beat.
+    let lastCount = -1;
+    let stableSince = 0;
+    while (Date.now() < deadline) {
+      let count = document.querySelectorAll('kikx-frame-item').length;
+      if (count > 0) {
+        if (count === lastCount) {
+          if (Date.now() - stableSince >= 500)
+            break;
+        } else {
+          lastCount = count;
+          stableSince = Date.now();
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
+    if (lastCount <= 0)
+      throw new Error('no frames rendered');
 
-    for (let details of document.querySelectorAll('details.kikx-frame__compact')) {
-      details.setAttribute('open', '');
-      details.open = true;
-      details.dispatchEvent(new Event('toggle'));
+    const openAll = () => {
+      for (let details of document.querySelectorAll('details.kikx-frame__compact')) {
+        if (!details.open) {
+          details.setAttribute('open', '');
+          details.open = true;
+          details.dispatchEvent(new Event('toggle'));
+        }
+      }
+    };
+
+    openAll();
+    let quietSince = Date.now();
+    while (Date.now() < deadline) {
+      openAll();
+      let mounted = document.querySelectorAll('.kikx-frame__content--custom').length;
+      let open = document.querySelectorAll('details.kikx-frame__compact:not([open])').length;
+      if (mounted > 0 && open === 0) {
+        if (Date.now() - quietSince >= 600)
+          return;
+      } else {
+        quietSince = Date.now();
+      }
+      await new Promise((resolve) => setTimeout(resolve, 150));
     }
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    throw new Error('expanded frames never reached a quiet mounted state');
   });
 }
