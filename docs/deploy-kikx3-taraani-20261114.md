@@ -165,15 +165,37 @@ and `/opt/plugins` ships no `manifest.json`/`.kikx-sig`, so every plugin is
 refused. The mode is read from the persisted config key
 `/kikx/plugin/signature/mode` first, and only falls back to the environment.
 
-kikx3's `.env` does **not** set `KIKX_PLUGIN_SIGNATURE_MODE`, yet its plugins
-load: the effective mode comes from the config store under
-`/home/wyatt/.local/share/kikx/`, which lives outside the container and therefore
-survives a restart. Confirm rather than assume:
+kikx3's plugins load because its `.env` sets the variable explicitly. An
+earlier revision of this document claimed the `.env` did **not** set it and that
+the config store supplied the mode; that was an inference, and it is wrong.
+Measured on 2026-11-14 after the `84db46ee` deploy:
+
+```
+.env:35                 KIKX_PLUGIN_SIGNATURE_MODE=unsafe
+compose.yml:68          KIKX_PLUGIN_SIGNATURE_MODE: "${KIKX_PLUGIN_SIGNATURE_MODE:-}"
+docker exec kikx printenv  ->  KIKX_PLUGIN_SIGNATURE_MODE=unsafe
+```
+
+The provenance matters, and it is the reason the distinction is worth stating:
+because the value comes from the **environment**, a restart is reproducible and
+cannot flip the mode. Had it come from the config store it would also have
+survived a restart, so the *outcome* is the same either way — but only the env
+route can be read and set from the deploy directory, so it is the one to check
+when a plugin refuses to load after a host move or a fresh volume.
+
+Confirm by measurement, never by log line alone. The warning is a proxy; the
+container's own environment is the fact:
 
 ```sh
-ssh wyatt-laptop 'docker logs kikx 2>&1 | grep -i signature | tail -2'
-# [kikx] plugin signature verification DISABLED (KIKX_PLUGIN_SIGNATURE_MODE=unsafe) ...
+ssh wyatt-laptop 'docker exec kikx printenv KIKX_PLUGIN_SIGNATURE_MODE'
+# unsafe        <- plugins will load
+# (empty/absent) -> every plugin refused, /opt/plugins ships no signatures
 ```
+
+Note the interaction between the two gates: an empty value is **not** `unsafe`,
+it falls through to `'required'` (fail-closed, `plugin-loader.mjs:130-134`). So a
+compose file that forwards `"${VAR:-}"` while the `.env` lacks the key is the
+same as refusing every plugin.
 
 `compose.yml` must forward the variable for the env fallback to work at all;
 that was added in `10bba61` ("compose: declare KIKX_PLUGIN_SIGNATURE_MODE so
@@ -280,6 +302,17 @@ Fix options, with the trade-offs that actually differ:
 | raise core's cap | `SETUP_TIMEOUT_MS` in `plugin-loader.mjs` | Makes boot 60 s slower for zero benefit; the pool still never arrives during `onInit`. **Not recommended.** |
 | bound the plugin's wait | `waitMs` in the plugin repo | Cheap and honest — fails fast instead of burning 15 s — but still logs a spurious "pool absent" every boot. |
 | connect the pool eagerly | `getPool()` before `loadPlugins` | The real fix: the wait then returns `true` on its first poll (line 177) and no timeout is involved at all. |
+
+`whenPluginMigrationPoolReady` is **not** a core export — it is defined inside
+the plugin (`/opt/plugins/kikx-plugin-discord/index.mjs:159-198`) and polls the
+private field through `context.require('pluginMigrations')?.pool`. That is why
+only the eager-connect option touches core at all, and why bounding the plugin's
+`waitMs` alone leaves the premise false.
+
+One trap for whoever implements the eager connect: `plugin-migrations.mjs:98-104`
+`getPool()` **throws** when `this.url` is null ('plugin migrations require a
+database url'), so priming it before `loadPlugins` must be guarded, or a
+plugin-less or url-less boot that works today will start failing.
 
 `SETUP_TIMEOUT_MS` reads `globalThis.__KIKX_PLUGIN_SETUP_TIMEOUT_MS` but nothing
 assigns it — not `src/`, not the container env, not `compose.yml`. It is not
