@@ -87,7 +87,15 @@ test('Stagehand collapses tool start and result frames into one plugin-rendered 
       waitUntil: 'domcontentloaded',
       timeout: 10000,
     });
-    await expandCompactFrames(page);
+    await expandCompactFrames(page, [
+      'kikx-web-search-use',
+      'kikx-fetch-use',
+      'kikx-session-tool-use',
+      'kikx-todo-tool-use.kikx-tool-card--result',
+      'kikx-cwd-tool-use.kikx-tool-card--result',
+      'kikx-feedback-tool-use.kikx-tool-card--result',
+      'kikx-shell-tool-use.kikx-tool-card--result',
+    ]);
     await page.waitForSelector('kikx-web-search-use', { timeout: 10000 });
     await page.waitForSelector('kikx-fetch-use', { timeout: 10000 });
     await page.waitForSelector('kikx-session-tool-use', { timeout: 10000 });
@@ -244,7 +252,7 @@ test('Stagehand places a completed tool-using agent summary after its tool frame
       waitUntil: 'domcontentloaded',
       timeout: 10000,
     });
-    await expandCompactFrames(page);
+    await expandCompactFrames(page, [ 'kikx-shell-tool-use.kikx-tool-card--result' ]);
     await page.waitForSelector('kikx-frame-item[data-frame-id="agent_response_1"]', { timeout: 10000 });
     await page.waitForSelector('kikx-frame-item[data-frame-id="tool_call_1"]', { timeout: 10000 });
     await page.waitForSelector('kikx-shell-tool-use.kikx-tool-card--result', { timeout: 10000 });
@@ -667,39 +675,20 @@ export function createUpdatedResponseToolFrames() {
 }
 
 
-async function expandCompactFrames(page) {
-  await page.evaluate(async () => {
-    let deadline = Date.now() + 12000;
+async function expandCompactFrames(page, mustHave = []) {
+  await page.evaluate(async (expected) => {
+    let deadline = Date.now() + 15000;
     while (!document.querySelector('kikx-app')?._state?.clientToolComponentsByName?.exec) {
       if (Date.now() > deadline)
         throw new Error('client tool components did not load');
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
 
-    // Frames render ASYNC and the INVENTORY repaint (~1-2s) REBUILDS them
-    // with details closed again — measured 2026-11-14: expand-immediately
-    // passed the first two waits in the pre-repaint window, then every later
-    // mount wait timed out. Strategy: wait for the frame count to STABILIZE
-    // (repaints done), open everything, then keep re-opening until the custom
-    // content is mounted AND stays mounted across one quiet beat.
-    let lastCount = -1;
-    let stableSince = 0;
-    while (Date.now() < deadline) {
-      let count = document.querySelectorAll('kikx-frame-item').length;
-      if (count > 0) {
-        if (count === lastCount) {
-          if (Date.now() - stableSince >= 500)
-            break;
-        } else {
-          lastCount = count;
-          stableSince = Date.now();
-        }
-      }
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-    if (lastCount <= 0)
-      throw new Error('no frames rendered');
-
+    // Frames render ASYNC and the INVENTORY repaint REBUILDS them with details
+    // closed — a single expand-then-return always lost the race to that repaint
+    // for later mounts (measured 2026-11-14: first waits passed pre-repaint,
+    // every later one timed out). Loop: re-open on every tick and only return
+    // when EVERY expected selector is actually mounted.
     const openAll = () => {
       for (let details of document.querySelectorAll('details.kikx-frame__compact')) {
         if (!details.open) {
@@ -710,20 +699,19 @@ async function expandCompactFrames(page) {
       }
     };
 
-    openAll();
-    let quietSince = Date.now();
     while (Date.now() < deadline) {
-      openAll();
-      let mounted = document.querySelectorAll('.kikx-frame__content--custom').length;
-      let open = document.querySelectorAll('details.kikx-frame__compact:not([open])').length;
-      if (mounted > 0 && open === 0) {
-        if (Date.now() - quietSince >= 600)
-          return;
-      } else {
-        quietSince = Date.now();
+      if (document.querySelectorAll('kikx-frame-item').length === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        continue;
       }
+      openAll();
+      let allMounted = expected.length > 0
+        ? expected.every((selector) => document.querySelector(selector))
+        : document.querySelectorAll('.kikx-frame__content--custom').length > 0;
+      if (allMounted)
+        return;
       await new Promise((resolve) => setTimeout(resolve, 150));
     }
-    throw new Error('expanded frames never reached a quiet mounted state');
-  });
+    throw new Error(`expected mounts never appeared: ${expected.join(', ')}`);
+  }, mustHave);
 }

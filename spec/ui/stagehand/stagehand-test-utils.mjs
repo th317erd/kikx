@@ -301,8 +301,20 @@ class StagehandFrameRuntime extends EventEmitter {
     return session;
   }
 
+  // Production contract: the server page index counts raw frames from the
+  // OLDEST frame (order ASC), and window bounds read oldest-first. The
+  // in-memory fixture stored arrays exactly as fixtures set them — an
+  // unsorted set inverted the bounds (measured 2026-11-14: oldestOrder 2 /
+  // newestOrder 1 → the page-source window filter required order>=2 AND
+  // order<=1, dropped every head, and rendered an empty thread over a full
+  // store).
+  _sortedFrames(sessionID) {
+    return [ ...(this.framesBySessionID.get(sessionID) || []) ]
+      .sort((a, b) => (Number(a?.order) || 0) - (Number(b?.order) || 0));
+  }
+
   async listFrames(sessionID) {
-    return this.framesBySessionID.get(sessionID) || [];
+    return this._sortedFrames(sessionID);
   }
 
   // Minimal live-entry access for the compaction retry route: it resolves the
@@ -334,7 +346,7 @@ class StagehandFrameRuntime extends EventEmitter {
     let filters = options.filters ?? null;
     // Query matching remains covered by the production/store specs; this
     // fixture models the visibility gate without reimplementing fuzzy search.
-    let frames = (this.framesBySessionID.get(sessionID) || [])
+    let frames = this._sortedFrames(sessionID)
       .filter((frame) => frameMatchesWindowFilters(frame, filters, ''));
     let eligible = before == null
       ? frames
@@ -351,7 +363,7 @@ class StagehandFrameRuntime extends EventEmitter {
 
   async listFramePageIndex(sessionID, options = {}) {
     let pageSize = Math.max(1, Number(options.pageSize) || 120);
-    let frames = this.framesBySessionID.get(sessionID) || [];
+    let frames = this._sortedFrames(sessionID);
     return {
       pageSize,
       totalRawFrames: frames.length,
@@ -365,7 +377,7 @@ class StagehandFrameRuntime extends EventEmitter {
     let pageIndex = Math.max(0, Math.trunc(Number(options.pageIndex) || 0));
     let index = await this.listFramePageIndex(sessionID, options);
     let start = pageIndex * index.pageSize;
-    let frames = (this.framesBySessionID.get(sessionID) || []).slice(start, start + index.pageSize);
+    let frames = this._sortedFrames(sessionID).slice(start, start + index.pageSize);
     return {
       ...index,
       pageIndex,
