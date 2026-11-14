@@ -684,27 +684,35 @@ async function expandCompactFrames(page, mustHave = []) {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
 
-    // Frames render ASYNC and the INVENTORY repaint REBUILDS them with details
-    // closed — a single expand-then-return always lost the race to that repaint
-    // for later mounts (measured 2026-11-14: first waits passed pre-repaint,
-    // every later one timed out). Loop: re-open on every tick and only return
-    // when EVERY expected selector is actually mounted.
-    const openAll = () => {
-      for (let details of document.querySelectorAll('details.kikx-frame__compact')) {
-        if (!details.open) {
-          details.setAttribute('open', '');
-          details.open = true;
-          details.dispatchEvent(new Event('toggle'));
-        }
+    // Drive the REAL interaction, not raw details pokes (measured 2026-11-14):
+    // tool frames start kikx-frame--minimized, and only the header-click path
+    // (_onCompactClick -> _revealMinimized) clears that class SYNCHRONOUSLY —
+    // a raw `details.open = true` wrote the expansion store but left the
+    // minimized class squashing the card to 0x0 until an unrelated repaint,
+    // so visibility-aware waits correctly refused it. Clicking the header:
+    // (1) reveals (class removed now), (2) the next click expands natively
+    // (real toggle event -> store write -> survives every rebuild).
+    const clickHeader = (item) => {
+      let meta = item.querySelector('.kikx-frame__meta');
+      if (!meta)
+        return;
+      if (item.classList.contains('kikx-frame--minimized')) {
+        meta.click();
+        return;
       }
+      let details = item.querySelector('details.kikx-frame__compact');
+      if (details && !details.open)
+        meta.click();
     };
 
     while (Date.now() < deadline) {
-      if (document.querySelectorAll('kikx-frame-item').length === 0) {
+      let items = document.querySelectorAll('kikx-frame-item');
+      if (items.length === 0) {
         await new Promise((resolve) => setTimeout(resolve, 100));
         continue;
       }
-      openAll();
+      for (let item of items)
+        clickHeader(item);
       let allMounted = expected.length > 0
         ? expected.every((selector) => document.querySelector(selector))
         : document.querySelectorAll('.kikx-frame__content--custom').length > 0;
