@@ -115,7 +115,21 @@ test('Stagehand preserves an active draft when live agent frames arrive', async 
       frame: thinkingFrame,
     });
 
-    await page.waitForSelector('kikx-frame-item[data-frame-id="agent_thinking_1"]', { timeout: 10000 });
+    // Current contract (measured 2026-11-14): a frame.phantom AgentThinking
+    // folds into the LIVE THINKING BUFFER — it renders as a rack entry in the
+    // thinking dock and is EXCLUDED from the frame list (chat-view-model:
+    // frame.phantom !== true). The old expectation (a frame-item for
+    // agent_thinking_1) pinned the pre-projection design.
+    let rackEntryAppeared = false;
+    let rackDeadline = Date.now() + 10000;
+    while (Date.now() < rackDeadline && !rackEntryAppeared) {
+      rackEntryAppeared = await page.evaluate(() =>
+        (document.querySelector('kikx-thinking-rack')?.childElementCount || 0) > 0);
+      if (!rackEntryAppeared)
+        await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.equal(rackEntryAppeared, true,
+      'the phantom thinking frame surfaces as a rack entry in the thinking dock');
     let result = await page.evaluate(() => {
       let textarea = document.querySelector('.kikx-composer textarea');
       return {
@@ -128,8 +142,10 @@ test('Stagehand preserves an active draft when live agent frames arrive', async 
 
     assert.equal(result.draft, draft);
     assert.equal(result.focused, true);
-    assert.equal(result.existingFrameStillSame, true);
-    assert.deepEqual(result.frameIDs, [ 'agent_msg_1', 'agent_thinking_1' ]);
+    assert.equal(result.existingFrameStillSame, true,
+      'the live event never rebuilt the existing frame node');
+    assert.deepEqual(result.frameIDs, [ 'agent_msg_1' ],
+      'and the phantom stayed OUT of the frame list (thinking projection, not list content)');
   } finally {
     await stagehand.close().catch(() => {});
     await fixture.close().catch(() => {});
