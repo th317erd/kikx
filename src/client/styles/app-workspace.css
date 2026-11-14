@@ -240,9 +240,11 @@
   font-size: calc(11px * 1.25);
 }
 
-/* Bottom action toolbar: a distinct row of radial progress buttons separated
-   from the preview by a hairline rule. It stays quiet so the card still reads
-   as a single click target until an action is hovered. */
+/* Bottom action toolbar for the card's OWN actions (Delete / Recycle). Open is
+   not here: the card itself is the Open control (owner, 2026-11-14: "Please
+   remove all 'Play' buttons from session view cards. They are not needed. A
+   click on the card does the same action."). The toolbar stays quiet so the
+   card still reads as a single click target. */
 .kikx-session-card__toolbar {
   display: flex;
   align-items: center;
@@ -309,6 +311,31 @@
 
 .kikx-chat-view--mini .kikx-frame {
   pointer-events: none;
+}
+
+/* A preview is inert, and `pointer-events: none` does NOT cascade as an
+   override: the frame's own hover rails put it back (`.kikx-frame__hover-target`
+   and `.kikx-frame__quick-actions` in app-composer.css both set `auto`), so a
+   pointer over the preview still hit-tested a descendant and the ancestor
+   `.kikx-frame:hover` rules fired INSIDE the card -- quick actions fading in and
+   the timestamp brightening. Owner, 2026-11-14: "Frames/Messages have HOVER
+   EFFECTS inside the card... the only way the card is interactive is by clicking
+   on it to enter it." Kill the whole subtree, not just the frame. */
+.kikx-chat-view--mini,
+.kikx-chat-view--mini * {
+  pointer-events: none;
+}
+
+/* Belt and braces: even an unreachable `:hover` match would restyle the preview
+   if a pointer ever landed on it. Pin the two hover-driven values so the preview
+   is one static picture wherever the pointer happens to be. */
+.kikx-chat-view--mini .kikx-frame__quick-actions {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.kikx-chat-view--mini .kikx-frame__timestamp {
+  opacity: 0.4;
 }
 
 .kikx-chat-view--mini .kikx-user-message__prompt {

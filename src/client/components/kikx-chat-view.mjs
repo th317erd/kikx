@@ -580,6 +580,11 @@ export class KikxChatView extends HTMLElement {
     // is sized to the design dimensions and scaled down to fit the card.
     let scaler = document.createElement('div');
     scaler.className = 'kikx-chat-view__scaler';
+    // A preview is a picture, not a control surface. CSS already makes the
+    // subtree non-hit-testable, but `inert` also takes the preview out of the
+    // tab order and the accessibility tree, which is what keeps a card reading
+    // as one click target rather than a small interactive thread.
+    scaler.setAttribute('inert', '');
     scaler.style.setProperty('--kikx-mini-design-width', `${MINI_DESIGN_WIDTH}px`);
     scaler.style.setProperty('--kikx-mini-design-height', `${MINI_DESIGN_HEIGHT}px`);
 

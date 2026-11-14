@@ -156,35 +156,31 @@ test('formatOptionalLoadFailure renders a single human-readable line', () => {
   assert.equal(text.includes('\n'), false);
 });
 
-test('without aeor-progress-button the card builds plain buttons whose clicks act', () => {
+test('without aeor-progress-button the card builds a plain Delete button whose click acts', () => {
   withProgressButtonUndefined(() => {
     let card = mountCard();
-    let [ openButton, deleteButton ] = actionButtons(card);
+    let buttons = actionButtons(card);
 
-    assert.ok(openButton, 'the Open action must exist');
-    assert.ok(deleteButton, 'the Delete action must exist');
-    assert.equal(openButton.localName, 'button', 'fallback Open is a plain button');
+    // Open is not a toolbar action any more (owner, 2026-11-14): the card root
+    // is the open affordance, so the fallback path must degrade exactly one
+    // control, and it must be Delete.
+    assert.equal(buttons.length, 1, 'only Delete remains in the toolbar');
+    let [ deleteButton ] = buttons;
+
     assert.equal(deleteButton.localName, 'button', 'fallback Delete is a plain button');
-    assert.equal(openButton.type, 'button');
     assert.equal(deleteButton.type, 'button');
 
-    assert.ok(openButton.classList.contains('kikx-session-card__action'));
-    assert.ok(openButton.classList.contains('kikx-session-card__action--open'));
+    assert.ok(deleteButton.classList.contains('kikx-session-card__action'));
     assert.ok(deleteButton.classList.contains('kikx-session-card__action--delete'));
     assert.ok(deleteButton.classList.contains('progress-button-danger'));
-    assert.equal(openButton.getAttribute('aria-label'), 'Open Alpha');
     assert.equal(deleteButton.getAttribute('aria-label'), 'Delete Alpha');
     assert.equal(deleteButton.getAttribute('title'), 'Hold 1s to delete');
 
-    let opens = [];
     let deletes = [];
-    card.addEventListener('kikx-card-open', (event) => opens.push(event.detail));
     card.addEventListener('kikx-card-delete', (event) => deletes.push(event.detail));
 
-    openButton.dispatchEvent(new CustomEvent('click', { bubbles: true }));
     deleteButton.dispatchEvent(new CustomEvent('click', { bubbles: true }));
 
-    assert.deepEqual(opens, [ { sessionID: 'ses_1' } ]);
     assert.deepEqual(deletes, [ { sessionID: 'ses_1' } ]);
   });
 });
@@ -203,11 +199,9 @@ test('with aeor-progress-button defined the card builds the component', () => {
   let card = mountCard();
   let buttons = [ ...card.querySelectorAll('aeor-progress-button') ];
 
-  assert.equal(buttons.length, 2, 'both actions use the component when present');
+  assert.equal(buttons.length, 1, 'the delete action uses the component when present');
   assert.equal(buttons[0].localName, 'aeor-progress-button');
-  assert.equal(buttons[0].getAttribute('icon'), 'open');
-  assert.equal(buttons[0].getAttribute('duration'), '0');
-  assert.equal(buttons[1].getAttribute('icon'), 'delete');
-  assert.equal(buttons[1].getAttribute('duration'), '1000');
-  assert.ok(buttons[1].classList.contains('progress-button-danger'));
+  assert.equal(buttons[0].getAttribute('icon'), 'delete');
+  assert.equal(buttons[0].getAttribute('duration'), '1000');
+  assert.ok(buttons[0].classList.contains('progress-button-danger'));
 });

@@ -47,22 +47,18 @@ function createToolbar(owner) {
   let toolbar = document.createElement('footer');
   toolbar.className = 'kikx-session-card__toolbar';
 
-  // The bottom toolbar holds per-session actions. When the vendored radial
-  // aeor-progress-button is available both controls are progress buttons (the
-  // icon-centric form the design calls for): Open is click-to-activate
-  // (duration 0). The second control is a single element that retargets per
-  // state: for a live session it is Delete (a 1s hold, so a stray click can
-  // never destroy a session); for a soft-deleted session it becomes Recycle, a
-  // click-to-activate undelete. One element, so retargeting updates attributes
-  // in place and never rebuilds the toolbar. If the component failed to load
-  // both degrade to plain buttons so the card still works.
-  let openAction = createActionButton({
-    className: 'kikx-session-card__action kikx-session-card__action--open',
-    icon: 'open',
-    label: 'Open session',
-    title: 'Open session',
-    duration: '0',
-  });
+  // The toolbar holds the card's OWN actions, and opening is deliberately not
+  // one of them: the card is the Open control. Owner, 2026-11-14: "Please
+  // remove all 'Play' buttons from session view cards. They are not needed. A
+  // click on the card does the same action." That is also why the root carries
+  // tabIndex and its own click/keydown handlers.
+  //
+  // The remaining control is one element that retargets per state: for a live
+  // session it is Delete (a 1s hold, so a stray click can never destroy a
+  // session); for a soft-deleted session it becomes Recycle, a click-to-activate
+  // undelete. One element, so retargeting updates attributes in place and never
+  // rebuilds the toolbar. If the vendored aeor-progress-button failed to load it
+  // degrades to a plain button so the card still works.
   let deleteAction = createActionButton({
     className: 'kikx-session-card__action kikx-session-card__action--delete progress-button-danger',
     icon: 'delete',
@@ -70,10 +66,9 @@ function createToolbar(owner) {
     title: 'Hold 1s to delete',
     duration: '1000',
   });
-  let openButton = openAction.button;
   let deleteButton = deleteAction.button;
 
-  toolbar.append(openButton, deleteButton);
+  toolbar.append(deleteButton);
 
   // The card root is itself clickable (open). Actions inside the toolbar must
   // not trigger that, so stop click/keydown at the toolbar boundary.
@@ -82,23 +77,13 @@ function createToolbar(owner) {
   // aeor-progress-button fires `confirm` when its hold (or click) completes.
   toolbar.addEventListener('confirm', (event) => {
     event.stopPropagation();
-    if (event.target === deleteButton) {
-      if (owner._deleted)
-        owner._emitRestore();
-      else
-        owner._emitDelete();
-    } else {
-      owner._emitOpen();
-    }
+    if (owner._deleted)
+      owner._emitRestore();
+    else
+      owner._emitDelete();
   });
 
   // Plain fallback buttons never emit `confirm`; wire their clicks directly.
-  if (!openAction.usesProgressButton) {
-    openButton.addEventListener('click', (event) => {
-      event.stopPropagation();
-      owner._emitOpen();
-    });
-  }
   if (!deleteAction.usesProgressButton) {
     deleteButton.addEventListener('click', (event) => {
       event.stopPropagation();
@@ -109,7 +94,7 @@ function createToolbar(owner) {
     });
   }
 
-  return { toolbar, openButton, deleteButton };
+  return { toolbar, deleteButton };
 }
 
 function createCardShell(owner) {
@@ -139,10 +124,10 @@ function createCardShell(owner) {
 
   // One toolbar per card, owned by the card so its confirm handler can reach
   // back and emit open/delete. Built here, never rebuilt.
-  let { toolbar, openButton, deleteButton } = createToolbar(owner);
+  let { toolbar, deleteButton } = createToolbar(owner);
   root.append(header, body, status, toolbar);
 
-  return { root, title, meta, activity, view, status, body, toolbar, openButton, deleteButton };
+  return { root, title, meta, activity, view, status, body, toolbar, deleteButton };
 }
 
 export class KikxSessionCard extends HTMLElement {
@@ -275,12 +260,7 @@ export class KikxSessionCard extends HTMLElement {
     else
       shell.root.removeAttribute('aria-current');
 
-    // Name the actions after the session so screen readers announce the target.
-    if (shell.openButton) {
-      shell.openButton.setAttribute('label', label ? `Open ${label}` : 'Open session');
-      shell.openButton.setAttribute('title', 'Open session');
-      syncFallbackLabel(shell.openButton);
-    }
+    // Name the action after the session so screen readers announce the target.
     if (shell.deleteButton) {
       // The same control is Delete (hold) for a live session and Recycle
       // (click) for a soft-deleted one; retarget in place.

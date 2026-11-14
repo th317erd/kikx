@@ -64,22 +64,53 @@ function progressButtons(card) {
   return [ ...card.querySelectorAll('aeor-progress-button') ];
 }
 
-test('the card builds exactly one toolbar with Open and Delete progress buttons', () => {
+test('the card builds exactly one toolbar holding only the Delete progress button', () => {
   createdProgressButtons = 0;
   let card = mountCard();
 
   assert.equal(card.querySelectorAll('.kikx-session-card__toolbar').length, 1, 'exactly one toolbar');
-  assert.equal(createdProgressButtons, 2, 'exactly two radial buttons are created (no dead first toolbar)');
+  assert.equal(createdProgressButtons, 1, 'exactly one radial button is created (no dead first toolbar)');
 
-  let [ open, deleteButton ] = progressButtons(card);
-  assert.ok(open, 'the Open button must exist');
-  assert.equal(open.getAttribute('icon'), 'open');
-  assert.equal(open.getAttribute('duration'), '0');
+  let buttons = progressButtons(card);
+  assert.equal(buttons.length, 1, 'the toolbar holds one action, not two');
 
-  assert.ok(deleteButton, 'the Delete button must exist');
+  let [ deleteButton ] = buttons;
   assert.equal(deleteButton.getAttribute('icon'), 'delete');
   assert.equal(deleteButton.getAttribute('duration'), '1000');
   assert.ok(deleteButton.classList.contains('progress-button-danger'), 'Delete must be danger-themed');
+});
+
+// Owner, 2026-11-14: "Please remove all 'Play' buttons from session view cards.
+// They are not needed. A click on the card does the same action." The root is
+// the Open control, so no toolbar action may open the session -- and the
+// removed control must not survive as a stray `.kikx-session-card__action--open`
+// node, an `icon="open"` button, or a label screen readers still announce.
+test('no Open/Play action survives in the card, at any level', () => {
+  let card = mountCard();
+
+  assert.equal(card.querySelectorAll('.kikx-session-card__action--open').length, 0,
+    'the Open action class is gone');
+  assert.equal(
+    [ ...card.querySelectorAll('[icon="open"]') ].length,
+    0,
+    'nothing in the card still renders the open/play glyph',
+  );
+
+  let labels = [ ...card.querySelectorAll('[aria-label]') ]
+    .map((node) => node.getAttribute('aria-label'))
+    .concat([ ...card.querySelectorAll('[label]') ].map((node) => node.getAttribute('label')));
+  assert.equal(labels.some((label) => /^Open /.test(String(label))), false,
+    'no control is announced as "Open <session>"');
+});
+
+test('clicking the card root opens the session, which is what replaced the button', () => {
+  let card = mountCard();
+  let opens = [];
+  card.addEventListener('kikx-card-open', (event) => opens.push(event.detail));
+
+  cardRoot(card).dispatchEvent(new CustomEvent('click', { bubbles: true }));
+
+  assert.deepEqual(opens, [ { sessionID: 'ses_1' } ], 'the card itself is the open affordance');
 });
 
 test('confirming Delete emits exactly one kikx-card-delete carrying the session id', () => {
@@ -87,7 +118,7 @@ test('confirming Delete emits exactly one kikx-card-delete carrying the session 
   let deletes = [];
   card.addEventListener('kikx-card-delete', (event) => deletes.push(event.detail));
 
-  let [, deleteButton ] = progressButtons(card);
+  let [ deleteButton ] = progressButtons(card);
   deleteButton.fireConfirm();
 
   assert.deepEqual(deletes, [ { sessionID: 'ses_1' } ]);
@@ -98,8 +129,8 @@ test('a click inside the toolbar does not open the session', () => {
   let opens = [];
   card.addEventListener('kikx-card-open', (event) => opens.push(event.detail));
 
-  let [ open ] = progressButtons(card);
-  open.dispatchEvent(new CustomEvent('click', { bubbles: true }));
+  let [ deleteButton ] = progressButtons(card);
+  deleteButton.dispatchEvent(new CustomEvent('click', { bubbles: true }));
 
   assert.deepEqual(opens, [], 'toolbar clicks must be stopped before the card open handler');
 });
@@ -109,33 +140,22 @@ test('a keydown inside the toolbar does not open the session', () => {
   let opens = [];
   card.addEventListener('kikx-card-open', (event) => opens.push(event.detail));
 
-  let [ open ] = progressButtons(card);
-  open.dispatchEvent(new CustomEvent('keydown', { bubbles: true }));
+  let [ deleteButton ] = progressButtons(card);
+  deleteButton.dispatchEvent(new CustomEvent('keydown', { bubbles: true }));
 
   assert.deepEqual(opens, [], 'toolbar keydown must be stopped before the card open handler');
-});
-
-test('confirming Open emits the open event once', () => {
-  let card = mountCard();
-  let opens = [];
-  card.addEventListener('kikx-card-open', (event) => opens.push(event.detail));
-
-  let [ open ] = progressButtons(card);
-  open.fireConfirm();
-
-  assert.deepEqual(opens, [ { sessionID: 'ses_1' } ]);
 });
 
 test('deleting: true disables Delete and marks the card busy', () => {
   let card = mountCard({ deleting: true });
 
-  let [, deleteButton ] = progressButtons(card);
+  let [ deleteButton ] = progressButtons(card);
   assert.equal(deleteButton.disabled, true);
   assert.ok(cardRoot(card).classList.contains('is-deleting'));
   assert.equal(cardRoot(card).getAttribute('aria-busy'), 'true');
 
   card.update({ deleting: false });
-  assert.equal(progressButtons(card)[1].disabled, false);
+  assert.equal(progressButtons(card)[0].disabled, false);
   assert.ok(!cardRoot(card).classList.contains('is-deleting'));
   assert.equal(cardRoot(card).getAttribute('aria-busy'), 'false');
 });
@@ -145,7 +165,7 @@ test('a soft-deleted card is tinted and its second action becomes Recycle', () =
 
   assert.ok(cardRoot(card).classList.contains('is-deleted'), 'the card is reddish-tinted');
 
-  let [ , second ] = progressButtons(card);
+  let [ second ] = progressButtons(card);
   assert.equal(second.getAttribute('icon'), 'recycle');
   assert.equal(second.getAttribute('duration'), '0', 'recycle is click-to-activate, no hold');
   assert.ok(second.classList.contains('progress-button-success'), 'recycle is success-themed');
@@ -159,7 +179,7 @@ test('confirming Recycle on a deleted card emits kikx-card-restore, never kikx-c
   card.addEventListener('kikx-card-restore', (event) => restores.push(event.detail));
   card.addEventListener('kikx-card-delete', (event) => deletes.push(event.detail));
 
-  let [ , recycle ] = progressButtons(card);
+  let [ recycle ] = progressButtons(card);
   recycle.fireConfirm();
 
   assert.deepEqual(restores, [ { sessionID: 'ses_1' } ]);
@@ -171,7 +191,7 @@ test('an undelete retargets the second action back to Delete 1s-hold', () => {
   card.update({ session: { id: 'ses_1', title: 'Alpha' }, deleted: false });
 
   assert.ok(!cardRoot(card).classList.contains('is-deleted'));
-  let [ , second ] = progressButtons(card);
+  let [ second ] = progressButtons(card);
   assert.equal(second.getAttribute('icon'), 'delete');
   assert.equal(second.getAttribute('duration'), '1000');
   assert.ok(second.classList.contains('progress-button-danger'));
@@ -183,7 +203,7 @@ test('a soft-deleted card is tinted and its second action becomes Recycle', () =
 
   assert.ok(cardRoot(card).classList.contains('is-deleted'), 'the card is reddish-tinted');
 
-  let [ , second ] = progressButtons(card);
+  let [ second ] = progressButtons(card);
   assert.equal(second.getAttribute('icon'), 'recycle');
   assert.equal(second.getAttribute('duration'), '0', 'recycle is click-to-activate, no hold');
   assert.ok(second.classList.contains('progress-button-success'), 'recycle is success-themed');
@@ -197,7 +217,7 @@ test('confirming Recycle on a deleted card emits kikx-card-restore, never kikx-c
   card.addEventListener('kikx-card-restore', (event) => restores.push(event.detail));
   card.addEventListener('kikx-card-delete', (event) => deletes.push(event.detail));
 
-  let [ , recycle ] = progressButtons(card);
+  let [ recycle ] = progressButtons(card);
   recycle.fireConfirm();
 
   assert.deepEqual(restores, [ { sessionID: 'ses_1' } ]);
@@ -209,7 +229,7 @@ test('an undelete retargets the second action back to Delete 1s-hold', () => {
   card.update({ session: { id: 'ses_1', title: 'Alpha' }, deleted: false });
 
   assert.ok(!cardRoot(card).classList.contains('is-deleted'));
-  let [ , second ] = progressButtons(card);
+  let [ second ] = progressButtons(card);
   assert.equal(second.getAttribute('icon'), 'delete');
   assert.equal(second.getAttribute('duration'), '1000');
   assert.ok(second.classList.contains('progress-button-danger'));
