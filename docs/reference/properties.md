@@ -136,6 +136,18 @@ gate. Last exercised green on this host: **2026-11-14 (7 pass,
 ruling); a run without the env var is the honest default (6 pass,
 2 skips).
 
+### Injecting a store (embedders and harnesses)
+
+`createServer({ …, propertiesStore })` injects an already-open store and
+**skips the open entirely** — the seam test harnesses use for isolated
+fixtures (an `:memory:` sqlite store keeps one spec's writes invisible to
+every other spec). Injection registers the **full aside** — grants + facade +
+registry stash — exactly like the opened path, because the HTTP routes only
+ever talk to the facade. (An earlier store-only injection answered `503
+property_store unavailable`; the theme fixture is the regression test for
+that.) Whatever way the store arrives, plugins may write properties during
+`setup()`.
+
 ## Configuration
 
 - `KIKX_PROPERTIES_ENCRYPTION_KEY` — 64 hex chars or canonical base64 of 32
