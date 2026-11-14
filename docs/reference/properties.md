@@ -126,9 +126,12 @@ KIKX_PROPERTIES_PARITY_URL="$ORG_AEOR_KIKX_DATABASE_URL" \
   node --test spec/core/properties/store-parity-spec.mjs
 ```
 
-The live test is self-cleaning: `put → get → delete` on an isolated
-`/core/parity/probe` key with the version asserted — nothing else in the
-store is touched. Last exercised green on this host: **2026-11-14 (7 pass,
+The live test is self-cleaning and history-proof: `put → get → put (the
+version increments by exactly 1) → delete clears the value` on an isolated
+`/core/parity/probe` key — nothing else in the store is touched. It
+deliberately does NOT assert `version === 1`: soft-delete bumps versions by
+design (cleared ≠ never-set), so accumulated history can never redden the
+gate. Last exercised green on this host: **2026-11-14 (7 pass,
 0 fail)**. The AeorDB gate stays skipped forever (backend retired by owner
 ruling); a run without the env var is the honest default (6 pass,
 2 skips).
