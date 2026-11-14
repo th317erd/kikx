@@ -113,6 +113,26 @@ owner ruling). Cross-backend shape parity is enforced by
 opt-in env-gated (`KIKX_PROPERTIES_PARITY_URL`,
 `KIKX_PROPERTIES_PARITY_AEORDB_URL`) and skip by default.
 
+### Running the live parity gate
+
+The unit lane is hermetic by contract, so the live gates skip unless opted
+in. To exercise the PostgreSQL gate against the dev database (the DSN stays
+in `.env.dev` and is never printed):
+
+```sh
+cd kikx
+set -a; . ./.env.dev; set +a
+KIKX_PROPERTIES_PARITY_URL="$ORG_AEOR_KIKX_DATABASE_URL" \
+  node --test spec/core/properties/store-parity-spec.mjs
+```
+
+The live test is self-cleaning: `put → get → delete` on an isolated
+`/core/parity/probe` key with the version asserted — nothing else in the
+store is touched. Last exercised green on this host: **2026-11-14 (7 pass,
+0 fail)**. The AeorDB gate stays skipped forever (backend retired by owner
+ruling); a run without the env var is the honest default (6 pass,
+2 skips).
+
 ## Configuration
 
 - `KIKX_PROPERTIES_ENCRYPTION_KEY` — 64 hex chars or canonical base64 of 32
