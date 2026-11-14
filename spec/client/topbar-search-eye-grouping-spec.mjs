@@ -210,15 +210,34 @@ test('the search group is not inside the trailing actions', () => {
   assert.equal(order.indexOf(group.querySelector('kikx-frame-filter-popup')), 1, 'the eye comes second');
 });
 
-// --- the group + actions read as ONE left control band --------------------
+// --- the group is CENTRED on the bar (owner annotation, 2026-11-14) -------
 
-test('the group hugs its neighbours: no auto margins split the control band', async () => {
-  // Owner annotations (2026-11-07, twice): "Move them over here" / "Move this
-  // way" — the actions cluster belongs IMMEDIATELY beside search+eye as one
-  // left-hand band. An earlier ruling centred the group with margin auto; the
-  // measured result was a 182px hole and a cluster still parked right, so the
-  // owner re-annotated. Auto margins are now banned from both rules: the free
-  // space falls AFTER the band instead of being split around its members.
+test('the group is pinned to the BAR centre above 1201px, not the leftover band', async () => {
+  // Owner annotation (2026-11-14, screenshot session-2026-11-14-01-42-32.122):
+  // "Move the Search field and two buttons over to the center of the top bar
+  // (as a whole group)."
+  //
+  // This SUPERSEDES the 2026-11-07 ruling that banned auto margins from the
+  // group to keep it a left-hand band. Three mechanisms were ruled in turn and
+  // only the third survives measurement:
+  //
+  //   1. `margin-left/right: auto` on the group -- centres it in the BAND
+  //      (breadcrumb edge to +Add), and that band's centre is NOT the bar's
+  //      centre, because the band starts where the 220-280px sidebar column
+  //      ends. Measured group-centre minus bar-centre: +125.7 at 1100 in the
+  //      Project view, +217.9 at 1100 in the Session view. Worse than the
+  //      layout it replaced.
+  //   2. in-flow with no auto margins -- the group hugs the breadcrumb, ~153px
+  //      left of the bar centre at 1440.
+  //   3. absolutely positioned against the bar at `left: 50%` -- the ONLY one
+  //      that hits the bar centre, because `.kikx-topbar` spans the viewport.
+  //      Measured 0.0 at 1280/1440/1920 in both views.
+  //
+  // This spec asserts the CSS text. Geometry is asserted in the puppeteer lane
+  // (`spec/ui/puppeteer/topbar-search-group-centring-puppeteer.mjs`), because a
+  // regex over a stylesheet cannot tell you where anything lands on screen --
+  // the auto-margin version passed a spec like this one while sitting 126-218px
+  // right of centre.
   let css = await readFile(fileURLToPath(new URL('../../src/client/styles/topbar-unified.css', import.meta.url)), 'utf8');
   let stripped = css.replace(/\/\*[\s\S]*?\*\//g, '');
 
@@ -228,31 +247,75 @@ test('the group hugs its neighbours: no auto margins split the control band', as
 
   assert.match(body, /(^|[;\s])gap\s*:/, 'the group must set the gap that makes the two controls hug');
   assert.doesNotMatch(body, /margin-(left|right)\s*:\s*auto/,
-    'no auto margin on the group — it was what pushed the band right');
+    'the base rule must not carry auto margins -- they centre on the band, not the bar');
+
+  // The >1201px block holds the actual centring. It must exist, must position
+  // the group against the bar, and must use `left: 50%` with a translate so the
+  // group's own CENTRE (not its left edge) lands on the bar centre.
+  let blockMatch = /@media\s*\(\s*min-width\s*:\s*1201px\s*\)\s*\{/.exec(stripped);
+  assert.ok(blockMatch, 'the >1201px centring media block must exist');
+
+  // Scan every compound-scoped group rule in the file and require one to be
+  // absolutely positioned. The group has several scoped rules (sizing, the eye,
+  // Participants), so anchoring on the first match would assert against the
+  // wrong one and pass for the wrong reason.
+  let scoped = [...stripped.matchAll(
+    /\.kikx-topbar\.kikx-window__header\s+\.kikx-topbar__search-group\s*\{([^}]*)\}/g,
+  )].map((match) => match[1]);
+  assert.ok(scoped.length >= 1, 'the group must have a compound-scoped rule in the topbar');
+
+  let pinned = scoped.filter((rule) => /position\s*:\s*absolute/.test(rule));
+  assert.equal(pinned.length, 1,
+    `exactly one of the group's ${scoped.length} scoped rules must take it out of flow; found ${pinned.length}`);
+  assert.match(pinned[0], /left\s*:\s*50%/, 'the pinned rule must sit at the bar\'s 50% line');
+  assert.match(pinned[0], /transform\s*:\s*translate\(\s*-50%/,
+    'and must shift by half its own width, so the CENTRE lands there');
+  assert.match(pinned[0], /top\s*:\s*50%/, 'vertically centred in the bar too');
+
+  // The bar must be the containing block for that absolute position, or
+  // `left: 50%` would resolve against some ancestor and the group would be
+  // centred on the wrong box entirely.
+  let barPos = /\.kikx-topbar\.kikx-window__header\s*\{([^}]*)\}/.exec(
+    stripped.slice(blockMatch.index),
+  );
+  assert.ok(barPos, 'the media block must contain a rule for the bar itself');
+  assert.match(barPos[1], /position\s*:\s*relative/,
+    'the bar must be position:relative so left:50% resolves against the BAR');
+
+  // The breadcrumb YIELDS to the centred group. Without this cap the lead ran
+  // to 581.7px while the group started at 465 -- a 116.7px overlap at 1280 AND
+  // 1440, hiding the session title under the search field. The group is out of
+  // flow, so it cannot report its left edge back to the flex row; the crumb has
+  // to be capped explicitly.
+  let leadRule = /\.kikx-topbar\.kikx-window__header\s+\.kikx-window__lead\s*\{([^}]*)\}/.exec(
+    stripped.slice(blockMatch.index),
+  );
+  assert.ok(leadRule, 'the media block must cap the breadcrumb lead');
+  assert.match(leadRule[1], /max-width\s*:\s*calc\(\s*50vw/,
+    'the cap is derived from the same 50%/width arithmetic as the group, not a magic number');
+
+  // +Add still lands on the right edge, now pushed by the actions cluster
+  // because the group has been lifted out of the flow entirely.
+  let trailingRule = /\.kikx-topbar__trailing-actions\s*\{([^}]*)\}/.exec(stripped);
+  assert.ok(trailingRule, 'the trailing +Add container must exist');
+  assert.match(trailingRule[1], /order\s*:\s*3/, '+Add rides the trailing slot');
 
   let actionsRule = /\.kikx-window__actions\s*\{([^}]*)\}/.exec(stripped);
   assert.ok(actionsRule, 'the actions rule must exist in topbar-unified.css');
   assert.match(actionsRule[1], /order\s*:\s*2/,
-    'actions rides the search group slot — that is the move');
+    'actions rides the search group slot, immediately after it');
   assert.doesNotMatch(actionsRule[1], /margin-(left|right)\s*:\s*auto/,
-    'and must not reintroduce a hole between the controls');
+    'the base actions rule must not reintroduce a hole between the controls');
 
-  // Owner task (2026-11-07): "+ Add Session" stays on the RIGHT while the
-  // rest of the cluster moved left — a separate trailing container pins it.
-  let trailingRule = /\.kikx-topbar__trailing-actions\s*\{([^}]*)\}/.exec(stripped);
-  assert.ok(trailingRule, 'the trailing +Add container must exist');
-  assert.match(trailingRule[1], /order\s*:\s*3/, '+Add rides the trailing slot');
-  assert.match(trailingRule[1], /margin-left\s*:\s*auto/,
-    'and is pinned right by the trailing auto margin');
-
-  // A "hugged up next to" gap, not the bar's normal rhythm: the two must read as
-  // one control pair. 8px is the ceiling the owner's wording allows.
+  // A "hugged up next to" gap, not the bar's normal rhythm: the three must read
+  // as one control group. 8px is the ceiling the owner's wording allows.
   let gap = /(^|[;\s])gap\s*:\s*(\d+(?:\.\d+)?)px/.exec(body);
   assert.ok(gap, 'the gap must be an explicit px value so this can be checked');
   assert.ok(Number(gap[2]) <= 8,
-    `the search/eye gap must be small enough to read as one pair; got ${gap[2]}px`);
+    `the search/eye gap must be small enough to read as one group; got ${gap[2]}px`);
 
-  // The field must no longer centre itself -- that is the whole point.
+  // The field must not centre itself: the GROUP is the centred unit, so the
+  // field, the eye and Participants always travel together.
   let fieldRule = /\.kikx-topbar\.kikx-window__header\s+\.kikx-session-search\s*\{([^}]*)\}/.exec(stripped);
   assert.ok(fieldRule, 'the field must still have its own sizing rule');
   assert.doesNotMatch(fieldRule[1], /margin-left\s*:\s*auto/,

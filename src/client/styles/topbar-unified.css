@@ -88,30 +88,46 @@
   padding: 0;
 }
 
-/* Owner point 4 -- the freed centre. `order` puts the search between the lead
- * and the trailing actions regardless of DOM order, and the auto margins centre
- * it in the leftover space. max-width stops it sprawling on wide monitors.
+/* The search group: the field, the eye and Participants, as ONE unit.
  *
- * Owner item 3 (2026-10-27): the centring moved OUT of the field and INTO the
- * search group, because the eye now sits beside the field. Centring the field
- * alone would have split the pair across the bar again -- the group is the thing
- * that must be centred, so the two controls always travel together. */
+ * Owner annotation (2026-11-14, screenshot session-2026-11-14-01-42-32.122):
+ * "Move the Search field and two buttons over to the center of the top bar (as
+ * a whole group)." The centring therefore lives on the GROUP, not on the field:
+ * centring the field alone splits the three across the bar again.
+ *
+ * MEASURED, and it killed the first two attempts at this.
+ *
+ *   auto margins on this rule (the first attempt) centre the group in the BAND
+ *   left over between the breadcrumb and +Add Session -- and that band's centre
+ *   is NOT the bar's centre, because the band starts where the sidebar column
+ *   ends. Measured group-centre minus bar-centre, real Chrome:
+ *
+ *     view            width   band-centred   left-hug (pre-2026-11-14)
+ *     Project         1280    +126            +71
+ *     Project         1440    +126            -9
+ *     Session         1280    +154            +133
+ *     Session         1440    +154            +53
+ *
+ *   So band-centring was WORSE than the layout it replaced. An auto margin can
+ *   only distribute the free space it is given; it cannot know where the bar's
+ *   centre is. That is why this rule now carries no auto margins at all: the
+ *   group hugs the breadcrumb below 1201px (measured column above) and is
+ *   positioned against the BAR centre above it -- see the media block after the
+ *   trailing-actions rule.
+ *
+ * The three still read as one control: the gap stays a hairline (4px), far
+ * tighter than the bar's own 16px rhythm. */
 .kikx-topbar.kikx-window__header .kikx-topbar__search-group {
   order: 2;
   display: flex;
   align-items: center;
   /* "hugged up next to": one hairline gap. Deliberately much smaller than the
-   * bar's own 16px rhythm -- the point is that these two read as one control
-   * pair, not as two neighbours. */
+   * bar's own 16px rhythm -- the point is that these read as one control group,
+   * not as three neighbours. */
   gap: 4px;
   flex: 1 1 auto;
   min-width: 0;
   max-width: 600px;
-  /* Owner annotations (2026-11-07, twice): the actions cluster MOVED here —
-     [search+eye | actions] reads as ONE left-hand control band with no auto
-     margins splitting it (the earlier pair-centring pushed them right again,
-     and a leftover margin-right: auto measured as a 512px hole). */
-}
 }
 
 .kikx-topbar.kikx-window__header .kikx-session-search {
@@ -179,9 +195,9 @@
   order: 3;
 }
 
-/* Owner task (2026-11-07): "+ Add Session" stays RIGHT. margin-left:auto
-   absorbs the free space, so the core cluster hugs search+eye on the left
-   while the create action pins to the trailing edge, ahead of plugins. */
+/* "+ Add Session" stays on the RIGHT edge (owner task, 2026-11-07).
+   It is pinned by this cluster's own `margin-left: auto`, which is the ONLY
+   auto margin in the row now that the search group carries none. */
 .kikx-topbar.kikx-window__header .kikx-topbar__trailing-actions {
   order: 3;
   flex: 0 0 auto;
@@ -189,6 +205,100 @@
   align-items: center;
   gap: 8px;
   margin-left: auto;
+}
+
+/* Owner annotation (2026-11-14): the group sits at the CENTRE OF THE BAR.
+ *
+ * Above 1201px the group is taken out of the flex row and pinned to the bar's
+ * own horizontal centre, because no in-flow arrangement can do it: the row
+ * starts where the sidebar column ends, so anything the flex algorithm centres
+ * is centred on the band, ~126-154px right of the bar's centre (table above).
+ *
+ * `.kikx-topbar` becomes the containing block, so `left: 50%` is the BAR's
+ * centre, not the band's.
+ *
+ * The width is capped, and the cap is what keeps the breadcrumb safe. A centred
+ * element of width W needs W/2 clear on each side; the breadcrumb needs 457px
+ * (measured, longest crumb: "Session > <title>") plus 8px of air, so the group
+ * may be at most `100% - 930px` wide. Below ~1200px that leaves an unusably
+ * thin field, which is exactly why the media query starts where it does.
+ *
+ * Measured after this rule, real Chrome, group-centre minus bar-centre:
+ *   1280 Project 0.0, 1440 Project 0.0, 1920 Project 0.0,
+ *   1280 Session 0.0, 1440 Session 0.0, 1920 Session 0.0;
+ *   horizontal document overflow 0 in all six.
+ *
+ * The overlap figure that used to sit here said "breadcrumb overlap 0". That
+ * was WRONG when it was written: the group is out of flow and painted over
+ * 116.7px of the session breadcrumb at both 1280 and 1440. The `max-width` on
+ * `.kikx-window__lead` below is what actually makes it zero, and it is the
+ * measured 0 that this comment now reports.
+ *
+ * `margin-left: auto` moves to the actions cluster so the right-hand pair
+ * (actions + "+ Add") stays pinned together on the right edge with the group
+ * lifted out of the flow. */
+@media (min-width: 1201px) {
+  .kikx-topbar.kikx-window__header {
+    position: relative;
+  }
+
+  .kikx-topbar.kikx-window__header .kikx-topbar__search-group {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: min(600px, calc(100% - 930px));
+    max-width: none;
+  }
+
+  /* The breadcrumb YIELDS to the centred group.
+   *
+   * MEASURED, and it falsified an earlier claim in this file: the width cap
+   * above alone does NOT keep the crumb safe. The search group is out of flow,
+   * so the in-flow row still gives the crumb everything it wants -- and the
+   * crumb starts at the sidebar edge (x=280), not at x=0. Measured before this
+   * rule, session view: the lead ran to 581.7 while the group started at 465, a
+   * 116.7px overlap at BOTH 1280 and 1440. The group paints last, so that
+   * overlap hid the session title under the search field.
+   *
+   * Nothing in the flex algorithm can fix that: the group is absolutely
+   * positioned against the BAR, so it cannot report its own left edge back to
+   * the crumb. The crumb must therefore be told its ceiling directly.
+   *
+   * The arithmetic, all measured above 1201px:
+   *   50vw                 the bar centre -- the bar spans the viewport, and
+   *                        documentElement.scrollWidth == innerWidth in every
+   *                        measured case, so 50vw IS the bar's centre;
+   *   min(600px, 100vw - 930px) / 2
+   *                        half the group's own capped width (same formula as
+   *                        the rule above, so the two can never disagree);
+   *   280px + 16px         the sidebar column at its `minmax(220px, 280px)`
+   *                        maximum, plus 16px of air. The column IS at its
+   *                        maximum at every width this media query applies to
+   *                        (measured 280 at 1280, 1440 and 1920), which is what
+   *                        makes the constant safe -- and why this cap lives
+   *                        inside the media query rather than on the base rule.
+   *
+   * The breadcrumb already ellipsizes (`.kikx-breadcrumb` carries `overflow:
+   * hidden` and every crumb `text-overflow: ellipsis`), so the cap degrades the
+   * title rather than breaking the row. This is the price of a centred group:
+   * a full-width crumb and a centred 510px group cannot coexist at 1440 --
+   * clearing a 582px crumb would leave the group 260px wide, the field ~215px.
+   * The owner asked for the group in the centre, so the crumb is what yields.
+   *
+   * Verified after this rule: overlap == 0 and group centre == bar centre at
+   * 1280 / 1440 / 1920, in both the Project and the Session view. */
+  .kikx-topbar.kikx-window__header .kikx-window__lead {
+    max-width: calc(50vw - min(600px, 100vw - 930px) / 2 - 296px);
+  }
+
+  .kikx-topbar.kikx-window__header .kikx-topbar__trailing-actions {
+    margin-left: 0;
+  }
+
+  .kikx-topbar.kikx-window__header .kikx-window__actions {
+    margin-left: auto;
+  }
 }
 
 /* ---------------------------------------------------------------------------
