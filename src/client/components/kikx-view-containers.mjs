@@ -31,7 +31,8 @@
 
 import { scheduleAnimationFrame } from './kikx-app-helpers.mjs';
 import { elements } from '../lib/aeor-ui.mjs';
-import { getScopeSessionID, getSessions, navigateInbox } from '../state/kikx-state.mjs';
+import { getQuestionsState, getScopeSessionID, getSessions, navigateInbox } from '../state/kikx-state.mjs';
+import { unreadQuestionCount } from '../state/questions-state.mjs';
 import {
   buildSessionObjectItems,
   buildSidebarSessionObjects,
@@ -138,11 +139,17 @@ export function buildProjectsContainer(app, { entry = null, viewName = null } = 
     item.kind === 'button'
     && (item.group === 'view' || item.group === 'plugins')
     && typeof item.view === 'string' && item.view.trim() !== '');
+  const inboxUnread = unreadQuestionCount(getQuestionsState(state).questions || []);
 
   const railTabs = [
     {
       name: 'inbox',
       label: 'Inbox',
+      // P3a: the unread count rides the tab itself (vendor badge), with the
+      // EXACT aria wording the old sidebar row announced. Zero = no badge,
+      // matching the old row's behaviour.
+      badge: inboxUnread > 0 ? inboxUnread : null,
+      ariaLabel: inboxUnread > 0 ? `Inbox, ${inboxUnread} unread questions` : null,
       onSelect: () => {
         navigateInbox(state);
         app._requestRender?.('rail-tab');
@@ -176,6 +183,11 @@ export function buildProjectsContainer(app, { entry = null, viewName = null } = 
     const node = document.createElement('aeor-tab');
     node.setAttribute('name', tab.name);
     node.setAttribute('label', tab.label);
+    if (tab.badge !== null && tab.badge !== undefined) {
+      node.setAttribute('badge', String(tab.badge));
+      if (tab.ariaLabel)
+        node.setAttribute('aria-label', tab.ariaLabel);
+    }
     tabView.appendChild(node);
   }
 

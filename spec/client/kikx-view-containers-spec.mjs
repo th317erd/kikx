@@ -288,3 +288,44 @@ test('P2 wiring: shell builds the projects container + marked surface, scope sea
   assert.match(containerSource, /sidebarScopePredicateFor\(/,
     'with the module predicate, not a hand-rolled lambda');
 });
+
+test('P3a: the Inbox rail tab carries the unread badge with the old aria wording', async () => {
+  const { buildProjectsContainer } =
+    await import('../../src/client/components/kikx-view-containers.mjs');
+
+  const app = makeApp({
+    state: {
+      questionsState: {
+        questions: [
+          // normalizeQuestionSummary REQUIRES id + non-empty text — bare rows
+          // are dropped before unreadQuestionCount ever sees them.
+          { id: 'q_open', status: 'open', text: 'Which database should I target?' },
+          { id: 'q_read', status: 'open', text: 'Already read', readAt: 1_500 },
+          { id: 'q_done', status: 'answered', text: 'Answered already' },
+        ],
+        counts: {},
+        loaded: true,
+      },
+    },
+  });
+  const host = buildProjectsContainer(app, { entry: {}, viewName: null });
+  const inboxTab = [...host.querySelectorAll('aeor-tab')]
+    .find((tab) => tab.getAttribute('name') === 'inbox');
+  assert.ok(inboxTab, 'the inbox tab exists');
+  assert.equal(inboxTab.getAttribute('badge'), '1',
+    'only OPEN + UNREAD questions badge (read and terminal ones do not)');
+  assert.equal(inboxTab.getAttribute('aria-label'), 'Inbox, 1 unread questions',
+    'the old sidebar row announcement rides the tab verbatim');
+  assert.equal(inboxTab.getAttribute('label'), 'Inbox',
+    'the label stays exact — the click-by-text contract');
+
+  // Zero unread: no badge, no aria override (the old row behaved the same).
+  const quiet = makeApp({
+    state: { questionsState: { questions: [], counts: {}, loaded: true } },
+  });
+  const host2 = buildProjectsContainer(quiet, { entry: {}, viewName: null });
+  const quietInbox = [...host2.querySelectorAll('aeor-tab')]
+    .find((tab) => tab.getAttribute('name') === 'inbox');
+  assert.equal(quietInbox.getAttribute('badge'), null, 'no count, no chip');
+  assert.equal(quietInbox.getAttribute('aria-label'), null, 'no aria override');
+});
