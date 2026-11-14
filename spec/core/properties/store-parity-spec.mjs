@@ -227,10 +227,23 @@ test('live PostgreSQL parity — opt-in, env-skipped by default', { skip: !proce
     logger: silent, encryptionKey: KEY_A,
   });
   t.after(() => store.close());
+  // History-proof contract (measured 2026-11-14: version===1 only ever passed
+  // because every prior run reached its own delete — accumulated writes made
+  // it 4 !== 1; and soft-delete BUMPS version by design: cleared ≠ never-set,
+  // P5 doctrine). Assert what actually matters live instead: positive
+  // integer versions that INCREMENT, a faithful roundtrip, and delete
+  // clearing the value.
   const row = await store.put(GLOBAL, '/core/parity/probe', { ok: true });
-  assert.equal(row.version, 1);
+  assert.ok(Number.isInteger(row.version) && row.version >= 1,
+    'put returns a positive integer version');
   assert.deepEqual((await store.get(GLOBAL, '/core/parity/probe')).value, { ok: true });
+  const second = await store.put(GLOBAL, '/core/parity/probe', { ok: 'twice' });
+  assert.equal(second.version, row.version + 1,
+    'versions increment — live CAS semantics hold');
+  assert.deepEqual((await store.get(GLOBAL, '/core/parity/probe')).value, { ok: 'twice' });
   await store.delete(GLOBAL, '/core/parity/probe');
+  assert.equal((await store.get(GLOBAL, '/core/parity/probe')).value ?? null, null,
+    'delete clears the probe key (cleared, per the soft-delete doctrine)');
 });
 
 test('live AeorDB parity — opt-in, env-skipped (AeorDB retired on this host: owner ruling)',
