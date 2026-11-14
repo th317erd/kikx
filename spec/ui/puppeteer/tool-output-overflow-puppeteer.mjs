@@ -26,12 +26,16 @@
 //    normalising through a canvas so it survives palette changes.
 //
 // 3. The frame's own horizontal overflow was measured on the frame element,
-//    but that element deliberately carries two hover affordances painted
-//    outside its surface: .kikx-frame__hover-target (inset: -6px -52px -6px
-//    -6px) and .kikx-frame__quick-actions (right: -44px), app.css:801-833.
-//    They account for exactly the 52px by which scrollWidth exceeded
-//    clientWidth, so the assertion measured intentional chrome rather than
-//    escaping content. Exclude them and judge the content instead.
+//    but at the time that element carried two hover affordances painted
+//    OUTSIDE its surface: .kikx-frame__hover-target (inset: -6px -52px -6px
+//    -6px) and .kikx-frame__quick-actions (right: -44px, a vertical rail in a
+//    72px gutter). They accounted for exactly the 52px by which scrollWidth
+//    exceeded clientWidth.
+//    Owner ruling 2026-11-14 moved the rail INSIDE its own card
+//    (flex-wrap row, bottom-right, max-width: 100% - 16px), and the hover
+//    target shrank to `inset: 0`. Nothing is painted outside the frame now,
+//    so this exclusion is no longer load-bearing — but the exclusion stays as
+//    a guard against the affordances ever regressing to outside positioning.
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -250,14 +254,11 @@ test('Puppeteer keeps expanded shell-result output inside its frame', async (t) 
     let metrics = await page.evaluate(() => {
       let item = document.querySelector('kikx-frame-item[data-frame-id="frame_result"]');
       let frame = item.getBoundingClientRect();
-      // The frame carries two hover affordances that are deliberately painted
-      // outside its surface: .kikx-frame__hover-target is
-      // `position: absolute; inset: -6px -52px -6px -6px` and
-      // .kikx-frame__quick-actions sits at `right: -44px` (app.css:801-833,
-      // which explains the hover region must extend past the card so the
-      // actions do not close on the pointer's way to them). Neither is content
-      // escaping the container, so exclude them before judging whether the
-      // frame's own content overflows horizontally.
+      // Hover affordances are excluded before judging whether the frame's own
+      // CONTENT overflows horizontally. Since the 2026-11-14 owner ruling both
+      // of them live inside the card (.kikx-frame__hover-target is `inset: 0`
+      // and .kikx-frame__quick-actions is a wrapping row anchored bottom-right),
+      // so this is now a regression guard rather than an accounting term.
       let affordances = [ ...item.querySelectorAll('.kikx-frame__hover-target, .kikx-frame__quick-actions') ];
       let restore = affordances.map((node) => node.style.display);
       for (let node of affordances)

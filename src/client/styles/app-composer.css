@@ -265,10 +265,11 @@
   margin: 0;
   /* One pixel of breathing room below the last card. ScrollTop is clamped to an
      integer while layout can end on a fractional pixel; without this the last
-     card's bottom border can be shaved by the scroll container. The right gutter
-     leaves comfortable clearance beyond the quick-action rail so right-aligned
-     UserMessages cannot push the opaque rail under the scrollbar/clip edge. */
-  padding: 0 72px 1px 0;
+     card's bottom border can be shaved by the scroll container.
+     The old 72px right gutter existed only to hold the quick-action rail, which
+     used to be painted OUTSIDE the frame. The rail now lives inside its own card
+     (owner, 2026-11-14), so the gutter is gone and messages get the width back. */
+  padding: 0 0 1px 0;
   list-style: none;
 }
 
@@ -401,31 +402,44 @@
 
 .kikx-frame__hover-target {
   position: absolute;
-  inset: -6px -52px -6px -6px;
+  /* Was `-6px -52px -6px -6px`: the right-hand 52px reached out to the
+     gutter-parked rail so the pointer could travel to it without the rail
+     closing. The rail is inside the card now, so that reach is gone and the
+     frame no longer paints anything outside its own box. */
+  inset: 0;
   z-index: -1;
   border-radius: calc(var(--kikx-frame-radius) + 6px);
   pointer-events: auto;
 }
 
-/* Quick actions float just outside the frame surface; the invisible hover
-   target above extends the frame's hover region so moving toward the actions
-   does not close them. */
+/* Quick actions live INSIDE their own card (owner, 2026-11-14). They used to
+   be a vertical column parked in a 72px gutter outside the frame surface,
+   which is what let them slide under a following card and overrun a short
+   card's height. Anchoring to the card's own bottom-right corner and letting
+   the buttons WRAP fixes both: the box can never leave the card, and a row
+   of 30px buttons is never taller than the card it belongs to.
+   Painted over content on hover only, so it costs no layout space. */
 .kikx-frame__quick-actions {
   position: absolute;
-  top: 8px;
-  right: -44px;
+  right: 8px;
+  bottom: 8px;
   z-index: 4;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
   gap: 6px;
+  /* Never wider than the card that owns it, so wrapping — not escaping —
+     is what happens when the buttons do not fit on one line. */
+  max-width: calc(100% - 16px);
   opacity: 0;
-  /* Keep the rail hit-testable while it is visually hidden. The rail sits in
-   * the gutter just outside the frame; if it became pointer-events:none when
-   * the pointer crossed the frame edge, the user could never reach the quote
-   * button. Hovering the rail itself reveals it. */
+  /* Stay hit-testable while visually hidden: the pointer must be able to
+   * land on a button the user is reaching for. Hovering the card or the
+   * rail reveals it. */
   visibility: visible;
   pointer-events: auto;
-  transform: translateX(-4px);
+  transform: translateY(4px);
   transition: opacity 120ms ease, transform 120ms ease;
 }
 
@@ -436,7 +450,7 @@
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
-  transform: translateX(0);
+  transform: translateY(0);
 }
 
 .kikx-frame--minimized .kikx-frame__quick-actions {

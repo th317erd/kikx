@@ -1,9 +1,13 @@
 'use strict';
 
-// The quote action lives in the right gutter, outside the frame surface. The
-// user has to be able to move the pointer from the frame into that gutter and
-// click it; making the rail pointer-events:none while hidden made the icon
-// visible but unreachable.
+// The quote action must stay reachable. It used to live in the right gutter,
+// OUTSIDE the frame surface, so the pointer had to travel from the frame into
+// that gutter and the rail had to stay hit-testable while visually hidden —
+// making it pointer-events:none made the icon visible but unreachable.
+// Owner ruling 2026-11-14 moved the rail INSIDE its own card (a wrapping row at
+// the card's bottom-right), so the pointer no longer crosses the frame edge.
+// This spec keeps asserting reachability, which is the property that matters;
+// only the geography it exercises changed.
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -89,7 +93,7 @@ test('Puppeteer can move from a frame into the quote gutter and click Quote', as
         opacity: rail ? getComputedStyle(rail).opacity : null,
       };
     }, geometry.button);
-    assert.equal(reachable.frameID, 'quote_1', 'the quote gutter must remain hit-testable outside the frame');
+    assert.equal(reachable.frameID, 'quote_1', 'the quote action must remain hit-testable from the frame reveal');
     assert.equal(reachable.pointer, 'auto');
     assert.equal(reachable.opacity, '1');
 

@@ -263,9 +263,27 @@ test('the floating scroll-lock control is one and a half times the normal button
 });
 
 
-test('frame quick actions reserve a right gutter and appear on hover', async () => {
+// Owner annotation (session-2026-11-14-02-02-31.771.png), verbatim:
+//   "Quick-action buttons can end up BEHIND another card, or push down too far
+//    vertically. Can we have them wrap inside their container please?"
+//
+// This test previously asserted the OPPOSITE arrangement: `.kikx-frame-stream`
+// reserved `padding: 0 72px 1px 0` so a vertical rail could be painted in the
+// gutter OUTSIDE the frame. That reservation is what let the rail slide under a
+// following card and overrun a short card. The rail now lives INSIDE its own
+// card as a wrapping row, so the gutter is gone and this test is re-ruled to
+// assert the new contract. Geometry is proven by
+// spec/ui/puppeteer/frame-quick-actions-in-card-puppeteer.mjs; these assertions
+// only pin that the rules exist and are not silently reverted to a column.
+test('frame quick actions wrap INSIDE their card and appear on hover', async () => {
   let css = await readCssBundle(path.join(STYLES_DIR, 'app.css'));
-  assert.match(css, /\.kikx-frame-stream \{[^}]*padding: 0 72px 1px 0/);
+  // The 72px gutter is gone: nothing is painted outside the frame any more.
+  assert.doesNotMatch(css, /\.kikx-frame-stream \{[^}]*padding: 0 72px 1px 0/);
+  // The rail is a wrapping row anchored to the card, not a gutter column.
+  assert.match(css, /\.kikx-frame__quick-actions \{[^}]*flex-direction: row/);
+  assert.match(css, /\.kikx-frame__quick-actions \{[^}]*flex-wrap: wrap/);
+  assert.doesNotMatch(css, /\.kikx-frame__quick-actions \{[^}]*right: -44px/);
+  // Hover still reveals them, minimized frames still hide them, icons stay 17px.
   assert.match(css, /\.kikx-frame:hover \.kikx-frame__quick-actions[^{]*\{[^}]*opacity: 1/);
   assert.match(css, /\.kikx-frame--minimized \.kikx-frame__quick-actions \{[^}]*display: none/);
   assert.match(css, /\.kikx-frame__quick-action svg \{[^}]*width: 17px/);
