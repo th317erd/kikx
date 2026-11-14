@@ -181,6 +181,7 @@ architecture. Their own authority banners govern how they may be used.
 - [Discord plugin status, 2026-10-30](./reports/discord-plugin-status-2026-10-30.md)
 - [Sidebar scope seam, 2026-10-30](./reports/sidebar-scope-seam-2026-10-30.md)
 - [Thinking rack repaint, 2026-10-30](./reports/thinking-rack-repaint-2026-10-30.md)
+- [Test-estate recovery: 0/28 infra-dead to one gated blocker, 2026-11-14](./reports/2026-11-14-shell-views-test-estate-recovery.md)
 - [Composer emoji typeahead, 2026-10-30](./reports/emoji-typeahead-2026-10-30.md)
 - [Browser-lane control, 2026-10-30](./reports/browser-lane-control-2026-10-30.md)
 - [Browser-lane decision, 2026-10-30](./reports/browser-lane-decision-2026-10-30.md)
