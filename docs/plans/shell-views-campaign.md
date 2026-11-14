@@ -9,6 +9,19 @@ last_verified: 2026-11-14
 
 # Shell Views — TabbedView containers
 
+> **BUILD STATUS (2026-11-14): P1–P4 ALL SHIPPED — build complete.**
+> P1 Settings container `dbb2a4d0` · P2 Projects container `b9be9ad6` (P3's
+> plugin-view rows and P4's mobile drawer folded into P2 — drawer mirrored
+> rules shipped early, mobile specs green) · P3a badge kikx `4aca9125` +
+> vendor `01ab7a2` (open concern 1 resolved its recommended way; P3's
+> remainder was void — only Inbox ever had a count). Verified: unit lane
+> 3,615 pass / 32 skipped with 3 failures attributed to Zav's in-flight
+> frame-filter/topbar edits (not committed here); affected puppeteer files
+> 8/8; vendor real-browser runner 2/2. Open: owner visual review of the rail
+> (chrome spacing, badge color); stagehand lane blocked by the dead AeorDB
+> `:6830` (owner ruling — `resolveStagehandOpenAIAPIKey` still fetches from
+> it, so all 28 tests die at infra, not assertions).
+
 ## Why (owner ruling, 2026-11-14, verbatim)
 
 > "Well, now we have 'Views', and 'Sub-Views': i.e. we have a 'Projects View'
@@ -106,6 +119,9 @@ main.kikx-main  (shell root — NEVER swapped; identity + scroll doctrine hold)
 
 ## Phases (failing-first; full unit lane green before each commit; no deploys)
 
+**All four phases shipped 2026-11-14 — see BUILD STATUS above for commits
+and deviations; the text below is the design they were built to.**
+
 - **P1 — Settings container.** New `kikx-view-containers.mjs` (own module:
   shell-builders is over the soft cap): builds the container grid, the
   left-rail `<aeor-tab-view>` from a descriptor list, chrome slots, and the
@@ -165,9 +181,10 @@ var instead).
 
 ## Open concerns (ledger — recommendations for the owner)
 
-1. **Inbox unread badge on a label-only tab.** Recommend: vendor follow-up
-   (a `badge` attribute rendered into the tab button) as P3a; fallback = keep
-   the Inbox row in rail-top chrome until then. — owner call.
+1. **Inbox unread badge on a label-only tab.** — **RESOLVED (P3a,
+   shipped `01ab7a2` + `4aca9125`):** the vendor `badge` attribute renders the
+   count chip inside the button with the verbatim old aria wording; zero at
+   zero. Rail chrome spacing + chip color remain visual-review items only.
 2. **Plugin-contributed VIEW rows** (e.g. `notes`) become Projects tabs in
    P2 vs P3: recommend P2 (they are descriptor-driven like the rest) with
    P3 focused on Inbox/Agents semantics (badges, counts).
@@ -189,8 +206,11 @@ var instead).
 - [x] AGIS reflexes executed against the draft: map_territory (consumer
       inventory above), test_protocol (watchdogs/hang classes), devil_vs_angel
       (3 decisions), thorough_review (this checklist).
-- [ ] Docs gates green + README indexed + committed + pushed (the build-side
-      completion of THIS document, done in its commit).
+- [x] Docs gates green + README indexed + committed + pushed (the build-side
+      completion of THIS document — done in its own commit, 6/0 gates).
+- [x] P1–P4 built, verified and pushed (BUILD STATUS above); every phase's
+      failing-first tests exist and pass; deviations recorded rather than
+      silently absorbed.
 
 ## NEXT ACTION after compact
 
