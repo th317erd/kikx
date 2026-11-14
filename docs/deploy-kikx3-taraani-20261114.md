@@ -229,6 +229,63 @@ done
 import resolves and has no knowledge of the plugin migration ledger, so a build
 can pass that gate and still be undeployable. Gate on the sql manifest instead.
 
+### 4. A plugin wait whose premise is impossible at `onInit` time
+
+Shipped by the 2026-11-14 deploy (`84db46ee`): the discord plugin is marked
+failed on every boot, yet its gateway connects anyway.
+
+```
+Plugin "discord" onInit failed: Plugin "discord" onInit did not finish within 15000ms
+Failed to load plugin at /opt/plugins/kikx-plugin-discord: ...
+[discord] gateway ready as Miri          <-- logged AFTER the failure
+```
+
+The first instinct — "the 60 s wait exceeds the 15 s cap, so lower one of them" —
+is **wrong**, and this document previously implied it. Boot ordering makes the
+wait unsatisfiable no matter what the timeouts are:
+
+```
+src/server/create-server.mjs       await loadPlugins({...})            <- every onInit runs here
+                              then if (context.has('pluginMigrations'))
+                                     await pluginMigrations.run()      <- getPool() only now
+src/core/plugins/plugin-migrations.mjs:254  let connection = await this.getPool();
+src/core/plugins/plugin-migrations.mjs:99   if (this.pool) return this.pool;   // created lazily
+```
+
+The pool is `null` for the entire duration of every plugin's `onInit`, always. A
+plugin that polls `context.require('pluginMigrations').pool` from `onInit` is
+polling a field that cannot be populated until after it returns, so it burns its
+whole deadline and then loses the race against `SETUP_TIMEOUT_MS = 15000`
+(`src/core/plugins/plugin-loader.mjs:17`).
+
+The plugin's own wait is otherwise correct and defensive — 250 ms poll, resolves
+`false` on deadline, "booting anyway", and `loadChannelBindings`' retry guard
+covers the late pool. It is the *premise* that is false, not the patience.
+
+Note the half-state, because it defeats the obvious checks. `withTimeout` stops
+awaiting the promise but cannot cancel it (the source comment says so), so the
+abandoned `onInit` keeps running and the gateway genuinely connects. The plugin is
+recorded as failed and its HTTP mount is rolled back while its socket is live, so
+"is the gateway up?" and "did the plugin load?" have *different* answers. Neither
+the `gateway ready` log line nor a 404 alone settles it.
+
+Also: `/api/plugins/<id>/health` 404ing proves nothing at all. Only `miri`
+exposes that route; `claude`, `codex`, `google`, `ollama` and `puppeteer` return
+404 too. Use `/api/plugins` for inventory, and a plugin-specific route for health.
+
+Fix options, with the trade-offs that actually differ:
+
+| option | change | verdict |
+| --- | --- | --- |
+| raise core's cap | `SETUP_TIMEOUT_MS` in `plugin-loader.mjs` | Makes boot 60 s slower for zero benefit; the pool still never arrives during `onInit`. **Not recommended.** |
+| bound the plugin's wait | `waitMs` in the plugin repo | Cheap and honest — fails fast instead of burning 15 s — but still logs a spurious "pool absent" every boot. |
+| connect the pool eagerly | `getPool()` before `loadPlugins` | The real fix: the wait then returns `true` on its first poll (line 177) and no timeout is involved at all. |
+
+`SETUP_TIMEOUT_MS` reads `globalThis.__KIKX_PLUGIN_SETUP_TIMEOUT_MS` but nothing
+assigns it — not `src/`, not the container env, not `compose.yml`. It is not
+currently reachable by configuration; changing it means a code change and a
+rebuild either way.
+
 ### Do not reuse an app commit sha as an image tag
 
 `KIKX_IMAGE_TAG` here is the *app* short sha (`9310da89`), so rebuilding after a
