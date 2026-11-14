@@ -445,18 +445,27 @@ test('primary theme: swatch applies instantly, themes framework accents, survive
       return true;
     });
     assert.equal(clicked, true, 'the purple swatch exists and was clicked in-page');
-    await new Promise((resolve) => setTimeout(resolve, 200));
-
-    const after = await page.evaluate(() => ({
-      accent: getComputedStyle(document.documentElement).getPropertyValue('--kikx-accent').trim(),
-      storedLocal: localStorage.getItem('kikx.theme'),
-      pressed: document.querySelector('.kikx-theme-picker__swatch--purple')?.getAttribute('aria-pressed'),
-      bluePressed: document.querySelector('.kikx-theme-picker__swatch--blue')?.getAttribute('aria-pressed'),
-      // The vendor chain is asserted on the --accent ALIAS now: tab-view is
-      // gone from Settings (owner screenshot 1), and --accent is exactly what
-      // every remaining vendor consumer reads.
-      alias: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
-    }));
+    // Poll until the accent CHANGES instead of a fixed 200ms: under lane
+    // parallelism the write+paint can exceed it (measured: solo-green many
+    // times, lane-red twice with actual===expected — the click landed, the
+    // read raced it, 2026-11-14).
+    let after = null;
+    let changeDeadline = Date.now() + 4000;
+    while (Date.now() < changeDeadline) {
+      after = await page.evaluate(() => ({
+        accent: getComputedStyle(document.documentElement).getPropertyValue('--kikx-accent').trim(),
+        storedLocal: localStorage.getItem('kikx.theme'),
+        pressed: document.querySelector('.kikx-theme-picker__swatch--purple')?.getAttribute('aria-pressed'),
+        bluePressed: document.querySelector('.kikx-theme-picker__swatch--blue')?.getAttribute('aria-pressed'),
+        // The vendor chain is asserted on the --accent ALIAS now: tab-view is
+        // gone from Settings (owner screenshot 1), and --accent is exactly what
+        // every remaining vendor consumer reads.
+        alias: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
+      }));
+      if (after.accent && after.accent.toLowerCase() !== String(before).toLowerCase())
+        break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
 
     assert.notEqual(after.accent, before, 'the accent variable CHANGED on click — instant, no reload');
     assert.equal(after.accent.toLowerCase(), '#9a55d6', 'purple hex is what the stylesheet receives');
