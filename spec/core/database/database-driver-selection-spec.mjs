@@ -23,10 +23,15 @@ class PostgresDriver extends DatabaseConnectionBase {
   static driverID = 'postgresql';
 }
 
+class SQLiteDriver extends DatabaseConnectionBase {
+  static driverID = 'sqlite';
+}
+
 function createRegistry() {
   let registry = new PluginRegistry({ logger: { warn() {} } });
   registry.registerDatabaseDriver('aeordb', AeorDriver);
   registry.registerDatabaseDriver('postgresql', PostgresDriver);
+  registry.registerDatabaseDriver('sqlite', SQLiteDriver);
   return registry;
 }
 
@@ -45,10 +50,13 @@ test('resolveDatabaseDriver resolves a plugin property-path value to its driver 
   assert.equal(resolved.DriverClass, PostgresDriver);
 });
 
-test('resolveDatabaseDriver defaults to aeordb when nothing is requested', () => {
+test('resolveDatabaseDriver defaults to sqlite when nothing is requested', () => {
   let resolved = resolveDatabaseDriver(createRegistry(), undefined);
-  assert.equal(resolved.driverID, 'aeordb');
-  assert.equal(resolved.DriverClass, AeorDriver);
+  assert.equal(resolved.driverID, 'sqlite');
+  assert.equal(resolved.DriverClass, SQLiteDriver);
+  // Back-compat: an EXPLICIT aeordb request still resolves (the driver stays
+  // registered); only the config-less default moved off the retired service.
+  assert.equal(resolveDatabaseDriver(createRegistry(), 'aeordb').driverID, 'aeordb');
 });
 
 test('resolveDatabaseDriver throws database_driver_unknown for an unregistered driver', () => {
@@ -79,8 +87,8 @@ test('resolveConfiguredDriverID returns the fallback when both paths are absent'
   assert.equal(await resolveConfiguredDriverID(createFakeConfig(), 'postgresql'), 'postgresql');
 });
 
-test('resolveConfiguredDriverID defaults the fallback to aeordb', async () => {
-  assert.equal(await resolveConfiguredDriverID(createFakeConfig()), 'aeordb');
+test('resolveConfiguredDriverID defaults the fallback to sqlite (AeorDB retired)', async () => {
+  assert.equal(await resolveConfiguredDriverID(createFakeConfig()), 'sqlite');
 });
 
 test('resolveConfiguredDriverID treats an empty canonical value as absent', async () => {

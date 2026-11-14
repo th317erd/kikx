@@ -6,8 +6,10 @@ import {
 } from '../config/config-paths.mjs';
 
 // Resolve the configured database driver ID. A missing config yields the
-// fallback; otherwise the canonical path wins, then the /kikx alias.
-export async function resolveConfiguredDriverID(config, fallback = 'aeordb') {
+// fallback; otherwise the canonical path wins, then the /kikx alias. The
+// fallback is `sqlite` (self-contained file): AeorDB is retired by owner
+// ruling, so a config-less boot must never target :6830.
+export async function resolveConfiguredDriverID(config, fallback = 'sqlite') {
   if (!config)
     return fallback;
 
@@ -35,7 +37,7 @@ export function isAeorDBDriver(driverID) {
 // `/org/aeor/kikx/plugins/database/postgresql@0.4.5`; the latter resolves to
 // the driver ID registered by that plugin (`postgresql`).
 export function resolveDatabaseDriver(registry, requested, options = {}) {
-  let defaultDriverID = options.defaultDriverID || 'aeordb';
+  let defaultDriverID = options.defaultDriverID || 'sqlite';
   let value = typeof requested === 'string' && requested.trim() ? requested.trim() : defaultDriverID;
   let candidates = [ value ];
   let segment = value.replace(/[/\\]+$/, '').split(/[/\\]/).pop();

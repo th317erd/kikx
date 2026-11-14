@@ -89,7 +89,11 @@ test('createServer aliases an injected legacy aeordb to db', async () => {
   }
 });
 
-test('createServer selects the built-in aeordb driver by default', async () => {
+test('createServer defaults to the built-in sqlite driver (AeorDB retired — owner ruling)', async () => {
+  // Red-first: four pins asserted the config-less aeordb default before the
+  // flip — a config-less boot must never target the dead :6830 service.
+  let previousPath = process.env.ORG_AEOR_KIKX_DATABASE_PATH;
+  process.env.ORG_AEOR_KIKX_DATABASE_PATH = ':memory:';
   let context = new AppContext({
     pluginLoadPromise: Promise.resolve(),
   });
@@ -97,16 +101,22 @@ test('createServer selects the built-in aeordb driver by default', async () => {
 
   try {
     let db = context.get('db');
-    assert.ok(db instanceof AeorDBConnection, 'db must be the built-in AeorDB driver');
+    assert.ok(db instanceof SQLiteConnection, 'db must be the built-in SQLite driver');
     assert.equal(context.get('aeordb'), db);
-    assert.equal(context.get('databaseDriverID'), 'aeordb');
+    assert.equal(context.get('databaseDriverID'), 'sqlite');
+    assert.equal(db.filename, ':memory:');
 
-    // The frame store built by createServer is wired to the canonical driver.
+    // The frame store built by createServer is wired to the canonical driver
+    // (`.aeordb` is the compat property name every driver rides).
     let frameRuntime = context.require('frameRuntime');
     assert.equal(frameRuntime.frameStore.aeordb, db);
     assert.equal(frameRuntime.frameStore.db, db);
   } finally {
     await close(server);
+    if (previousPath === undefined)
+      delete process.env.ORG_AEOR_KIKX_DATABASE_PATH;
+    else
+      process.env.ORG_AEOR_KIKX_DATABASE_PATH = previousPath;
   }
 });
 
@@ -194,13 +204,15 @@ test('createServer selects the built-in postgresql driver from config', { skip: 
   }
 });
 
-test('registerCoreClasses + resolveDatabaseDriver selects the built-in aeordb driver', () => {
+test('registerCoreClasses + resolveDatabaseDriver defaults to the built-in sqlite driver', () => {
   let registry = new PluginRegistry({ logger: { warn() {} } });
   registerCoreClasses(registry);
 
   let resolved = resolveDatabaseDriver(registry, undefined);
-  assert.equal(resolved.driverID, 'aeordb');
-  assert.equal(resolved.DriverClass, AeorDBConnection);
+  assert.equal(resolved.driverID, 'sqlite');
+  assert.equal(resolved.DriverClass, SQLiteConnection);
+  // Explicit aeordb still resolves through the same registered class.
+  assert.equal(resolveDatabaseDriver(registry, 'aeordb').DriverClass, AeorDBConnection);
 });
 
 test('loadPlugins exposes registerDatabaseDriver to plugin setup', async () => {

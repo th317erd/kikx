@@ -118,8 +118,9 @@ test('GET /api/v1/database-drivers lists the three built-in drivers', async () =
       assert.equal(driver.capabilities.read, true);
     }
 
-    // The default boot selects AeorDB without needing a live AeorDB server.
-    assert.equal(body.data.active, 'aeordb');
+    // The default boot selects the self-contained sqlite driver — AeorDB is
+    // retired by owner ruling, so a config-less boot never targets :6830.
+    assert.equal(body.data.active, 'sqlite');
   } finally {
     await settleAndClose(server, context);
   }

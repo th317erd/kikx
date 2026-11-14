@@ -70,6 +70,7 @@ async function stubFetch() {
 
 test('createServer resolves ambient process env through the ConfigStore', async (t) => {
   let restore = applyEnvironment({
+    ORG_AEOR_KIKX_DATABASE_DRIVER: 'aeordb',
     AEORDB_URL: 'http://env.aeordb.test:9999',
     AEORDB_TOKEN: 'env-token-abc',
     KIKX_PLUGIN_PATHS: '',
@@ -97,6 +98,7 @@ test('createServer resolves ambient process env through the ConfigStore', async 
 
 test('options.config takes precedence over ambient process env', async (t) => {
   let restore = applyEnvironment({
+    ORG_AEOR_KIKX_DATABASE_DRIVER: 'postgresql',
     AEORDB_URL: 'http://env.aeordb.test:9999',
     AEORDB_TOKEN: 'env-token-abc',
     KIKX_PLUGIN_PATHS: '',
@@ -108,6 +110,7 @@ test('options.config takes precedence over ambient process env', async (t) => {
 
   let injected = await createConfigStore({
     env: {
+      ORG_AEOR_KIKX_DATABASE_DRIVER: 'aeordb',
       AEORDB_URL: 'http://injected.aeordb.test:1111',
       AEORDB_TOKEN: 'injected-token',
       KIKX_COMPACTION_AGENT_ID: 'agent-from-config',

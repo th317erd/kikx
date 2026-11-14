@@ -14,7 +14,7 @@ import { createParentExitMonitor } from './parent-exit-monitor.mjs';
 await loadEnvFileWithProvenance(process.env.KIKX_ENV_FILE || '.env.dev');
 
 let config = await createConfigStore();
-let driverID = await resolveConfiguredDriverID(config, 'aeordb');
+let driverID = await resolveConfiguredDriverID(config, 'sqlite');
 
 let aeorDBURL = new URL(process.env.AEORDB_URL || 'http://127.0.0.1:6830');
 let aeorDBHost = process.env.AEORDB_HOST || aeorDBURL.hostname || '127.0.0.1';
