@@ -1,4 +1,21 @@
-# Kikx handoff memory — refreshed 2026-11-05
+# Kikx handoff memory — refreshed 2026-11-05; pointer 2026-11-14
+
+> **Pointer 2026-11-14 (read FIRST — corrects the 11-05 block below).**
+> The 11-05 "Active campaign … Implementation NOT started" note is long
+> superseded: the System Settings/Xenocept campaign shipped S1–S6 and the
+> properties store P1–P8 + Q1/Q2 (see the §8 addenda below). The live
+> ACTIVE/open state now lives ONLY in **`.pi/HANDOFF.md ## ACTIVE`** — this
+> file defers to it. Two headline corrections: (1) §4's "the whole puppeteer
+> lane may still depend on external AeorDB" is **RETIRED** — AeorDB is dead
+> and every lane now runs one command with no AeorDB: `node
+> scripts/run-test-lanes.mjs --all` (unit + playwright + stagehand +
+> puppeteer; stagehand is keyless Ollama, default
+> `ollama/deepseek-v4.1-flash:cloud`, `.env.dev` granted per-spawn to the two
+> UI lanes for plugin signatures); (2) the suite is **3,673 / 0 / 32** and
+> the definitive 2026-11-14 snapshot = unit PASS · playwright 18/18 ·
+> puppeteer 61/61 · stagehand 23/28 with EXACTLY the owner-gated design-A
+> five as the estate's only reds. Consolidated record:
+> `docs/reports/2026-11-14-shell-views-test-estate-recovery.md`.
 
 > **Refresh 2026-11-05 (read this first after compaction).** A full day of work
 > landed since the 2026-10-30 body below: scrollview gesture/perf campaigns,
