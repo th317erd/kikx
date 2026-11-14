@@ -20,13 +20,9 @@ import { reattachAnswerNotice } from './answer-notice.mjs';
 import './kikx-thinking-rack.mjs';
 import {
   getCurrentEntry,
-  getCurrentSessionID,
   getDeletedSessions,
-  getQuestionsState,
   getScopeNoun,
   getSelectedFrames,
-  getScopeSessionID,
-  getSelectedSession,
   getSessionPreviews,
   getSessions,
   getVisibleSessions,
