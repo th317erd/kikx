@@ -188,7 +188,7 @@ for (let result of results) {
 for (let lane of notRun) {
   let why = lane.hermetic
     ? `not selected — run: node scripts/run-test-lanes.mjs ${lane.name}`
-    : `not selected — needs live services/credentials; run: node scripts/run-test-lanes.mjs ${lane.name}`;
+    : `not selected — needs live services (Chrome + the Ollama relay; lanes are keyless since 2026-11-14); run: node scripts/run-test-lanes.mjs ${lane.name}`;
   console.log(`  NOT RUN  ${lane.name}  ${why}`);
 }
 
