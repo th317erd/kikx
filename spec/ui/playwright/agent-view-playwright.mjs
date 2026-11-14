@@ -44,7 +44,7 @@ test('Agents is a main view scoped to the current session', async (t) => {
       timeout: 10000,
     });
 
-    await page.getByRole('button', { name: 'Agents', exact: true }).click();
+    await page.getByRole('tab', { name: 'Agents', exact: true }).click();
     await page.locator('.kikx-agent-view .kikx-agent-manager').waitFor({ timeout: 10000 });
 
     let rows = await page.locator('.kikx-agent-view .kikx-agent-list li').allTextContents();

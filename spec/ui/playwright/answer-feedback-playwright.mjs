@@ -101,7 +101,7 @@ async function openInbox(browser, answerHandler) {
   });
   await page.waitForSelector('kikx-session-card', { timeout: 15000 });
 
-  await page.locator('.kikx-sidebar__inbox').click();
+  await page.getByRole('tab', { name: 'Inbox' }).click();
   await page.waitForSelector('.kikx-inbox', { timeout: 10000 });
 
   let card = page.locator('article.kikx-question-card[data-question-id="q-feedback"]');

@@ -98,9 +98,13 @@ function runLane(lane) {
       ...lane.globs,
     ], {
       stdio: [ 'ignore', 'pipe', 'pipe' ],
-      // Hermetic lanes inherit exactly the ambient env; non-hermetic ones
-      // additionally receive the parsed dev file (per spawn, parent untouched).
-      ...(lane.hermetic === false
+      // Hermetic lanes inherit exactly the ambient env; stagehand AND
+      // playwright additionally receive the parsed dev file (per spawn, parent
+      // untouched). Playwright loads repo fixture plugins whose signatures
+      // verify against KIKX_PLUGIN_SIGNATURE_MODE from .env.dev — without it
+      // every fixture plugin is refused (no-configured-key) and plugin specs
+      // hang waiting for descriptors that never arrive (measured 2026-11-14).
+      ...(lane.hermetic === false || lane.name === 'ui:playwright'
         ? { env: { ...process.env, ...readDevEnv(process.env.KIKX_ENV_FILE || '.env.dev') } }
         : {}),
     });

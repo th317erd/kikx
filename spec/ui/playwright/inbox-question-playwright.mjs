@@ -128,12 +128,12 @@ test('the Inbox lists open questions in the browser and posts a free-form answer
 
     // (1) The pinned sidebar entry shows the unread badge count. Both seeded
     // questions are open with `readAt: null`, so the badge must read 2.
-    let badge = page.locator('.kikx-sidebar__inbox-badge');
+    let badge = page.locator('.kikx-view-container .tab[data-tab="inbox"] .tab-badge');
     await badge.waitFor({ state: 'visible', timeout: 10000 });
     assert.equal((await badge.textContent()).trim(), '2', 'the badge counts unread open questions');
 
     // (2) Opening the Inbox renders one row per open question, with text visible.
-    await page.locator('.kikx-sidebar__inbox').click();
+    await page.getByRole('tab', { name: 'Inbox' }).click();
     await page.waitForSelector('.kikx-inbox', { timeout: 10000 });
 
     let cards = page.locator('article.kikx-question-card');
@@ -347,7 +347,7 @@ test('the Inbox lists open questions in the browser and posts a free-form answer
     assert.equal(caret.selectionStart, 4, 'the caret keeps its position inside the draft');
 
     // The open list really did shrink, even though the answered row stayed.
-    let badgeAfter = page.locator('.kikx-sidebar__inbox-badge');
+    let badgeAfter = page.locator('.kikx-view-container .tab[data-tab="inbox"] .tab-badge');
     if (await badgeAfter.count() > 0)
       assert.equal((await badgeAfter.textContent()).trim(), '1', 'the badge counts open questions only');
   } finally {

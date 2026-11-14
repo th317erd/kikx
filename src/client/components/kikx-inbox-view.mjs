@@ -146,6 +146,27 @@ function repaintQuestionShell(app) {
     app._requestRender?.();
 }
 
+// P3a rail chip, painted IN PLACE — never a full shell rebuild (the draft
+// doctrine pins that answering must not rebuild: see
+// question-draft-preservation-spec). Answers/dismisses only shrink or refresh
+// the open-unread count the Inbox tab's chip shows; a chip that does not exist
+// (count was 0) cannot appear on these paths, because they never grow the set.
+function repaintRailUnreadBadge(app) {
+  const button = app?.querySelector?.('.kikx-view-container .tab[data-tab="inbox"]');
+  if (!button)
+    return;
+  const count = unreadQuestionCount(getQuestionsState(app._state || {}).questions || []);
+  const chip = button.querySelector('.tab-badge');
+  if (count > 0) {
+    if (chip)
+      chip.textContent = String(count);
+    button.setAttribute('aria-label', `Inbox, ${count} unread questions`);
+  } else if (chip) {
+    chip.remove();
+    button.removeAttribute('aria-label');
+  }
+}
+
 export function questionAnswerHandlers(app, overrides = {}) {
   return {
     onSubmit: (questionID, answerText) => app._submitQuestionAnswer?.(questionID, answerText),
@@ -393,6 +414,12 @@ export async function submitQuestionAnswer(app, questionID, answerText, options 
       settleAfter: SETTLE_WINDOW_MS,
     });
     repaintQuestionShell(app);
+    // The rail's unread chip (P3a) lives on the shell, and the repaint above
+    // is in-place — so update the chip in place too. A full render here is
+    // FORBIDDEN (question-draft-preservation-spec: rebuilding the shell on
+    // answer is what used to wipe drafts); this measured stale chip at 2 with
+    // one open left (2026-11-14, pinned by inbox-question-playwright).
+    repaintRailUnreadBadge(app);
   }
 
   try {
@@ -523,6 +550,9 @@ export async function dismissQuestionAnswer(app, questionID, options = {}) {
     settleAfter: SETTLE_WINDOW_MS,
   });
   repaintQuestionShell(app);
+  // Same staleness class as answering: dismissal shrinks the open-unread set
+  // the rail chip counts — repaint the chip in place, never rebuild the shell.
+  repaintRailUnreadBadge(app);
 
   try {
     let result = await postJSON(`/api/v1/questions/${encodeURIComponent(questionID)}/answer`, {

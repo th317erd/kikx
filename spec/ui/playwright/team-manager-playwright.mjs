@@ -44,7 +44,7 @@ test('Playwright manages teams through the topbar Teams UI', async (t) => {
       timeout: 10000,
     });
 
-    await page.getByRole('button', { name: 'Teams', exact: true }).click();
+    await page.getByRole('tab', { name: 'Teams', exact: true }).click();
     await page.locator('.kikx-team-view .kikx-team-manager').waitFor({ timeout: 10000 });
     await page.getByRole('button', { name: '+ Add Team' }).click();
     await page.locator('.kikx-view-editor .kikx-team-form').waitFor({ timeout: 10000 });

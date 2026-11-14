@@ -144,7 +144,7 @@ test('answering one question keeps the unsent answer typed into another', async 
     });
     await page.waitForSelector('kikx-session-card', { timeout: 15000 });
 
-    await page.locator('.kikx-sidebar__inbox').click();
+    await page.getByRole('tab', { name: 'Inbox' }).click();
     await page.waitForSelector('.kikx-inbox', { timeout: 10000 });
 
     let cardA = cardFor(page, 'q-draft-a');
@@ -244,7 +244,7 @@ test('a full shell rebuild restores the draft instead of erasing it', async (t) 
     });
     await page.waitForSelector('kikx-session-card', { timeout: 15000 });
 
-    await page.locator('.kikx-sidebar__inbox').click();
+    await page.getByRole('tab', { name: 'Inbox' }).click();
     await page.waitForSelector('.kikx-inbox', { timeout: 10000 });
 
     let cardB = cardFor(page, 'q-draft-b');
@@ -267,7 +267,7 @@ test('a full shell rebuild restores the draft instead of erasing it', async (t) 
     await page.waitForSelector('kikx-session-card', { timeout: 10000 });
 
     // Re-enter: fresh nodes, restored text.
-    await page.locator('.kikx-sidebar__inbox').click();
+    await page.getByRole('tab', { name: 'Inbox' }).click();
     await page.waitForSelector('.kikx-inbox', { timeout: 10000 });
 
     let restored = cardFor(page, 'q-draft-b');
