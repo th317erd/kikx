@@ -89,7 +89,9 @@ export function buildCrumbModel(app) {
       ? app._state.settingsSection.trim()
       : (top && typeof top.section === 'string' && top.section.trim() ? top.section : 'General');
     return [
-      { label: 'Settings', depth: 1, active: false, sessionID: null },
+      // settingsRoot (owner item 3, 2026-11-13): clicking "Settings" while the
+      // mode is open goes to GENERAL settings — never pops to Sessions.
+      { label: 'Settings', depth: 1, active: false, sessionID: null, settingsRoot: true },
       { label: section, depth: 2, active: true, sessionID: null },
     ];
   }
@@ -171,7 +173,9 @@ export function buildTopbarCrumb(app, crumb) {
     return crumb.active
       ? span.class(crumb.active ? ACTIVE_CRUMB_CLASS : 'kikx-breadcrumb__crumb')(crumb.label)
       : button.type('button').class('kikx-breadcrumb__crumb')
-        .onClick(() => app._navigateToDepth(crumb.depth))(crumb.label);
+        .onClick(() => crumb.settingsRoot
+          ? app._activateSettingsSection?.('General')
+          : app._navigateToDepth(crumb.depth))(crumb.label);
   }
 
   // A session crumb: just the label. The rename is a GESTURE now, not a button

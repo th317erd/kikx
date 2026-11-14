@@ -16,6 +16,7 @@ import { hasSessionDeepLink } from './kikx-app-helpers.mjs';
 import { toggleDebugMode } from '../lib/debug-mode.mjs';
 import { loadServerVersion } from '../state/server-version.mjs';
 import { loadAccountTheme } from '../lib/theme.mjs';
+import { activateSettingsSection } from './kikx-system-settings-view.mjs';
 import { startScrollTelemetry } from '../lib/scroll-telemetry.mjs';
 import { toggleRawMarkdown } from '../lib/raw-markdown.mjs';
 import { flushComposerDraft, flushLocalComposerDraft } from './composer-drafts.mjs';
@@ -406,6 +407,9 @@ export class KikxApp extends HTMLElement {
     this._minimizeCurrent = () => minimizeCurrent(this);
     this._syncSelectedSessionToStack = () => syncSelectedSessionToStack(this);
     this._navigateToDepth = (depth) => navigateToDepth(this, depth);
+    // Owner item 3 (2026-11-13): the Settings crumb and the sidebar section
+    // rows share the ONE section seam (persist + publish URL + render).
+    this._activateSettingsSection = (name) => activateSettingsSection(this, name);
     this._openSessionFromCard = async (sessionID) => openSessionFromCard(this, sessionID);
     this._threadChatViewElement = () => threadChatViewElement(this);
     this._setHeroName = (element) => setHeroName(this, element);

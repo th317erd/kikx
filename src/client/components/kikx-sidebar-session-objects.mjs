@@ -46,6 +46,8 @@ import { guardClientOperation } from '../lib/error-boundary.mjs';
 import { getScopeSessionID, isViewOpen, navigateView } from '../state/kikx-state.mjs';
 import { listSidebarItemSurfaces } from './client-view-surfaces.mjs';
 import { createSessionScope, sessionIDOf } from '../state/session-scope.mjs';
+import { currentViewName } from '../state/navigation-stack.mjs';
+import { settingsSections, getSettingsSection, activateSettingsSection } from './kikx-system-settings-view.mjs';
 
 const { div, h2, span, button } = elements;
 
@@ -71,6 +73,14 @@ export const SESSION_OBJECT_GROUPS = Object.freeze(['view', 'plugins', 'footer']
 // above.
 export function buildSessionObjectItems(app) {
   let scopeSessionID = app?._state ? getScopeSessionID(app._state) : null;
+  // Owner screenshot 1 (2026-11-13): "Sidebar content gets replaced with
+  // Settings navigation items" — while the mode is open the view cluster IS
+  // the section navigation (General/Email/Plugins replace Agents/Teams);
+  // destinations (plugins group) and the footer stay exactly as they are.
+  const settingsMode = currentViewName(app?._state?.navigationStack || []) === 'settings';
+  const settingsState = app?._state || {};
+  const settingsActive = settingsSections(settingsState);
+  const settingsCurrent = getSettingsSection(settingsState, settingsActive);
 
   return [
     {
@@ -90,24 +100,36 @@ export function buildSessionObjectItems(app) {
       scopeSessionID,
       onSelect: () => app._openAccountEditor(),
     },
-    {
-      id: 'agents',
-      kind: 'button',
-      group: 'view',
-      label: 'Agents',
-      scopeSessionID,
-      active: isViewOpen('agents', app?._state),
-      onSelect: () => app._openAgentManager(),
-    },
-    {
-      id: 'teams',
-      kind: 'button',
-      group: 'view',
-      label: 'Teams',
-      scopeSessionID,
-      active: isViewOpen('teams', app?._state),
-      onSelect: () => app._openTeamManager(),
-    },
+    ...(settingsMode
+      ? settingsActive.map((name) => ({
+        id: `settings-${name}`,
+        kind: 'button',
+        group: 'view',
+        label: name,
+        scopeSessionID,
+        active: settingsCurrent === name,
+        onSelect: () => activateSettingsSection(app, name),
+      }))
+      : [
+        {
+          id: 'agents',
+          kind: 'button',
+          group: 'view',
+          label: 'Agents',
+          scopeSessionID,
+          active: isViewOpen('agents', app?._state),
+          onSelect: () => app._openAgentManager(),
+        },
+        {
+          id: 'teams',
+          kind: 'button',
+          group: 'view',
+          label: 'Teams',
+          scopeSessionID,
+          active: isViewOpen('teams', app?._state),
+          onSelect: () => app._openTeamManager(),
+        },
+      ]),
     {
       id: 'sign-out',
       kind: 'button',

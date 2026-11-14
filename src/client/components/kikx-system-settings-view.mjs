@@ -91,64 +91,28 @@ export function buildSystemSettingsView(app) {
   // first open fetches; the once-per-page visibility hook refetches).
   maybeLoadSystemSettingsPlugins(app);
 
+  // Owner screenshot 1 (2026-11-13): "Remove all of this (the sub-title and
+  // back button, and the tabbed-view)". The breadcrumb (Settings › section)
+  // carries the mode, the SIDEBAR carries section navigation, and the view
+  // renders ONLY the active section's body — no header, no Back, no tabs.
+  const active = getSettingsSection(state, settingsSections(state));
+
   return section.class('kikx-system-settings')(
-    // Owner screenshot 1: the Back control floated as its own row \"in the
-    // middle of nowhere\". view-chrome's doctrine: inject into the view's
-    // EXISTING header — it rides the title row now, like every other view.
-    header.class('kikx-view-header')(
-      buildViewBackButton(app),
-      h2.class('kikx-view-header__title')('System Settings'),
-    ),
-    // Owner correction: sections ride the framework's TabbedView
-    // (<aeor-tab-view>), not a hand-rolled button row. The component switches
-    // tab visibility itself; the tab-change listener persists the choice into
-    // app state, syncs the URL (`section=…`) and requests a render so the
-    // breadcrumb follows the tab (owner 2026-11-12: it stayed "General" after
-    // clicking Plugins because nothing listened to the section write).
-    // Focus is restored to the active tab after the rebuild.
     div.class('kikx-system-settings__body')(
-      buildSettingsTabView(state, app),
+      buildSettingsSectionBody(active, state, app),
     ),
   ).build(document);
 }
 
-function buildSettingsTabView(state, app) {
-  let available = settingsSections(state);
-  let tabView = document.createElement('aeor-tab-view');
-  tabView.setAttribute('active', getSettingsSection(state, available));
-
-  for (const sectionName of available) {
-    const tab = document.createElement('aeor-tab');
-    tab.setAttribute('name', sectionName);
-    tab.setAttribute('label', sectionName);
-    const body = buildSettingsSectionBody(sectionName, state, app);
-    tab.appendChild(body && typeof body.build === 'function' ? body.build(document) : body);
-    tabView.appendChild(tab);
-  }
-
-  // Bubbles from the component's switchTo(). Persist AND publish (owner
-  // 2026-11-12): the breadcrumb and URL must follow the tab — persist-only
-  // left both stale unless an unrelated inventory render happened to repaint.
-  // The render rebuilds the tab list, so restore focus to the ACTIVE tab
-  // afterwards (focus follows activation — keyboard users keep their place).
-  tabView.addEventListener('tab-change', (event) => {
-    const next = event && event.detail ? event.detail.tab : null;
-    if (typeof next !== 'string')
-      return;
-    setSettingsSection(state, next, settingsSections(state));
-    app._syncURLFromStack?.();
-    app._requestRender?.('settings-section');
-    // The render is already queued for the next frame; queue ours after it so
-    // the rebuilt DOM exists when we refocus.
-    scheduleAnimationFrame(() => {
-      const active = document.querySelector(
-        '.kikx-system-settings__body [role="tab"][aria-selected="true"], .kikx-system-settings__body aeor-tab[active]',
-      );
-      active?.focus?.();
-    });
-  });
-
-  return tabView;
+// The ONE section-switch seam (sidebar rows, the Settings crumb): persist the
+// choice, publish it to the URL, request the render — the exact trio the old
+// tab-change listener performed, now shared so crumb and sidebar can never
+// drift from each other or from the address bar.
+export function activateSettingsSection(app, sectionName) {
+  const state = app?._state || {};
+  setSettingsSection(state, sectionName, settingsSections(state));
+  app._syncURLFromStack?.();
+  app._requestRender?.('settings-section');
 }
 
 function buildSettingsSectionBody(active, state, app) {

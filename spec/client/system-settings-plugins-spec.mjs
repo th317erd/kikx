@@ -291,6 +291,31 @@ test('plugin cards disclose properties grants from signed bytes (plan P6)', asyn
   assert.equal(lines, 1, 'only the declaring plugin wears a properties line');
 });
 
+test('install-from-path sits atop the BROWSE column, gone from Installed (owner screenshot 2)', async () => {
+  let { buildPluginsSection } = await import('../../src/client/components/kikx-settings-plugins-section.mjs');
+  let app = makeApp(inventoryState());
+  let built = buildPluginsSection(app);
+  let node = typeof built.build === 'function' ? built.build(document) : built;
+
+  const find = (root, predicate) => {
+    if (!root) return null;
+    if (predicate(root)) return root;
+    for (const child of root.childNodes || []) {
+      const hit = find(child, predicate);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  const hasClass = (name) => (n) => String(n.className || '').includes(name);
+  const browse = find(node, hasClass('kikx-settings-plugins__browse'));
+  const installed = find(node, hasClass('kikx-settings-plugins__installed'));
+  assert.ok(browse && installed, 'both columns render');
+  assert.ok(find(browse, hasClass('kikx-settings-plugins__path')),
+    'owner: the install control lives in the INSTALLING column, at its top');
+  assert.equal(find(installed, hasClass('kikx-settings-plugins__path')), null,
+    '...and is gone from the bottom of the INSTALLED column');
+});
+
 test('the inventory error state renders its message instead of a blank column', async () => {
   let { buildPluginsSection } = await import('../../src/client/components/kikx-settings-plugins-section.mjs');
   let app = makeApp({
@@ -386,31 +411,38 @@ test('KikxSettingsPage: configure, app slot, exactly-once teardown', async () =>
 // 8. The view mounts panels in their section's body
 // ---------------------------------------------------------------------------
 
-test('the settings view mounts a plugin panel inside its section tab', async () => {
+test('the settings view mounts plugin panels, and the SIDEBAR carries the live sections', async () => {
   let { setClientComponents } = await import('../../src/client/state/kikx-state.mjs');
   let { resolveViewSurface } = await import('../../src/client/components/client-view-surfaces.mjs');
+  let { pushSystemSettings } = await import('../../src/client/state/navigation-stack.mjs');
+  let { buildSessionObjectItems } = await import('../../src/client/components/kikx-sidebar-session-objects.mjs');
 
   let state = { systemSettingsPlugins: inventoryState().systemSettingsPlugins };
   setClientComponents([ pluginPanel('zebra', 'Zebra Mail'), pluginPanel('core-general') ], state);
   let app = makeApp();
   app._state = state;
+  state.navigationStack = pushSystemSettings(
+    state.navigationStack || [ { sessionID: null, collapsed: true } ]);
 
   let view = resolveViewSurface('settings', state, app);
 
-  const labels = [];
   const tags = [];
   (function walk(node) {
     if (!node) return;
-    if (node.localName === 'aeor-tab') labels.push(node.getAttribute('label'));
     if (node.localName === 'kikx-panel-core-general') tags.push('general-panel');
     if (node.localName === 'kikx-panel-zebra') tags.push('zebra-panel');
     for (const child of node.childNodes || []) walk(child);
   })(view);
 
-  assert.deepEqual(labels, [ 'General', 'Email', 'Plugins', 'Zebra Mail' ],
-    'the tab row comes from the LIVE sections model');
   assert.ok(tags.includes('general-panel'),
     'the General section mounts its panel next to the Account block');
+
+  // Owner screenshot 1 (2026-11-13): the tab row is GONE — the section list
+  // reaches the user through the SIDEBAR now, still driven by the LIVE
+  // sections model (plugin-contributed sections included, in order).
+  const viewRows = buildSessionObjectItems(app).filter((item) => item.group === 'view');
+  assert.deepEqual(viewRows.map((row) => row.label), [ 'General', 'Email', 'Plugins', 'Zebra Mail' ],
+    'the sidebar section row comes from the LIVE sections model');
 
   setClientComponents([], state);
 });

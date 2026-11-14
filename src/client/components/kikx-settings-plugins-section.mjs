@@ -77,6 +77,11 @@ export function buildPluginsSection(app) {
           ...store.disabledPlugins.map((entry) => buildDisabledCard(app, entry, store)),
         )
         : null,
+    ),
+    div.class('kikx-settings-plugins__column kikx-settings-plugins__browse')(
+      // Owner screenshot 2 (2026-11-13): "This column is for INSTALLING new
+      // plugins" — the install-from-path control belongs at the TOP of the
+      // Browse column, never at the bottom of the Installed column.
       div.class('kikx-settings-plugins__install')(
         // NOTE: the chain must be FINALIZED with an empty child call — real
         // elements.js rejects an unfinalized builder as a child (the Node spec
@@ -88,8 +93,6 @@ export function buildPluginsSection(app) {
           .class('kikx-settings-plugins__install-btn')
           .onClick(() => runInstallFromPath(app))('Install from path'),
       ),
-    ),
-    div.class('kikx-settings-plugins__column kikx-settings-plugins__browse')(
       h3('Browse'),
       // Notice mirrors Xenocept's Browse posture: name the keyword honestly
       // and say the dangerous part out loud — installing runs third-party code.

@@ -286,7 +286,12 @@ export function buildBreadcrumbCrumb(app, crumb) {
   if (crumb.active)
     return span.class('kikx-breadcrumb__crumb kikx-breadcrumb__crumb--active')(crumb.label);
 
-  return button.type('button').class('kikx-breadcrumb__crumb').onClick(() => app._navigateToDepth(crumb.depth))(crumb.label);
+  // settingsRoot (owner item 3): in the Settings mode this crumb goes to
+  // GENERAL settings; elsewhere it pops the stack to that depth.
+  return button.type('button').class('kikx-breadcrumb__crumb')
+    .onClick(() => crumb.settingsRoot
+      ? app._activateSettingsSection?.('General')
+      : app._navigateToDepth(crumb.depth))(crumb.label);
 }
 
 // Editable window title: click the session name to rename it in place. This is

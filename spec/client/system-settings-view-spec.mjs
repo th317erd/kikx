@@ -133,22 +133,83 @@ test('resolveViewSurface renders the settings view through the core table', asyn
 
   assert.ok(element, 'the core table must resolve settings to a builder result');
   let text = collectText(element);
-  assert.match(text, /System Settings/, `the view must render its heading; saw: ${JSON.stringify(text.slice(0, 200))}`);
-  assert.match(text, /Account/, 'the General section renders the Account block');
+  assert.match(text, /Account/, 'the default (General) section renders its body — the Account block');
 
-  // Owner correction: sections ride the framework TabbedView. Labels live on
-  // the <aeor-tab> children — the tab BAR only materialises once the custom
-  // element upgrades (the browser, covered by system-settings-shell-puppeteer).
-  const tabView = findNode(element, (node) => node.localName === 'aeor-tab-view');
-  assert.ok(tabView, 'the sections row must be <aeor-tab-view>, not a hand-rolled button row');
-  assert.equal(tabView.getAttribute('active'), 'General', 'unset state opens General');
-  const labels = [];
-  (function walkTabs(node) {
-    if (!node) return;
-    if (node.localName === 'aeor-tab') labels.push(node.getAttribute('label'));
-    for (const child of node.childNodes || []) walkTabs(child);
-  })(tabView);
-  assert.deepEqual(labels, [ 'General', 'Email', 'Plugins' ], 'all three base sections declared, in order');
+  // Owner screenshot 1 (2026-11-13): "Remove all of this (the sub-title and
+  // back button, and the tabbed-view)" — now asserted as ABSENCE, twice over:
+  // the sidebar carries navigation and the breadcrumb carries the mode.
+  assert.equal(
+    findNode(element, (node) => node.localName === 'aeor-tab-view'),
+    null, 'no tabbed view renders');
+  assert.equal(
+    findNode(element, (node) => node.localName === 'aeor-tab'),
+    null, 'no tabs render');
+  assert.equal(
+    findNode(element, (node) => String(node.className || '').includes('kikx-view-header')),
+    null, 'no view header — so no Back button and no subtitle');
+  assert.doesNotMatch(text, /System Settings/,
+    'the subtitle is gone from the view (the breadcrumb reads "Settings › …")');
+});
+
+test('settings mode swaps the sidebar view cluster for section navigation (owner screenshot 1)', async () => {
+  const { buildSessionObjectItems } = await import('../../src/client/components/kikx-sidebar-session-objects.mjs');
+  const { buildInboxSidebarEntry } = await import('../../src/client/components/kikx-inbox-view.mjs');
+  const { pushSystemSettings } = await import('../../src/client/state/navigation-stack.mjs');
+  const app = makeApp();
+  app._state.navigationStack = pushSystemSettings(
+    app._state.navigationStack || [ { sessionID: null, collapsed: true } ]);
+
+  const viewRows = buildSessionObjectItems(app).filter((item) => item.group === 'view');
+  assert.deepEqual(viewRows.map((row) => row.label), [ 'General', 'Email', 'Plugins' ],
+    'the settings navigation items REPLACE Agents/Teams (owner: "Sidebar content gets replaced with Settings navigation items")');
+  assert.equal(viewRows[0].active, true, 'General is active by default');
+  assert.equal(buildInboxSidebarEntry(app), null,
+    'Inbox belongs to the replaced content — the builder bows out');
+
+  const labels = buildSessionObjectItems(app).map((item) => item.label);
+  assert.ok(labels.includes('Account') && labels.includes('Sign out'), 'the footer stays');
+
+  // A row click goes through the ONE seam (persist + publish + render).
+  app._syncURLFromStack = () => { app.__synced = true; };
+  app._requestRender = () => { app.__rendered = true; };
+  viewRows.find((row) => row.label === 'Email').onSelect();
+  assert.equal(app._state.settingsSection, 'Email', 'persisted');
+  assert.equal(app.__synced, true, 'URL published');
+  assert.equal(app.__rendered, true, 'render requested');
+  const after = buildSessionObjectItems(app).filter((item) => item.group === 'view');
+  assert.equal(after.find((row) => row.label === 'Email').active, true, 'active follows the switch');
+
+  // Leaving the mode restores the normal view rows.
+  app._state.navigationStack = [ { sessionID: null, collapsed: true } ];
+  const normal = buildSessionObjectItems(app).filter((item) => item.group === 'view')
+    .map((row) => row.label);
+  assert.deepEqual(normal, [ 'Agents', 'Teams' ], 'outside the mode the view rows come back');
+});
+
+test('the Settings crumb targets General — it never stack-pops (owner item 3, 2026-11-13)', async () => {
+  const { buildCrumbModel } = await import('../../src/client/components/kikx-topbar.mjs');
+  const { pushSystemSettings } = await import('../../src/client/state/navigation-stack.mjs');
+  const { activateSettingsSection, getSettingsSection } =
+    await import('../../src/client/components/kikx-system-settings-view.mjs');
+  const app = makeApp();
+  app._state.navigationStack = pushSystemSettings(
+    app._state.navigationStack || [ { sessionID: null, collapsed: true } ]);
+
+  const crumbs = buildCrumbModel(app);
+  assert.equal(crumbs[0].label, 'Settings');
+  assert.equal(crumbs[0].settingsRoot, true,
+    'the mode crumb carries its General target instead of a stack depth');
+  assert.equal(crumbs[1].active, true, 'the section crumb stays the active title');
+
+  // The seam the crumb click binds (kikx-app _activateSettingsSection):
+  app._syncURLFromStack = () => { app.__synced = true; };
+  app._requestRender = () => { app.__rendered = true; };
+  app._activateSettingsSection = (name) => activateSettingsSection(app, name);
+  app._state.settingsSection = 'Plugins';
+  app._activateSettingsSection('General');
+  assert.equal(app._state.settingsSection, 'General', 'the click lands on General');
+  assert.equal(getSettingsSection(app._state), 'General');
+  assert.equal(app.__synced && app.__rendered, true, 'URL + render published');
 });
 
 test('grep gate: the shell gains no viewName branch for settings', async () => {

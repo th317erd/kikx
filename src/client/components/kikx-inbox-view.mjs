@@ -59,6 +59,15 @@ const { div, section, header, h2, h3, p, span, button, form, textarea } = elemen
  * attention back (see unreadQuestionCount).
  */
 export function buildInboxSidebarEntry(app) {
+  // Owner screenshot 1 (2026-11-13): in System Settings the sidebar content
+  // is REPLACED by the settings navigation items — Inbox belongs to the
+  // replaced content, so the builder bows out (a null child, like the empty
+  // plugins cluster already does).
+  const stack = app?._state?.navigationStack || [];
+  const top = stack[stack.length - 1];
+  if (top && top.view === 'settings')
+    return null;
+
   return guardClientOperation('kikx-inbox.sidebar', () => {
     let questionsState = getQuestionsState(app._state);
     let questions = questionsState.questions || [];

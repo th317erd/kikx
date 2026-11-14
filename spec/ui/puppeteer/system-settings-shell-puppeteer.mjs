@@ -107,21 +107,21 @@ test('System Settings mode switch keeps shell root + sidebar node identity (§9.
     // the cluster gear is gone; the brand mark is the only entry) ----------
     await page.click('.kikx-brand__mark');
     await page.waitForSelector('.kikx-system-settings', { timeout: 10000 });
-    const heading = await page.$eval('.kikx-system-settings h2', (node) => node.textContent);
-    assert.equal(heading.trim(), 'System Settings', 'the mode renders its heading');
+    // Owner screenshot 1 (2026-11-13): subtitle + Back + tabbed-view removed.
+    const chromeProbe = await page.evaluate(() => ({
+      header: Boolean(document.querySelector('.kikx-system-settings .kikx-view-header')),
+      tabs: Boolean(document.querySelector('.kikx-system-settings aeor-tab-view')),
+      body: Boolean(document.querySelector('.kikx-system-settings__body')),
+    }));
+    assert.deepEqual(chromeProbe, { header: false, tabs: false, body: true },
+      'the view renders ONLY its body — no subtitle/Back header, no tabbed view');
 
     for (const selector of SHELL_SELECTORS)
       await identityStays(selector, 'after entering System Settings');
 
-    // The sidebar still offers navigation while the mode is open: leave via
-    // the view's Back control (same as the stack popping).
-    await page.evaluate(() => {
-      // The Back control is icon-only: its label lives in title/aria-label
-      // ("Back to Projects and Sessions"), so a textContent search never
-      // finds it — target the stable class the view chrome assigns.
-      const back = document.querySelector('.kikx-view__back');
-      if (back) back.click();
-    });
+    // Owner screenshot 1: the view Back control is GONE — leaving the mode is
+    // the stack pop itself (browser history after the push).
+    await page.goBack();
     await page.waitForSelector('.kikx-thread-scrollview', { timeout: 10000 });
 
     for (const selector of SHELL_SELECTORS)
@@ -183,9 +183,10 @@ test('gear writes ?view=settings, reload restores the mode, and Plugins loading 
     assert.ok(restored.includes('view=settings'), 'the mode survives a real reload');
     assert.ok(restored.includes('session=session_identity'), 'and the session context with it');
 
-    // ---- Owner (2026-11-12) #1/#2: the tab switch must PUBLISH crumb + URL
-    // with NO help from inventory renders. First let the inventory settle on
-    // its own while still on General, then a SINGLE tab click must do it. ----
+    // ---- Owner (2026-11-12) #1/#2: the section switch must PUBLISH crumb +
+    // URL with NO help from inventory renders. First let the inventory settle
+    // on its own while still on General, then a SINGLE sidebar row click must
+    // do it (the tab row is gone — owner screenshot 1). ----
     let settled = false;
     for (let attempt = 0; attempt < 30 && !settled; attempt += 1) {
       settled = await page.evaluate(() => !(document.body.innerText || '').includes('Loading plugins'));
@@ -195,19 +196,19 @@ test('gear writes ?view=settings, reload restores the mode, and Plugins loading 
     assert.equal(settled, true, 'the inventory settles unaided on entry (owner bug 4)');
 
     const clicked = await page.evaluate(() => {
-      const tab = [...document.querySelectorAll('aeor-tab, [role=tab]')]
-        .find((el) => (el.getAttribute('label') || el.textContent || '').includes('Plugins'));
-      if (!tab) return false;
-      tab.click();
+      const row = [...document.querySelectorAll('.kikx-session-objects button')]
+        .find((el) => (el.textContent || '').trim() === 'Plugins');
+      if (!row) return false;
+      row.click();
       return true;
     });
-    assert.equal(clicked, true, 'the Plugins tab exists');
+    assert.equal(clicked, true, 'the sidebar offers a Plugins section row');
     await page.waitForSelector('.kikx-settings-plugins', { timeout: 10000 });
     await new Promise((resolve) => setTimeout(resolve, 400)); // let the queued rAF render land
 
     const afterTab = await page.evaluate(() => location.search);
     assert.ok(afterTab.includes('section=Plugins'),
-      `the tab switch writes section= to the URL (got "${afterTab}")`);
+      `the section switch writes section= to the URL (got "${afterTab}")`);
     const crumbsAfterTab = await page.$$eval('.kikx-breadcrumb__crumb, .kikx-window__title',
       (nodes) => nodes.map((node) => node.textContent.trim()));
     assert.ok(crumbsAfterTab.includes('Settings'), `crumb shows the mode (got ${JSON.stringify(crumbsAfterTab)})`);
@@ -226,15 +227,25 @@ test('gear writes ?view=settings, reload restores the mode, and Plugins loading 
     assert.ok(crumbsRestored.includes('Plugins'),
       'the restored tab shows WITHOUT any click — breadcrumb matches it');
 
+    // Owner screenshot 1: the SIDEBAR carries the settings navigation now.
+    const sidebarLabels = await page.$$eval('.kikx-session-objects button',
+      (nodes) => nodes.map((node) => node.textContent.trim()));
+    for (const name of [ 'General', 'Email', 'Plugins' ])
+      assert.ok(sidebarLabels.includes(name),
+        `settings nav row '${name}' in the sidebar (got ${JSON.stringify(sidebarLabels)})`);
+    assert.equal(sidebarLabels.includes('Agents'), false,
+      'the session view rows are replaced by settings navigation');
+
     const sectionText = await page.$eval('.kikx-settings-plugins', (node) => node.textContent);
     assert.ok(sectionText.includes('Installed Plugins'), 'the section reached its terminal content');
 
-    // ---- Owner screenshot 1: Back rides the view header, not a lone row. ---
-    const backInHeader = await page.evaluate(
-      () => Boolean(document.querySelector('.kikx-view-header .kikx-view__back')),
-    );
-    assert.equal(backInHeader, true,
-      'the Back control lives INSIDE the view header (was "hanging out in the middle of nowhere")');
+    // ---- Owner screenshot 1: subtitle/Back/tabbed-view are gone. ----------
+    const chromeProbe2 = await page.evaluate(() => ({
+      header: Boolean(document.querySelector('.kikx-system-settings .kikx-view-header')),
+      tabs: Boolean(document.querySelector('.kikx-system-settings aeor-tab-view')),
+    }));
+    assert.deepEqual(chromeProbe2, { header: false, tabs: false },
+      'no view header (subtitle+Back) and no tabbed view — owner removal, pinned');
 
     // ---- Owner screenshot 2: breadcrumb reads Settings › live section. -----
     const crumbs = await page.$$eval('.kikx-breadcrumb__crumb, .kikx-window__title',
@@ -264,7 +275,9 @@ test('gear writes ?view=settings, reload restores the mode, and Plugins loading 
     // MASKED the bug (boot skips frame load when the mode tops the stack and
     // minimizeCurrent never loaded either). Fixture has frames: they must
     // render, full stop.
-    await page.evaluate(() => document.querySelector('.kikx-view__back')?.click());
+    // The view Back control is gone (owner screenshot 1): leaving the mode is
+    // the stack pop itself — browser history after the push.
+    await page.goBack();
     let left = false;
     for (let attempt = 0; attempt < 40 && !left; attempt += 1) {
       left = await page.evaluate(() => !document.querySelector('.kikx-system-settings'));
@@ -294,7 +307,7 @@ test('gear writes ?view=settings, reload restores the mode, and Plugins loading 
   }
 });
 
-test('Settings → Email: the reference form renders with all three tabs (owner 2026-11-13)', async (t) => {
+test('Settings → Email: the reference form renders via the sidebar sections (owner 2026-11-13)', async (t) => {
   let chromePath = findChromeExecutable();
   if (!chromePath) {
     t.skip('Email settings coverage requires Chrome');
@@ -325,19 +338,20 @@ test('Settings → Email: the reference form renders with all three tabs (owner 
     await page.goto(`http://127.0.0.1:${port}/?view=settings`, { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.waitForSelector('.kikx-system-settings__body', { timeout: 10000 });
 
-    const labels = await page.$$eval('.kikx-system-settings__body aeor-tab',
-      (tabs) => tabs.map((tab) => tab.getAttribute('label')));
-    assert.deepEqual(labels, [ 'General', 'Email', 'Plugins' ], 'all three tabs in Xenocept order');
+    const labels = await page.$$eval('.kikx-session-objects button',
+      (rows) => rows.map((row) => row.textContent.trim()));
+    assert.deepEqual(labels.slice(0, 3), [ 'General', 'Email', 'Plugins' ],
+      'the sidebar carries the three sections in Xenocept order (tabs are gone)');
 
-    // click the Email tab
+    // click the Email SECTION (sidebar row — owner screenshot 1)
     const clicked = await page.evaluate(() => {
-      const tab = [...document.querySelectorAll('.kikx-system-settings__body aeor-tab')]
-        .find((el) => el.getAttribute('label') === 'Email');
-      if (!tab) return false;
-      tab.click();
+      const row = [...document.querySelectorAll('.kikx-session-objects button')]
+        .find((el) => (el.textContent || '').trim() === 'Email');
+      if (!row) return false;
+      row.click();
       return true;
     });
-    assert.equal(clicked, true, 'the Email tab exists');
+    assert.equal(clicked, true, 'the sidebar Email row exists');
     await page.waitForSelector('.kikx-settings-email', { timeout: 10000 });
 
     const form = await page.evaluate(() => ({
@@ -422,11 +436,10 @@ test('primary theme: swatch applies instantly, themes framework accents, survive
       storedLocal: localStorage.getItem('kikx.theme'),
       pressed: document.querySelector('.kikx-theme-picker__swatch--purple')?.getAttribute('aria-pressed'),
       bluePressed: document.querySelector('.kikx-theme-picker__swatch--blue')?.getAttribute('aria-pressed'),
-      // vendor tab-view follows via the --accent alias: active tab border = accent
-      tabBorder: (() => {
-        const active = document.querySelector('aeor-tab-view .tab.active, aeor-tab-view [role="tab"][aria-selected="true"]');
-        return active ? getComputedStyle(active).borderTopColor || getComputedStyle(active).borderColor : null;
-      })(),
+      // The vendor chain is asserted on the --accent ALIAS now: tab-view is
+      // gone from Settings (owner screenshot 1), and --accent is exactly what
+      // every remaining vendor consumer reads.
+      alias: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
     }));
 
     assert.notEqual(after.accent, before, 'the accent variable CHANGED on click — instant, no reload');
@@ -434,9 +447,8 @@ test('primary theme: swatch applies instantly, themes framework accents, survive
     assert.equal(after.storedLocal, null, 'localStorage stays dead — nothing browser-local (hard cut)');
     assert.equal(after.pressed, 'true', 'the clicked swatch reads pressed');
     assert.equal(after.bluePressed, 'false', 'the previous selection released');
-    const expected = 'rgb(154, 85, 214)';
-    assert.equal(after.tabBorder, expected,
-      `vendor tab-view accent follows via --accent alias (got ${after.tabBorder})`);
+    assert.equal(after.alias.toLowerCase(), '#9a55d6',
+      `the --accent alias (the vendor consumer chain) follows the choice (got ${after.alias})`);
 
     // Hard-cut proof: the choice reached the SERVER — query the account
     // property directly with the page's bearer token.
