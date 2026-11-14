@@ -32,6 +32,11 @@ export async function ensurePropertiesStore({
 
   if (options.propertiesStore) {
     context.set('propertiesStore', options.propertiesStore);
+    // The HTTP routes and plugin setup talk to the FACADE, never the raw
+    // store — an injected store must register the full aside too (measured:
+    // theme test got 503 property_store unavailable with store-only
+    // injection, 2026-11-14; the P1 seam predates the P2 facade).
+    ensurePropertiesAside(context, options.propertiesStore, options);
     return options.propertiesStore;
   }
 
@@ -45,7 +50,16 @@ export async function ensurePropertiesStore({
     logger: options.logger || console,
   });
   context.set('propertiesStore', store);
+  ensurePropertiesAside(context, store, options);
 
+  return store;
+}
+
+// Grants + facade registration, shared by the INJECTED and the OPENED store
+// paths: the HTTP layer only ever talks to the facade, so whichever way the
+// store arrived, the aside must exist before plugins load (P2). Extracted so
+// injection can never skip it again.
+function ensurePropertiesAside(context, store, options) {
   // P2: grants + facade also exist BEFORE plugins load — setup() may use
   // ctx.properties, and the loader registers each manifest's `access` block
   // during its own load. The registry stash gives unloadPlugin (reload,
@@ -62,6 +76,4 @@ export async function ensurePropertiesStore({
       grants,
       logger: options.logger || console,
     }));
-
-  return store;
 }

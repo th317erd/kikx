@@ -402,6 +402,11 @@ test('primary theme: swatch applies instantly, themes framework accents, survive
   const fixture = await startStagehandUIServer({
     sessions: [ { id: 'session_identity', title: 'Identity Session', messageCount: 5 } ],
     agents: [ { id: 'agent_1', name: 'Identity Agent', pluginID: 'test-agent', enabled: true } ],
+    // Isolated :memory: properties: this test WRITES the theme, and the shared
+    // lane store (same fixture account id across every server) made later specs
+    // inherit purple/green — breaking accent-contrast baselines elsewhere
+    // (measured: settings-select 2.86:1 vs its 4.06:1 baseline, 2026-11-14).
+    isolatedProperties: true,
   });
   const port = new URL(fixture.baseURL).port;
 

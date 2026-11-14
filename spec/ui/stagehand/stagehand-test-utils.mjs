@@ -12,6 +12,7 @@ import {
   resolveMentionActors,
 } from '../../../src/core/mentions/index.mjs';
 import { createServer } from '../../../src/server/create-server.mjs';
+import { openPropertiesStore } from '../../../src/core/properties/store.mjs';
 import { CORE_TAG_DEFINITIONS } from '../../../src/core/tags/tag-definitions.mjs';
 import { frameMatchesWindowFilters } from '../../../src/shared/frame-window-filters.mjs';
 
@@ -246,9 +247,20 @@ export async function startStagehandUIServer(options = {}) {
     ...(options.compactionService ? { compactionService: options.compactionService } : {}),
     ...(options.pluginPaths ? {} : { pluginLoadPromise: Promise.resolve() }),
   });
+  // Isolated properties (option): a per-fixture :memory: sqlite store injected
+  // via createServer's options.propertiesStore seam (properties-boot: injected
+  // store skips the open entirely). Needed by specs that WRITE theme/values:
+  // with the lane's .env.dev the default store is the SHARED dev Postgres and
+  // fixture accounts share the id stagehand-test-user — one spec's purple/green
+  // PUT shifted a LATER spec's accent-dependent contrast (measured: your
+  // settings-select saw 2.86:1 against a baseline of 4.06:1, 2026-11-14).
+  let isolatedProperties = options.isolatedProperties
+    ? await openPropertiesStore({ driver: 'sqlite' })
+    : null;
   let server = await createServer({
     context,
     ...(options.pluginPaths ? { pluginPaths: options.pluginPaths } : {}),
+    ...(isolatedProperties ? { propertiesStore: isolatedProperties } : {}),
   });
   let baseURL = await listen(server);
 
@@ -260,6 +272,9 @@ export async function startStagehandUIServer(options = {}) {
     agentManager,
     async close() {
       await closeServer(server);
+      if (isolatedProperties) {
+        try { await isolatedProperties.close(); } catch (_error) { /* already closed with the server cycle */ }
+      }
     },
   };
 }
