@@ -24,8 +24,39 @@
 //     files but executed no tests is reported as EMPTY and fails the gate.
 
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 
 import { LANES, resolveSelection, unknownLaneNames } from './test-lanes.mjs';
+
+// Non-hermetic lanes (stagehand) inherit the dev environment — plugin
+// signature mode, DB creds — the way every scripts/ entry point does via
+// env-loader. Measured triage 2026-11-14: without KIKX_PLUGIN_SIGNATURE_MODE
+// the loader refused every plugin (no-configured-key), starving the
+// plugin-provided components tool-frame tests wait on.
+//
+// CRITICAL: this must be PER-SPAWN env, never process.loadEnvFile in the
+// parent — loadEnvFile pollutes process.env for every later lane in the same
+// run, and the unit lane is hermetic BY CONTRACT (measured: 18 unit failures
+// on teams/auth routes that assume an ambient-clean environment). Explicit
+// ambient vars still win ({ ...process.env, ...dev }).
+function readDevEnv(path) {
+  try {
+    const parsed = {};
+    for (const line of readFileSync(path, 'utf8').split('\n')) {
+      const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
+      if (!match)
+        continue;
+      let value = match[2].trim();
+      if ((value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'")))
+        value = value.slice(1, -1);
+      parsed[match[1]] = value;
+    }
+    return parsed;
+  } catch (_error) {
+    return {};
+  }
+}
 
 // Node's spec reporter prints e.g. "ℹ tests 17" / "ℹ skipped 2". Anything read
 // from this must come from the child's reporter, not from spec console output.
@@ -55,7 +86,14 @@ function runLane(lane) {
       // blowing at 10s under 28-way contention against ONE Ollama relay).
       ...(lane.concurrency ? [ `--test-concurrency=${lane.concurrency}` ] : []),
       ...lane.globs,
-    ], { stdio: [ 'ignore', 'pipe', 'pipe' ] });
+    ], {
+      stdio: [ 'ignore', 'pipe', 'pipe' ],
+      // Hermetic lanes inherit exactly the ambient env; non-hermetic ones
+      // additionally receive the parsed dev file (per spawn, parent untouched).
+      ...(lane.hermetic === false
+        ? { env: { ...process.env, ...readDevEnv(process.env.KIKX_ENV_FILE || '.env.dev') } }
+        : {}),
+    });
 
     let stream = (data, target) => {
       chunks.push(data.toString());
