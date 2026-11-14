@@ -1,5 +1,7 @@
 # Deploying to `kikx3.taraani.org` — topology, target and procedure
 
+**Status: current** — the live kikx3 runbook (measured 2026-11-14).
+
 Written 2026-11-14 while deploying `origin/main` to kikx3. Every host/port claim
 below was measured this session, not inferred from memory; the commands that
 produced each are named so they can be re-run.
