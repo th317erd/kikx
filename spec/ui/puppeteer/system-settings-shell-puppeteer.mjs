@@ -435,66 +435,73 @@ test('primary theme: swatch applies instantly, themes framework accents, survive
     }
 
     const before = await page.evaluate(() =>
-      getComputedStyle(document.documentElement).getPropertyValue('--kikx-accent').trim());
+      getComputedStyle(document.documentElement).getPropertyValue('--kikx-accent').trim().toLowerCase());
 
-    // click the Purple swatch
-    const clicked = await page.evaluate(() => {
-      const swatch = document.querySelector('.kikx-theme-picker__swatch--purple');
+    // The starting accent is NOT a constant: the lane inherits .env.dev, so
+    // properties live in the SHARED dev Postgres (which held purple from
+    // earlier runs — before===after broke the notEqual, measured 2026-11-14),
+    // while a solo run uses the fresh repo store (blue). Click a swatch that
+    // is NOT current so the change assertion is store-state-agnostic.
+    const target = before === '#9a55d6'
+      ? { id: 'green', hex: '#2fae5f' }
+      : { id: 'purple', hex: '#9a55d6' };
+
+    const clicked = await page.evaluate((id) => {
+      const swatch = document.querySelector(`.kikx-theme-picker__swatch--${id}`);
       if (!swatch) return false;
       swatch.click();
       return true;
-    });
-    assert.equal(clicked, true, 'the purple swatch exists and was clicked in-page');
-    // Poll until the accent CHANGES instead of a fixed 200ms: under lane
-    // parallelism the write+paint can exceed it (measured: solo-green many
-    // times, lane-red twice with actual===expected — the click landed, the
-    // read raced it, 2026-11-14).
+    }, target.id);
+    assert.equal(clicked, true, `the ${target.id} swatch exists and was clicked in-page`);
+
+    // Poll until the accent reaches the TARGET hex (stronger than a fixed
+    // sleep and stronger than merely "changed": it can never read stale).
     let after = null;
     let changeDeadline = Date.now() + 4000;
     while (Date.now() < changeDeadline) {
       after = await page.evaluate(() => ({
-        accent: getComputedStyle(document.documentElement).getPropertyValue('--kikx-accent').trim(),
+        accent: getComputedStyle(document.documentElement).getPropertyValue('--kikx-accent').trim().toLowerCase(),
         storedLocal: localStorage.getItem('kikx.theme'),
-        pressed: document.querySelector('.kikx-theme-picker__swatch--purple')?.getAttribute('aria-pressed'),
-        bluePressed: document.querySelector('.kikx-theme-picker__swatch--blue')?.getAttribute('aria-pressed'),
+        allPressed: Array.from(document.querySelectorAll('.kikx-theme-picker__swatch[aria-pressed="true"]'))
+          .map((node) => Array.from(node.classList).find((c) => c.startsWith('kikx-theme-picker__swatch--')) || ''),
         // The vendor chain is asserted on the --accent ALIAS now: tab-view is
         // gone from Settings (owner screenshot 1), and --accent is exactly what
         // every remaining vendor consumer reads.
-        alias: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
+        alias: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim().toLowerCase(),
       }));
-      if (after.accent && after.accent.toLowerCase() !== String(before).toLowerCase())
+      if (after.accent === target.hex)
         break;
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
 
+    assert.equal(after.accent, target.hex, 'the clicked swatch hex is what the stylesheet receives');
     assert.notEqual(after.accent, before, 'the accent variable CHANGED on click — instant, no reload');
-    assert.equal(after.accent.toLowerCase(), '#9a55d6', 'purple hex is what the stylesheet receives');
     assert.equal(after.storedLocal, null, 'localStorage stays dead — nothing browser-local (hard cut)');
-    assert.equal(after.pressed, 'true', 'the clicked swatch reads pressed');
-    assert.equal(after.bluePressed, 'false', 'the previous selection released');
-    assert.equal(after.alias.toLowerCase(), '#9a55d6',
+    assert.deepEqual(after.allPressed, [ `kikx-theme-picker__swatch--${target.id}` ],
+      'exactly the clicked swatch reads pressed — every other released');
+    assert.equal(after.alias, target.hex,
       `the --accent alias (the vendor consumer chain) follows the choice (got ${after.alias})`);
 
     // Hard-cut proof: the choice reached the SERVER — query the account
     // property directly with the page's bearer token.
-    const persisted = await page.evaluate(async () => {
-      const res = await fetch(`/api/v1/properties?key=${encodeURIComponent('/core/user/theme/primary_color')}`,
+    const persisted = await page.evaluate(async (key) => {
+      const res = await fetch(`/api/v1/properties?key=${encodeURIComponent(key)}`,
         { headers: { Authorization: 'Bearer identity-token' } });
       const body = await res.json().catch(() => null);
       return { status: res.status, value: body?.data?.value ?? null, hasValue: body?.data?.hasValue ?? null };
-    });
+    }, '/core/user/theme/primary_color');
     assert.equal(persisted.status, 200, `account property readable over HTTP (got ${persisted.status})`);
-    assert.equal(persisted.value, 'purple', 'the PUT persisted to the account scope');
+    assert.equal(persisted.value, target.id, 'the PUT persisted to the account scope');
     assert.equal(persisted.hasValue, true);
 
     // persistence: a real reload keeps the choice
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.waitForSelector('.kikx-theme-picker__swatches', { timeout: 10000 });
-    const reloaded = await page.evaluate(() => ({
-      accent: getComputedStyle(document.documentElement).getPropertyValue('--kikx-accent').trim(),
-      pressed: document.querySelector('.kikx-theme-picker__swatch--purple')?.getAttribute('aria-pressed'),
-    }));
-    assert.equal(reloaded.accent.toLowerCase(), '#9a55d6', 'the choice survives a reload — from the ACCOUNT fetch');
+    const reloaded = await page.evaluate((id) => ({
+      accent: getComputedStyle(document.documentElement).getPropertyValue('--kikx-accent').trim().toLowerCase(),
+      pressed: document.querySelector(`.kikx-theme-picker__swatch--${id}`)?.getAttribute('aria-pressed'),
+    }), target.id);
+    assert.equal(reloaded.accent, target.hex, 'the choice survives a reload — from the ACCOUNT fetch');
     assert.equal(reloaded.pressed, 'true', 'and the picker renders it selected');
 
     assert.deepEqual(pageErrors, [], 'no page errors across the theme flow');
