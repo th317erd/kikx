@@ -221,7 +221,7 @@ export function buildAuthShell(app) {
   return main.class('kikx-auth-main')(
     section.class('kikx-auth-panel')(
       h2('Sign in'),
-      p('Enter your email and AeorDB will send a sign-in link.'),
+      p('Enter your email and Kikx will send you a sign-in link.'),
       div.class.bindState((state) => `kikx-auth-status kikx-auth-status--${state.authStatusKind}`, ['authStatusKind'])(
         span.textContent.bindState((state) => state.authStatus, ['authStatus'])(),
       ),

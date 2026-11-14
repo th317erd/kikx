@@ -165,7 +165,7 @@ export const kikxState = new ReactiveState({
     showDeletedSessions: seed.filters?.deleted === true,
     sessionSearch: seed.query,
   }))(seedInitialViewScope(globalThis.location?.search || '')),
-  status: 'Checking AeorDB event stream...',
+  status: 'Connecting...',
   statusKind: 'pending',
   editingTeamID: '',
   teamDetailsByID: {},
