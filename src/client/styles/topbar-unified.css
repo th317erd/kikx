@@ -126,6 +126,37 @@
   flex: 0 0 auto;
 }
 
+/* Owner change (2026-11-14): "take the Participants button, and move it to be
+ * right next to the 'eyeball' filter icon button... also make it the same
+ * height as the 'eyeball' icon button... which is currently a unique button
+ * size in the top-bar."
+ *
+ * The eye is that unique size at 34px min-height (app-thinking.css, imported by
+ * app.css), while the participants button was built to the 28px aeor-button
+ * family (app-topbar-session.css, also via app.css). Both are `border-box`:
+ * the vendor globals.css reset (loaded ahead of app.css) carries
+ * `* { box-sizing: border-box }`, so min-height IS the rendered outer height
+ * with borders included. Matching min-height therefore matches the two
+ * controls exactly; the horizontal padding still differs (11px vs 10px),
+ * which changes width only.
+ *
+ * Scoped by the compound selector this sheet uses throughout, which is also
+ * what makes it win: app.css is linked BEFORE this file, so an equal-specificity
+ * rule here already wins on order, and the compound selector adds specificity
+ * on top of that. The rule deliberately targets the BUTTON, not the host
+ * element, because the host is only an inline-flex wrapper.
+ *
+ * One pair of height rules, not a second size scale: if the eye's height ever
+ * changes, this must change with it -- the spec asserts the two agree rather
+ * than asserting the literal 34. */
+.kikx-topbar.kikx-window__header .kikx-topbar__search-group > kikx-participants-popup {
+  flex: 0 0 auto;
+}
+
+.kikx-topbar.kikx-window__header .kikx-topbar__search-group > kikx-participants-popup .kikx-participants__button {
+  min-height: 34px;
+}
+
 /* Actions cluster: preview status, participants, + Add — now ADJACENT to
  * search+eye (owner annotation, 2026-11-07: "Move them over here" / "Move this
  * way" pointing at the search group). order 2 = same flex slot as the search

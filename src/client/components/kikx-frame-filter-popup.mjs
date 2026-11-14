@@ -42,6 +42,10 @@ export class KikxFrameFilterPopup extends HTMLElement {
     this._panel = null;
     this._master = null;
     this._rows = new Map();
+    // View toggles (Raw/Debug) are NOT category filters, so they keep their own
+    // map: _paint writes frameFilters[key] for everything in _rows, and a view
+    // toggle in there would be reset to false on every repaint.
+    this._viewRows = new Map();
     this._outsideHandler = null;
     this._keyHandler = null;
   }
@@ -134,6 +138,7 @@ export class KikxFrameFilterPopup extends HTMLElement {
 
     this._panel.replaceChildren();
     this._rows = new Map();
+    this._viewRows = new Map();
 
     let header = document.createElement('div');
     header.className = 'kikx-frame-filter__header';
@@ -216,7 +221,31 @@ export class KikxFrameFilterPopup extends HTMLElement {
     // place the "+ Add Session" card lived -- and a grid you could enter but never
     // leave is what made child sessions a dead end. Creation lives in the window
     // header at every level now, so this popup keeps a single job.
-    this._panel.append(header, pinned, list, gate);
+    // View-level toggles (owner change, 2026-11-14): "I want the RAW and DEBUG
+    // items to be under the Filter popup menu with the Eye icon... they are
+    // View-level controls... put these two items down at the bottom with
+    // Hidden". This closes the popup's job: everything that changes what the
+    // window SHOWS lives here, and the top bar keeps no view chips.
+    //
+    // They are deliberately not rows of the category list: a category narrows
+    // WHICH frames render (frameFilters), a view toggle changes HOW the same
+    // frames render. They also carry no count badge, because "how many frames
+    // are in raw mode" is not a fact about the session.
+    let viewBlock = document.createElement('div');
+    viewBlock.className = 'kikx-frame-filter__view';
+    for (let entry of VIEW_ROWS) {
+      let control = viewRowControl({ label: entry.label, key: entry.key });
+      control.row.addEventListener('click', (event) => {
+        // Same reason as the category rows: preventDefault stops the <label>
+        // from forwarding a second, modifier-free click to the checkbox.
+        event.preventDefault();
+        this._toggleView(entry.key);
+      });
+      this._viewRows.set(entry.key, control);
+      viewBlock.appendChild(control.row);
+    }
+
+    this._panel.append(header, pinned, list, gate, viewBlock);
     this._paint();
   }
 
@@ -332,6 +361,12 @@ export class KikxFrameFilterPopup extends HTMLElement {
       control.row.classList.toggle('is-off', !on);
     }
 
+    for (let [ key, control ] of this._viewRows) {
+      let on = this._viewState(key) === true;
+      control.input.checked = on;
+      control.row.classList.toggle('is-on', on);
+    }
+
     // The header button dims while any category is switched off, so a narrowed
     // thread is visible without opening the popup.
     this.classList.toggle('is-all-on', everyFilterOn(filters));
@@ -348,6 +383,32 @@ export class KikxFrameFilterPopup extends HTMLElement {
     // state directly so the popup still behaves, just without a repaint.
     if (this._appState)
       this._appState.frameFilters = normalizeFrameFilters(next);
+    this._paint();
+  }
+
+  _viewState(key) {
+    if (key === 'raw')
+      return this._appState?.rawMarkdown === true;
+    if (key === 'debug')
+      return this._appState?.debugMode === true;
+    return false;
+  }
+
+  // These rows call the SAME app handlers the top-bar chips called, so there is
+  // exactly one implementation of raw mode and one of debug mode: the owner's
+  // change is a relocation, not a reimplementation.
+  //
+  // The repaint afterwards is required, not defensive. Debug mode re-renders the
+  // whole app, which recreates this popup mid-callback. Raw mode does NOT
+  // repaint the shell by design (see raw-markdown.mjs: it flips the renderer
+  // flag and re-renders mounted frame CONTENT in place, preserving scroll), so
+  // it updates neither this checkbox nor this row. Neither path paints this
+  // popup, so without the call below the row would show stale state.
+  _toggleView(key) {
+    if (key === 'raw')
+      this._app?._toggleRawMarkdown?.();
+    else if (key === 'debug')
+      this._app?._toggleDebugMode?.();
     this._paint();
   }
 
@@ -411,6 +472,35 @@ export class KikxFrameFilterPopup extends HTMLElement {
     this._outsideHandler = null;
     this._keyHandler = null;
   }
+}
+
+// The view-level toggles, in the order the owner named them. Raw first, then
+// Debug, both BELOW the Hidden gate because all three answer "what do I see".
+const VIEW_ROWS = [
+  { label: 'Raw', key: 'raw' },
+  { label: 'Debug', key: 'debug' },
+];
+
+// Same row shell as a category row, minus the badge, plus a state class the CSS
+// can colour. Deliberately the same <label>+checkbox idiom so it reads as part
+// of the list above it and is keyboard-operable for free.
+function viewRowControl({ label, key }) {
+  let row = document.createElement('label');
+  row.className = 'kikx-frame-filter__row kikx-frame-filter__row--view';
+  row.setAttribute('data-view-key', key);
+
+  let input = document.createElement('input');
+  input.type = 'checkbox';
+  input.className = 'kikx-frame-filter__checkbox';
+  input.checked = false;
+  input.setAttribute('aria-label', label);
+
+  let text = document.createElement('span');
+  text.className = 'kikx-frame-filter__label';
+  text.textContent = label;
+
+  row.append(input, text);
+  return { row, input, label, key };
 }
 
 function rowControl({ label, key, count = null, kind = 'row' }) {

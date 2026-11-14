@@ -354,7 +354,21 @@ export function buildTopbarSearch(app, sessionID = null) {
     actions: buildTopbarOverflowActionNodes(app, sessionID),
   });
 
-  return div.class('kikx-topbar__search-group')(searchFieldContainer(searchInput, clear), frameFilter, overflow);
+  // Owner change (2026-11-14): "take the Participants button, and move it to be
+  // right next to the eyeball filter icon button in the top bar". It goes
+  // BETWEEN the eye and the mobile overflow, so it is a direct sibling of the
+  // eye in the same group -- the same structural guarantee the eye/field pair
+  // has, rather than a pixel gap a later change could swallow.
+  //
+  // Still session-scoped: at the Projects root there is no session, so the
+  // node is null and the slot collapses. The eye stays unconditional for the
+  // soft-deleted-session reason spelled out above.
+  return div.class('kikx-topbar__search-group')(
+    searchFieldContainer(searchInput, clear),
+    frameFilter,
+    sessionID ? participantsNode(app, sessionID) : null,
+    overflow,
+  );
 }
 
 function searchFieldContainer(searchInput, clear) {
@@ -389,12 +403,6 @@ export function buildTopbarActions(app, sessionID = null) {
   // needs it. Only the participants popup is genuinely session-scoped.
   return div.class('kikx-window__actions')(
     previewStatusNode(),
-    rawToggleButton(app),
-    // Moved out of the status bar (owner change, 2026-11-05): "Remove the
-    // Debug button from the statusbar... Move it next to the raw view button".
-    // Same control, same handler, new home -- immediately after Raw.
-    debugToggleButton(app),
-    sessionID ? participantsNode(app, sessionID) : null,
     // Owner ruling (2026-11-07): NO System Settings gear here — settings is
     // reachable only from the upper-left brand mark. The cluster carries
     // session actions, nothing application-global.
@@ -446,28 +454,6 @@ function toolbarButton({ className, title, pressed, onClick, label }) {
   return node;
 }
 
-function rawToggleButton(app) {
-  let raw = app._state.rawMarkdown === true;
-  return toolbarButton({
-    className: `kikx-raw-toggle${raw ? ' is-on' : ''}`,
-    title: 'Show Markdown source with inline formatting (Raw mode)',
-    pressed: raw,
-    onClick: app._toggleRawMarkdown,
-    label: 'Raw',
-  });
-}
-
-function debugToggleButton(app) {
-  let on = app._state.debugMode === true;
-  return toolbarButton({
-    className: `kikx-debug-toggle${on ? ' is-on' : ''}`,
-    title: 'Toggle client debug mode',
-    pressed: on,
-    onClick: app._toggleDebugMode,
-    label: 'Debug',
-  });
-}
-
 function participantsNode(app, sessionID) {
   let participants = document.createElement('kikx-participants-popup');
   participants.configure({ app, appState: app._state, sessionID });
@@ -505,9 +491,13 @@ function previewStatusNode() {
 // the ⋮ popup instead. Desktop never shows them and mobile never shows the
 // cluster, so there is exactly one VISIBLE copy of each action.
 export function buildTopbarOverflowActionNodes(app, sessionID = null) {
+  // Raw/Debug are NOT listed here anymore (owner change, 2026-11-14): they are
+  // view toggles, and the menu already renders the eye's panel inline at its
+  // foot -- so they arrive as two of its rows. Listing them here as well would
+  // show the same control twice in one popup. Participants stays: it is the
+  // session roster, not a view toggle, and the bar's copy is hidden below the
+  // stacking width (overflow-popup.css) so this is the only visible one.
   return [
-    rawToggleButton(app),
-    debugToggleButton(app),
     sessionID ? participantsNode(app, sessionID) : null,
     addButton(app, sessionID),
   ].filter(Boolean);

@@ -4,7 +4,9 @@
 //
 //   1. mobile status bar keeps the connection DOT, drops the words;
 //   2. the tokens WORD is the traced SVG icon (desktop and mobile);
-//   3. Debug moved out of the status bar, next to Raw in the toolbar;
+//   3. Debug moved out of the status bar; it and Raw now live in the eye popup
+//      BELOW the Hidden gate (owner change, 2026-11-14: "put these two items
+//      down at the bottom with Hidden");
 //   4. counts collapse to bare slash-joined numbers: `1 / 0 / 1234 / 234`;
 //   A. mobile toolbar: the eye becomes a ⋮ popup carrying every toolbar action
 //      with the filter checkboxes underneath them;
@@ -77,14 +79,30 @@ function rectProbe(page) {
       actionsDisplay: display('.kikx-window__actions'),
       overflowDisplay: display('kikx-overflow-popup'),
       overflowIcon: Boolean(document.querySelector('.kikx-overflow__button svg[data-icon="dots-vertical"]')),
-      rawRect: rect('.kikx-raw-toggle'),
-      debugRect: rect('.kikx-debug-toggle'),
-      actionsDebug: Boolean(document.querySelector('.kikx-window__actions .kikx-debug-toggle')),
-      rawNextIsDebug: (() => {
-        const raw = document.querySelector('.kikx-window__actions .kikx-raw-toggle');
-        const next = raw?.nextElementSibling;
-        return Boolean(next && next.classList?.contains('kikx-debug-toggle'));
+      // View toggles moved into the eye popup (owner change, 2026-11-14), so the
+      // bar must carry no Raw/Debug chip at all while the popup carries both,
+      // below the Hidden gate.
+      barViewChips: document.querySelectorAll('.kikx-raw-toggle, .kikx-debug-toggle').length,
+      eyeViewKeys: [ ...(document.querySelector('.kikx-frame-filter__view')?.querySelectorAll('[data-view-key]') || []) ]
+        .map((row) => row.dataset.viewKey),
+      viewBlockIsAfterGate: (() => {
+        let panel = document.querySelector('.kikx-frame-filter__panel');
+        let gate = panel?.querySelector('.kikx-frame-filter__gate');
+        let view = panel?.querySelector('.kikx-frame-filter__view');
+        if (!gate || !view) return null;
+        return Boolean(gate.compareDocumentPosition(view) & Node.DOCUMENT_POSITION_FOLLOWING);
       })(),
+      eyeButton: rect('.kikx-frame-filter__button'),
+      // Only RENDERED copies count: on mobile the bar's copy is display:none and
+      // the menu's copy sits in a closed panel, so a raw node count would lie.
+      participantsRendered: [ ...document.querySelectorAll('.kikx-participants__button') ]
+        .filter((node) => node.getClientRects().length > 0).length,
+      participantsAfterEye: (() => {
+        let eye = document.querySelector('.kikx-topbar__search-group > kikx-frame-filter-popup');
+        if (!eye) return null;
+        return eye.nextElementSibling?.localName || null;
+      })(),
+      participantsButton: rect('.kikx-participants__button'),
       stop: rect('.kikx-stop-button'),
       stopTag: document.querySelector('.kikx-stop-button')?.localName || null,
       stopDuration: document.querySelector('.kikx-stop-button')?.getAttribute('duration') || null,
@@ -136,8 +154,13 @@ function assertShared(bar) {
       `the glyph aspect must match its viewBox (bbox ${bboxRatio.toFixed(2)}, viewBox ${viewBoxRatio.toFixed(2)})`);
   }
   assert.match(bar.tokensText || '', /^\d[\d,]*$/, `the tokens cell is icon + number, got "${bar.tokensText}"`);
-  assert.ok(bar.actionsDebug, 'Debug lives in the toolbar actions');
-  assert.ok(bar.rawNextIsDebug, 'Debug sits immediately after Raw');
+  // Owner change (2026-11-14): "I want the RAW and DEBUG items to be under the
+  // Filter popup menu with the Eye icon ... put these two items down at the
+  // bottom with Hidden." The bar keeps no view chips; the popup carries both.
+  assert.equal(bar.barViewChips, 0, 'no Raw/Debug chip anywhere in the bar');
+  assert.deepEqual(bar.eyeViewKeys, [ 'raw', 'debug' ],
+    'the eye popup carries Raw then Debug, in the order the owner named them');
+  assert.equal(bar.viewBlockIsAfterGate, true, 'the view toggles sit BELOW the Hidden gate');
 
   // STOP sits UNDER Send in the actions column as a NORMAL rectangular
   // hold button — <aeor-confirm-button>, label-first, left-to-right fill —
@@ -209,6 +232,11 @@ test('Puppeteer status bar + toolbar overflow + floating STOP on mobile and desk
     assert.match(m.overflowDisplay, /^(block|inline-block)$/, 'the ⋮ is shown on mobile');
     assert.ok(m.overflowIcon, 'the ⋮ carries the vertical triple-dot icon');
     assert.equal(m.documentOverflowX, false, 'nothing overflows horizontally');
+    // The Participants button now lives in the bar's search group, where the
+    // eye already yields its slot to the ⋮ at this width. Neither copy may be
+    // reachable while the menu is shut, or the compact bar shows it twice.
+    assert.equal(m.participantsRendered, 0,
+      'the closed compact bar offers no Participants button -- it travels with the ⋮');
 
     // Open the menu: actions on top, filter checkboxes underneath.
     await mobile.click('.kikx-overflow__button');
@@ -234,6 +262,10 @@ test('Puppeteer status bar + toolbar overflow + floating STOP on mobile and desk
         filterRowCount: rows.length,
         hiddenChecked: rows.find((row) => row.dataset.filterKey === 'deleted')
           ?.querySelector('input')?.checked ?? null,
+        viewKeys: [ ...panel.querySelectorAll('.kikx-frame-filter__view [data-view-key]') ]
+          .map((row) => row.dataset.viewKey),
+        participantsRendered: [ ...document.querySelectorAll('.kikx-participants__button') ]
+          .filter((node) => node.getClientRects().length > 0).length,
         panelBottom: panel.getBoundingClientRect().bottom,
         viewportHeight: innerHeight,
       };
@@ -249,6 +281,10 @@ test('Puppeteer status bar + toolbar overflow + floating STOP on mobile and desk
     assert.ok(menu.filterRowCount >= 5, `expected master + categories + Hidden, got ${menu.filterRowCount}`);
     assert.equal(menu.hiddenChecked, false, 'the Hidden gate starts off');
     assert.ok(menu.panelBottom <= menu.viewportHeight + 1, 'the menu fits the phone viewport');
+    assert.deepEqual(menu.viewKeys, [ 'raw', 'debug' ],
+      'the merged menu keeps the eye\'s own view toggles, in owner order');
+    assert.equal(menu.participantsRendered, 1,
+      'exactly ONE Participants button is reachable on mobile -- the bar copy yields to the menu');
 
     // Toggling a filter from the menu writes app state.
     await mobile.click('.kikx-overflow__filters [data-filter-key="deleted"]');
@@ -282,6 +318,16 @@ test('Puppeteer status bar + toolbar overflow + floating STOP on mobile and desk
     assert.notEqual(d.actionsDisplay, 'none', 'desktop keeps the actions cluster');
     assert.equal(d.overflowDisplay, 'none', 'no ⋮ on desktop');
     assert.equal(d.documentOverflowX, false, 'nothing overflows horizontally on desktop');
+
+    // Participants was moved to sit immediately right of the eye at the eye's
+    // height (owner change, 2026-11-14). Geometry only, so it is asserted here
+    // where the eye is actually laid out.
+    assert.equal(d.participantsAfterEye, 'kikx-participants-popup',
+      "Participants is the eye's immediate next sibling in the bar");
+    assert.ok(d.participantsButton && d.participantsButton.width > 0, 'Participants renders on desktop');
+    assert.ok(d.eyeButton && d.eyeButton.height > 0, 'the eye button renders on desktop');
+    assert.ok(Math.abs(d.participantsButton.height - d.eyeButton.height) <= 0.5,
+      `Participants must be the eye's height (participants=${d.participantsButton.height}, eye=${d.eyeButton.height})`);
 
     // The 0.5s hold: releasing early must NOT stop anything; holding through
     // must fire exactly one confirm. Stub the app handler so no real cancel

@@ -277,6 +277,32 @@ kikx-frame-filter-popup:not(.is-all-on) .kikx-frame-filter__button {
   border-top: 1px solid #29323a;
 }
 
+/* View-level toggles (Raw / Debug), below the Hidden gate.
+   Owner change (2026-11-14): "I want the RAW and DEBUG items to be under the
+   Filter popup menu with the Eye icon ... put these two items down at the
+   bottom with Hidden". They answer the same question the gate does -- what do I
+   see -- so they share its separated block idiom rather than the category list's
+   scrolling area, and they carry no count badge because "how many frames are in
+   raw mode" is not a fact about the session. */
+.kikx-frame-filter__view {
+  display: grid;
+  gap: 2px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #29323a;
+}
+
+/* An ON view toggle reads as engaged, not merely "not off": the category rows
+   dim when switched off (they narrow the thread), whereas these two are
+   features being turned on, so the accent carries the state. */
+.kikx-frame-filter__row--view.is-on {
+  color: #8fc7e8;
+}
+
+.kikx-frame-filter__row--view[data-view-key="debug"].is-on {
+  color: #f1d58a;
+}
+
 .kikx-frame-filter__action:hover,
 .kikx-frame-filter__action:focus-visible {
   background: var(--kikx-btn-bg-hover);

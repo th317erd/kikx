@@ -186,6 +186,17 @@ kikx-overflow-popup {
     display: none;
   }
 
+  /* Participants keeps the eye's company in the bar, so it must give its slot
+     to the ⋮ for the same reason and by the same means. Owner change
+     (2026-11-14) moved this button OUT of `.kikx-window__actions` (where the
+     rule below hid it by ancestor) and INTO the search group, so without this
+     rule the compact bar would show it AND the ⋮ menu's copy -- two visible
+     participants buttons, which the overflow contract forbids.
+     DIRECT-child again: the menu copy sits deeper inside the same group. */
+  .kikx-topbar__search-group > kikx-participants-popup {
+    display: none;
+  }
+
   /* ... and the actions cluster moves INTO the menu (kikx-overflow-popup.mjs).
      Specificity matches topbar-unified's compound selector; this sheet loads
      after it. The transient preview status goes with it — it is status, not an

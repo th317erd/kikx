@@ -79,11 +79,15 @@ test('search and the eye share ONE group, with the field first', () => {
   assert.ok(classesOf(group).includes('kikx-topbar__search-group'),
     `the search controls must live in one group; got "${group.className}"`);
 
-  // Field container, eye, then the mobile ⋮ overflow (owner change,
-  // 2026-11-05) — still nothing BETWEEN the field and the eye; the overflow
-  // shares the eye's slot at the opposite breakpoint (overflow-popup.css).
-  assert.deepEqual(childNames(group), [ 'div', 'kikx-frame-filter-popup', 'kikx-overflow-popup' ],
-    'the group must hold the field container directly followed by the eyeball, then the mobile overflow');
+  // Field container, eye, participants, then the mobile ⋮ overflow (owner
+  // changes 2026-11-05 and 2026-11-14) — still nothing BETWEEN the field and the
+  // eye; participants sits on the eye's OTHER side, which is what the owner
+  // asked for ("right next to the eyeball"). The overflow shares the eye's slot
+  // at the opposite breakpoint (overflow-popup.css), and now so does the
+  // participants copy.
+  assert.deepEqual(childNames(group),
+    [ 'div', 'kikx-frame-filter-popup', 'kikx-participants-popup', 'kikx-overflow-popup' ],
+    'field, then the eyeball, then participants, then the mobile overflow');
   assert.ok(classesOf(group.childNodes[0]).includes('kikx-session-search'),
     'the first child must be the search field container');
 });
@@ -273,28 +277,82 @@ test('preview status is a narrow property-store update in the topbar', async () 
   assert.equal(status.textContent, '3 previews ready');
 });
 
-// --- Debug's new home (owner change, 2026-11-05) ---------------------------
+// --- participants beside the eye (owner change, 2026-11-14) -----------------
+//
+// "take the Participants button, and move it to be right next to the eyeball
+//  filter icon button in the top bar. Please also make it the same height as the
+//  eyeball icon button ... which is currently a unique button size in the
+//  top-bar."
 
-test('the Debug toggle lives in the toolbar actions, immediately after Raw', () => {
-  // "Remove the Debug button from the statusbar for both desktop and mobile.
-  //  Move it next to the 'raw' view button in the toolbar."
-  let app = makeApp({ rawMarkdown: false, debugMode: true });
-  app._toggleRawMarkdown = () => {};
-  app._toggleDebugMode = () => {};
-  app._openSettings = () => {};
-  app._createSession = () => {};
-  let actions = buildTopbarActions(app, 's1').build(document);
+test('the Participants button is a DIRECT sibling immediately after the eye', () => {
+  // Structural, not pixel: a direct sibling with nothing between it and the eye
+  // is what makes "right next to" survive the next refactor. Nesting it inside
+  // the eye's popup, or leaving a spacer in the gap, would pass a screenshot
+  // today and drift tomorrow.
+  let app = makeApp();
+  let group = buildTopbarSearch(app, 's1').build(document);
+  let order = Array.from(group.childNodes).filter((node) => node.nodeType === 1);
 
-  let buttons = Array.from(actions.childNodes)
-    .filter((node) => node.nodeType === 1)
-    .map((node) => String(node.className || '').split(/\s+/)[0]);
-  let debugIndex = buttons.indexOf('kikx-debug-toggle');
-  let rawIndex = buttons.indexOf('kikx-raw-toggle');
+  let eyeIndex = order.findIndex((node) => node.localName === 'kikx-frame-filter-popup');
+  let participantsIndex = order.findIndex((node) => node.localName === 'kikx-participants-popup');
+  assert.equal(eyeIndex, 1, 'the eye follows the field');
+  assert.equal(participantsIndex, eyeIndex + 1,
+    `participants must sit directly after the eye; got ${JSON.stringify(childNames(group))}`);
+});
 
-  assert.ok(rawIndex >= 0, 'the Raw toggle must stay in the cluster');
-  assert.equal(debugIndex, rawIndex + 1,
-    `Debug must sit directly after Raw; got ${JSON.stringify(buttons)}`);
+test('participants stays session-scoped: the Projects root has no roster', () => {
+  // The eye is unconditional -- soft-deleted sessions are listed at the root, so
+  // gating it there would strand "show deleted". Participants is a session
+  // roster, so it must not render with no session at all.
+  let app = makeApp();
+  let root = buildTopbarSearch(app, null).build(document);
 
-  let debug = actions.querySelector('.kikx-debug-toggle');
-  assert.equal(debug.getAttribute('aria-pressed'), 'true', 'debugMode state follows the toggle');
+  assert.deepEqual(childNames(root), [ 'div', 'kikx-frame-filter-popup', 'kikx-overflow-popup' ],
+    'at the root the participants slot collapses; the eye stays');
+});
+
+test('the Participants button is the same height as the eyeball button', async () => {
+  // "also make it the same height as the eyeball icon button ... which is
+  //  currently a unique button size in the top-bar."
+  //
+  // Both buttons are content-box, carry a 1px border and set no other vertical
+  // sizing, so matching min-height is exactly what matches rendered height.
+  // Asserted as AGREEMENT rather than the literal 34px: moving the eye's height
+  // must move both or fail here, so there is one pair of rules and not a second
+  // size scale.
+  let readStyles = async (name) => (await readFile(
+    fileURLToPath(new URL(`../../src/client/styles/${name}`, import.meta.url)), 'utf8'))
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+
+  let eyeCss = await readStyles('app-thinking.css');
+  let barCss = await readStyles('topbar-unified.css');
+
+  let eye = /\.kikx-frame-filter__button\s*\{([^}]*)\}/.exec(eyeCss);
+  assert.ok(eye, 'the eyeball button must have its own rule in app-thinking.css');
+  let eyeHeight = /min-height\s*:\s*(\d+)px/.exec(eye[1]);
+  assert.ok(eyeHeight, `the eyeball button must set an explicit min-height; got "${eye[1].trim()}"`);
+
+  // Read from the sheet where participants now LIVES (the search group in the
+  // top bar), not from the generic button family it was built for.
+  let participants = /\.kikx-participants__button\s*\{([^}]*)\}/.exec(barCss);
+  assert.ok(participants,
+    'participants must be re-heighted where it now lives, so the pair reads as one row');
+  let participantsHeight = /min-height\s*:\s*(\d+)px/.exec(participants[1]);
+  assert.ok(participantsHeight, 'the participants rule must set an explicit min-height');
+
+  assert.equal(participantsHeight[1], eyeHeight[1],
+    `participants (${participantsHeight[1]}px) must match the eyeball (${eyeHeight[1]}px)`);
+});
+
+// --- Raw / Debug left the bar (owner change, 2026-11-14) -------------------
+
+test('the bar no longer carries Raw/Debug chips -- they live in the eye popup', () => {
+  // Removing them from the cluster is half the change; the other half is that the
+  // popup renders them at its foot, asserted in frame-filter-popup-spec.mjs.
+  // Leftover chips would be a second source of truth for the same two flags.
+  let app = makeApp({ rawMarkdown: true, debugMode: true });
+  let bar = buildUnifiedTopbar(app).build(document);
+
+  assert.equal(bar.querySelector('.kikx-raw-toggle'), null, 'no Raw chip anywhere in the bar');
+  assert.equal(bar.querySelector('.kikx-debug-toggle'), null, 'no Debug chip anywhere in the bar');
 });

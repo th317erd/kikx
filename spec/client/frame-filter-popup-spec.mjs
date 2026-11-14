@@ -18,6 +18,12 @@ const { KikxFrameFilterPopup, framesWouldRender } = await import('../../src/clie
 const { CATEGORY_ROWS, FILTER_KEYS, FILTER_ROWS, defaultFrameFilters, everyFilterOn, noFilterOn } =
   await import('../../src/client/lib/frame-filters.mjs');
 
+// The view-level toggles the panel renders under its Hidden gate, in the order
+// the owner named them. Declared here rather than imported because they are the
+// popup's own DOM contract, not part of the filter model in frame-filters.mjs:
+// they never enter `frameFilters`.
+const VIEW_ROW_KEYS = [ 'raw', 'debug' ];
+
 // Counts come from the server (`GET /frame-counts`), never from the frames the
 // browser happens to hold: the panel used to show Agent 60 beside User 0 and
 // Tools 0 because it described the loaded page instead of the session. So the
@@ -29,6 +35,9 @@ function makeApp(frames = [], counts = null) {
       framesBySessionID: { ses_1: frames },
       frameCountsBySessionID: counts ? { ses_1: { counts } } : {},
       frameFilters: defaultFrameFilters(),
+      // View-level toggles, not filters: they change HOW frames render.
+      rawMarkdown: false,
+      debugMode: false,
     },
     _frameFilterPopupOpen: false,
     applied: [],
@@ -74,7 +83,13 @@ test('the panel starts closed, every category is checked, and the Hidden gate is
   let popup = mount(makeApp());
   let panel = popup.querySelector('.kikx-frame-filter__panel');
   assert.equal(panel.hidden, true);
-  assert.equal(popup.querySelectorAll('.kikx-frame-filter__checkbox').length, FILTER_ROWS.length + 1, 'one row per filter plus the pinned master');
+  // Every checkbox in the panel: one per category, the pinned master, the Hidden
+  // gate, and the two view toggles (Raw/Debug). The view rows keep the checkbox
+  // idiom for keyboard and AT parity, but they are not filters -- see the
+  // view-toggle tests at the foot of this file.
+  assert.equal(popup.querySelectorAll('.kikx-frame-filter__checkbox').length,
+    FILTER_ROWS.length + 1 + VIEW_ROW_KEYS.length,
+    'one row per filter, the pinned master, the Hidden gate and the two view toggles');
 
   for (let row of popup.querySelectorAll('.kikx-frame-filter__list .kikx-frame-filter__row'))
     assert.equal(row.querySelector('.kikx-frame-filter__checkbox').checked, true, 'every category starts on');
@@ -317,4 +332,107 @@ test('Shift+Click alternates the whole set on and off', () => {
 
   click(row(), { shiftKey: true });
   assert.equal(everyFilterOn(app._state.frameFilters), true, 'second press restores');
+});
+
+// --- view-level toggles: Raw / Debug at the foot of the panel ---------------
+//
+// Owner change (2026-11-14): "I want the RAW and DEBUG items to be under the
+// Filter popup menu with the Eye icon ... put these two items down at the bottom
+// with Hidden."
+//
+// They are deliberately NOT category rows: a category narrows WHICH frames
+// render (frameFilters), a view toggle changes HOW the same frames render.
+
+test('the view toggles sit below the Hidden gate, in the order the owner named them', () => {
+  let popup = mount(makeApp());
+  let panel = popup.querySelector('.kikx-frame-filter__panel');
+
+  // Deliberately index arithmetic over `panel.children`, NOT element identity.
+  // mini-dom implements neither `previousElementSibling` nor `lastElementChild`,
+  // and `assert.equal` handed two MiniElement instances never returns: node's
+  // assertion machinery spins in its diff instead of failing. Comparing the
+  // POSITIONS of the blocks is available here and cannot hang, and it asserts
+  // exactly the ordering the owner asked for.
+  let blocks = panel.children;
+  let classOf = (node) => String(node?.className || '');
+  let gateIndex = blocks.findIndex((node) => classOf(node).includes('kikx-frame-filter__gate'));
+  let viewIndex = blocks.findIndex((node) => classOf(node).includes('kikx-frame-filter__view'));
+
+  assert.ok(gateIndex >= 0, 'the Hidden gate still exists');
+  assert.ok(viewIndex >= 0, 'the view block exists');
+  assert.equal(viewIndex, gateIndex + 1,
+    'the view block sits directly after the gate -- "down at the bottom with Hidden"');
+  assert.equal(viewIndex, blocks.length - 1, 'and it is the LAST block in the panel');
+  let view = blocks[viewIndex];
+
+  let rows = Array.from(view.querySelectorAll('[data-view-key]'));
+  assert.deepEqual(rows.map((row) => row.getAttribute('data-view-key')), VIEW_ROW_KEYS,
+    'Raw then Debug, in the order the owner listed them');
+  assert.deepEqual(rows.map((row) => row.querySelector('.kikx-frame-filter__label').textContent),
+    [ 'Raw', 'Debug' ]);
+});
+
+test('the view toggles are not category filters', () => {
+  // The regression this guards: pushing Raw/Debug into the category `_rows` map
+  // would make them write `frameFilters`, so switching Debug on would narrow the
+  // thread to a key no frame type owns -- an empty conversation, blamed on the
+  // filter. They also carry no badge, because "how many frames are in raw mode"
+  // is not a fact about the session.
+  let popup = mount(makeApp());
+  let view = popup.querySelector('.kikx-frame-filter__view');
+
+  assert.equal(view.querySelectorAll('.kikx-frame-filter__count').length, 0, 'no count badges');
+  assert.equal(popup.querySelector('.kikx-frame-filter__list .kikx-frame-filter__row--view'), null,
+    'the view rows are not inside the scrolling category list');
+  assert.equal(popup.querySelectorAll('[data-filter-key="raw"], [data-filter-key="debug"]').length, 0,
+    'nothing claims a frameFilter key');
+});
+
+test('clicking a view row calls the app handler for that view, then paints', () => {
+  let app = makeApp();
+  app.calls = [];
+  app._toggleRawMarkdown = () => {
+    app.calls.push('raw');
+    app._state.rawMarkdown = !app._state.rawMarkdown;
+  };
+  app._toggleDebugMode = () => {
+    app.calls.push('debug');
+    app._state.debugMode = !app._state.debugMode;
+  };
+  let popup = mount(app);
+
+  click(popup.querySelector('[data-view-key="raw"] .kikx-frame-filter__checkbox'));
+
+  assert.deepEqual(app.calls, [ 'raw' ],
+    'Raw goes through the ONE app handler, not a second private implementation');
+  let raw = popup.querySelector('[data-view-key="raw"]');
+  assert.equal(raw.querySelector('.kikx-frame-filter__checkbox').checked, true, 'the checkbox follows state');
+  assert.equal(raw.classList.contains('is-on'), true, 'and so does the styling hook');
+  assert.equal(popup.querySelector('[data-view-key="debug"]').classList.contains('is-on'), false,
+    'the other view is untouched');
+  assert.deepEqual(app.applied, [], 'and no frameFilter was written');
+
+  click(popup.querySelector('[data-view-key="debug"] .kikx-frame-filter__checkbox'));
+  assert.deepEqual(app.calls, [ 'raw', 'debug' ]);
+  assert.equal(popup.querySelector('[data-view-key="debug"]').classList.contains('is-on'), true);
+  assert.deepEqual(app.applied, [], 'still no frameFilter written');
+});
+
+test('the view rows repaint from app state, not from their own click', () => {
+  // Debug mode re-renders the whole app, which recreates this popup mid-callback;
+  // raw mode only flips classes on chips that no longer exist. Neither updates
+  // this checkbox, so the row must read state on every paint or it comes back
+  // looking off while the app is in that mode.
+  let app = makeApp();
+  let popup = mount(app);
+  assert.equal(popup.querySelector('[data-view-key="debug"]').classList.contains('is-on'), false,
+    'Debug starts off');
+
+  app._state.debugMode = true;
+  popup.configure({ app, appState: app._state, sessionID: 'ses_1' });
+
+  let debug = popup.querySelector('[data-view-key="debug"]');
+  assert.equal(debug.querySelector('.kikx-frame-filter__checkbox').checked, true,
+    'a rebuild repaints Debug from state');
+  assert.equal(debug.classList.contains('is-on'), true);
 });
