@@ -258,7 +258,7 @@ test('Stagehand places a completed tool-using agent summary after its tool frame
   }
 });
 
-function createToolFrames() {
+export function createToolFrames() {
   return [
     {
       id: 'tool_call_1',
@@ -584,7 +584,7 @@ function createToolFrames() {
   ];
 }
 
-function createUpdatedResponseToolFrames() {
+export function createUpdatedResponseToolFrames() {
   return [
     {
       id: 'tool_call_1',
@@ -671,10 +671,21 @@ async function expandCompactFrames(page) {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
 
+    // Frames render ASYNC (fetch -> render): opening details that exist right
+    // now raced the empty list in the lane (measured 2026-11-14: zero details
+    // opened, then every custom-element wait timed out). Wait for the compact
+    // details to ARRIVE first, open them all, then let the custom content mount.
+    while (document.querySelectorAll('details.kikx-frame__compact').length === 0) {
+      if (Date.now() > deadline)
+        throw new Error('no compact frame details rendered');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
     for (let details of document.querySelectorAll('details.kikx-frame__compact')) {
       details.setAttribute('open', '');
       details.open = true;
       details.dispatchEvent(new Event('toggle'));
     }
+    await new Promise((resolve) => setTimeout(resolve, 250));
   });
 }
