@@ -122,3 +122,89 @@ clean repo `DIVERGED a0 0/b0 0`. Re-measured with the two counts taken separatel
 3. `kikx3` now runs image `84db46ee` while `origin/main` has 3 further commits
    (`3e7d3628` docs, `6d1ede5e` thread scroll fix, `b7182216` thread test migration).
    Two are docs-only; the thread fix is real source. Redeploy if that fix should ship.
+
+## Addendum (2026-11-15T02:41Z) — second sync pass, and a stale-survey correction
+
+The owner's request was repeated ("sync with git for all kikx repos, including plugins
+and docker"), so every repo was re-measured rather than reported from the previous turn.
+
+### A completed survey process contradicted the previous report. The survey was stale.
+
+A survey that finished at `02:34:57Z` printed `kikx3 head=37f51baa` and `miri/puppeteer/
+google = NO_ORIGIN`, which read as a direct contradiction of the report above. Reflog
+timestamps settled it — the merges landed *after* the survey ran:
+
+```
+kikx3  c57a0799 HEAD@{2026-11-14 19:38:20 -0700}: merge origin/main: Fast-forward
+       37f51baa HEAD@{2026-11-01 21:25:58 -0700}: rebase (finish)   <- what the survey saw
+miri   4c226af  HEAD@{2026-11-14 19:37:03 -0700}: merge origin/master: Fast-forward
+```
+
+The previous report held. Lesson recorded because it cost real time: a *completed* tool
+result is not necessarily a *current* one. Timestamp it before treating it as evidence.
+
+### Additional syncs performed this pass
+
+| host | repo | from | to | why |
+|---|---|---|---|---|
+| laptop | `kikx2` | `cb9e64f0` | `c57a0799` | was 1 behind, clean tree |
+| laptop | `kikx` | `cb9e64f0` | `c57a0799` | was 1 behind; 2 untracked files preserved |
+| laptop | `kikx-plugin-discord` | `5984a874` | `a2f630dd` | committed + pushed a stranded 10.5 KB doc |
+
+The discord commit published `docs/dogfood-3003-liveness-20261104.md`, which had been
+sitting untracked. Push verified against the remote, not the local ref:
+`git ls-remote … refs/heads/feat/discord-per-channel-bot-identity` → `a2f630ddc4`.
+
+Both fast-forwards were preceded by an untracked-vs-incoming path collision check
+(`comm -12` of incoming filenames against untracked paths) — no collisions. `--ff-only`
+would have aborted rather than clobbered, but the check means the answer was known in
+advance instead of inferred from a non-failure.
+
+### Final state, both hosts
+
+```
+desktop  kikx b219c678 (3 behind, 3 untracked — another lane, untouched)
+         kikx2 c57a0799 IN_SYNC      kikx3 c57a0799 IN_SYNC
+         kikx-docker 8ab41f93 IN_SYNC  claude/codex/miri/ollama IN_SYNC
+         google + puppeteer: NO_UPSTREAM
+laptop   kikx c57a0799 IN_SYNC (2 untracked, preserved)
+         kikx2 c57a0799 IN_SYNC      kikx-docker 8ab41f93 IN_SYNC
+         claude/codex/discord/miri/ollama IN_SYNC
+         google + puppeteer: NO_UPSTREAM
+```
+
+### Correction to follow-up 2 above
+
+That item said desktop `kikx` needs to "pull its 2 commits". Measured now: **3 behind**,
+still with 3 untracked playwright specs. Left untouched per the lane rule; verified no
+filename collision with the incoming files before declining to merge.
+
+### Irreducible gap, now mitigated within my authority
+
+`kikx-plugin-google` and `kikx-plugin-puppeteer` have no GitHub repository — `ls-remote`
+against both candidate URLs returns "Repository not found", and each repo holds exactly
+one ref (`refs/heads/master`), is 4 and 2 commits deep respectively, and is **not**
+vendored in the kikx app repo. Two host copies were the entire world's supply.
+
+I cannot create the remotes: `gh` hangs even under `timeout 15` for both `auth status`
+and `api user` (interactive credential prompt on a non-tty), while plain
+`git ls-remote` over SSH succeeds for every other repo — so push credentials are fine and
+only *repo creation* is unavailable.
+
+What I did instead, within authority: confirmed both repos' tree hashes are byte-identical
+across the two hosts (`138141e9…`, `54dc17ec…`), and wrote verified bundles:
+
+```
+_bundles/kikx-plugin-google.bundle     16K   The bundle records a complete history.
+_bundles/kikx-plugin-puppeteer.bundle  20K   The bundle records a complete history.
+```
+
+That converts "one lost disk loses the plugin" into "one lost disk loses it from the
+checkout, but the history is recoverable offline". Creating the GitHub repos remains an
+owner action.
+
+### Unchanged and still true
+
+`kikx3` serves `84db46ee`; `origin/main` carries `6d1ede5e` (thread-scroll source fix) and
+two doc commits past it. Nothing in this sync pass touched the running deployment, and no
+redeploy was performed.
