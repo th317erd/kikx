@@ -210,3 +210,48 @@ owner action.
 `kikx3` serves `84db46ee`; `origin/main` carries `6d1ede5e` (thread-scroll source fix) and
 two doc commits past it. Nothing in this sync pass touched the running deployment, and no
 redeploy was performed.
+
+## Follow-up pass (desktop, later same day) — new repos exist; laptop has three fetches pending
+
+Owner: "make sure everything is synced with git (including all plugin repos,
+and the docker repo)" — re-measured across the desktop workspace.
+
+### GitHub repos created (the "owner action" above, done)
+
+Two plugins were local-only with **no remote and no GitHub repo at all**:
+
+| Repo | Result |
+|---|---|
+| `th317erd/kikx-plugin-google` | created **private**; local `master` (`3b47c77`) pushed; `0 0` tracked |
+| `th317erd/kikx-plugin-puppeteer` | created **private**; local `master` (`52103c9`) pushed; `0 0` tracked |
+
+No `node_modules` is tracked in either (checked before pushing). The
+`_bundles/` offline bundles remain as belt-and-suspenders history.
+
+### Desktop state after this pass
+
+All ten desktop repos `0 0` with their upstreams: `kikx`, `kikx2`, `kikx3`
+(all at `kikx` main `8855f68e` after fast-forwarding kikx2/kikx3 by 3), plus
+`kikx-docker`, `kikx-plugin-{claude,codex,google,miri,ollama,puppeteer}`.
+
+### PENDING ON THE LAPTOP HOST (next laptop session, in order)
+
+```bash
+cd ~/Projects/kikx-workspace
+# 1. kikx + the two deployments moved (desktop pushed the friend-prep + test work):
+for d in kikx kikx2 kikx3; do git -C $d fetch origin && git -C $d pull --ff-only; done
+# 2. The two plugin repos now HAVE remotes (created this pass) — the laptop's
+#    copies never had one either; fetch before assuming anything:
+for d in kikx-plugin-google kikx-plugin-puppeteer; do
+  git -C $d remote add origin git@github.com:th317erd/$d.git 2>/dev/null
+  git -C $d fetch origin
+  git -C $d rev-list --left-right --count @{u}...HEAD   # 0 0 = in sync; anything else STOP and report
+done
+# 3. kikx-plugin-discord stays laptop-owned (does not exist on the desktop):
+#    its 1 untracked doc noted above still needs a commit+push there.
+```
+
+If step 2 prints anything other than `0 0` for google/puppeteer, do NOT
+merge — the desktop pushed what it had and the laptop may hold commits the
+new remote has never seen; report divergence instead (same rule as the miri
+correction above: measure, never assume).
