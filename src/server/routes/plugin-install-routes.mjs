@@ -199,16 +199,25 @@ export async function handlePluginInstall({ request, response, context }) {
   // read-only — reload reads this file) and provenance tags (inventory).
   // Runs after the rollback window: a bookkeeping hiccup warns loudly
   // rather than pretending a loaded plugin failed to install.
-  if (added.length && source) {
+  if (source || (added.length && source)) {
     try {
-      if (source.type === 'npm') {
+      if (added.length && source.type === 'npm') {
         const { appendRuntimePluginPath, runtimeRootForConfig } = await import('../../core/config/runtime-plugin-paths.mjs');
         appendRuntimePluginPath(target, { cwd: await runtimeRootForConfig(config) });
       }
       if (context.has?.('tagsStore')) {
         const tags = context.require('tagsStore');
         const value = JSON.stringify(source);
-        for (const name of added)
+        // Tag the INSTALLED plugin even when it was already loaded: an npm
+        // UPDATE re-registers in place (added stays empty) and skipping the
+        // upsert left source.ref at the old version — a permanent phantom
+        // "Update available" chip (measured E2E, 2026-11-14). Fresh installs
+        // keep keying off `added` (load failures must not tag).
+        const installedName = source.type === 'npm'
+          ? source.ref.slice(0, source.ref.lastIndexOf('@'))
+          : String(target || '').split('/').filter(Boolean).pop();
+        const tagTargets = added.length ? added : (installedName ? [ installedName ] : []);
+        for (const name of tagTargets)
           await tags.upsertTag({ target_type: 'plugin', target_id: name, name: 'source', value });
       }
     } catch (error) {

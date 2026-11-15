@@ -12,7 +12,11 @@
 //   node spec/plugins/live-boot-exit-proof.mjs
 //
 // Exits 0 when every assertion holds, 1 when any fails, 2 when the database URL
-// is missing. Not part of `npm test`: it needs a live database and several
+// is missing. Run it standalone by hand, or through the `proof:live-boot`
+// lane (scripts/run-test-lanes.mjs proof:live-boot — also included in --all),
+// which wraps this file via live-boot-exit-proof-spec.mjs and treats exit 2
+// (no database URL) as a skip. It stays out of the bare `npm test` default set
+// because it needs a live database and several
 // seconds of boot, neither of which the suite may assume.
 //
 // Unload is driven over HTTP

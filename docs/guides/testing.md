@@ -18,7 +18,9 @@ it did not select. Its exit code is 0 only if every lane that ran passed.
 
 Lane selection comes from `resolveSelection()` in `scripts/test-lanes.mjs`: no
 argument selects `DEFAULT_LANE_NAMES` (`unit`, `ui:playwright`), `--all` selects
-every lane, and a bare lane name selects just that lane. Passing an explicit lane
+every lane (including `proof:live-boot` — the real-database plugin boot proof,
+which skips itself where no `.env.dev` database URL exists), and a bare lane
+name selects just that lane. Passing an explicit lane
 name therefore **overrides** the default set — which is why `npm test` must not
 name one.
 

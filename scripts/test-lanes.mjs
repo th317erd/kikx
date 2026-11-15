@@ -51,6 +51,16 @@ export const LANES = [
     timeoutMs: 600000,
     hermetic: false,
   },
+  {
+    name: 'proof:live-boot',
+    // Wraps spec/plugins/live-boot-exit-proof.mjs: real Postgres, real socket.
+    // hermetic:false grants the parsed .env.dev per-spawn; under the unit lane
+    // the same wrapper SKIPS (proof exit 2 = no DB URL), keeping unit hermetic.
+    globs: [ 'spec/plugins/live-boot-exit-proof-spec.mjs' ],
+    testTimeout: '240000',
+    timeoutMs: 300000,
+    hermetic: false,
+  },
 ];
 
 // Running these two is what "the suite" means. The others need live services or
