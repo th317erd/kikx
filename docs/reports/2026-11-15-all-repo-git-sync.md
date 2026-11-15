@@ -1,5 +1,7 @@
 # All-repo git sync — measured state, 2026-11-15
 
+**Status: current** — the authoritative sync record for this date.
+
 Owner asked: "Let's please sync with git for all kikx repos, including plugins and docker."
 
 This records what was measured, what was changed, and what could not be synced. Every
