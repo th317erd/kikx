@@ -202,6 +202,18 @@ rendering of continuation frames (follow-up UI pass).
   task-complete without messaging itself.
 - **P4 — Self-authorship (separate authorization).** script-set conversational
   flow, preview frames, versioning/rollback. Not authorized by this plan.
+- **P5 — Executor core (AUTHORIZED 2026-11-16, owner: "Let's get started").**
+  Enforcement slice, coordinator-only until proven: (a) IR schema +
+  deterministic structural validator wired into `script-set` (unknown label,
+  empty handler, size cap → reject; store `{source, IR, compiledAt}`);
+  (b) server-side PC persistence + turn-completion hook that schedules the
+  continuation while PC non-terminal, chain cap refresh on advance
+  (§12.2(6)); (c) `end-turn` gate returning the §12.1 refusal naming the
+  active phase + blocking condition; event lookup per §12.2(7). Start gate:
+  failing-first specs red before implementation; unit lane green at each
+  commit; `coordinator_v6` (§12.5) is the first script. DoD: all four §12.1
+  motivations spec-evidenced (premature end refused; silence re-wakened;
+  refusal names phase; PC resumes after restart) + full lane green.
 
 One phase = one revert unit. P2 depends on P1; P3 depends on P2; P4 independent
 authorization.
