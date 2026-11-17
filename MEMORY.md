@@ -11,7 +11,7 @@
 > scripts/run-test-lanes.mjs --all` (unit + playwright + stagehand +
 > puppeteer; stagehand is keyless Ollama, default
 > `ollama/deepseek-v4.1-flash:cloud`, `.env.dev` granted per-spawn to the two
-> UI lanes for plugin signatures); (2) the suite is **3,673 / 0 / 32** and
+> UI lanes for plugin signatures); (2) the suite is **3,724 / 0 / 33** (refreshed 2026-11-17) and
 > the definitive 2026-11-14 snapshot = unit PASS · playwright 18/18 ·
 > puppeteer 61/61 · stagehand 23/28 with EXACTLY the owner-gated design-A
 > five as the estate's only reds. Consolidated record:
