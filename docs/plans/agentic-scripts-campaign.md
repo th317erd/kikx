@@ -123,6 +123,12 @@ todo verification on wake.
    continuation unless exits: blocked-on-upstream, budget-gate,
    task-complete, **progress-escalation** (N consecutive wakes with no
    todo-state change → visible notice + owner question — critique amendment).
+   **Design-level supersession (2026-11-16): the single exit list is now
+   §12.2(8)** — `blocked-on-upstream` kept as a yielding override with
+   notice, `task-complete` retired until done-semantics exist, owner-abort
+   and fatal error added; shipped P1–P3 behavior unchanged until
+   implementation is authorized (§12.9). `N` here and in §12.4 still to be
+   set.
    Questions are not exits: always proceed with the recommendation, surface
    the question in the progress update, adjust when the user answers
    (owner ruling §3).
@@ -248,7 +254,10 @@ push only. Conflicts resolved manually with compatible union semantics.
 Owner pivot (conversation of 2026-11-16): the P1–P3 script *persuades* via the
 executor preamble; this work makes it *drive*. Every ruling below is the
 owner's, verbatim or faithfully condensed. Supersedes §2 only where stated
-(§2's non-goals otherwise stand; §7 P4 remains reserved and untouched).
+(§2's non-goals otherwise stand — including *"no replacement of
+end-turn/continue-turn"*, read as the tool surface: the gate changes when
+`end-turn` **succeeds**, not the tool set; §7 P4 remains reserved and
+untouched).
 
 ### 12.1 Motivation (owner)
 
@@ -258,7 +267,7 @@ owner's, verbatim or faithfully condensed. Supersedes §2 only where stated
   may not break out until the script is fully exhausted. Progress happens
   only through tools; an early `end-turn` returns: *"Agentic Script
   execution is not complete… if you have questions, ask the user with the
-  `ask-user` tool, and continue."*
+  `question-create` tool, and continue."*
 
 ### 12.2 Rulings and decisions
 
@@ -284,11 +293,20 @@ owner's, verbatim or faithfully condensed. Supersedes §2 only where stated
    the runtime structurally validates it (every target resolves, handlers
    non-empty, terminator present, size cap) — failed validation **rejects**
    `script-set`; store `{source, IR, compiledAt}`; execution reads IR only;
-   edits recompile. The model is an untrusted compiler; validation is the
-   gate.
+   edits recompile. The model is an untrusted compiler — and **structural
+   validation proves shape, not fidelity**: a compile that faithfully
+   shapes but softens the source passes. Known hole (critique): the guard
+   is user-visible compiled-IR preview frames, folding into §7 P4's
+   already-planned preview/versioning flow — see §12.9.
 6. **Enforcement = three layers**: (a) tool gate — refusal names the active
-   step and the blocking condition; (b) scheduler re-wake — silence does not
-   escape the loop; (c) PC persisted server-side — restarts resume
+   step and the blocking condition; **scope: ALL scripted agents — the
+   first implementation focuses on the coordinator only** (approved
+   2026-11-16); (b) scheduler re-wake — silence does not escape the loop;
+   **mechanism (approved): a turn-completion hook** — when a turn ends with
+   the PC non-terminal, the runtime itself schedules the continuation
+   carrying the active line. The chain cap refreshes on every PC/lap
+   advance, so only steps that make no progress trip it (→ stall question,
+   never a silent pause); (c) PC persisted server-side — restarts resume
    mid-script. **Teleprompter framing (owner): the script acts like the
    operator** — its branch lines are the questions (*"Where are you at with
    the implementation?" / "How thorough is your test coverage?" / "Did you
@@ -298,11 +316,20 @@ owner's, verbatim or faithfully condensed. Supersedes §2 only where stated
    unilaterally. v1 set: `endTurn`, `todoListEmpty`, `userResponded`
    (`stallWake` under review). **Rule: events ask, directives decide, the
    gate enforces** — events never move the PC themselves; moves are
-   validated `goto` / `next-step` directives.
+   validated `goto` / `next-step` directives (vocabulary: `goto <label>`,
+   `continue` — stay in phase, `ask` — non-blocking, `end` — terminal; v1
+   scripts contain no `end`). **Event lookup**: phase-local handler first,
+   else the script-global default (`coordinator_v6` carries a global
+   `endTurn`; a phase block overrides it). The `next-step` contract
+   (params, validation, refusals) is spec-time — §12.7.
 8. **Exits — ruling: end state to be defined as we go.** v1 has no silent
    terminal branch: every exit line ends in a question to the user.
-   Harness overrides (budget gate, stall escalation, owner abort, fatal
-   error) are the only non-script stops. *Blocked on user* is a branch (ask
+   **This list is the single exit authority for the whole plan**
+   (supersedes §4.5, annotated there): harness overrides = budget gate,
+   *blocked-on-upstream* yield with notice, stall escalation, owner abort,
+   fatal error — the only non-script stops. `task-complete` is retired
+   until done-semantics exist; *owner abort* and *fatal error* are
+   additions. *Blocked on user* is a branch (ask
    via `question-create`, then requeue to unblocked work), never an end.
 
 ### 12.3 Coordinator behavior contract (the owner's six steps)
@@ -334,7 +361,10 @@ Five confirmations from the follow-up exchange:
   done-conditions (*vision met* / *gone as far as possible without user
   guidance*) likely converge where step 1/2 cannot choose a productive
   slice that doesn't need the user — the structure accumulates the evidence
-  that will define done later.
+  that will define done later. **Henhouse guard (critique):** the
+  coordinator both writes the Vision and answers "fully met" — whenever
+  that branch is defined, the Vision edit and the met-claim must be
+  user-visible and never collapse into one silent lap.
 
 ### 12.4 Accepted-items stall guard (approved answer to re-scope churn)
 
@@ -342,13 +372,24 @@ A re-scope loop can shuffle todos forever and thereby satisfy a *no
 todo-state change* detector without landing work. Progress for stall
 escalation must therefore count **accepted items** (proof-passing, moved to
 done) per outer lap: N consecutive laps with **zero acceptances** → visible
-notice and a question to the owner, regardless of todo churn. Touches the
-future progress-escalation contract; recorded here, **not implemented**.
+notice and a question to the owner, regardless of todo churn.
+**Intra-lap scope (approved):** not lap-only — chain/stall accounting
+refreshes on every PC advance, so an inner loop that stops advancing (a
+phase-3 re-check that never resolves) trips the same question instead of
+running forever. Touches the future progress-escalation contract; recorded
+here, **not implemented**.
 
 ### 12.5 Draft script — `coordinator_v6` (approved shape, design artifact)
 
 ```text
 SCRIPT coordinator_v6
+
+events {
+  endTurn -> "Agentic Script execution is not complete — you are at the
+              active phase. [the operator question for this phase] If you
+              have questions, ask the user with question-create, then
+              continue."
+}
 
 phase 1_set_vision {
   >>>Your Vision lives in your record field.<<<
@@ -382,7 +423,7 @@ phase 3_confirm_plan {
   branch {
     "Material gaps found" -> {
       "Add a todo per gap (owner, definition of done, required proof)."
-        -> goto 3_confirm_plan          // re-check after each repair
+        -> goto 3_confirm_plan
     }
     "No material gaps" -> goto 4_implement
   }
@@ -392,6 +433,21 @@ phase 4_implement {
   >>>Work the plan as defined. Deviations and issues get worked out here.
   If resolution needs the user: ask (question-create) AND move to the next
   item that isn't held up. Questions never halt you.<<<
+
+  >>>At each continuation, answer this branch before the event handlers.<<<
+
+  branch {
+    "An unblocked todo exists" -> {
+      "Take the next unblocked todo and work it (required proof included)."
+        -> continue
+    }
+    "No unblocked todo exists — every remaining item needs the user" -> {
+      "Re-scope upstream: prove what is done, then re-examine Vision and
+       Mission for a slice that does not need the user."
+        -> goto 5_prove
+    }
+  }
+
   events {
     endTurn        -> "Agentic Script execution is not complete. Where are
                        you at with the implementation? Answer it, then take
@@ -424,16 +480,23 @@ phase 6_check_vision {
 ```
 
 Harness overrides sit outside this file; they are the only non-script
-exits. Delivery of directives rides `continue-turn`'s `nextAction` and the
-continuation wake prompt — evolution of existing machinery, no new
-injection path.
+exits. **Delivery shape (resolved, critique):** the brief carries the
+script, the PC/cursor, and the active line (full-script injection §4.4
+keeps working); the directive itself rides `continue-turn`'s `nextAction`
+and the continuation wake prompt — evolution of existing machinery, no new
+injection path. Both channels are stated so §4 and this section stop
+disagreeing.
 
 ### 12.6 Team-of-bots seam (future)
 
 Phases 2, 4 and 5 later carry delegation content: the coordinator assigns
 descendants' todos (per the §3 authority ruling), monitors, validates, and
 stays a coordinator, not a worker. Structure unchanged — prose swaps
-inside phases.
+inside phases. **Worker signal under the gate:** the gate covers all
+scripted agents (§12.2(6)), first implementation coordinator only;
+per-item worker completion rides `continue-turn` progress frames (already
+visible per §1), `end-turn` + reason fires only at script-defined exits —
+the monitor branch reads frames as well as end-turn notices.
 
 ### 12.7 Open items (define as we go, per owner)
 
@@ -441,6 +504,19 @@ inside phases.
 - final event set (is `stallWake` an event?);
 - depth of the honesty backstop beyond frame audit;
 - team content for phases 2/4/5;
+- `next-step` tool contract (params, validation, refusals) and the full
+  directive-vocabulary semantics — written at authorization;
+- stall/escalation `N` (here and in §4.5);
+- IR storage fields on the agent record (extends §4.1's
+  `behaviorScript: string` with the compiled pair);
+- acceptance definition for §12.4 (self vs coordinator-accepted items);
+- source-comment handling for the compiler (the draft carries none; strict
+  JSON applies to IR only);
+- `userResponded` re-entry = §6's already-listed unverified edge
+  ("question-wake re-entry into script loop") — verify at implementation;
+- P4 cross-ref: "edits text directly" (§4.1) now means source edit →
+  recompile → validate; P4's preview frames become the compiler-fidelity
+  guard;
 - phase numbering, start gates, and DoD for this work — written when
   implementation is authorized.
 
@@ -450,3 +526,49 @@ Design record only. No source, spec, or migration changes are authorized
 by this section. When implementation is authorized: failing-first TDD,
 unit lane green before each commit, `git commit -F`, push per standing
 rules.
+
+### 12.9 Critique amendments (owner-approved 2026-11-16)
+
+Critical pass over the whole plan — the plan's own phase-3 discipline
+applied to itself. Findings → approved fixes → where applied:
+
+1. **Layer (b) had no mechanism; the chain cap contradicted it.** Fixed in
+   §12.2(6): a turn-completion hook auto-schedules the continuation while
+   the PC is non-terminal; the chain cap refreshes on PC/lap advance, so
+   only no-progress steps trip it — landing on the stall question, never a
+   silent pause. (Verified against §1: continuations were previously
+   scheduled only by the model's own `continue-turn`, so silence *did*
+   escape the loop — the mechanism was aspirational until this ruling.)
+2. **Two divergent exit lists.** §12.2(8) is now the single authority;
+   §4.5 annotated as design-level superseded; `task-complete` retired until
+   done-semantics exist; owner-abort/fatal added; blocked-on-upstream kept
+   as a yielding override with notice.
+3. **The gate severed the worker→coordinator signal.** Gate = all scripted
+   agents, first implementation = coordinator only; per-item worker
+   completion moves to `continue-turn` progress frames (§12.5 delivery
+   shape, §12.6).
+4. **Blocked-everywhere was missing from the draft.** Phase 4 gained the
+   branch — no unblocked todo → `goto 5_prove` (the re-scope path) —
+   checked at each continuation before the event handlers; no new event,
+   so the v1 event set stays three (§12.5).
+5. **Compiler fidelity overclaimed.** Structural validation proves shape,
+   not fidelity (§12.2(5)); the guard is compiled-IR preview frames via P4.
+6. **The refusal message named a nonexistent tool.** `ask-user` →
+   `question-create` throughout (§12.1); the owner's quoted message is
+   corrected accordingly.
+7. **Event lookup was undefined** → phase-local handler first, else the
+   script-global default; a global `endTurn` was added to the draft; the
+   `next-step` contract is deferred to §12.7.
+8. **The stall guard was lap-only** → intra-lap scope added (§12.4).
+9. **Delivery shape disagreed across §4 and §12** → both channels stated
+   (§12.5 trailer).
+10. **Supersession was unnamed** → the §12 header now states the gate
+    modifies `end-turn`'s success, not the tool surface (§2's non-goal
+    preserved).
+11. **Vision henhouse** → visibility guard recorded for when "fully met"
+    is defined (§12.3).
+12. **The draft carried a source comment** → removed (strict JSON for IR;
+    no comments in the draft until the compiler question in §12.7 is
+    answered).
+
+LOW items and spec-time contracts live in §12.7. No code authorized.
