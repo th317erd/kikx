@@ -70,7 +70,7 @@ import { PluginAuthority } from '../core/plugins/plugin-authority.mjs';
 import { PluginEventBus } from '../core/plugins/plugin-events.mjs';
 import { getPluginMigrations } from '../core/plugins/plugin-migrations.mjs';
 import { loadPlugins } from '../core/plugins/plugin-loader.mjs';
-import { ensurePropertiesStore } from './properties-boot.mjs';
+import { ensurePropertiesStore, closeOwnedPropertiesStore } from './properties-boot.mjs';
 import { mergePluginPaths } from '../core/plugins/plugin-paths.mjs';
 import { registerCoreClasses, resolveCoreClass } from '../core/plugins/core-classes.mjs';
 import { FrameRouter } from '../core/routing/index.mjs';
@@ -267,10 +267,7 @@ export async function createServer(options = {}) {
     context.set('frameRouter', new RouterClass());
   }
 
-  // Properties store must exist BEFORE plugins load (setup()/onInit() write
-  // properties inside the boot load below). Own connection + DDL — the
-  // document driver resolves only after the load. Plan: properties-store P1
-  // (seam extracted to properties-boot.mjs to stay under the line cap).
+  // Properties store must exist BEFORE plugins load — see properties-boot.mjs.
   await ensurePropertiesStore({ context, options, config, databaseURL, databasePath });
 
   if (!context.has('pluginLoadPromise')) {
@@ -788,6 +785,7 @@ export async function createServer(options = {}) {
 
   let runtimeEventGateway = context.has('runtimeEventGateway') ? context.require('runtimeEventGateway') : null;
   server.on('close', () => runtimeEventGateway?.close?.());
+  server.on('close', () => { closeOwnedPropertiesStore(context).catch(() => {}); });
   return server;
 }
 
