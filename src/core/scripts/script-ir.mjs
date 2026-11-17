@@ -9,6 +9,16 @@ import { MAX_BEHAVIOR_SCRIPT_LENGTH } from '../agents/script-limits.mjs';
 
 export const SCRIPT_IR_VERSION = 1;
 
+// Carry-through normalizer for the agent-record field: accepts a plain
+// object or null, drops anything else (validation is validateScriptIR's job).
+export function normalizeScriptIRFieldValue(value) {
+  if (value == null)
+    return null;
+  if (typeof value === 'object' && !Array.isArray(value))
+    return value;
+  return null;
+}
+
 const DIRECTIVE_KEYS = new Set([ 'goto', 'say', 'continue', 'ask', 'end' ]);
 
 export function validateScriptIR(ir) {

@@ -481,6 +481,11 @@ export async function setAgentBehaviorScript(input, context = {}) {
 
   script = normalizeBehaviorScript(script);
 
+  let ir = input?.ir ?? input?.behaviorScriptIR;
+  if (ir !== undefined && ir !== null && (typeof ir !== 'object' || Array.isArray(ir)))
+    throw new TypeError('script-set ir must be a compiled IR object');
+  let compiledAt = normalizeOptionalPromptString(readToolString(input, [ 'compiledAt' ]));
+
   let targetAgentID = normalizeOptionalPromptString(readToolString(input, [ 'agentID', 'agent' ]))
     || normalizeOptionalPromptString(context.agent?.id);
   if (!targetAgentID)
@@ -506,7 +511,7 @@ export async function setAgentBehaviorScript(input, context = {}) {
   if (!agentManager?.updateAgentScript)
     throw new Error('script-set requires agentManager.updateAgentScript()');
 
-  let updated = await agentManager.updateAgentScript(targetAgentID, script);
+  let updated = await agentManager.updateAgentScript(targetAgentID, script, { ir, compiledAt });
 
   if (context.agent && targetAgentID === context.agent.id)
     context.agent[BEHAVIOR_SCRIPT_FIELD] = updated?.[BEHAVIOR_SCRIPT_FIELD] || script;
@@ -518,6 +523,12 @@ export async function setAgentBehaviorScript(input, context = {}) {
       agentID: targetAgentID,
       [BEHAVIOR_SCRIPT_FIELD]: updated?.[BEHAVIOR_SCRIPT_FIELD] || script,
       ...(scriptID ? { scriptID } : {}),
+      ...(ir
+        ? {
+            irValidated: true,
+            behaviorScriptCompiledAt: updated?.behaviorScriptCompiledAt ?? null,
+          }
+        : {}),
     },
   };
 }

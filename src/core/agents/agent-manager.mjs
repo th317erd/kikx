@@ -7,8 +7,11 @@ import {
 } from './character-limits.mjs';
 import {
   BEHAVIOR_SCRIPT_FIELD,
+  BEHAVIOR_SCRIPT_COMPILED_AT_FIELD,
+  BEHAVIOR_SCRIPT_IR_FIELD,
   normalizeBehaviorScript,
 } from './script-limits.mjs';
+import { normalizeScriptIRFieldValue, validateScriptIR } from '../scripts/script-ir.mjs';
 import { normalizeTagInputList, tagNumber } from '../tags/tag-definitions.mjs';
 
 export class AgentManager {
@@ -133,10 +136,27 @@ export class AgentManager {
     return await this.updateAgent(agentID, patch);
   }
 
-  async updateAgentScript(agentID, script) {
+  async updateAgentScript(agentID, script, options = {}) {
     let patch = {
       [BEHAVIOR_SCRIPT_FIELD]: normalizeBehaviorScript(script),
     };
+
+    if (options?.ir !== undefined && options.ir !== null) {
+      let validation = validateScriptIR(options.ir);
+      if (!validation.ok)
+        throw new TypeError(`behaviorScriptIR rejected: ${validation.errors.join('; ')}`);
+      patch[BEHAVIOR_SCRIPT_IR_FIELD] = options.ir;
+      patch[BEHAVIOR_SCRIPT_COMPILED_AT_FIELD] =
+        typeof options.compiledAt === 'string' && options.compiledAt !== ''
+          ? options.compiledAt
+          : new Date().toISOString();
+    }
+    else {
+      // Text without IR: the source changed, so any stored IR is stale until
+      // recompiled (§12.2(5)). Clear it on every text-only set.
+      patch[BEHAVIOR_SCRIPT_IR_FIELD] = null;
+      patch[BEHAVIOR_SCRIPT_COMPILED_AT_FIELD] = null;
+    }
 
     return await this.updateAgent(agentID, patch);
   }
@@ -306,6 +326,16 @@ export class AgentManager {
     let behaviorScript = hasScript
       ? normalizeBehaviorScript(input[BEHAVIOR_SCRIPT_FIELD])
       : (options.creating ? '' : undefined);
+    let hasScriptIR = Object.hasOwn(input, BEHAVIOR_SCRIPT_IR_FIELD);
+    let behaviorScriptIR = hasScriptIR
+      ? normalizeScriptIRFieldValue(input[BEHAVIOR_SCRIPT_IR_FIELD])
+      : (options.creating ? null : undefined);
+    let hasCompiledAt = Object.hasOwn(input, BEHAVIOR_SCRIPT_COMPILED_AT_FIELD);
+    let behaviorScriptCompiledAt = hasCompiledAt
+      ? (typeof input[BEHAVIOR_SCRIPT_COMPILED_AT_FIELD] === 'string'
+        ? input[BEHAVIOR_SCRIPT_COMPILED_AT_FIELD]
+        : null)
+      : (options.creating ? null : undefined);
 
     let errors = [];
     for (let key of Object.keys(config || {})) {
@@ -376,6 +406,8 @@ export class AgentManager {
       character,
       [CHARACTER_COMPRESSED_FIELD]: characterCompressed,
       [BEHAVIOR_SCRIPT_FIELD]: behaviorScript,
+      [BEHAVIOR_SCRIPT_IR_FIELD]: behaviorScriptIR,
+      [BEHAVIOR_SCRIPT_COMPILED_AT_FIELD]: behaviorScriptCompiledAt,
       config,
       secrets,
       clearSecrets: input.clearSecrets,

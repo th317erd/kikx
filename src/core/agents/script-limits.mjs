@@ -1,6 +1,8 @@
 'use strict';
 
 export const BEHAVIOR_SCRIPT_FIELD = 'behaviorScript';
+export const BEHAVIOR_SCRIPT_IR_FIELD = 'behaviorScriptIR';
+export const BEHAVIOR_SCRIPT_COMPILED_AT_FIELD = 'behaviorScriptCompiledAt';
 
 export const MAX_BEHAVIOR_SCRIPT_LENGTH = 16384;
 
