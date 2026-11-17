@@ -43,7 +43,7 @@ import {
 } from './session-name-gestures.mjs';
 import { createIcon } from '../lib/icons.mjs';
 import { navigateSystemSettings } from '../state/kikx-state.mjs';
-import { currentViewName } from '../state/navigation-stack.mjs';
+import { currentViewName, isViewOpen } from '../state/navigation-stack.mjs';
 import { stateHasFilters } from '../lib/frame-filters.mjs';
 import { buildScrollLockToolbar } from './kikx-scroll-lock.mjs';
 // ONE shared contract for the rename field's `name` (owner item 2). The bar used
@@ -233,7 +233,21 @@ export function buildTopbarCrumb(app, crumb) {
 // is somewhere to go back to, which is exactly when the legacy back button
 // rendered (kikx-shell-builders.mjs:298-299 `nested`).
 export function buildTopbarBreadcrumb(app) {
-  let nested = getStackDepth(app._state) > 1;
+  // ONE exit control in Settings (owner screenshot, 2026-11-17).
+  //
+  // The mode is a PUSHED stack entry, so `nested` is true inside it and the bar
+  // rendered the session-close chevron AND the crumb's '< Exit Settings' button:
+  // two controls, identical action, side by side. That is precisely what the
+  // owner boxed and labelled "This should be ONE button... NOT two."
+  //
+  // Resolution: in Settings the crumb OWNS the exit and the chevron is
+  // suppressed. No capability is lost, because the crumb button already calls
+  // `app._minimizeCurrent()` -- the same handler the chevron calls, on the same
+  // app -- so the two were never different actions. It also cannot strand the
+  // user: the mode is only ever entered by a push, so the crumb is always
+  // rendered when the chevron is suppressed.
+  let inSettingsMode = isViewOpen(app._state.navigationStack, 'settings');
+  let nested = getStackDepth(app._state) > 1 && !inSettingsMode;
   let crumbs = buildCrumbModel(app);
 
   let trail = crumbs.flatMap((crumb, index) => {
@@ -570,7 +584,23 @@ export function buildUnifiedTopbar(app) {
   let entry = getCurrentEntry(app._state);
   let sessionID = authed ? (entry?.sessionID || null) : null;
 
-  // Computed once, here, so the mount cannot disagree with itself about scope.
+  // Owner annotation (2026-11-17): "Remove "Search" field and "Add Project"
+  // button when in "Settings" view."
+  //
+  // Both controls act on SESSIONS and FRAMES, and Settings renders neither: the
+  // field narrows the session grid or the open thread's frames, and
+  // `+ Add Project` creates a top-level session. Over a settings form they are
+  // controls that cannot do what their labels say.
+  //
+  // The whole search GROUP goes, not just the input. The group also hosts the
+  // eyeball filter (show-deleted / Raw / Debug) and the mobile overflow that
+  // carries those same rows -- all frame and session VISIBILITY toggles. Keeping
+  // the group and deleting only its text input would leave settings showing
+  // frame filters above a form: the same category error, smaller footprint.
+  //
+  // Computed here, once, so the mount cannot disagree with itself about scope
+  // (the same reason pluginActions is computed here rather than at each site).
+  let settingsMode = authed && isViewOpen(app._state.navigationStack, 'settings');
   let pluginActions = authed ? buildPluginToolbarActionNodes(app, sessionID) : [];
 
   return header.class('kikx-topbar kikx-window__header')(
@@ -601,9 +631,9 @@ export function buildUnifiedTopbar(app) {
     // column 1 of a second row and reinstate the two-row bar the owner rejected.
     div.class('kikx-topbar__rest')(
       authed ? buildTopbarBreadcrumb(app) : null,
-      authed ? buildTopbarSearch(app, sessionID) : null,
+      authed && !settingsMode ? buildTopbarSearch(app, sessionID) : null,
       authed ? buildTopbarActions(app, sessionID) : span.class('kikx-topbar__spacer')(),
-      authed ? buildTopbarTrailingAdd(app, sessionID) : null,
+      authed && !settingsMode ? buildTopbarTrailingAdd(app, sessionID) : null,
       ...pluginActions,
     ),
   );

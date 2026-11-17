@@ -207,6 +207,82 @@
   max-width: min(1120px, 100%);
 }
 
+/* System Settings -> General (owner 2026-11-17): "This is horribly ugly...
+   everything is just smashed together. Can you make this look nicer please?"
+
+   WHY it was smashed, measured from the cascade rather than guessed: the
+   section was a bare <section> whose children were three <p> and the theme
+   picker. The 14px `gap` on .kikx-system-settings belongs to `__body`, and the
+   <section> itself carried NO display rule, so it stayed a block box whose
+   children all had `margin: 0` from the vendor reset. Every line therefore sat
+   at 0px separation -- 'Account', 'Name: ...', 'Email: ...', 'Theme' and
+   'Primary color' ran together as one paragraph.
+
+   The fix is layout, not padding: General becomes the same card stack the
+   plugins columns and .kikx-settings__panel already use, so the section stops
+   looking like a different application. Colours are the established settings
+   surface values (#14181d panel, #2a3138 hairline, 10px radius) rather than a
+   new palette. */
+.kikx-settings-general {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  /* A form measure, not the 1120px content measure: label/value rows and a
+     swatch row read best narrow, and the thread column precedent is the same. */
+  max-width: 720px;
+}
+
+.kikx-settings-general__card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #14181d;
+  border: 1px solid #2a3138;
+  border-radius: 10px;
+  padding: 16px 18px;
+}
+
+/* An eyebrow heading, so the card TITLE is not competing with the values it
+   labels -- which is what made the old block read as a run-on sentence. */
+.kikx-settings-general__card > h3 {
+  margin: 0;
+  font-size: calc(12px * 1.25);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8b949e;
+}
+
+/* The identity rows. A two-column grid on the <dl> itself (no wrapper per row)
+   puts every <dt> in column 1 and its <dd> in column 2, so Name and Email
+   align by construction instead of by matching strings. */
+.kikx-settings-general__facts {
+  display: grid;
+  grid-template-columns: minmax(4rem, max-content) minmax(0, 1fr);
+  gap: 8px 20px;
+  margin: 0;
+}
+
+.kikx-settings-general__facts dt {
+  margin: 0;
+  color: #8b949e;
+}
+
+.kikx-settings-general__facts dd {
+  margin: 0;
+  color: #f5f7fa;
+  overflow-wrap: anywhere;
+}
+
+/* Inside the card the eyebrow already says 'Theme', so 'Primary color' is a
+   field label, not a second heading: demote it from the #f5f7fa 600 weight it
+   inherits, which was the second half of the "smashed together" reading. */
+.kikx-settings-general__card .kikx-theme-picker__label {
+  color: #8b949e;
+  font-size: calc(13px * 1.25);
+  font-weight: 500;
+}
+
 /* Installed Plugins (S2): two columns collapsing at the mobile breakpoint,
    card chrome, notices. Every class kikx-settings-plugins-section.mjs emits
    appears here — the stylesheet gate fails otherwise. */

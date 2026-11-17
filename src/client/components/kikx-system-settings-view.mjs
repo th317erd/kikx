@@ -29,7 +29,7 @@ import { buildPluginsSection } from './kikx-settings-plugins-section.mjs';
 import { buildEmailSection } from './kikx-settings-email-section.mjs';
 import { maybeLoadSystemSettingsPlugins } from '../state/system-settings-plugins.mjs';
 
-const { button, div, h3, h2, header, p, section } = elements;
+const { button, dd, div, dl, dt, h3, h2, header, p, section } = elements;
 
 // The base sections, in tab order. S2 unions plugin-contributed sections on
 // top (stable by surfaceID); General is always present because it is the
@@ -139,14 +139,36 @@ function buildSettingsSectionBody(active, state, app) {
 
   // General: the host-owned Account block (placeholder for host preferences,
   // deliberately small per plan §5-S1) plus every panel filed to General.
+  //
+  // Owner (2026-11-17): "This is horribly ugly... everything is just smashed
+  // together. Can you make this look nicer please?" The block used to be three
+  // bare <p> siblings with no container, so the name, the email and both
+  // headings all landed on the same line rhythm with no separation at all.
+  //
+  // It is now two CARDS -- the chrome the plugins columns and
+  // .kikx-settings__panel already use -- and the identity rows are a <dl>
+  // label/value grid instead of two sentences, so the labels and values align in
+  // columns and 'Name'/'Email' read as fields rather than prose. Semantics, not
+  // decoration: this IS a description list of account facts.
+  //
+  // Plugin panels follow as siblings (each already carries its own card
+  // chrome), so General is one card stack with one rhythm.
   let account = state?.account || {};
-  return section(
-    h3('Account'),
-    p(account.name ? `Name: ${account.name}` : 'Name: not signed in'),
-    p(account.email ? `Email: ${account.email}` : 'Email: not signed in'),
-    // Primary theme (owner 2026-11-11): host preference, General section.
-    h3('Theme'),
-    buildThemePicker(state, app),
+  return section.class('kikx-settings-general')(
+    section.class('kikx-settings-general__card')(
+      h3('Account'),
+      dl.class('kikx-settings-general__facts')(
+        dt('Name'),
+        dd(account.name || 'Not signed in'),
+        dt('Email'),
+        dd(account.email || 'Not signed in'),
+      ),
+    ),
+    section.class('kikx-settings-general__card')(
+      // Primary theme (owner 2026-11-11): host preference, General section.
+      h3('Theme'),
+      buildThemePicker(state, app),
+    ),
     panels,
   );
 }
