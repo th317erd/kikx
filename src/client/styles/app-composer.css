@@ -269,12 +269,10 @@
      The old 72px right gutter held a vertical quick-action rail painted outside
      the frame laterally; that gutter is still gone (owner, 2026-11-14: messages
      wanted the width).
-     BOTTOM reservation (2026-11-17): the rail hangs BELOW its card again, so the
-     LAST card in the thread needs room beneath it or the row is clipped by the
-     scroll container and the final message's actions become unreachable. This
-     reserves one 30px button row plus breathing room, and is invisible because
-     it shares the stream background. */
-  padding: 0 0 38px 0;
+     RE-RULED (2026-11-17): the 38px bottom reservation is also gone. It existed
+     only because the rail hung BELOW the last card (commit 77a8fc4a); the rail
+     now sits BESIDE its card and needs no room under the list. */
+  padding: 0 0 1px 0;
   list-style: none;
 }
 
@@ -419,72 +417,69 @@
   pointer-events: auto;
 }
 
-/* Quick actions sit OUTSIDE their message (owner, 2026-11-17, verbatim:
-   "Somehow our quick-action buttons made it to INSIDE the message... this is
-   wrong. They are supposed to WRAP in the container OUTSIDE the message.").
+/* Quick actions live in an invisible container BESIDE their message (owner,
+   2026-11-17, verbatim: "Invisible container on the side... items WRAP in this
+   container (when the container doesn't have enough vertical space).").
 
-   This re-rules the 2026-11-14 request ("Can we have them wrap inside their
-   container please?"), which was implemented as "inside the CARD". The card is
-   the message bubble; the container the owner meant is the thread. Reading
-   "container" as "card" is what produced the inside-the-message bug.
+   Three placements, three owner requests, in order:
 
-   Both older complaints were real and still hold — they were never reasons for
-   putting the rail inside the message:
+   1. 2026-11-14 "wrap inside their container" -> built as inside the CARD.
+      Wrong: the container meant was the thread, and the buttons ended up inside
+      the message bubble itself.
+   2. 2026-11-17 "WRAP in the container OUTSIDE the message" -> built as a
+      horizontal ROW hanging BELOW the card. Outside, but on the wrong axis, and
+      it cost every message 24px of extra seam to stay clear of the next card.
+   3. This rule: a vertical container on the RIGHT of the card, exactly as tall
+      as the card, items flowing column-major so they WRAP into a second column
+      when the card runs out of vertical space. Nothing is reserved below the
+      card any more, so the seam between messages is back to its natural 1em.
 
-   * "end up BEHIND another card". `.kikx-frame` sets `transform`, so every card
-     is its own stacking context. A rail parked outside its card was painted
-     UNDER any later sibling no matter how large its own z-index was, because
-     the parent card's context bounded it. That is a stacking bug, not an
-     outboard bug. It is fixed by lifting the hovered card itself (see the
-     `.kikx-frame:hover` rule below), which is the only way a descendant can
-     paint above a sibling's context.
-   * "push down too far vertically". That rail was a vertical COLUMN of three
-     30px buttons — ~100px tall beside a one-line card. This is a row that
-     wraps, so its height is one button plus one gap.
+   RIGHT, not left: measured against the real cascade at 1280/1100/960/800px.
+   Agent/participant cards are flush LEFT (spaceLeft 0px, so a left rail would
+   land on other content), while BOTH card alignments leave free space to the
+   right (user cards 96-106px, agent cards 294-587px). Only the right side works
+   for every card without narrowing any message.
 
-   Geometry: the row starts at the card's OUTER bottom edge (the `top` calc in the
-   rule below corrects `top: 100%`'s padding-box origin), so the buttons are
-   painted entirely outside the message while still being owned by it in the DOM
-   — which is what keeps hover, keyboard focus and the frame's action handlers
-   working without a DOM restructure.
+   The container stays a DOM child of its frame even though it paints outside the
+   card's box: that is what keeps hover, keyboard focus and the frame's action
+   handlers working with no DOM restructure.
 
-   No hover "bridge" padding is needed, and adding any would be a regression: the
-   row is flush with the card edge, so the pointer never crosses dead space
-   between the card and the buttons. Height matters here: the row is 30px, which
-   does not fit the default 17.5px seam between two messages (measured), so
-   `.kikx-frame` below reserves `1em + 24px` beneath every full frame and the row
-   sits in that gap instead of covering the next message. That clearance is
-   asserted on real metrics by
-   spec/ui/puppeteer/frame-quick-actions-outside-message-puppeteer.mjs. */
+   Hidden must stay inert (`pointer-events: none`). An invisible rail that is
+   still hit-testable would swallow clicks meant for whatever it overlaps.
+
+   Asserted on real metrics by
+   spec/ui/puppeteer/frame-quick-actions-side-container-puppeteer.mjs. */
 .kikx-frame__quick-actions {
   position: absolute;
-  /* `top: 100%` resolves against the PADDING box, so on its own it starts the
-     row 2px inside the card's bottom border — measured, not assumed
-     (railInsideCard=2). Adding the border width puts the row's top edge exactly
-     on the card's outer bottom edge. */
-  top: calc(100% + var(--kikx-frame-border-width));
-  right: 0;
+  /* `left: 100%` resolves against the PADDING box, so on its own it starts the
+     rail inside the card's right border. Adding the border width puts the rail's
+     left edge exactly on the card's outer right edge; the 8px is the gap that
+     keeps the buttons clear of the border without dead space between them.
+
+     `top: 0; bottom: 0` makes the container exactly the card's height, which is
+     what the wrap below measures "not enough vertical space" against. */
+  top: 0;
+  bottom: 0;
+  left: calc(100% + var(--kikx-frame-border-width) + 8px);
+  right: auto;
   z-index: 4;
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  align-items: center;
+  /* COLUMN-MAJOR flow: `grid-auto-flow: column` fills each column top-to-bottom
+     first, so the buttons stack down the side and WRAP into a new column beside
+     the first when the card is too short for the next one. `auto-fill` is what
+     derives the number of rows that fit from the card's own height — no height
+     is hard-coded here, so the wrap point follows the card. */
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 30px;
+  grid-template-rows: repeat(auto-fill, 30px);
+  align-content: start;
+  justify-content: start;
   gap: 6px;
-  /* WRAP, never run off the side: size to content so a short row stays one row,
-     capped at the card's own width so a long row wraps instead of escaping. */
-  width: max-content;
-  max-width: 100%;
+  width: auto;
   opacity: 0;
-  /* RE-RULED (2026-11-17): this used to stay hit-testable while invisible, so a
-   * pointer could "find" a button inside the card. Now that the row hangs
-   * OUTSIDE the card in the seam before the next message, that would let an
-   * invisible rail swallow clicks aimed at the NEXT card. Hidden must be inert;
-   * the card's own hover reveals the row, and the row is flush with the card's
-   * bottom edge, so reaching it never crosses dead space. */
   visibility: visible;
   pointer-events: none;
-  transform: translateY(4px);
+  transform: translateX(-4px);
   transition: opacity 120ms ease, transform 120ms ease;
 }
 
@@ -495,7 +490,7 @@
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
-  transform: translateY(0);
+  transform: translateX(0);
 }
 
 .kikx-frame--minimized .kikx-frame__quick-actions {
@@ -557,16 +552,10 @@
 /* Keep full messages visually separated from surrounding minimized headers. */
 .kikx-frame:not(.kikx-frame--minimized) {
   margin-block: 1em;
-  /* The quick-action row hangs below this card (see .kikx-frame__quick-actions),
-     so the seam between two messages has to be tall enough to hold it. Measured
-     at 1280px: the default seam is 17.5px and the row is 30px tall, which put
-     10.5px of the row over the following card — the "BEHIND another card"
-     complaint in a new costume (painting over it rather than under it). One
-     button row plus breathing room, so the row sits in the gap rather than on
-     the next message. This is the cost of "OUTSIDE the message": the alternative
-     is either overlapping the next card or putting the buttons back inside this
-     one. */
-  margin-bottom: calc(1em + 24px);
+  /* RE-RULED (2026-11-17): the rail now hangs to the SIDE of its card, so the
+     extra bottom reservation that used to keep a below-the-card row off the next
+     message is gone. `margin-block: 1em` above is the natural seam again. */
+  margin-bottom: 1em;
 }
 
 /* Fundamental frame shell: outer radius, border width, header hatch, type/status
