@@ -132,7 +132,19 @@ test('the single exit control actually leaves Settings (not just relabelled)', a
     await page.click('.kikx-brand__mark');
     await page.waitForSelector('.kikx-system-settings', { timeout: 10000 });
 
-    await page.click('.kikx-breadcrumb__exit-settings');
+    // Dispatch INSIDE the page, not via page.click(). page.click resolves an
+    // ElementHandle and THEN scrolls/intersects it; the topbar re-renders when
+    // the mode drops, so the handle went stale mid-click and the run died with
+    // "Node is detached from document" (puppeteer ElementHandle.js:1300).
+    // One synchronous evaluate resolves, checks and clicks the SAME node in a
+    // single JS turn, so no re-render can slip in between. This tests the
+    // product, not the race in the harness.
+    await page.evaluate(() => {
+      const exit = document.querySelector('.kikx-breadcrumb__exit-settings');
+      if (!exit)
+        throw new Error('exit control missing before click');
+      exit.click();
+    });
     let left = false;
     for (let attempt = 0; attempt < 40 && !left; attempt += 1) {
       left = await page.evaluate(() => !document.querySelector('.kikx-system-settings'));
