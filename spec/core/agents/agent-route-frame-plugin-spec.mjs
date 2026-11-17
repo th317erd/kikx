@@ -2575,3 +2575,64 @@ function quietLogger() {
     log() {},
   };
 }
+
+test('P5(b): scripted agent going silent schedules the re-wake continuation', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Worker',
+        pluginID: 'streaming-agent',
+        config: {},
+        secrets: {},
+        enabled: true,
+        behaviorScript: 'SCRIPT coordinator_v6 ... END',
+      } ],
+    ]),
+  });
+  await runtime.createSession({ title: 'Scratch', participantAgentIDs: [ 'agent_1' ], coordinatorAgentID: 'agent_1' });
+  await runtime.appendUserMessage('ses_1', { text: 'do the work' });
+  await runtime.flush();
+  await runtime.frameStore.flush();
+  let frames = await runtime.listFrames('ses_1');
+  let continuationFrame = frames.find((frame) => frame.authorID === 'internal:agent-continuation');
+  assert.ok(continuationFrame, 'a scripted silent turn must be re-woken (plan §12.2(6))');
+});
+
+test('P5(b): unscripted agent keeps the legacy silent end', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_1', { id: 'agent_1', name: 'Worker', pluginID: 'streaming-agent', config: {}, secrets: {}, enabled: true } ],
+    ]),
+  });
+  await runtime.createSession({ title: 'Scratch', participantAgentIDs: [ 'agent_1' ], coordinatorAgentID: 'agent_1' });
+  await runtime.appendUserMessage('ses_1', { text: 'do the work' });
+  await runtime.flush();
+  await runtime.frameStore.flush();
+  let frames = await runtime.listFrames('ses_1');
+  let continuationFrame = frames.find((frame) => frame.authorID === 'internal:agent-continuation');
+  assert.equal(continuationFrame, undefined, 'unscripted turns must not be re-woken');
+});
+
+test('P5(b): end-turn (finalized) still stops even with a script set', async () => {
+  let runtime = createRuntime({
+    agents: new Map([
+      [ 'agent_1', {
+        id: 'agent_1',
+        name: 'Worker',
+        pluginID: 'silent-end-turn-agent',
+        config: {},
+        secrets: {},
+        enabled: true,
+        behaviorScript: 'SCRIPT coordinator_v6 ... END',
+      } ],
+    ]),
+  });
+  await runtime.createSession({ title: 'Scratch', participantAgentIDs: [ 'agent_1' ], coordinatorAgentID: 'agent_1' });
+  await runtime.appendUserMessage('ses_1', { text: 'do the work' });
+  await runtime.flush();
+  await runtime.frameStore.flush();
+  let frames = await runtime.listFrames('ses_1');
+  let continuationFrame = frames.find((frame) => frame.authorID === 'internal:agent-continuation');
+  assert.equal(continuationFrame, undefined, 'an explicit end-turn exit must not be re-woken');
+});

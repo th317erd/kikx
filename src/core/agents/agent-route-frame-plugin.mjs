@@ -19,6 +19,7 @@ import { normalizeContinuation } from './agent-route/continuation.mjs';
 import { AgentRouteFramePluginBase } from './agent-route/agent-route-frame-plugin-base.mjs';
 import { runProviderWithRetry } from './provider-retry.mjs';
 import { framePriority } from '../../shared/frame-priority.mjs';
+import { resolveTurnCompletionContinuation } from './turn-completion.mjs';
 
 export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
   static pluginID = 'internal:agent-router';
@@ -239,6 +240,7 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
     let responseFrameID = null;
     let doneStatus = '';
     let continuation = null;
+    let finalizedByTool = false;
     let sessionID = this.context.session?.id || frame.sessionID || '';
     let frameRuntime = resolveService(services, 'frameRuntime') || services?.frameRuntime;
     try {
@@ -375,6 +377,7 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
           let status = normalizeDoneStatus(output.content?.status);
           doneStatus = status || doneStatus;
           continuation = normalizeContinuation(output.content?.continuation) || continuation;
+          finalizedByTool = output?.content?.finalized === true;
           if (shouldCleanupResponseFrame(status))
             this.cleanupResponseFrame({ responseFrameID, responseFrame, agent, status });
 
@@ -392,6 +395,16 @@ export class AgentRouteFramePlugin extends AgentRouteFramePluginBase {
 
         this.mergeProviderFrame(output, { agent, frame, responseFrameID });
       }
+
+      // P5(b) turn-completion hook (plan §12.2(6)): silence must not escape
+      // the loop — a scripted agent that neither continued nor ended gets a
+      // re-wake carrying the active line; explicit exits and unscripted
+      // agents keep legacy behavior.
+      continuation = resolveTurnCompletionContinuation({
+        agent,
+        continuation,
+        finalized: finalizedByTool,
+      });
 
       if (continuation && responseFrameID)
         await this.scheduleAgentContinuation({ agent, frame, responseFrameID, continuation, services });

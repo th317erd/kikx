@@ -22,8 +22,8 @@ test('scripted agent going silent gets a re-wake continuation', () => {
     finalized: false,
   });
   assert.ok(continuation, 'expected a re-wake continuation, got null');
-  assert.equal(typeof continuation.nextAction, 'string');
-  assert.ok(continuation.nextAction.length > 0);
+  assert.equal(typeof continuation.continuationPrompt, 'string');
+  assert.ok(continuation.continuationPrompt.length > 0);
   assert.equal(continuation.delayMs, 0);
 });
 

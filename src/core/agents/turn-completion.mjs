@@ -27,5 +27,5 @@ export function resolveTurnCompletionContinuation({ agent, continuation, finaliz
     return null;
   if (!agent?.behaviorScript)
     return null;
-  return { nextAction: REWAKE_NEXT_ACTION, delayMs: 0 };
+  return { continuationPrompt: REWAKE_NEXT_ACTION, delayMs: 0 };
 }
