@@ -88,13 +88,16 @@ function numericConstant(source, expression, label) {
 
 const CHAT_VIEW_SOURCE = readSource('../../../src/client/components/kikx-chat-view.mjs');
 const SCROLLVIEW_SOURCE = readSource('../../../src/client/components/kikx-chat-scrollview.mjs');
+// PAGE_SIZE moved to kikx-page-context.mjs in design-A (6d1ede5e); this
+// source-grep asserts the declaration in its real home since 2026-11-17.
+const PAGE_CONTEXT_SOURCE = readSource('../../../src/client/components/kikx-page-context.mjs');
 
 const MAX_RENDERED_FRAMES = numericConstant(
   CHAT_VIEW_SOURCE, 'export const MAX_RENDERED_FRAMES = (\\d+);', 'MAX_RENDERED_FRAMES');
 const MAX_TOTAL_RENDERED_FRAMES = numericConstant(
   CHAT_VIEW_SOURCE, 'export const MAX_TOTAL_RENDERED_FRAMES = (\\d+);', 'MAX_TOTAL_RENDERED_FRAMES');
 const PAGE_SIZE = numericConstant(
-  SCROLLVIEW_SOURCE, 'const PAGE_SIZE = (\\d+);', 'PAGE_SIZE');
+  PAGE_CONTEXT_SOURCE, 'export const PAGE_SIZE = (\\d+);', 'PAGE_SIZE');
 
 // Six pages at the shipped page size: enough that the window is bounded by page
 // arithmetic in every state, and small enough that the reveal can materialise
