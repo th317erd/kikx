@@ -29,3 +29,33 @@ export function resolveTurnCompletionContinuation({ agent, continuation, finaliz
     return null;
   return { continuationPrompt: REWAKE_NEXT_ACTION, delayMs: 0 };
 }
+
+// P5(c) — end-turn gate (plan §12.1, §12.2(8)). Returns the refusal
+// message when a scripted agent asks to end its turn without a permitted
+// exit, or null when ending is allowed. Permitted = the model-callable
+// harness overrides: blocked-on-upstream yield and fatal error. done /
+// task-complete is retired until done-semantics exist; step-complete
+// rides continue-turn progress frames (§12.6); absent reason = the old
+// silent stop — exactly the §12.1(a) complaint.
+const PERMITTED_SCRIPT_END_REASONS = new Set([ 'blocked', 'error' ]);
+
+export function refuseScriptedEndTurn({ agent, reason } = {}) {
+  if (typeof agent?.behaviorScript !== 'string' || agent.behaviorScript.trim() === '')
+    return null;
+
+  let normalizedReason = typeof reason === 'string' ? reason.trim() : '';
+  if (PERMITTED_SCRIPT_END_REASONS.has(normalizedReason))
+    return null;
+
+  let phase = typeof agent.behaviorScriptPC?.phase === 'string' && agent.behaviorScriptPC.phase !== ''
+    ? agent.behaviorScriptPC.phase
+    : 'your behaviorScript (no compiled phase — legacy text script)';
+  let shown = normalizedReason === '' ? 'none' : normalizedReason;
+
+  return 'Agentic Script execution is not complete — you are at phase "'
+    + phase
+    + '", and end-turn reason "'
+    + shown
+    + '" is not a permitted exit (permitted: blocked, error). The script has no terminal exit yet. '
+    + 'If you have questions, ask the user with the question-create tool, then continue.';
+}

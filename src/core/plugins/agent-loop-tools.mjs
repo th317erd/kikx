@@ -1,6 +1,7 @@
 'use strict';
 
 import { ToolExecutionService } from '../tools/tool-execution-service.mjs';
+import { refuseScriptedEndTurn } from '../agents/turn-completion.mjs';
 import {
   AGENT_TOOL_DEFINITIONS,
   AGENT_TOOL_NAME_PATTERN,
@@ -50,6 +51,12 @@ export function createLoopTools(state, context) {
   // ends the turn silently when both are omitted/empty (replacing the old
   // null-response).
   let endTurn = (content) => {
+    let gateMessage = refuseScriptedEndTurn({
+      agent: context?.agent,
+      reason: typeof content?.reason === 'string' ? content.reason : '',
+    });
+    if (gateMessage)
+      throw new TypeError(gateMessage);
     state.finalized = true;
     state.continuation = null;
     let normalized = normalizeToolResponseContent(content);

@@ -253,3 +253,36 @@ test('script-get fails clearly for unknown agents and missing targets', async ()
   });
   await assert.rejects(() => noContext['script-get']({}), /script-get requires an agent id/);
 });
+
+test('P5(c): end-turn refuses a scripted agent with the §12.1 message', () => {
+  let state = createLoopState();
+  let tools = createLoopTools(state, {
+    agent: { id: 'a1', behaviorScript: 'SCRIPT coordinator_v6 ... END', behaviorScriptPC: { phase: '4_implement', lap: 1 } },
+    isCoordinator: false,
+  });
+  assert.throws(
+    () => tools['end-turn']({}),
+    (error) => error instanceof TypeError
+      && /not complete/i.test(error.message)
+      && /4_implement/.test(error.message)
+      && /question-create/.test(error.message),
+  );
+  assert.notEqual(state.finalized, true, 'a refused end-turn must not finalize the state');
+});
+
+test('P5(c): end-turn passes for unscripted agents and for permitted exits', () => {
+  let state = createLoopState();
+  let tools = createLoopTools(state, { isCoordinator: false });
+  let result = tools['end-turn']({ text: 'bye' });
+  assert.ok(result, 'unscripted end-turn must succeed');
+  assert.equal(state.finalized, true);
+
+  let scriptedState = createLoopState();
+  let scriptedTools = createLoopTools(scriptedState, {
+    agent: { id: 'a1', behaviorScript: 'SCRIPT v6 ... END', behaviorScriptPC: { phase: '4_implement', lap: 1 } },
+    isCoordinator: false,
+  });
+  let blocked = scriptedTools['end-turn']({ reason: 'blocked', text: 'waiting on upstream' });
+  assert.ok(blocked, 'blocked must remain a permitted exit');
+  assert.equal(scriptedState.finalized, true);
+});
