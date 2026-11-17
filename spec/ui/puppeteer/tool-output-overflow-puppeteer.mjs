@@ -31,11 +31,13 @@
 //    -6px) and .kikx-frame__quick-actions (right: -44px, a vertical rail in a
 //    72px gutter). They accounted for exactly the 52px by which scrollWidth
 //    exceeded clientWidth.
-//    Owner ruling 2026-11-14 moved the rail INSIDE its own card
-//    (flex-wrap row, bottom-right, max-width: 100% - 16px), and the hover
-//    target shrank to `inset: 0`. Nothing is painted outside the frame now,
-//    so this exclusion is no longer load-bearing — but the exclusion stays as
-//    a guard against the affordances ever regressing to outside positioning.
+//    The 2026-11-14 fix moved the rail inside its own card, which made this
+//    exclusion inert for a while. The owner re-ruled that on 2026-11-17 ("They
+//    are supposed to WRAP in the container OUTSIDE the message"), so the rail
+//    is painted outside the card again — but BELOW it (`top: 100% + border`),
+//    not in a lateral gutter. The exclusion is therefore load-bearing once
+//    more, and stays: it is what keeps a vertically-painted rail from being
+//    miscounted as the frame's own horizontal overflow.
 
 import assert from 'node:assert/strict';
 import test from 'node:test';

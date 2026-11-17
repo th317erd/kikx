@@ -266,10 +266,15 @@
   /* One pixel of breathing room below the last card. ScrollTop is clamped to an
      integer while layout can end on a fractional pixel; without this the last
      card's bottom border can be shaved by the scroll container.
-     The old 72px right gutter existed only to hold the quick-action rail, which
-     used to be painted OUTSIDE the frame. The rail now lives inside its own card
-     (owner, 2026-11-14), so the gutter is gone and messages get the width back. */
-  padding: 0 0 1px 0;
+     The old 72px right gutter held a vertical quick-action rail painted outside
+     the frame laterally; that gutter is still gone (owner, 2026-11-14: messages
+     wanted the width).
+     BOTTOM reservation (2026-11-17): the rail hangs BELOW its card again, so the
+     LAST card in the thread needs room beneath it or the row is clipped by the
+     scroll container and the final message's actions become unreachable. This
+     reserves one 30px button row plus breathing room, and is invisible because
+     it shares the stream background. */
+  padding: 0 0 38px 0;
   list-style: none;
 }
 
@@ -402,27 +407,63 @@
 
 .kikx-frame__hover-target {
   position: absolute;
-  /* Was `-6px -52px -6px -6px`: the right-hand 52px reached out to the
-     gutter-parked rail so the pointer could travel to it without the rail
-     closing. The rail is inside the card now, so that reach is gone and the
-     frame no longer paints anything outside its own box. */
+  /* `inset: 0` is the card's own box. This target exists so a pointer resting
+     anywhere on the card reveals the quick actions; it does NOT reach out to
+     them. Since 2026-11-17 the rail is flush with the card's bottom edge, so the
+     pointer reaches it without crossing dead space. Extending this target
+     outwards would only steal clicks from whatever is painted beneath the
+     card. */
   inset: 0;
   z-index: -1;
   border-radius: calc(var(--kikx-frame-radius) + 6px);
   pointer-events: auto;
 }
 
-/* Quick actions live INSIDE their own card (owner, 2026-11-14). They used to
-   be a vertical column parked in a 72px gutter outside the frame surface,
-   which is what let them slide under a following card and overrun a short
-   card's height. Anchoring to the card's own bottom-right corner and letting
-   the buttons WRAP fixes both: the box can never leave the card, and a row
-   of 30px buttons is never taller than the card it belongs to.
-   Painted over content on hover only, so it costs no layout space. */
+/* Quick actions sit OUTSIDE their message (owner, 2026-11-17, verbatim:
+   "Somehow our quick-action buttons made it to INSIDE the message... this is
+   wrong. They are supposed to WRAP in the container OUTSIDE the message.").
+
+   This re-rules the 2026-11-14 request ("Can we have them wrap inside their
+   container please?"), which was implemented as "inside the CARD". The card is
+   the message bubble; the container the owner meant is the thread. Reading
+   "container" as "card" is what produced the inside-the-message bug.
+
+   Both older complaints were real and still hold — they were never reasons for
+   putting the rail inside the message:
+
+   * "end up BEHIND another card". `.kikx-frame` sets `transform`, so every card
+     is its own stacking context. A rail parked outside its card was painted
+     UNDER any later sibling no matter how large its own z-index was, because
+     the parent card's context bounded it. That is a stacking bug, not an
+     outboard bug. It is fixed by lifting the hovered card itself (see the
+     `.kikx-frame:hover` rule below), which is the only way a descendant can
+     paint above a sibling's context.
+   * "push down too far vertically". That rail was a vertical COLUMN of three
+     30px buttons — ~100px tall beside a one-line card. This is a row that
+     wraps, so its height is one button plus one gap.
+
+   Geometry: the row starts at the card's OUTER bottom edge (the `top` calc in the
+   rule below corrects `top: 100%`'s padding-box origin), so the buttons are
+   painted entirely outside the message while still being owned by it in the DOM
+   — which is what keeps hover, keyboard focus and the frame's action handlers
+   working without a DOM restructure.
+
+   No hover "bridge" padding is needed, and adding any would be a regression: the
+   row is flush with the card edge, so the pointer never crosses dead space
+   between the card and the buttons. Height matters here: the row is 30px, which
+   does not fit the default 17.5px seam between two messages (measured), so
+   `.kikx-frame` below reserves `1em + 24px` beneath every full frame and the row
+   sits in that gap instead of covering the next message. That clearance is
+   asserted on real metrics by
+   spec/ui/puppeteer/frame-quick-actions-outside-message-puppeteer.mjs. */
 .kikx-frame__quick-actions {
   position: absolute;
-  right: 8px;
-  bottom: 8px;
+  /* `top: 100%` resolves against the PADDING box, so on its own it starts the
+     row 2px inside the card's bottom border — measured, not assumed
+     (railInsideCard=2). Adding the border width puts the row's top edge exactly
+     on the card's outer bottom edge. */
+  top: calc(100% + var(--kikx-frame-border-width));
+  right: 0;
   z-index: 4;
   display: flex;
   flex-direction: row;
@@ -430,15 +471,19 @@
   justify-content: flex-end;
   align-items: center;
   gap: 6px;
-  /* Never wider than the card that owns it, so wrapping — not escaping —
-     is what happens when the buttons do not fit on one line. */
-  max-width: calc(100% - 16px);
+  /* WRAP, never run off the side: size to content so a short row stays one row,
+     capped at the card's own width so a long row wraps instead of escaping. */
+  width: max-content;
+  max-width: 100%;
   opacity: 0;
-  /* Stay hit-testable while visually hidden: the pointer must be able to
-   * land on a button the user is reaching for. Hovering the card or the
-   * rail reveals it. */
+  /* RE-RULED (2026-11-17): this used to stay hit-testable while invisible, so a
+   * pointer could "find" a button inside the card. Now that the row hangs
+   * OUTSIDE the card in the seam before the next message, that would let an
+   * invisible rail swallow clicks aimed at the NEXT card. Hidden must be inert;
+   * the card's own hover reveals the row, and the row is flush with the card's
+   * bottom edge, so reaching it never crosses dead space. */
   visibility: visible;
-  pointer-events: auto;
+  pointer-events: none;
   transform: translateY(4px);
   transition: opacity 120ms ease, transform 120ms ease;
 }
@@ -455,6 +500,18 @@
 
 .kikx-frame--minimized .kikx-frame__quick-actions {
   display: none;
+}
+
+/* The rail is painted outside its own card, so on the card being hovered it has
+   to rise above the sibling cards that follow it. A child cannot do that alone:
+   `.kikx-frame` establishes a stacking context via `transform`, so the CARD has
+   to come forward. Kept at z-index 2 — enough to clear sibling cards and their
+   rails, far below the shell's own overlays. Hovering a descendant (including
+   the rail, which is a descendant even though it paints outside the card's box)
+   keeps this rule matched, so the row never detaches from its card. */
+.kikx-frame:hover,
+.kikx-frame:focus-within {
+  z-index: 2;
 }
 
 .kikx-frame__quick-action {
@@ -500,6 +557,16 @@
 /* Keep full messages visually separated from surrounding minimized headers. */
 .kikx-frame:not(.kikx-frame--minimized) {
   margin-block: 1em;
+  /* The quick-action row hangs below this card (see .kikx-frame__quick-actions),
+     so the seam between two messages has to be tall enough to hold it. Measured
+     at 1280px: the default seam is 17.5px and the row is 30px tall, which put
+     10.5px of the row over the following card — the "BEHIND another card"
+     complaint in a new costume (painting over it rather than under it). One
+     button row plus breathing room, so the row sits in the gap rather than on
+     the next message. This is the cost of "OUTSIDE the message": the alternative
+     is either overlapping the next card or putting the buttons back inside this
+     one. */
+  margin-bottom: calc(1em + 24px);
 }
 
 /* Fundamental frame shell: outer radius, border width, header hatch, type/status

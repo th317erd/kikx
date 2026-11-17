@@ -267,25 +267,43 @@ test('the floating scroll-lock control is one and a half times the normal button
 //   "Quick-action buttons can end up BEHIND another card, or push down too far
 //    vertically. Can we have them wrap inside their container please?"
 //
-// This test previously asserted the OPPOSITE arrangement: `.kikx-frame-stream`
-// reserved `padding: 0 72px 1px 0` so a vertical rail could be painted in the
-// gutter OUTSIDE the frame. That reservation is what let the rail slide under a
-// following card and overrun a short card. The rail now lives INSIDE its own
-// card as a wrapping row, so the gutter is gone and this test is re-ruled to
-// assert the new contract. Geometry is proven by
-// spec/ui/puppeteer/frame-quick-actions-in-card-puppeteer.mjs; these assertions
-// only pin that the rules exist and are not silently reverted to a column.
-test('frame quick actions wrap INSIDE their card and appear on hover', async () => {
+// This test has now been re-ruled TWICE, which is the point worth recording.
+//
+// v1 asserted `.kikx-frame-stream { padding: 0 72px 1px 0 }` — a vertical rail
+// painted in a lateral gutter OUTSIDE the frame. That gutter is still gone.
+// v2 re-ruled it to "inside the CARD" on the strength of the 2026-11-14 request,
+// then the owner rejected that reading of "container" (2026-11-17). The rail is
+// OUTSIDE the message again, but not in a lateral gutter: it hangs below the
+// card as a wrapping row, and the card is lifted on hover so a following card
+// cannot cover it. Geometry is proven on rendered metrics by
+// spec/ui/puppeteer/frame-quick-actions-outside-message-puppeteer.mjs; the
+// assertions here only pin that the rules exist and are not silently reverted.
+test('frame quick actions wrap OUTSIDE the message and appear on hover', async () => {
   let css = await readCssBundle(path.join(STYLES_DIR, 'app.css'));
-  // The 72px gutter is gone: nothing is painted outside the frame any more.
+  // The lateral 72px gutter is gone. (The rail IS painted outside the card
+  // again, below it — see the assertions at the end of this test.)
   assert.doesNotMatch(css, /\.kikx-frame-stream \{[^}]*padding: 0 72px 1px 0/);
   // The rail is a wrapping row anchored to the card, not a gutter column.
   assert.match(css, /\.kikx-frame__quick-actions \{[^}]*flex-direction: row/);
   assert.match(css, /\.kikx-frame__quick-actions \{[^}]*flex-wrap: wrap/);
   assert.doesNotMatch(css, /\.kikx-frame__quick-actions \{[^}]*right: -44px/);
+  // OUTSIDE the message (owner, 2026-11-17): the row starts at the card's bottom
+  // edge rather than being inset into it. `bottom: 8px` was the in-card
+  // arrangement the owner rejected.
+  assert.match(css, /\.kikx-frame__quick-actions \{[^}]*top: calc\(100% \+ var\(--kikx-frame-border-width\)\)/);
+  assert.doesNotMatch(css, /\.kikx-frame__quick-actions \{[^}]*bottom: 8px/);
+  // .kikx-frame sets `transform`, so the card itself must be lifted for its
+  // outboard rail to clear following cards; a child's z-index cannot do it.
+  assert.match(css, /\.kikx-frame:hover[^{]*\{[^}]*z-index: 2/);
+  // The seam has to be tall enough to hold a 30px row, or the row covers the
+  // next message ("end up BEHIND another card", inverted).
+  assert.match(css, /\.kikx-frame:not\(\.kikx-frame--minimized\) \{[^}]*margin-bottom: calc\(1em \+ 24px\)/);
   // Hover still reveals them, minimized frames still hide them, icons stay 17px.
   assert.match(css, /\.kikx-frame:hover \.kikx-frame__quick-actions[^{]*\{[^}]*opacity: 1/);
   assert.match(css, /\.kikx-frame--minimized \.kikx-frame__quick-actions \{[^}]*display: none/);
+  // The last card needs room beneath it or the outboard row is clipped by the
+  // scroll container and the final message's actions become unreachable.
+  assert.match(css, /\.kikx-frame-stream \{[^}]*padding: 0 0 38px 0/);
   assert.match(css, /\.kikx-frame__quick-action svg \{[^}]*width: 17px/);
 });
 
