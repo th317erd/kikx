@@ -4,7 +4,7 @@ status: current
 doc_type: plan
 audience: [developers, maintainers, operators]
 applies_to: development-v3
-last_verified: 2026-11-01
+last_verified: 2026-11-16
 ---
 
 # Agentic scripts campaign
@@ -240,3 +240,213 @@ authorization.
 
 Integrate → full unit lane → lint/typecheck per repo convention → authorized
 push only. Conflicts resolved manually with compatible union semantics.
+
+## 12. Design record — the executor pivot (event-driven operator script)
+
+**Status: design record only — NOT authorized for implementation** (owner, 2026-11-16).
+
+Owner pivot (conversation of 2026-11-16): the P1–P3 script *persuades* via the
+executor preamble; this work makes it *drive*. Every ruling below is the
+owner's, verbatim or faithfully condensed. Supersedes §2 only where stated
+(§2's non-goals otherwise stand; §7 P4 remains reserved and untouched).
+
+### 12.1 Motivation (owner)
+
+- (a) bots end prematurely; (b) they do not ask "what needs to be done
+  next?" when they end; (c) they skip testing; (d) other unilateral stops.
+- Goal: the agentic script **actually drives the bot in a loop**. The bot
+  may not break out until the script is fully exhausted. Progress happens
+  only through tools; an early `end-turn` returns: *"Agentic Script
+  execution is not complete… if you have questions, ask the user with the
+  `ask-user` tool, and continue."*
+
+### 12.2 Rulings and decisions
+
+1. **The todo list is the driver; the script drives/generates the todo
+   list** (owner). The script's only writes are todo mutations (within the
+   §3 authority ruling) plus flow directives. **Todos are the language's
+   memory — v1 has no variables.**
+2. **The language is only complicated enough to step through** (owner):
+   free-form questions/statements plus simple branching. No variables, no
+   arithmetic, no subroutines, no parallel branches; one program counter
+   per agent. **Ruling: no condition `kind` tags** — conditions are
+   model-answered questions; every verdict lands as a frame so honesty is
+   auditable rather than enforced.
+3. **Two-level design**: machine control flow (sequence, AND-chain, OR-
+   dispatch, labels, gotos, events) around AGIS prose. The model still
+   interprets prose — §2's *"model interprets; we ship a preamble"* stays
+   true at the prose level; what becomes machine-owned is the skeleton:
+   stepping and gating.
+4. **JSON, strict** — the `//` comments in the owner's example were
+   explanatory only (**ruling: no JSONC**). The authoring form stays AGIS.
+5. **Compile-then-execute**: the agent compiles AGIS source to IR up-front
+   (the compiler may itself be an AGIS discipline, e.g. `::agis.compile`);
+   the runtime structurally validates it (every target resolves, handlers
+   non-empty, terminator present, size cap) — failed validation **rejects**
+   `script-set`; store `{source, IR, compiledAt}`; execution reads IR only;
+   edits recompile. The model is an untrusted compiler; validation is the
+   gate.
+6. **Enforcement = three layers**: (a) tool gate — refusal names the active
+   step and the blocking condition; (b) scheduler re-wake — silence does not
+   escape the loop; (c) PC persisted server-side — restarts resume
+   mid-script. **Teleprompter framing (owner): the script acts like the
+   operator** — its branch lines are the questions (*"Where are you at with
+   the implementation?" / "How thorough is your test coverage?" / "Did you
+   *prove* your work with tests?" / "Let's continue planning the next
+   step."*), so refusal text is editable script content, not hardcoded.
+7. **Event layer**: events are the places bots currently decide
+   unilaterally. v1 set: `endTurn`, `todoListEmpty`, `userResponded`
+   (`stallWake` under review). **Rule: events ask, directives decide, the
+   gate enforces** — events never move the PC themselves; moves are
+   validated `goto` / `next-step` directives.
+8. **Exits — ruling: end state to be defined as we go.** v1 has no silent
+   terminal branch: every exit line ends in a question to the user.
+   Harness overrides (budget gate, stall escalation, owner abort, fatal
+   error) are the only non-script stops. *Blocked on user* is a branch (ask
+   via `question-create`, then requeue to unblocked work), never an end.
+
+### 12.3 Coordinator behavior contract (the owner's six steps)
+
+1. **Set Vision** — user's responsibility; if thin, the agent collects the
+   user's thoughts as it goes and continually fleshes the Vision out.
+2. **Plan Mission** — current implementation tasks; a subset of the Vision
+   (e.g. "Implement the Auth system"), never the whole project.
+3. **Confirm the plan** — AGIS critical-thinking pass for gaps.
+4. **Implement the plan** — deviations and issues worked out here; anything
+   needing the user gets asked (**question-create, non-blocking**) while
+   work continues on unblocked items — **DO NOT STOP**.
+5. **Prove work** — unit + functional tests, happy **and** unhappy paths,
+   still aligned with Mission and Vision.
+6. **If the full and complete Vision is not yet met, goto step 1.**
+
+Five confirmations from the follow-up exchange:
+
+- Per-item **required proof** during step 4 + step-5 coverage audit with
+  backfill (the "no" branch adds test todos and returns to step 4).
+- **Blocked-everywhere → re-scope upstream** (4→5→6→1); the stall
+  escalation's question is the backstop.
+- **Mission persists across laps** and rotates only when its slice is
+  satisfied; rotation is posted as a progress frame.
+- **Vision + Mission are agent-record fields**, injected into the brief;
+  coordinator self-authority covers their writes; edits are posted visibly
+  (conversation is the UI).
+- **Step 6's "fully met" stays undefined in v1**; both candidate
+  done-conditions (*vision met* / *gone as far as possible without user
+  guidance*) likely converge where step 1/2 cannot choose a productive
+  slice that doesn't need the user — the structure accumulates the evidence
+  that will define done later.
+
+### 12.4 Accepted-items stall guard (approved answer to re-scope churn)
+
+A re-scope loop can shuffle todos forever and thereby satisfy a *no
+todo-state change* detector without landing work. Progress for stall
+escalation must therefore count **accepted items** (proof-passing, moved to
+done) per outer lap: N consecutive laps with **zero acceptances** → visible
+notice and a question to the owner, regardless of todo churn. Touches the
+future progress-escalation contract; recorded here, **not implemented**.
+
+### 12.5 Draft script — `coordinator_v6` (approved shape, design artifact)
+
+```text
+SCRIPT coordinator_v6
+
+phase 1_set_vision {
+  >>>Your Vision lives in your record field.<<<
+  branch {
+    "Vision is detailed enough to choose the next slice of work" -> goto 2_plan_mission
+    "Vision is empty, thin, or stale" -> {
+      "Fold in everything the user has said so far; write/update the Vision
+       field with your best interpretation; surface visionary questions
+       (question-create, non-blocking); then continue — never wait on the
+       user to proceed." -> goto 2_plan_mission
+    }
+  }
+}
+
+phase 2_plan_mission {
+  >>>Mission = current implementation tasks — a subset of the Vision (e.g.
+  "Implement the Auth system"), not the whole project.<<<
+  branch {
+    "A mission is chosen and its plan is seeded as todos (owner, definition
+     of done, required proof on every item)" -> goto 3_confirm_plan
+    "No mission or plan yet" -> {
+      "Choose the mission; seed the plan todos; ask visionary questions if
+       useful (non-blocking)." -> goto 3_confirm_plan
+    }
+  }
+}
+
+phase 3_confirm_plan {
+  >>>Run an AGIS critical-thinking pass over the plan: gaps, missed edges,
+  risks, tests implied but absent.<<<
+  branch {
+    "Material gaps found" -> {
+      "Add a todo per gap (owner, definition of done, required proof)."
+        -> goto 3_confirm_plan          // re-check after each repair
+    }
+    "No material gaps" -> goto 4_implement
+  }
+}
+
+phase 4_implement {
+  >>>Work the plan as defined. Deviations and issues get worked out here.
+  If resolution needs the user: ask (question-create) AND move to the next
+  item that isn't held up. Questions never halt you.<<<
+  events {
+    endTurn        -> "Agentic Script execution is not complete. Where are
+                       you at with the implementation? Answer it, then take
+                       the next unblocked todo."
+    todoListEmpty  -> "Prove-before-advance: is everything from the plan
+                       actually in the list, with proof?" -> goto 5_prove
+    userResponded  -> "Fold answers into Vision/Mission, unblock items,
+                       continue."
+  }
+}
+
+phase 5_prove {
+  branch {
+    "Every implemented item is covered by unit AND functional tests — happy
+     AND unhappy paths — and still aligns with Mission and Vision"
+      -> goto 6_check_vision
+    "Coverage, proof, or alignment is missing" -> {
+      "Add the missing test/fix todos with required proof, then get
+       started." -> goto 4_implement
+    }
+  }
+}
+
+phase 6_check_vision {
+  branch {
+    "Full and complete Vision is not yet met" -> goto 1_set_vision
+    "Vision fully met" -> UNDEFINED (interim: must end in a question)
+  }
+}
+```
+
+Harness overrides sit outside this file; they are the only non-script
+exits. Delivery of directives rides `continue-turn`'s `nextAction` and the
+continuation wake prompt — evolution of existing machinery, no new
+injection path.
+
+### 12.6 Team-of-bots seam (future)
+
+Phases 2, 4 and 5 later carry delegation content: the coordinator assigns
+descendants' todos (per the §3 authority ruling), monitors, validates, and
+stays a coordinator, not a worker. Structure unchanged — prose swaps
+inside phases.
+
+### 12.7 Open items (define as we go, per owner)
+
+- done-semantics for phase 6's "fully met" branch;
+- final event set (is `stallWake` an event?);
+- depth of the honesty backstop beyond frame audit;
+- team content for phases 2/4/5;
+- phase numbering, start gates, and DoD for this work — written when
+  implementation is authorized.
+
+### 12.8 Execution contract for this section
+
+Design record only. No source, spec, or migration changes are authorized
+by this section. When implementation is authorized: failing-first TDD,
+unit lane green before each commit, `git commit -F`, push per standing
+rules.
