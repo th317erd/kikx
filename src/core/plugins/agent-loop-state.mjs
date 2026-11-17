@@ -51,9 +51,15 @@ export function sumProviderUsage(left, right) {
 }
 
 export function buildLoopDoneContent(state, content = {}) {
+  // P5(b): carry whether a control tool finalized the turn (end-turn sets
+  // state.finalized) so the route's turn-completion hook can tell an
+  // explicit exit from a model that simply went silent (plan §12.2(6)).
+  // Emitted ONLY when true — absent means false — so non-finalized Done
+  // content stays byte-identical for existing assertions.
+  let base = state.finalized === true ? { ...content, finalized: true } : { ...content };
   return state.usage
-    ? { ...content, usage: state.usage }
-    : content;
+    ? { ...base, usage: state.usage }
+    : base;
 }
 
 // The closed terminal vocabulary a loop control may end in. Core owns every one of

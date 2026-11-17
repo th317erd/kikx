@@ -731,6 +731,7 @@ test('AgentInterface base loop exposes response tools that can finalize without 
       type: 'Done',
       content: {
         status: 'finalized',
+        finalized: true,
       },
     },
   ]);
@@ -751,6 +752,7 @@ test('AgentInterface converts avoidable deferral questions to continuations', as
       type: 'Done',
       content: {
         status: 'respond-and-continue',
+        finalized: true,
         continuation: {
           delayMs: 0,
           continuationPrompt: 'Your previous draft stopped to ask the user whether to continue or which obvious safe next step to take. The user expects you to infer the next safe implied step and continue without asking for permission. Continue now. Use tools if needed. Ask only if there is a real blocker, a destructive/risky action, or a genuinely important decision that cannot be inferred.',
@@ -804,6 +806,7 @@ test('AgentInterface base loop preserves provider frame metadata after response-
       type: 'Done',
       content: {
         status: 'finalized',
+        finalized: true,
         usage: {
           totalTokens: 12,
         },
@@ -827,6 +830,7 @@ test('AgentInterface base loop supports continue-turn control', async () => {
       type: 'Done',
       content: {
         status: 'respond-and-continue',
+        finalized: true,
         continuation: {
           delayMs: 0,
           continuationPrompt: 'Run the next smoke check.',
@@ -968,6 +972,7 @@ test('AgentInterface base loop ends the turn silently for end-turn with no text 
       type: 'Done',
       content: {
         status: 'finalized',
+        finalized: true,
       },
     },
   ]);
@@ -1018,6 +1023,7 @@ test('AgentInterface base loop forwards provider Done usage through the agent lo
       type: 'Done',
       content: {
         status: 'finalized',
+        finalized: true,
         usage: { inputTokens: 10, outputTokens: 4, totalTokens: 14 },
       },
     },
@@ -1182,6 +1188,7 @@ test('AgentInterface exposes agent-owned self-configuration tools', async () => 
       type: 'Done',
       content: {
         status: 'finalized',
+        finalized: true,
       },
     },
   ]);
@@ -1258,6 +1265,7 @@ test('AgentInterface base loop supports script-level finalization', async () => 
       type: 'Done',
       content: {
         status: 'finalized',
+        finalized: true,
       },
     },
   ]);
