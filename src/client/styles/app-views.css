@@ -283,6 +283,29 @@
   font-weight: 500;
 }
 
+/* Owner (2026-11-17): the sidebar "Account" row is gone because Settings owns
+   the account editor now. This is the row that owns it -- the ONLY entry point
+   to `openAccountEditor` in the client after the deletion, asserted by
+   spec/client/sidebar-account-link-spec.mjs so it cannot be removed silently. */
+.kikx-settings-general__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.kikx-settings-general__edit-account {
+  min-height: 34px;
+  padding: 0 16px;
+  border: 1px solid var(--kikx-btn-border);
+  border-radius: 6px;
+  background: var(--kikx-btn-bg);
+  color: #cdd6df;
+  cursor: pointer;
+}
+.kikx-settings-general__edit-account:hover,
+.kikx-settings-general__edit-account:focus-visible {
+  border-color: var(--kikx-accent);
+}
+
 /* Installed Plugins (S2): two columns collapsing at the mobile breakpoint,
    card chrome, notices. Every class kikx-settings-plugins-section.mjs emits
    appears here — the stylesheet gate fails otherwise. */

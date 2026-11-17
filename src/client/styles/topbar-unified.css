@@ -527,6 +527,22 @@
   background: color-mix(in srgb, #161b22 80%, #fff);
 }
 
+/* Owner (2026-11-17): "Turn 'Sign Out' into a <a> Link." The row is now an
+ * anchor, so three UA defaults have to be undone or it stops matching the grey
+ * row it replaced: the underline, the blue link colour, and the inline box (an
+ * <a> is inline by default, so `width`/`text-align` above would do nothing).
+ * Geometry is deliberately NOT repeated -- the anchor also carries
+ * `.kikx-sign-out-button`, so all the row metrics still come from the one rule
+ * above and the two cannot drift. */
+.kikx-session-objects .kikx-sidebar__link {
+  display: block;
+  text-decoration: none;
+}
+.kikx-session-objects .kikx-sidebar__link:hover,
+.kikx-session-objects .kikx-sidebar__link:focus-visible {
+  text-decoration: none;
+}
+
 /* The sidebar is a column so `margin-top: auto` on the footer cluster has slack
  * to consume. Without this the cluster cannot be pushed to the foot at all. */
 .kikx-sessions {

@@ -163,6 +163,24 @@ function buildSettingsSectionBody(active, state, app) {
         dt('Email'),
         dd(account.email || 'Not signed in'),
       ),
+      // Owner (2026-11-17, screenshot session-2026-11-17-17-05-39.574): the
+      // sidebar "Account" row is gone, on the stated grounds that the owner "can
+      // already get to it from the settings page". That justification was an
+      // INTENT, not existing behaviour: this block only DISPLAYED the facts, and
+      // the sidebar row was the SOLE caller of `openAccountEditor` in the whole
+      // client. This control is what makes the sentence true -- without it,
+      // deleting the row would have stranded the account editor with no way to
+      // open it at all.
+      //
+      // It calls the same `app._openAccountEditor` the deleted row called, so the
+      // editor itself is unchanged (kikx-editors.mjs `openAccountEditor`) and
+      // there is one implementation rather than a settings-only fork.
+      div.class('kikx-settings-general__actions')(
+        button
+          .type('button')
+          .class('kikx-settings-general__edit-account')
+          .onClick(() => app?._openAccountEditor?.())('Edit account'),
+      ),
     ),
     section.class('kikx-settings-general__card')(
       // Primary theme (owner 2026-11-11): host preference, General section.

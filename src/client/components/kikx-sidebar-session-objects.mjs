@@ -47,21 +47,36 @@ import { getScopeSessionID, isViewOpen, navigateView } from '../state/kikx-state
 import { listSidebarItemSurfaces } from './client-view-surfaces.mjs';
 import { createSessionScope, sessionIDOf } from '../state/session-scope.mjs';
 
-const { div, h2, span, button } = elements;
+const { div, h2, span, button, a } = elements;
 
 // Owner item 2 (2026-10-27): "Agents and Teams should go up into the 'Session
-// View' items." The five controls therefore split into two clusters:
+// View' items." The controls therefore split into two clusters:
 //
 //   'view'   -- Agents and Teams. They are views into the session tree, so they
 //               sit with Workspace / Inbox / Activities, above the tree.
-//   'footer' -- the account chip, Account and Sign out. They are identity, they
-//               act on the whole scope rather than on one row, so they stay at
-//               the foot behind `margin-top: auto`.
+//   'footer' -- the account chip and Sign out. They are identity, they act on
+//               the whole scope rather than on one row, so they stay at the
+//               foot behind `margin-top: auto`.
 //
 // `group` is presentation only. `id`, `label`, `kind`, `scopeSessionID` and
 // `onSelect` are unchanged by this split: the label text is load-bearing
 // (`clickButtonByText(page, 'Teams'|'Agents')` in seven stagehand specs) and the
 // scope id is what Prong B's predicate consumes.
+//
+// THE ACCOUNT ROW IS GONE (owner, 2026-11-17, screenshot
+// session-2026-11-17-17-05-39.574): "1. Remove the 'Account' button (can already
+// get to it from the settings page)". This SUPERSEDES the 2026-11-14 ruling that
+// restyled "the 'Account' and 'Sign Out' buttons", and the 2026-10-27 split that
+// listed Account in the footer cluster. Only Sign out remains a core footer row.
+//
+// The parenthetical was an INTENT, not an existing fact. Settings used to only
+// DISPLAY the account name and email, and this row was the SOLE caller of
+// `openAccountEditor` in the client (measured: one hit, this file). Deleting the
+// row on its own would have stranded the editor with no way to open it, so
+// Settings -> General -> Account now carries an explicit edit control
+// (kikx-system-settings-view.mjs) calling the same `app._openAccountEditor`.
+// Removing one entry point while adding the other is what makes the owner's
+// justification true rather than merely stated.
 export const SESSION_OBJECT_GROUPS = Object.freeze(['view', 'plugins', 'footer']);
 
 // `scopeSessionID === null` means "not scoped to a session" -- the user account
@@ -88,14 +103,6 @@ export function buildSessionObjectItems(app) {
       onSelect: null,
     },
     {
-      id: 'account',
-      kind: 'button',
-      group: 'footer',
-      label: 'Account',
-      scopeSessionID,
-      onSelect: () => app._openAccountEditor(),
-    },
-    {
       id: 'agents',
       kind: 'button',
       group: 'view',
@@ -117,7 +124,11 @@ export function buildSessionObjectItems(app) {
     },
     {
       id: 'sign-out',
-      kind: 'button',
+      // Owner (2026-11-17): "2. Turn 'Sign Out' into a <a> Link." `kind` drives
+      // the TAG: renderItem emits a real <a> element for this descriptor, which
+      // is the distinction the owner drew. The anchor deliberately carries no
+      // navigable destination -- see the long note in renderItem.
+      kind: 'link',
       group: 'footer',
       label: 'Sign out',
       scopeSessionID,
@@ -267,26 +278,43 @@ function itemsForGroup(items, group) {
 // `clickButtonByText`'s `textContent.trim() === text` assertion needs (seven
 // stagehand specs click these by text).
 //
-// The footer branch below is unchanged and still emits `kikx-sign-out-button`.
+// The footer branch below still emits `kikx-sign-out-button`.
 //
 // RE-RULED (2026-11-14, owner, screenshot session-2026-11-14-02-58-23.786):
 // "for the SIDEBAR SPECIFICALLY, I actually prefer the gray buttons WITHOUT a
 // border, and the primary color + highlight on hover. Please change the
 // 'Account' and 'Sign Out' buttons to match other sidebar buttons."
 //
-// This supersedes the earlier sentence here that said Account and Sign out
-// "ARE bar-style controls, and that styling is correct there". They are still
-// bar-style controls; the owner simply wants them presented as ROWS in the
-// sidebar, matching Inbox / Agents / Teams.
-//
-// The class is kept -- it is the handle seven stagehand specs and
-// sidebar-view-grouping-spec.mjs select on -- and the LOOK is changed in
-// topbar-unified.css (`.kikx-session-objects .kikx-sign-out-button`), scoped
+// That ruling still governs the LOOK of the surviving footer row, and is applied
+// in topbar-unified.css (`.kikx-session-objects .kikx-sign-out-button`), scoped
 // to the sidebar cluster. Scoping is load-bearing: the same class is the
-// Cancel/Delete control in kikx-modals.mjs, where the app-wide button recipe
-// is still correct. See spec/ui/puppeteer/
+// Cancel/Delete control in kikx-modals.mjs, where the app-wide button recipe is
+// still correct. See spec/ui/puppeteer/
 // sidebar-border-and-footer-buttons-puppeteer.mjs, whose third test pins that
 // boundary so a future global restyle cannot leak into dialogs.
+//
+// LINK RULING (2026-11-17, owner): "Turn 'Sign Out' into a <a> Link." So the
+// footer's remaining core row is an ANCHOR, not a <button>. Two consequences,
+// both deliberate:
+//
+//   1. It keeps `kikx-sign-out-button` alongside the new `kikx-sidebar__link`.
+//      That class carries the row METRICS, so the link inherits exactly the
+//      grey-row geometry of the 2026-11-14 ruling instead of a second, hand-
+//      copied set of numbers that could drift away from it.
+//   2. Its `href` is '#' and the click is prevented. Kikx auth is a bearer token
+//      in localStorage, NOT a cookie: signing out means clearing that storage and
+//      disconnecting runtime events (`signOut` in kikx-editors.mjs). The server's
+//      /api/v1/auth/logout is POST-only and revokes a session id, so a navigating
+//      `<a href="/api/v1/auth/logout">` would 405 on GET and -- worse -- would
+//      leave the token in storage, so the app would come straight back signed in.
+//      No URL performs this action, so this is an in-page link that keeps a real
+//      href for focus/activation semantics rather than a fake destination.
+//
+// KNOWN TRADEOFF, recorded rather than hidden: an anchor activates on Enter, a
+// button on Space, so moving this control from <button> to <a> means Space stops
+// working on it. That is inherent to the tag the owner asked for, so it is
+// documented instead of papered over with role="button", which would undo the
+// change itself.
 function renderItem(item) {
   if (item.kind === 'chip')
     return span.class('kikx-account-chip')(item.label);
@@ -300,6 +328,18 @@ function renderItem(item) {
       .type('button')
       .class(`kikx-sidebar__view${item.active ? ' kikx-sidebar__view--active' : ''}`)
       .onClick(item.onSelect)(span.class('kikx-sidebar__view-label')(item.label));
+
+  if (item.kind === 'link') {
+    return a
+      .class('kikx-sign-out-button kikx-sidebar__link')
+      .href('#')
+      .onClick((event) => {
+        // An in-page action, not a destination: without this the browser writes
+        // a '#' fragment into the URL on every sign-out click.
+        event?.preventDefault?.();
+        item.onSelect?.();
+      })(item.label);
+  }
 
   return button
     .type('button')
@@ -322,13 +362,18 @@ function renderItem(item) {
 //
 // Both clusters also go through `filterSessionObjectItems` -- the scope seam is
 // not bypassed for the new cluster, or Agents/Teams would leak past ownership
-// filtering while Account did not.
+// filtering while the account chip did not.
 //
 // `kikx-session-objects` stays on BOTH clusters' containers, and the button text
 // stays exactly the label. Both are load-bearing: seven stagehand specs select
 // `.kikx-session-objects button` and then compare `textContent.trim()`.
 //
 // Button text is load-bearing: `clickButtonByText(page, 'Teams'|'Agents')`.
+//
+// NOTE for specs (2026-11-17): Sign out is no longer a `button`, so a selector of
+// `.kikx-session-objects button` no longer includes it. That is the intended
+// consequence of the link ruling rather than a lost row -- select it via
+// `.kikx-sidebar__link`.
 export function buildSidebarSessionObjects(app, { scopeFilter = null, group = null } = {}) {
   let modifier = (group === null || group === undefined) ? '' : ` kikx-session-objects--${group}`;
   let className = `kikx-session-objects${modifier}`;
