@@ -187,12 +187,14 @@ test('root grants the whole cluster, chip included -- it owns everything below i
   let items = buildSessionObjectItems(appAt(null));
   let kept = filterSessionObjectItems(items, scopeFilter);
 
-  assert.equal(items.length, 5, 'the cluster has five descriptors');
-  assert.equal(kept.length, 5,
+  // UPDATED 2026-11-17: four, not five -- the 'account' row was removed by owner
+  // ruling (screenshot session-2026-11-17-17-05-39.574).
+  assert.equal(items.length, 4, 'the cluster has four descriptors');
+  assert.equal(kept.length, 4,
     'root must not be filtered to nothing: createSessionScope(null) has an empty owner set, so a raw predicate would blank the sidebar here');
 
   let ids = kept.map((item) => item.id);
-  for (let expected of [ 'account-chip', 'account', 'agents', 'teams', 'sign-out' ])
+  for (let expected of [ 'account-chip', 'agents', 'teams', 'sign-out' ])
     assert.ok(ids.includes(expected), `root kept "${expected}"`);
 });
 

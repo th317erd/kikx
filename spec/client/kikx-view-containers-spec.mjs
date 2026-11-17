@@ -242,9 +242,12 @@ test('projects container: rail tabs = Inbox + view/plugins rows, chrome rides, d
     'the Workspace header is rail chrome');
   const foot = host.querySelector('.kikx-view-container__rail-foot .kikx-session-objects--footer');
   assert.ok(foot, 'the footer cluster rides as rail chrome (class kept for account-page)');
-  const footText = foot ? [...foot.querySelectorAll('button')].map((b) => b.textContent.trim()) : [];
-  assert.ok(footText.includes('Account') && footText.includes('Sign out'),
-    `footer buttons intact (got ${JSON.stringify(footText)})`);
+  // UPDATED 2026-11-17: Sign out renders as an <a>, and the Account row is gone.
+  const footRows = foot ? [...foot.querySelectorAll('button, a')].map((b) => b.textContent.trim()) : [];
+  assert.ok(footRows.includes('Sign out'),
+    `footer row intact (got ${JSON.stringify(footRows)})`);
+  assert.ok(!footRows.includes('Account'),
+    `the 'Account' row must stay removed (got ${JSON.stringify(footRows)})`);
 
   const withView = buildProjectsContainer(app, { entry: {}, viewName: 'agents' });
   assert.equal(withView.getAttribute('active'), 'agents',

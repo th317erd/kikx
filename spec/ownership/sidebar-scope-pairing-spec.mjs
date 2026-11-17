@@ -60,7 +60,8 @@ function appViewing(leafSessionID) {
   };
 }
 
-const ALL_IDS = [ 'account-chip', 'account', 'agents', 'teams', 'sign-out' ];
+// UPDATED 2026-11-17: 'account' removed from the sidebar by owner ruling.
+const ALL_IDS = [ 'account-chip', 'agents', 'teams', 'sign-out' ];
 
 test('the sidebar descriptors carry the viewed session id on every non-chip row', () => {
   let items = buildSessionObjectItems(appViewing('S-VIEW'));
@@ -69,9 +70,12 @@ test('the sidebar descriptors carry the viewed session id on every non-chip row'
   // The account chip is the one global carve-out; everything else is scoped to
   // the session the sidebar is showing, which is what makes trickle-down
   // expressible at all.
+  // UPDATED 2026-11-17: four rows now (chip + agents + teams + sign-out), and
+  // derived from ALL_IDS rather than hand-counted, so a future descriptor change
+  // cannot silently leave this list one entry out of step.
   assert.deepEqual(
     items.map((item) => item.scopeSessionID),
-    [ null, 'S-VIEW', 'S-VIEW', 'S-VIEW', 'S-VIEW' ],
+    ALL_IDS.map((id) => (id === 'account-chip' ? null : 'S-VIEW')),
   );
 });
 
@@ -84,7 +88,8 @@ test('scope.predicate is the seam-shaped pairing and keeps the scoped rows', () 
   // The chip is unscoped by owner point 5, so a scope filter drops it. That is
   // the documented answer, and it is why the shipped sidebar does NOT wire this
   // filter yet: see the note at the end of this file.
-  assert.deepEqual(kept.map((item) => item.id), [ 'account', 'agents', 'teams', 'sign-out' ]);
+  // UPDATED 2026-11-17: 'account' was removed from the sidebar by owner ruling.
+  assert.deepEqual(kept.map((item) => item.id), [ 'agents', 'teams', 'sign-out' ]);
 });
 
 test('scope.filter passed as the per-item predicate throws instead of keeping everything', () => {
@@ -145,7 +150,7 @@ test('an unscoped viewer keeps nothing, loudly or quietly, never everything', ()
   assert.equal(nullScope.owns('S-VIEW'), false);
 });
 
-test('the sidebar grants all five, because the ROOT carve-out grants them', () => {
+test('the sidebar grants the whole cluster, because the ROOT carve-out grants it', () => {
   let items = buildSessionObjectItems(appViewing('S-VIEW'));
 
   // An absent filter is identity. That legacy call shape stays pinned, but it is
@@ -159,7 +164,7 @@ test('the sidebar grants all five, because the ROOT carve-out grants them', () =
   let rootItems = buildSessionObjectItems(appViewing(null));
   assert.deepEqual(
     rootItems.map((item) => item.scopeSessionID),
-    [ null, null, null, null, null ],
+    rootItems.map(() => null),
     'at the root every descriptor is unscoped',
   );
 

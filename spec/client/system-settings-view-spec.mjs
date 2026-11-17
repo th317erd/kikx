@@ -168,7 +168,12 @@ test('the sidebar rows are mode-blind — sections live only in the Settings con
     'the Inbox builder still bows out inside the mode');
 
   const labels = buildSessionObjectItems(app).map((item) => item.label);
-  assert.ok(labels.includes('Account') && labels.includes('Sign out'), 'the footer stays');
+  // UPDATED 2026-11-17: 'Account' left the sidebar by owner ruling; 'Sign out'
+  // stays. The account editor is now reached from Settings -> General, which is
+  // pinned in spec/client/sidebar-account-link-spec.mjs.
+  assert.ok(labels.includes('Sign out'), 'the footer keeps Sign out');
+  assert.ok(!labels.includes('Account'),
+    "the sidebar 'Account' row must stay removed (owner 2026-11-17)");
   assert.ok(!labels.some((label) => label === 'General' || label === 'Email' || label === 'Plugins'),
     'no section label ever leaks back into the rows');
 });

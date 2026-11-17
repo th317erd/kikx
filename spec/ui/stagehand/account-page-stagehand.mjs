@@ -58,8 +58,24 @@ test('Stagehand updates account profile and uses the display name on user messag
       timeout: 10000,
     });
 
+    // UPDATED 2026-11-17 (owner screenshot session-2026-11-17-17-05-39.574).
+    // This used to click `.kikx-session-objects button` .first(), which relied on
+    // the sidebar's Account row being the first button in the cluster. That row
+    // has been REMOVED -- the account editor is now reached from Settings ->
+    // General -> 'Edit account'. Clicking .first() would silently open Agents
+    // instead, so the navigation was rewritten against the real entry point
+    // rather than re-pointed at a different index that would rot the same way.
     await page.waitForSelector('.kikx-session-objects button', { timeout: 10000 });
-    await page.locator('.kikx-session-objects button').first().click();
+    await page.evaluate(() => {
+      // Drive the app's own seam: the topbar gear opens Settings, General is the
+      // default section, and the edit control lives in the Account card.
+      // .kikx-brand__mark is the gear inside the brand lockup
+      // (kikx-topbar.mjs:611-615 -> navigateSystemSettings). Pinned exactly; the
+      // wrapper `.kikx-brand` is NOT the clickable node.
+      document.querySelector('.kikx-brand__mark').click();
+    });
+    await page.waitForSelector('.kikx-settings-general__edit-account', { timeout: 10000 });
+    await page.click('.kikx-settings-general__edit-account');
     await page.waitForSelector('.kikx-account-form', { timeout: 10000 });
     await waitForTwoAnimationFrames(page);
     await page.evaluate(() => {

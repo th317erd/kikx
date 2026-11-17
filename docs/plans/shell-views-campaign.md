@@ -51,8 +51,16 @@ main.kikx-main  (shell root — NEVER swapped; identity + scroll doctrine hold)
     ├── <aeor-tab-view tab-bar-position="left">   spans cols 1/3, row 2,
     │     .tab-bar   → col 1   (today's sidebar column: the RAIL = tabs)
     │     <aeor-tab> → col 2   (today's main column: the PANELS)
-    └── rail-bottom chrome (col 1 row 3: account chip / Account / Sign out)
+    └── rail-bottom chrome (col 1 row 3: account chip / Sign out)
 ```
+
+> UPDATED 2026-11-17 (owner, screenshot session-2026-11-17-17-05-39.574):
+> the rail-bottom chrome lost its `Account` row -- it is now the account chip
+> plus `Sign out` only, and `Sign out` renders as an `<a>`, not a `<button>`;
+> the account editor is reached from Settings -> General -> "Edit account".
+> The diagram line above is corrected in place. Any copy of this file that
+> still reads `account chip / Account / Sign out` is stale.
+
 
 - **Tabs come from the existing descriptor lists** — no `viewName ===`
   branches (P7 grep gate keeps holding): Settings tabs =

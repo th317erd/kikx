@@ -87,15 +87,24 @@ test('view descriptors render the shared view class, not kikx-sign-out-button', 
   }
 });
 
-test('the footer descriptors still render kikx-sign-out-button', () => {
+// Owner (2026-11-17, screenshot session-2026-11-17-17-05-39.574): the
+// sidebar 'Account' row was REMOVED and 'Sign out' became an <a> link. Both
+// are asserted in spec/client/sidebar-account-link-spec.mjs; these updates
+// record the superseded assertions rather than deleting them silently.
+test('the footer descriptor still renders kikx-sign-out-button (now on an <a>)', () => {
   // The other half of the fix. Giving the view cluster a new class must not
-  // restyle Account and Sign out, which genuinely are bar-style controls.
+  // restyle the footer row, which genuinely is a bar-style control.
+  //
+  // UPDATED for the 2026-11-17 link ruling: this row is an ANCHOR now, so it is
+  // no longer matched by `buttons()`. It kept `kikx-sign-out-button` precisely so
+  // the grey-row metrics still come from the single rule in topbar-unified.css,
+  // and that class survival is what this test now pins.
   let app = makeApp();
   let footer = buildSidebarSessionObjects(app, { group: 'footer' });
 
-  let rows = buttons(footer).filter((node) => node.className === 'kikx-sign-out-button');
-  assert.deepEqual(rows.map((node) => node.textContent), [ 'Account', 'Sign out' ],
-    'Account and Sign out must keep the footer button class');
+  let anchors = [...footer.querySelectorAll('a.kikx-sign-out-button')];
+  assert.deepEqual(anchors.map((node) => node.textContent), [ 'Sign out' ],
+    'Sign out must keep the footer button class, on an anchor');
 });
 
 test('the footer cluster never renders a view row, and vice versa', () => {
@@ -104,10 +113,14 @@ test('the footer cluster never renders a view row, and vice versa', () => {
   let app = makeApp();
 
   let view = buttons(buildSidebarSessionObjects(app, { group: 'view' })).map((node) => node.textContent);
-  let footer = buttons(buildSidebarSessionObjects(app, { group: 'footer' })).map((node) => node.textContent);
+  // UPDATED 2026-11-17: the footer's Sign out is an anchor, so the footer's
+  // *buttons* are now none. Read every row (anchor or button) to keep checking
+  // disjointness, which is the property this test is actually about.
+  let footer = [...buildSidebarSessionObjects(app, { group: 'footer' }).querySelectorAll('button, a')]
+    .map((node) => node.textContent.trim());
 
   assert.deepEqual(view.sort(), [ 'Agents', 'Teams' ]);
-  assert.deepEqual(footer.sort(), [ 'Account', 'Sign out' ]);
+  assert.deepEqual(footer.sort(), [ 'Sign out' ]);
   for (let label of view)
     assert.ok(!footer.includes(label), `${label} must not appear in the footer cluster`);
 });
@@ -172,7 +185,11 @@ test('the ownership seam still runs for BOTH clusters', () => {
   let unfilteredView = buildSidebarSessionObjects(app, { group: 'view' });
   let unfilteredFooter = buildSidebarSessionObjects(app, { group: 'footer' });
   assert.equal(buttons(unfilteredView).length, 2, 'CONTROL: with no filter the view cluster is kept');
-  assert.equal(buttons(unfilteredFooter).length, 2, 'CONTROL: with no filter the footer cluster is kept');
+  // UPDATED 2026-11-17: the footer's only row is now an <a>, so `buttons()` finds
+  // zero. Counting rows (button OR anchor) keeps this control meaningful --
+  // asserting 0 would make it pass for the wrong reason, i.e. vacuously.
+  assert.equal(unfilteredFooter.querySelectorAll('button, a').length, 1,
+    'CONTROL: with no filter the footer row is kept');
 });
 
 test('a selective filter drops only the rows it rejects', () => {
@@ -299,9 +316,12 @@ test('Agents and Teams are view-group descriptors, Account and Sign out are foot
 
   assert.equal(groupOf('agents'), 'view');
   assert.equal(groupOf('teams'), 'view');
-  assert.equal(groupOf('account'), 'footer');
   assert.equal(groupOf('sign-out'), 'footer');
   assert.equal(groupOf('account-chip'), 'footer');
+  // The 'account' descriptor is GONE (owner 2026-11-17). Absence, not
+  // reassignment -- asserted here so a re-add fails this contract immediately.
+  assert.equal(groupOf('account'), undefined,
+    "the sidebar 'Account' row was removed by owner ruling 2026-11-17");
 });
 
 test('the account chip is still a chip, not a button, in either cluster', () => {

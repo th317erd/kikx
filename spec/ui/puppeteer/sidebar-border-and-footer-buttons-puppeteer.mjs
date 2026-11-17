@@ -194,7 +194,7 @@ test('a SELECTED rail entry paints its accent on all four sides, not just two', 
   }
 });
 
-test('Account and Sign out are grey sidebar rows: no border at rest, accent on hover', async (t) => {
+test('Sign out is a grey sidebar row: no border at rest, accent on hover (now an <a>)', async (t) => {
   let chromePath = findChromeExecutable();
   if (!chromePath) {
     t.skip('Puppeteer local smoke requires Chrome');
@@ -217,10 +217,19 @@ test('Account and Sign out are grey sidebar rows: no border at rest, accent on h
           borderStyle: cs.borderTopStyle,
           radius: cs.borderTopLeftRadius,
           fontSize: cs.fontSize,
+          // OWNER 2026-11-17: Sign out is now an <a>. These three are the UA
+          // defaults that have to be defeated for it to still look like the grey
+          // row it replaced, so they are measured on the rendered node.
+          tag: node.tagName,
+          display: cs.display,
+          decoration: cs.textDecorationLine,
         };
       };
+      // UPDATED 2026-11-17 (owner screenshot session-2026-11-17-17-05-39.574):
+      // this matched 'Account', whose row was REMOVED. Sign out is the only
+      // surviving core footer row, so it is the row these metrics describe now.
       let footer = [ ...document.querySelectorAll(footerSelector) ]
-        .find((node) => node.textContent.trim() === 'Account');
+        .find((node) => node.textContent.trim() === 'Sign out');
       // First tab that is not selected at rest: its styling is the idle look
       // the footer rows have to match.
       let view = [ ...document.querySelectorAll(viewSelector) ]
@@ -232,7 +241,7 @@ test('Account and Sign out are grey sidebar rows: no border at rest, accent on h
     await new Promise((resolve) => setTimeout(resolve, 250));
 
     let atRest = await read();
-    assert.ok(atRest.account, 'the Account footer button must be rendered in the sidebar');
+    assert.ok(atRest.account, 'the Sign out footer row must be rendered in the sidebar');
     assert.ok(atRest.view, 'a grey view row (Inbox/Agents/Teams) must exist to match against');
 
     // "match other sidebar buttons": compared against a LIVE tab, not against the
@@ -246,6 +255,23 @@ test('Account and Sign out are grey sidebar rows: no border at rest, accent on h
       `footer row corner radius must equal the rail tab's (account ${atRest.account.radius} vs tab ${atRest.view.radius})`);
     assert.equal(atRest.account.fontSize, atRest.view.fontSize,
       `footer row font size must equal the rail tab's (account ${atRest.account.fontSize} vs tab ${atRest.view.fontSize})`);
+
+    // OWNER 2026-11-17, item 2: "Turn 'Sign Out' into a <a> Link." Turning a
+    // <button> into an <a> is not free -- three UA defaults come back with the
+    // tag and each one visibly breaks the row:
+    //   * <a> is INLINE, so the row's width/text-align silently stop applying;
+    //   * <a> is UNDERLINED, so it stops reading as a sidebar row;
+    //   * <a> is LINK-COLOURED, so it stops matching the rail tabs.
+    // All three are asserted on the RENDERED node rather than on the CSS text.
+    // That distinction is the whole point of this file: the original owner bug
+    // ("border-width appears to be fully missing") had the correct CSS in our
+    // stylesheet and was still broken by a vendor rule at equal specificity.
+    assert.equal(atRest.account.tag, 'A',
+      'Sign out must be an anchor, not a button (owner item 2)');
+    assert.equal(atRest.account.display, 'block',
+      `the anchor must be block-level or the row geometry is inert (got ${atRest.account.display})`);
+    assert.equal(atRest.account.decoration, 'none',
+      `the anchor must not be underlined -- it reads as a row, not a hyperlink (got ${atRest.account.decoration})`);
 
     // "gray buttons WITHOUT a border": transparent, not absent, so the row does
     // not change height on hover. Assert the visible outcome, not the keyword.
@@ -262,7 +288,7 @@ test('Account and Sign out are grey sidebar rows: no border at rest, accent on h
     // 3) Hover: "the primary color + highlight on hover".
     let box = await page.evaluate((selector) => {
       let node = [ ...document.querySelectorAll(selector) ]
-        .find((candidate) => candidate.textContent.trim() === 'Account');
+        .find((candidate) => candidate.textContent.trim() === 'Sign out');
       let rect = node.getBoundingClientRect();
       return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
     }, FOOTER_BUTTON);
