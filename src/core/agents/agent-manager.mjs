@@ -9,9 +9,15 @@ import {
   BEHAVIOR_SCRIPT_FIELD,
   BEHAVIOR_SCRIPT_COMPILED_AT_FIELD,
   BEHAVIOR_SCRIPT_IR_FIELD,
+  BEHAVIOR_SCRIPT_PC_FIELD,
   normalizeBehaviorScript,
 } from './script-limits.mjs';
-import { normalizeScriptIRFieldValue, validateScriptIR } from '../scripts/script-ir.mjs';
+import {
+  initializeScriptPC,
+  normalizeScriptIRFieldValue,
+  normalizeScriptPCFieldValue,
+  validateScriptIR,
+} from '../scripts/script-ir.mjs';
 import { normalizeTagInputList, tagNumber } from '../tags/tag-definitions.mjs';
 
 export class AgentManager {
@@ -145,17 +151,20 @@ export class AgentManager {
       let validation = validateScriptIR(options.ir);
       if (!validation.ok)
         throw new TypeError(`behaviorScriptIR rejected: ${validation.errors.join('; ')}`);
+      let now = new Date().toISOString();
       patch[BEHAVIOR_SCRIPT_IR_FIELD] = options.ir;
       patch[BEHAVIOR_SCRIPT_COMPILED_AT_FIELD] =
         typeof options.compiledAt === 'string' && options.compiledAt !== ''
           ? options.compiledAt
-          : new Date().toISOString();
+          : now;
+      patch[BEHAVIOR_SCRIPT_PC_FIELD] = initializeScriptPC(options.ir, now);
     }
     else {
       // Text without IR: the source changed, so any stored IR is stale until
       // recompiled (§12.2(5)). Clear it on every text-only set.
       patch[BEHAVIOR_SCRIPT_IR_FIELD] = null;
       patch[BEHAVIOR_SCRIPT_COMPILED_AT_FIELD] = null;
+      patch[BEHAVIOR_SCRIPT_PC_FIELD] = null;
     }
 
     return await this.updateAgent(agentID, patch);
@@ -336,6 +345,10 @@ export class AgentManager {
         ? input[BEHAVIOR_SCRIPT_COMPILED_AT_FIELD]
         : null)
       : (options.creating ? null : undefined);
+    let hasScriptPC = Object.hasOwn(input, BEHAVIOR_SCRIPT_PC_FIELD);
+    let behaviorScriptPC = hasScriptPC
+      ? normalizeScriptPCFieldValue(input[BEHAVIOR_SCRIPT_PC_FIELD])
+      : (options.creating ? null : undefined);
 
     let errors = [];
     for (let key of Object.keys(config || {})) {
@@ -408,6 +421,7 @@ export class AgentManager {
       [BEHAVIOR_SCRIPT_FIELD]: behaviorScript,
       [BEHAVIOR_SCRIPT_IR_FIELD]: behaviorScriptIR,
       [BEHAVIOR_SCRIPT_COMPILED_AT_FIELD]: behaviorScriptCompiledAt,
+      [BEHAVIOR_SCRIPT_PC_FIELD]: behaviorScriptPC,
       config,
       secrets,
       clearSecrets: input.clearSecrets,

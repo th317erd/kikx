@@ -147,3 +147,53 @@ test('script-set tool refuses invalid IR with a validation message', async () =>
   let stored = await manager.getAgent(agent.id);
   assert.equal(stored.behaviorScript, '');
 });
+
+test('storing valid IR initializes the program counter at the first phase', async () => {
+  let manager = createManager();
+  let agent = await manager.createAgent({ name: 'Scripted', pluginID: 'ir-test' });
+  await manager.updateAgentScript(agent.id, 'SCRIPT v1', { ir: VALID_IR });
+
+  let stored = await manager.getAgent(agent.id);
+  let pc = stored.behaviorScriptPC;
+  assert.ok(pc, 'expected a program counter on IR store');
+  assert.equal(pc.phase, 'p1');
+  assert.equal(pc.lap, 1);
+  assert.equal(typeof pc.updatedAt, 'string');
+});
+
+test('text-only script-set clears the program counter', async () => {
+  let manager = createManager();
+  let agent = await manager.createAgent({ name: 'Scripted', pluginID: 'ir-test' });
+  await manager.updateAgentScript(agent.id, 'SCRIPT v1', { ir: VALID_IR });
+  await manager.updateAgentScript(agent.id, 'SCRIPT v2');
+
+  let stored = await manager.getAgent(agent.id);
+  assert.equal(stored.behaviorScriptPC, null);
+});
+
+test('an unrelated update preserves the stored IR and PC (field-gate class)', async () => {
+  let manager = createManager();
+  let agent = await manager.createAgent({ name: 'Scripted', pluginID: 'ir-test' });
+  await manager.updateAgentScript(agent.id, 'SCRIPT v1', { ir: VALID_IR });
+
+  await manager.updateAgent(agent.id, { name: 'Renamed' });
+
+  let stored = await manager.getAgent(agent.id);
+  assert.equal(stored.name, 'Renamed');
+  assert.deepEqual(stored.behaviorScriptIR, VALID_IR);
+  assert.equal(stored.behaviorScriptPC?.phase, 'p1');
+  assert.equal(stored.behaviorScriptPC?.lap, 1);
+});
+
+test('re-setting IR restarts the PC at lap 1', async () => {
+  let manager = createManager();
+  let agent = await manager.createAgent({ name: 'Scripted', pluginID: 'ir-test' });
+  await manager.updateAgentScript(agent.id, 'SCRIPT v1', { ir: VALID_IR });
+  let bumped = { ...VALID_IR, phases: [ { id: 'p1', branch: VALID_IR.phases[0].branch }, { id: 'p2', branch: VALID_IR.phases[0].branch } ] };
+  await manager.updateAgentScript(agent.id, 'SCRIPT v2', { ir: bumped });
+
+  let stored = await manager.getAgent(agent.id);
+  assert.equal(stored.behaviorScriptPC?.phase, 'p1');
+  assert.equal(stored.behaviorScriptPC?.lap, 1);
+  assert.deepEqual(stored.behaviorScriptIR.phases.map((entry) => entry.id), [ 'p1', 'p2' ]);
+});

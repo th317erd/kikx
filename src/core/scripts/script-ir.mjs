@@ -19,6 +19,25 @@ export function normalizeScriptIRFieldValue(value) {
   return null;
 }
 
+// Program counter for stepped execution (plan §12.2(7)): which phase the
+// script is at, which lap (outer-loop pass), and when it last moved.
+// Storing valid IR starts a fresh run at the first phase, lap 1.
+export function initializeScriptPC(ir, now = new Date().toISOString()) {
+  let first = Array.isArray(ir?.phases) && ir.phases.length > 0 ? ir.phases[0] : null;
+  let phase = first && typeof first.id === 'string' && first.id !== '' ? first.id : null;
+  return { phase, lap: 1, updatedAt: now };
+}
+
+export function normalizeScriptPCFieldValue(value) {
+  if (value == null || typeof value !== 'object' || Array.isArray(value))
+    return null;
+  return {
+    phase: typeof value.phase === 'string' && value.phase !== '' ? value.phase : null,
+    lap: Number.isFinite(value.lap) && value.lap >= 1 ? Math.trunc(value.lap) : 1,
+    updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : null,
+  };
+}
+
 const DIRECTIVE_KEYS = new Set([ 'goto', 'say', 'continue', 'ask', 'end' ]);
 
 export function validateScriptIR(ir) {
