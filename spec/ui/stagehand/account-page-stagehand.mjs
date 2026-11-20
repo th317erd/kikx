@@ -65,7 +65,17 @@ test('Stagehand updates account profile and uses the display name on user messag
     // General -> 'Edit account'. Clicking .first() would silently open Agents
     // instead, so the navigation was rewritten against the real entry point
     // rather than re-pointed at a different index that would rot the same way.
-    await page.waitForSelector('.kikx-session-objects button', { timeout: 10000 });
+    // FIXED 2026-11-18: this line was a leftover and was the reason the spec
+    // failed 4/4 in isolation. `53ea52fe` rewrote the navigation below onto the
+    // `.kikx-brand__mark` seam but left this precondition in place. The sidebar
+    // view cluster is now rendered as tab-rail entries, so the ONLY surviving
+    // `.kikx-session-objects` cluster is the footer, whose row is Sign out as an
+    // <a> -- it contains zero buttons. Measured on this fixture in real Chrome:
+    // clusterCount=1 (`kikx-session-objects--footer`), buttonsInCluster=0,
+    // anchors=['Sign out']. The wait therefore expired at 10s before the seam
+    // was ever reached. Waiting on the brand mark is the precondition the
+    // rewritten path actually depends on.
+    await page.waitForSelector('.kikx-brand__mark', { timeout: 10000 });
     await page.evaluate(() => {
       // Drive the app's own seam: the topbar gear opens Settings, General is the
       // default section, and the edit control lives in the Account card.
