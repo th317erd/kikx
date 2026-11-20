@@ -30,7 +30,7 @@ import test from 'node:test';
 
 import puppeteer from 'puppeteer-core';
 
-import { findChromeExecutable, startStagehandUIServer } from '../stagehand/stagehand-test-utils.mjs';
+import { findChromeExecutable, startStagehandUIServer, waitForScrollviewSettled } from '../stagehand/stagehand-test-utils.mjs';
 
 const SESSION = 'session_sendpin';
 
@@ -82,7 +82,11 @@ test('Puppeteer: bottom pin survives sends with tall streaming replies; any user
     });
     await page.goto(`http://127.0.0.1:${new URL(fixture.baseURL).port}/?session=${SESSION}`, { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.waitForSelector('.kikx-thread-scrollview', { timeout: 15000 });
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    // 300 frames mount as several lazy pages. The 14 x 600px wheel budget below
+    // only reaches the bottom if the thread has stopped growing first; under
+    // parallel load a fixed 800ms did not guarantee that, so the gesture chased
+    // a moving bottom and auto-lock never engaged.
+    await waitForScrollviewSettled(page);
 
     const snap = () => page.evaluate(() => {
       const app = document.querySelector('kikx-app');
@@ -132,7 +136,9 @@ test('Puppeteer: bottom pin survives sends with tall streaming replies; any user
       await page.mouse.wheel({ deltaY: 600 });
       await new Promise((resolve) => setTimeout(resolve, 90));
     }
-    await new Promise((resolve) => setTimeout(resolve, 700));
+    // The gesture itself triggers lazy loads; judge the lock only once the
+    // viewport has stopped moving and growing.
+    await waitForScrollviewSettled(page);
     await assertPinned('after wheel-to-bottom');
 
     // Sends with TALL streaming replies — the shape that broke for the owner.
@@ -177,17 +183,48 @@ test('Puppeteer: bottom pin survives sends with tall streaming replies; any user
       await page.mouse.wheel({ deltaY: 600 });
       await new Promise((resolve) => setTimeout(resolve, 90));
     }
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await waitForScrollviewSettled(page);
     after = await snap();
     assert.equal(after.lock, 'true', 'reaching the bottom auto-locks again');
 
     // (c) wheel DOWN out of a broken pin (positioned above the bottom while
     //     locked) — the old bottom-mode rule only listened for upward moves.
-    await page.evaluate(() => {
+    //
+    // Writing scrollTop alone cannot build this state: while the vendor follow
+    // driver is engaged it re-pins immediately. Measured on the previous form
+    // of this step — the raw write to near=500 was back at near=3 within 250ms
+    // via 14 programmatic re-pin scroll events — so the wheel below had no
+    // distance left to travel and correctly left the lock pressed. Release
+    // follow through its public accessor first (the state a user scroll
+    // leaves behind), keep the lock, and only measure once the position holds.
+    const brokenPinTop = await page.evaluate(() => {
       const list = document.querySelector('.kikx-frame-list');
-      list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight - 500);
+      list.closest('aeor-scrollview').follow = false;
+      const target = Math.max(0, list.scrollHeight - list.clientHeight - 500);
+      list.scrollTop = target;
+      return target;
     });
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    // Puppeteer's signature is waitForFunction(predicate, options, ...args).
+    // Passing the argument second made `target` the options object, so
+    // Math.abs(scrollTop - {timeout}) was NaN and the predicate could never be
+    // true: it burned the 30s default and reported nothing useful. Options
+    // first, argument third, and a failure that names the measured state.
+    await page.waitForFunction((target) => {
+      const list = document.querySelector('.kikx-frame-list');
+      return list.closest('aeor-scrollview').follow === false
+        && Math.abs(list.scrollTop - target) <= 2;
+    }, { timeout: 5000 }, brokenPinTop).catch(async () => {
+      const state = await page.evaluate(() => {
+        const list = document.querySelector('.kikx-frame-list');
+        return { top: Math.round(list.scrollTop), follow: list.closest('aeor-scrollview').follow };
+      });
+      throw new Error(`the broken-pin setup did not hold: target=${brokenPinTop} actual=${JSON.stringify(state)}`);
+    });
+    after = await snap();
+    assert.ok(after.near >= 400,
+      `the broken-pin setup must leave the view above the bottom (near=${after.near})`);
+    assert.equal(after.lock, 'true',
+      'the setup must still be locked, otherwise this step tests nothing');
     await page.mouse.move(640, 400);
     await page.mouse.wheel({ deltaY: 400 });
     await new Promise((resolve) => setTimeout(resolve, 450));
@@ -200,12 +237,26 @@ test('Puppeteer: bottom pin survives sends with tall streaming replies; any user
       await page.mouse.wheel({ deltaY: 600 });
       await new Promise((resolve) => setTimeout(resolve, 80));
     }
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await waitForScrollviewSettled(page);
+    // The keyboard step only means something from a genuine bottom pin. Without
+    // this guard it was flaky for the wrong reason: streaming replies can grow
+    // the list while the wheel loop runs, so on some runs the viewport never
+    // reached the bottom, follow was already false, and the test passed while
+    // PageUp was never actually exercised.
+    after = await snap();
+    assert.ok(after.near <= 40, `the keyboard step must start at the bottom (near=${after.near})`);
+    assert.equal(after.follow, true, 'the keyboard step must start while still following');
+    assert.equal(after.lock, 'true', 'the keyboard step must start from a pressed lock');
     await page.evaluate(() => document.querySelector('.kikx-frame-list')?.focus?.());
     await page.keyboard.press('PageUp');
-    await new Promise((resolve) => setTimeout(resolve, 450));
+    // Wait for the effect instead of assuming a fixed 450ms is enough.
+    await page.waitForFunction(
+      () => document.querySelector('.kikx-frame-list')?.closest('aeor-scrollview')?.follow === false,
+      { timeout: 3000 },
+    ).catch(() => {});
     after = await snap();
-    assert.equal(after.follow, false, 'a keyboard PageUp must release follow');
+    assert.equal(after.follow, false,
+      `a keyboard PageUp must release follow (near=${after.near}, top=${after.scrollTop})`);
     assert.equal(after.lock, 'false', 'a keyboard PageUp must release the lock');
   } finally {
     await browser.close();

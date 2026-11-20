@@ -152,30 +152,61 @@ function snapshot(page) {
       scrollTop: list ? list.scrollTop : null,
       scrollHeight: list ? list.scrollHeight : null,
       usesPagedScrollview: view?.usesPagedScrollview ?? null,
+      // The vendor scrollview's own in-flight bookkeeping. A page load can be
+      // pending with no DOM mutation at all, so count-silence alone is not a
+      // settle signal (see settledSnapshot).
+      loading: list?.closest('aeor-scrollview')?._loading?.size ?? 0,
+      pendingPage: list?.closest('aeor-scrollview')?._pendingPage?.index ?? null,
     };
   });
 }
 
-// Polls until the mounted count has not changed for `quietMs`, so the settled
-// assertions describe the idle read-ahead rather than a mid-load frame. This is
-// a settle (wait for silence), not a fixed sleep (guess a duration): at 700
-// frames the count reaches 460 by ~1.7 s and then holds for 12 s.
-async function settledSnapshot(page, { quietMs = 1200, timeoutMs = 20000, pollMs = 100 } = {}) {
-  let deadline = Date.now() + timeoutMs;
+// Waits for the idle read-ahead to finish, using the SAME quiet predicate as
+// waitForScrollviewSettled (spec/ui/stagehand/stagehand-test-utils.mjs): no page
+// in flight, no pending scrollToPage() transaction, and the mounted count,
+// scrollTop AND scrollHeight all unchanged for `quietMs`.
+//
+// Why the vendor signals are required and a wall-clock quiet window is not:
+// under lane load a page load can be pending with no DOM mutation at all, so a
+// "nothing changed for 1200 ms" gate declares quiet mid-ramp and this spec then
+// measured the read-ahead still climbing (the lane red: settled count 700 ===
+// FRAME_COUNT, i.e. the whole thread mounted at the moment it sampled).
+//
+// quietMs must OUTLAST the app's own settle timers, or the gate opens during a
+// lull BETWEEN two page loads. The vendor expires a pending scrollToPage()
+// transaction at 1500 ms (aeor-scrollview.js:1081) and the adapter holds a
+// user-page anchor for 220 ms after the last load; 1200 ms sat between those and
+// reported quiet while the read-ahead was still climbing. Hence 1800 ms.
+//
+// On timeout this THROWS instead of returning the last sample: returning it
+// silently turned "never settled within 20 s" into "the window is unbounded",
+// which is a different claim and the wrong diagnosis.
+async function settledSnapshot(page, { quietMs = 1800, timeoutMs = 20000, pollMs = 100 } = {}) {
+  let startedAt = Date.now();
+  let deadline = startedAt + timeoutMs;
   let last = await snapshot(page);
   let quietSince = Date.now();
   while (Date.now() < deadline) {
     await delay(pollMs);
     let next = await snapshot(page);
-    if (next.count !== last.count) {
+    let same = next.count === last.count
+      && next.scrollTop === last.scrollTop
+      && next.scrollHeight === last.scrollHeight;
+    let idle = next.loading === 0 && next.pendingPage === null;
+    if (!same || !idle) {
       quietSince = Date.now();
       last = next;
       continue;
     }
     last = next;
-    if (Date.now() - quietSince >= quietMs) return next;
+    if (Date.now() - quietSince >= quietMs)
+      return next;
   }
-  return last;
+  throw new Error(
+    `the idle read-ahead did not settle within ${timeoutMs} ms; refusing to assert `
+    + `boundedness on a mid-load sample (last: count ${last.count}, `
+    + `scrollHeight ${last.scrollHeight}, loading ${last.loading}, `
+    + `pendingPage ${last.pendingPage}, waited ${Date.now() - startedAt} ms)`);
 }
 
 // One message for both bounded-window assertions, so a PAGE_SIZE regression

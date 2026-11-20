@@ -220,6 +220,108 @@ export function findChromeExecutable() {
   return '';
 }
 
+// Waits until the lazy scrollview has genuinely finished growing, before a spec
+// samples geometry. Fixed sleeps were the source of the failures that kept the
+// ui:puppeteer lane red under parallel load: the settle state they were guessing
+// at arrives after a variable number of page loads, and under CPU contention
+// (16 concurrent Chromes) it arrives much later than any fixed sleep allows for.
+//
+// Two measured facts shape this predicate:
+//
+// 1. The layout must be stable too, not just the scroll offset. A page load can
+//    finish, re-mount items and change scrollHeight while scrollTop and the focal
+//    frame id hold still, so id+scrollTop alone is not enough.
+// 2. The stability window must OUTLAST the app's own settle timers. The
+//    scrollview debounces page loads at 100ms (`page-load-debounce`), the adapter
+//    holds a user-page anchor for 220ms after the last load, and the vendor
+//    expires a pending scrollToPage() transaction at 1500ms
+//    (aeor-scrollview.js:1081). A window shorter than those returns during a
+//    lull BETWEEN two page loads.
+//
+// Fact 2 is not hypothetical. A traced 6-way run reported quiet after 3 samples
+// of 100ms with itemCount 599; the list then collapsed to 119 and re-grew
+// 238 -> 475 -> 713 -> 832 on its way to a settled 951. Sampling geometry on
+// that plateau is what produced the lane's frame_601 -> frame_224 jump: 13724px
+// of pages inserted above the viewport with scrollTop left uncompensated.
+export async function waitForScrollviewSettled(page, options = {}) {
+  let {
+    timeout = 30000,
+    interval = 100,
+    // 1800ms > the vendor's 1500ms pendingPage expiry, so a quiet run cannot
+    // straddle a transaction that is about to be force-cleared.
+    settleWindowMs = 1800,
+    label = '',
+  } = options;
+  let startedAt = Date.now();
+  let deadline = startedAt + timeout;
+  let previous = null;
+  let quietSince = null;
+  let trace = Boolean(process.env.KIKX_WAIT_TRACE);
+  let history = [];
+
+  while (Date.now() < deadline) {
+    let sample = await page.evaluate(() => {
+      let list = document.querySelector('.kikx-frame-list');
+      if (!list)
+        return null;
+      let host = list.closest('aeor-scrollview');
+      let listTop = list.getBoundingClientRect().top;
+      let items = [ ...document.querySelectorAll('kikx-frame-item[data-frame-id]') ];
+      let focal = items.find((candidate) => candidate.getBoundingClientRect().bottom > listTop);
+      return {
+        // In-flight lazy pages, per the vendor scrollview's own bookkeeping.
+        loading: host?._loading?.size ?? 0,
+        // A pending explicit scrollToPage() transaction has not placed the
+        // viewport yet, so anything measured now is pre-jump geometry.
+        pendingPage: host?._pendingPage ?? null,
+        loadingMore: host?._loadState?.direction ?? 'idle',
+        id: focal?.dataset?.frameId || null,
+        scrollTop: Math.round(list.scrollTop),
+        scrollHeight: Math.round(list.scrollHeight),
+        itemCount: items.length,
+      };
+    }).catch(() => null);
+
+    let now = Date.now();
+    let quiet = Boolean(sample)
+      && sample.loading === 0
+      && (sample.pendingPage === null || sample.pendingPage === undefined)
+      && previous !== null
+      && sample.id === previous.id
+      && sample.scrollTop === previous.scrollTop
+      && sample.scrollHeight === previous.scrollHeight
+      && sample.itemCount === previous.itemCount;
+
+    if (!quiet)
+      quietSince = null;
+    else if (quietSince === null)
+      quietSince = now;
+
+    previous = sample;
+    if (trace && history.length < 80)
+      history.push({ t: now - startedAt, quiet, ...sample });
+
+    if (quietSince !== null && now - quietSince >= settleWindowMs) {
+      if (trace)
+        console.error(`WAIT_OK${label ? `[${label}]` : ''} elapsed=${now - startedAt} window=${now - quietSince} history=${JSON.stringify(history)}`);
+      return sample;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, interval));
+  }
+
+  // Throwing matters: returning the last partial sample made a timed-out wait
+  // indistinguishable from a settled viewport, so a spec could assert against
+  // half-loaded geometry and still report either a clean pass or a baffling
+  // failure. A timeout is a fact about the run and must surface as one.
+  if (trace)
+    console.error(`WAIT_TIMEOUT${label ? `[${label}]` : ''} elapsed=${Date.now() - startedAt} history=${JSON.stringify(history)}`);
+  throw new Error(
+    `waitForScrollviewSettled${label ? ` (${label})` : ''} timed out after ${timeout}ms`
+    + `; last sample: ${JSON.stringify(previous)}`,
+  );
+}
+
 export async function startStagehandUIServer(options = {}) {
   let agents = Array.isArray(options.agents) ? options.agents : [];
   let teams = Array.isArray(options.teams) ? options.teams : [];
