@@ -327,6 +327,22 @@ export function breakScrollLockFromUser(app) {
   app._ignoreFrameScrollUntil = 0;
   app._bottomLockIntent = false;
   cancelFrameListScrollAnimation(app);
+  // Also release the shared scrollview's own follow driver.
+  //
+  // The vendor releases follow by itself only where it can see the gesture:
+  // _onScroll does it for scrolls that land while _userIntentUntil is armed,
+  // and that window is opened by pointerdown/touchstart/touchmove/wheel alone
+  // (aeor-scrollview.js:132-138, 1220). A KEYBOARD scroll opens kikx's gesture
+  // window (kikx-frame-scroll.mjs _onFrameListKeydown) but not the vendor's,
+  // so PageUp/ArrowUp broke the lock and left follow on. The next page load
+  // then called _followPlaceBottom and yanked the reader back to the tail --
+  // the pin looked pressed-then-lost, and a reader who scrolled up by keyboard
+  // could not stay there. Owner rule (2026-11-05): "ANY scroll from me, up or
+  // down, should unpin." Wheel and touch already behave this way, so the
+  // keyboard path must match rather than diverge.
+  let host = app.querySelector?.('.kikx-frame-list')?.closest?.('aeor-scrollview');
+  if (host)
+    host.follow = false;
   setScrollLockedForSession(app, false, sessionID);
   paintScrollLockButton(app, sessionID, false);
 }

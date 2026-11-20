@@ -335,6 +335,44 @@ test('a user scroll attempt unlocks instantly', () => {
   assert.equal(isScrollLockedForSession(app, 's1'), false);
 });
 
+// Owner rule (2026-11-05): "ANY scroll from me, up or down, should unpin."
+// The vendor opens its user-intent window from pointerdown/touchstart/
+// touchmove/wheel only (aeor-scrollview.js:132-138, 1220), so a KEYBOARD
+// scroll breaks kikx's lock without ever releasing the shared scrollview's
+// follow driver. The next page load then re-placed the reader at the tail and
+// the pin read as pressed-then-lost. Breaking the lock from a user gesture
+// must release follow too, otherwise the two disagree about who owns the
+// viewport position.
+test('breaking the lock from a user gesture also releases the view follow driver', () => {
+  resetStorage();
+  let host = { follow: true };
+  let frameList = { closest: (selector) => selector === 'aeor-scrollview' ? host : null };
+  let app = {
+    _state: { selectedSessionID: 's1' },
+    querySelector: (selector) => selector === '.kikx-frame-list' ? frameList : null,
+  };
+  setScrollLockedForSession(app, true, 's1');
+  setScrollLockModeForSession(app, 'bottom', 's1');
+
+  breakScrollLockFromUser(app);
+
+  assert.equal(isScrollLockedForSession(app, 's1'), false, 'the lock is released');
+  assert.equal(host.follow, false, 'and the shared view stops following too');
+});
+
+// A lock can be broken before any scrollview exists (first paint, or a unit
+// harness with a stub app). Releasing follow must degrade to a no-op rather
+// than throwing on a missing querySelector.
+test('breaking the lock without a frame list does not throw', () => {
+  resetStorage();
+  let app = { _state: { selectedSessionID: 's1' } };
+  setScrollLockedForSession(app, true, 's1');
+  setScrollLockModeForSession(app, 'bottom', 's1');
+
+  assert.doesNotThrow(() => breakScrollLockFromUser(app));
+  assert.equal(isScrollLockedForSession(app, 's1'), false);
+});
+
 test('a one-pixel layout correction does not break a bottom lock', () => {
   resetStorage();
   let list = { scrollTop: 100, scrollHeight: 1000, clientHeight: 400, getBoundingClientRect: () => ({ top: 0 }), querySelectorAll: () => [] };
